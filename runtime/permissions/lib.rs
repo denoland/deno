@@ -1490,7 +1490,13 @@ impl PathDescriptor {
   }
 
   fn cmp_allow_allow(&self, other: &PathDescriptor) -> Ordering {
-    self.path.cmp(&other.path)
+    if other.path.starts_with(&self.path) {
+      Ordering::Greater
+    } else if self.path.starts_with(&other.path) {
+      Ordering::Less
+    } else {
+      self.path.cmp(&other.path)
+    }
   }
 
   fn cmp_allow_deny(&self, other: &PathDescriptor) -> Ordering {
@@ -1504,7 +1510,7 @@ impl PathDescriptor {
   }
 
   fn cmp_deny_deny(&self, other: &PathDescriptor) -> Ordering {
-    self.path.cmp(&other.path)
+    self.cmp_allow_allow(other)
   }
 }
 
@@ -7240,5 +7246,496 @@ mod tests {
   fn test_format_display_name() {
     assert_eq!(format_display_name(Cow::Borrowed("123")), "\"123\"");
     assert_eq!(format_display_name(Cow::Borrowed("<other>")), "<other>");
+  }
+
+  #[test]
+  fn test_path_ordering_multiple_allows_and_denies() {
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    // Test multiple overlapping allows and denies
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo/bar/baz", "/foo/qux"]),
+        deny_read: Some(svec!["/foo/bar", "/foo"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Most specific allow wins over less specific denies
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar/baz"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar/baz/file.txt"))),
+      PermissionState::Granted
+    );
+
+    // Deny /foo/bar blocks this
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar/other"))),
+      PermissionState::Denied
+    );
+
+    // Allow /foo/qux works despite deny /foo
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/qux"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/qux/file.txt"))),
+      PermissionState::Granted
+    );
+
+    // Deny /foo blocks everything else under /foo
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/other"))),
+      PermissionState::Denied
+    );
+
+    // Unrelated path is prompt
+    assert_eq!(
+      perms.read.query(Some(&read_query("/bar"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_env_ordering_multiple_patterns() {
+    // Test multiple overlapping env patterns
+    let mut perms = Permissions::none_without_prompt();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(Vec::from([
+          EnvDescriptor::new(Cow::Borrowed("NODE_ENV")),
+          EnvDescriptor::new(Cow::Borrowed("NODE_DEBUG_*")),
+          EnvDescriptor::new(Cow::Borrowed("DENO_*")),
+        ])),
+        Some(Vec::from([
+          EnvDescriptor::new(Cow::Borrowed("NODE_*")),
+          EnvDescriptor::new(Cow::Borrowed("DENO_SECRET")),
+        ])),
+        true,
+      )
+    };
+
+    // Exact match NODE_ENV beats pattern NODE_*
+    assert_eq!(perms.env.query(Some("NODE_ENV")), PermissionState::Granted);
+
+    // More specific pattern NODE_DEBUG_* beats less specific NODE_*
+    assert_eq!(
+      perms.env.query(Some("NODE_DEBUG_NATIVE")),
+      PermissionState::Granted
+    );
+
+    // NODE_* deny blocks other NODE_ vars
+    assert_eq!(perms.env.query(Some("NODE_PATH")), PermissionState::Denied);
+    assert_eq!(
+      perms.env.query(Some("NODE_OPTIONS")),
+      PermissionState::Denied
+    );
+
+    // DENO_* allow works for most vars
+    assert_eq!(perms.env.query(Some("DENO_DIR")), PermissionState::Granted);
+
+    // But DENO_SECRET exact deny overrides DENO_* allow
+    assert_eq!(
+      perms.env.query(Some("DENO_SECRET")),
+      PermissionState::Denied
+    );
+
+    assert_eq!(perms.env.query(Some("PATH")), PermissionState::Prompt);
+  }
+
+  #[test]
+  fn test_env_ordering_nested_patterns() {
+    // Test increasingly specific patterns
+    let mut perms = Permissions::none_without_prompt();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(Vec::from([
+          EnvDescriptor::new(Cow::Borrowed("PREFIX_SUBPREFIX_ALLOWED*")),
+          EnvDescriptor::new(Cow::Borrowed("PREFIX_ALLOWED*")),
+        ])),
+        Some(Vec::from([
+          EnvDescriptor::new(Cow::Borrowed("PREFIX_SUBPREFIX*")),
+          EnvDescriptor::new(Cow::Borrowed("PREFIX*")),
+        ])),
+        false,
+      )
+    };
+
+    // Most specific allow pattern wins
+    assert_eq!(
+      perms.env.query(Some("PREFIX_SUBPREFIX_ALLOWED_VAR")),
+      PermissionState::Granted
+    );
+
+    // Less specific deny blocks this
+    assert_eq!(
+      perms.env.query(Some("PREFIX_SUBPREFIX_OTHER")),
+      PermissionState::Denied
+    );
+
+    // Medium specific allow wins
+    assert_eq!(
+      perms.env.query(Some("PREFIX_ALLOWED_VAR")),
+      PermissionState::Granted
+    );
+
+    // Least specific deny blocks everything else
+    assert_eq!(
+      perms.env.query(Some("PREFIX_OTHER")),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_net_ordering_with_ports() {
+    let parser = TestPermissionDescriptorParser;
+
+    // Test that host:port combinations are properly ordered
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["example.com:8080", "example.com:443"]),
+        deny_net: Some(svec!["example.com"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Note: For net permissions, the current implementation doesn't support
+    // more specific (with port) overriding less specific (without port)
+    // because cmp_deny returns Ordering::Greater for all comparisons.
+    // This test documents current behavior.
+    assert_eq!(
+      perms.net.query(Some(&NetDescriptor(
+        Host::must_parse("example.com"),
+        Some(8080)
+      ))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.net.query(Some(&NetDescriptor(
+        Host::must_parse("example.com"),
+        Some(443)
+      ))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms
+        .net
+        .query(Some(&NetDescriptor(Host::must_parse("example.com"), None))),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_path_ordering_same_specificity() {
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    // When allow and deny have the same path, deny should win
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo/bar"]),
+        deny_read: Some(svec!["/foo/bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Deny should take precedence when specificity is equal
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar/file.txt"))),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_env_ordering_same_specificity() {
+    // When allow and deny have the same env var, deny should win
+    let mut perms = Permissions::none_without_prompt();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("TEST_VAR"))])),
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("TEST_VAR"))])),
+        false,
+      )
+    };
+
+    // Deny should take precedence
+    assert_eq!(perms.env.query(Some("TEST_VAR")), PermissionState::Denied);
+  }
+
+  #[test]
+  fn test_env_ordering_pattern_same_specificity() {
+    // When allow and deny have the same pattern, deny should win
+    let mut perms = Permissions::none_without_prompt();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("TEST_*"))])),
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("TEST_*"))])),
+        false,
+      )
+    };
+
+    // Deny should take precedence
+    assert_eq!(perms.env.query(Some("TEST_VAR")), PermissionState::Denied);
+    assert_eq!(
+      perms.env.query(Some("TEST_ANOTHER")),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_path_ordering_sibling_directories() {
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    // Test sibling directories (unrelated paths)
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo/a"]),
+        deny_read: Some(svec!["/foo/b"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/a"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/a/file.txt"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/b"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/b/file.txt"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/c"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_write_ordering_deep_nesting() {
+    let parser = TestPermissionDescriptorParser;
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_write()
+    };
+
+    // Test deeply nested paths with multiple levels
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_write: Some(svec!["/a/b/c/d/e/f"]),
+        deny_write: Some(svec!["/a/b/c", "/a/b/c/d/e"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Most specific allow wins
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c/d/e/f"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c/d/e/f/g"))),
+      PermissionState::Granted
+    );
+
+    // Deny at /a/b/c/d/e blocks this level
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c/d/e"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c/d/e/other"))),
+      PermissionState::Denied
+    );
+
+    // Deny at /a/b/c blocks broader access
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b/c/d"))),
+      PermissionState::Denied
+    );
+
+    // Parent paths are prompt
+    assert_eq!(
+      perms.write.query(Some(&write_query("/a/b"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_ffi_ordering_similar_paths() {
+    let parser = TestPermissionDescriptorParser;
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_ffi()
+    };
+
+    // Test paths that share common prefixes but aren't ancestors
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_ffi: Some(svec!["/usr/lib/custom", "/usr/lib64"]),
+        deny_ffi: Some(svec!["/usr/lib"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Allow should work for specific paths
+    assert_eq!(
+      perms.ffi.query(Some(&ffi_query("/usr/lib/custom"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms
+        .ffi
+        .query(Some(&ffi_query("/usr/lib/custom/mylib.so"))),
+      PermissionState::Granted
+    );
+
+    // /usr/lib64 is not under /usr/lib, so should be prompt (not denied)
+    assert_eq!(
+      perms.ffi.query(Some(&ffi_query("/usr/lib64"))),
+      PermissionState::Granted
+    );
+
+    // Deny blocks /usr/lib
+    assert_eq!(
+      perms.ffi.query(Some(&ffi_query("/usr/lib"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.ffi.query(Some(&ffi_query("/usr/lib/other.so"))),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_env_ordering_empty_prefix_pattern() {
+    // Test edge case: what if someone tries a pattern that matches everything?
+    let mut perms = Permissions::none_without_prompt();
+    perms.env = UnaryPermission {
+      granted_global: false,
+      ..Permissions::new_unary(
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed(
+          "ALLOWED_VAR",
+        ))])),
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("ALLOWED_*"))])),
+        false,
+      )
+    };
+
+    // Exact name ALLOWED_VAR should win over pattern ALLOWED_*
+    assert_eq!(
+      perms.env.query(Some("ALLOWED_VAR")),
+      PermissionState::Granted
+    );
+
+    // Pattern ALLOWED_* should deny others
+    assert_eq!(
+      perms.env.query(Some("ALLOWED_OTHER")),
+      PermissionState::Denied
+    );
+  }
+
+  #[test]
+  fn test_cmp_read_descriptors() {
+    let parser = TestPermissionDescriptorParser;
+    let parse_granted = |text: &str| {
+      UnaryPermissionDesc::Granted(parser.parse_read_descriptor(text).unwrap())
+    };
+    let parse_denied = |text: &str| {
+      UnaryPermissionDesc::FlagDenied::<ReadDescriptor>(
+        parser.parse_read_descriptor(text).unwrap(),
+      )
+    };
+    check_comparison(
+      &parse_granted("/foo/bar"),
+      &parse_granted("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_denied("/foo/bar"),
+      &parse_denied("/foo"),
+      Ordering::Less,
+    );
+  }
+
+  #[track_caller]
+  fn check_comparison<TAllowDesc: AllowDescriptor>(
+    first: &UnaryPermissionDesc<TAllowDesc>,
+    second: &UnaryPermissionDesc<TAllowDesc>,
+    expected: Ordering,
+  ) {
+    assert_eq!(first.cmp(second), expected);
+    assert_eq!(
+      second.cmp(first),
+      match expected {
+        Ordering::Less => Ordering::Greater,
+        Ordering::Greater => Ordering::Less,
+        Ordering::Equal => Ordering::Equal,
+      },
+      "failed second to first"
+    );
   }
 }
