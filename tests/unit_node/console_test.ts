@@ -2,7 +2,11 @@
 
 import vm from "node:vm";
 import { stripAnsiCode } from "@std/fmt/colors";
-import { assertStringIncludes } from "@std/assert";
+import { assert, assertStringIncludes } from "@std/assert";
+import { stub } from "@std/testing/mock";
+
+import { Console } from "node:console";
+import process from "node:process";
 
 Deno.test(function inspectCrossRealmObjects() {
   assertStringIncludes(
@@ -25,4 +29,15 @@ Deno.test(function inspectCrossRealmObjects() {
     ),
     "2018-12-10T02:26:59.002Z",
   );
+});
+
+Deno.test("Console time and count methods don't throw when called with missing labels", () => {
+  const console = new Console({
+    stdout: process.stdout,
+    stderr: process.stderr,
+  });
+  console.timeEnd();
+  console.timeLog();
+  console.time();
+  console.countReset();
 });
