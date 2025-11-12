@@ -3,10 +3,16 @@ name: AI Issue Triage
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to triage'
+        required: true
+        type: number
 
 jobs:
   triage:
-    if: github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER'
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,12 +26,13 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
-            ISSUE NUMBER: ${{ github.event.issue.number }}
-            TITLE: ${{ github.event.issue.title }}
-            BODY: ${{ github.event.issue.body }}
-            AUTHOR: ${{ github.event.issue.user.login }}
+            ISSUE NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }}
 
-            This is a new issue from an external contributor. Please analyze it and:
+            ${{ github.event_name == 'workflow_dispatch' && 'This workflow was manually triggered to triage an existing issue. First, fetch the issue details using: `gh issue view [ISSUE_NUMBER] --repo denoland/deno --json number,title,body,author`' || format('TITLE: {0}
+            BODY: {1}
+            AUTHOR: {2}', github.event.issue.title, github.event.issue.body, github.event.issue.user.login) }}
+
+            This is ${{ github.event_name == 'workflow_dispatch' && 'an existing' || 'a new' }} issue${{ github.event_name == 'issues' && ' from an external contributor' || '' }}. Please analyze it and:
 
             1. **Categorize the issue type**: Determine if it's a:
                - Bug report
@@ -53,7 +60,7 @@ jobs:
                - Priority/Status: needs info, good first issue (for simple, well-defined bugs), etc.
                - Other: performance/perf, benchmarks, build, breaking change, tls, design limitation, etc.
 
-            5. **Add labels** using: `gh issue edit ${{ github.event.issue.number }} --add-label "label1,label2,label3"`, make sure to add "ai:triage" label.
+            5. **Add labels** using: `gh issue edit ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }} --add-label "label1,label2,label3"`, make sure to add "ai:triage" label.
 
             6. **If the issue needs more information**, also add a comment requesting specific details needed for triage and the "needs info" label.
 
