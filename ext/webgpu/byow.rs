@@ -257,13 +257,17 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
     let val = obj
       .get(scope, key.into())
       .ok_or_else(|| JsErrorBox::type_error("missing field 'width'"))?;
-    let width = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+    let width = deno_core::convert::Number::<u32>::from_v8(scope, val)
+      .map_err(JsErrorBox::from_err)?
+      .0;
 
     let key = v8::String::new(scope, "height").unwrap();
     let val = obj
       .get(scope, key.into())
       .ok_or_else(|| JsErrorBox::type_error("missing field 'height'"))?;
-    let height = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+    let height = deno_core::convert::Number::<u32>::from_v8(scope, val)
+      .map_err(JsErrorBox::from_err)?
+      .0;
 
     Ok(Self {
       system,
