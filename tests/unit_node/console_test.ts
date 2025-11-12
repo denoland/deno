@@ -3,7 +3,6 @@
 import vm from "node:vm";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { assert, assertStringIncludes } from "@std/assert";
-import { stub } from "@std/testing/mock";
 
 import { Console } from "node:console";
 import process from "node:process";
