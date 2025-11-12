@@ -185,7 +185,7 @@ fn op_env(
       .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
   }
 
-  let permissions_container = state.borrow_mut::<PermissionsContainer>();
+  let permissions_container = state.borrow::<PermissionsContainer>();
   let grant_all = match permissions_container.check_env_all() {
     Ok(()) => true,
     Err(PermissionCheckError::PermissionDenied(err)) => match err.state {
