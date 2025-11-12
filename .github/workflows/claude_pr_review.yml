@@ -19,6 +19,7 @@ jobs:
         with:
           github_token: ${{ secrets.DENOBOT_PAT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          timeout-minutes: 60
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
