@@ -1506,10 +1506,12 @@ static DENO_HELP: &str = cstr!(
   <y>Dependency management:</>
     <g>add</>          Add dependencies
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
+    <g>bump-version</> Update version in the configuration file
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
     <g>remove</>       Remove dependencies from the configuration file
+    <g>publish</>      Publish the current working directory's package or workspace
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -1530,7 +1532,6 @@ static DENO_HELP: &str = cstr!(
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
-    <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
@@ -4099,7 +4100,7 @@ fn bump_version_subcommand() -> Command {
   command(
     "bump-version",
     cstr!(
-      "Update version in configuration file.
+      "Update version in the configuration file.
   <p(245)>deno bump-version patch</>  # 1.0.0 -> 1.0.1
   <p(245)>deno bump-version minor</>  # 1.0.0 -> 1.1.0
   <p(245)>deno bump-version major</>  # 1.0.0 -> 2.0.0"
