@@ -777,7 +777,7 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
             Ordering::Equal => {
               self.kind_precedence().cmp(&other.kind_precedence())
             }
-            // flip because we compared to other to self above
+            // flip because we compared the other to self above
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
           }
