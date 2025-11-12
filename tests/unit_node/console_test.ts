@@ -2,7 +2,7 @@
 
 import vm from "node:vm";
 import { stripAnsiCode } from "@std/fmt/colors";
-import { assert, assertStringIncludes } from "@std/assert";
+import { assertStringIncludes } from "@std/assert";
 
 import { Console } from "node:console";
 import process from "node:process";
