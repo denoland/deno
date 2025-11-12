@@ -5829,6 +5829,34 @@ mod tests {
       assert_eq!(perms.ffi.query(Some(&ffi_query("/foo"))), PermissionState::Denied);
       assert_eq!(perms.ffi.query(Some(&ffi_query("/foo/specific"))), PermissionState::Granted);
     };
+    #[rustfmt::skip]
+    {
+      // flipped above
+      let perms = Permissions::from_options(
+        &parser,
+        &PermissionsOptions {
+          allow_read: Some(svec!["/foo"]),
+          deny_read: Some(svec!["/foo/specific"]),
+          allow_write: Some(svec!["/foo"]),
+          deny_write: Some(svec!["/foo/specific"]),
+          allow_ffi: Some(svec!["/foo"]),
+          deny_ffi: Some(svec!["/foo/specific"]),
+          ..Default::default()
+        },
+      )
+      .unwrap();
+      assert_eq!(perms.read.query(Some(&read_query("/foo"))), PermissionState::GrantedPartial);
+      assert_eq!(perms.read.query(Some(&read_query("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.query(Some(&read_query("/"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(&read_query("/foo/specific"))), PermissionState::Denied);
+      assert_eq!(perms.read.query(Some(&read_query("/foo/specific/data.txt"))), PermissionState::Denied);
+      assert_eq!(perms.write.query(Some(&write_query("/foo"))), PermissionState::GrantedPartial);
+      assert_eq!(perms.write.query(Some(&write_query("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.write.query(Some(&write_query("/foo/specific"))), PermissionState::Denied);
+      assert_eq!(perms.ffi.query(Some(&ffi_query("/foo"))), PermissionState::GrantedPartial);
+      assert_eq!(perms.ffi.query(Some(&ffi_query("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.query(Some(&ffi_query("/foo/specific"))), PermissionState::Denied);
+    };
   }
 
   #[test]
