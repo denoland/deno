@@ -549,19 +549,6 @@ impl PermissionState {
   }
 }
 
-impl fmt::Display for PermissionState {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      PermissionState::Granted => f.pad("granted"),
-      PermissionState::GrantedPartial => f.pad("granted-partial"),
-      PermissionState::Prompt => f.pad("prompt"),
-      PermissionState::Denied | PermissionState::DeniedPartial => {
-        f.pad("denied")
-      }
-    }
-  }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
