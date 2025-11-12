@@ -9,6 +9,8 @@ jobs:
     if: github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER'
     runs-on: ubuntu-latest
     permissions:
+      contents: write
+      pull-requests: write
       issues: write
       id-token: write
     steps:
