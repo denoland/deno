@@ -242,7 +242,8 @@ pub fn op_node_create_cipheriv(
   } else {
     Some(auth_tag_length as usize)
   };
-  let context = cipher::CipherContext::new(algorithm, key, iv, auth_tag_length)?;
+  let context =
+    cipher::CipherContext::new(algorithm, key, iv, auth_tag_length)?;
   Ok(state.resource_table.add(context))
 }
 

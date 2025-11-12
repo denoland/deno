@@ -228,10 +228,10 @@ impl Cipher {
           return Err(CipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(CipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
         }
 
         let cipher =
@@ -244,10 +244,10 @@ impl Cipher {
           return Err(CipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(CipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
         }
 
         let cipher =
@@ -806,9 +806,15 @@ impl Decipher {
         );
         Ok(())
       }
-      (Aes128Gcm(decipher, _), true) => {
+      (Aes128Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
@@ -817,9 +823,15 @@ impl Decipher {
       (Aes128Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes128GcmUnsupported)
       }
-      (Aes256Gcm(decipher, _), true) => {
+      (Aes256Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
