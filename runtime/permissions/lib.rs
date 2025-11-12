@@ -720,7 +720,7 @@ fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
   Allow(&'a TAllowDesc),
-  Deny(&'a TAllowDesc::DenyDesc),
+  Deny(&'a TAllowDesc::DenyDesc, /* is prompt */ bool),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -748,7 +748,7 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
           AllowOrDenyDescRef::Allow(other_desc) => {
             self_desc.cmp_allow(other_desc)
           }
-          AllowOrDenyDescRef::Deny(other_desc) => {
+          AllowOrDenyDescRef::Deny(other_desc, _) => {
             match self_desc.cmp_deny(other_desc) {
               Ordering::Equal => {
                 self.kind_precedence().cmp(&other.kind_precedence())
@@ -758,19 +758,26 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
           }
         }
       }
-      AllowOrDenyDescRef::Deny(self_desc) => match other.allow_or_deny_desc() {
-        AllowOrDenyDescRef::Allow(other_desc) => {
-          match other_desc.cmp_deny(self_desc) {
-            Ordering::Equal => {
-              self.kind_precedence().cmp(&other.kind_precedence())
+      AllowOrDenyDescRef::Deny(self_desc, self_is_prompt) => {
+        match other.allow_or_deny_desc() {
+          AllowOrDenyDescRef::Allow(other_desc) => {
+            match other_desc.cmp_deny(self_desc) {
+              Ordering::Equal => {
+                self.kind_precedence().cmp(&other.kind_precedence())
+              }
+              // flip because we compared the other to self above
+              Ordering::Less => Ordering::Greater,
+              Ordering::Greater => Ordering::Less,
             }
-            // flip because we compared the other to self above
-            Ordering::Less => Ordering::Greater,
-            Ordering::Greater => Ordering::Less,
+          }
+          AllowOrDenyDescRef::Deny(other_desc, other_is_prompt) => {
+            match self_desc.cmp_deny(other_desc) {
+              Ordering::Equal => self_is_prompt.cmp(&other_is_prompt),
+              ordering => ordering,
+            }
           }
         }
-        AllowOrDenyDescRef::Deny(other_desc) => self_desc.cmp_deny(other_desc),
-      },
+      }
     }
   }
 }
@@ -779,9 +786,11 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDesc<TAllowDesc> {
   fn allow_or_deny_desc(&self) -> AllowOrDenyDescRef<'_, TAllowDesc> {
     match self {
       UnaryPermissionDesc::Granted(desc) => AllowOrDenyDescRef::Allow(desc),
-      UnaryPermissionDesc::FlagDenied(desc)
-      | UnaryPermissionDesc::PromptDenied(desc) => {
-        AllowOrDenyDescRef::Deny(desc)
+      UnaryPermissionDesc::FlagDenied(desc) => {
+        AllowOrDenyDescRef::Deny(desc, false)
+      }
+      UnaryPermissionDesc::PromptDenied(desc) => {
+        AllowOrDenyDescRef::Deny(desc, true)
       }
     }
   }
@@ -1490,7 +1499,9 @@ impl PathDescriptor {
   }
 
   fn cmp_allow_allow(&self, other: &PathDescriptor) -> Ordering {
-    if other.path.starts_with(&self.path) {
+    if self.path == other.path {
+      Ordering::Equal
+    } else if other.path.starts_with(&self.path) {
       Ordering::Greater
     } else if self.path.starts_with(&other.path) {
       Ordering::Less
@@ -7704,19 +7715,160 @@ mod tests {
     let parse_granted = |text: &str| {
       UnaryPermissionDesc::Granted(parser.parse_read_descriptor(text).unwrap())
     };
-    let parse_denied = |text: &str| {
+    let parse_flag_denied = |text: &str| {
       UnaryPermissionDesc::FlagDenied::<ReadDescriptor>(
         parser.parse_read_descriptor(text).unwrap(),
       )
     };
+    let parse_prompt_denied = |text: &str| {
+      UnaryPermissionDesc::PromptDenied::<ReadDescriptor>(
+        parser.parse_read_descriptor(text).unwrap(),
+      )
+    };
+
+    // Test path hierarchy: child < parent for granted
     check_comparison(
       &parse_granted("/foo/bar"),
       &parse_granted("/foo"),
       Ordering::Less,
     );
     check_comparison(
-      &parse_denied("/foo/bar"),
-      &parse_denied("/foo"),
+      &parse_granted("/foo/bar/baz"),
+      &parse_granted("/foo/bar"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("/a/b/c/d"),
+      &parse_granted("/a"),
+      Ordering::Less,
+    );
+
+    // Test path hierarchy: child < parent for flag denied
+    check_comparison(
+      &parse_flag_denied("/foo/bar"),
+      &parse_flag_denied("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_flag_denied("/foo/bar/baz"),
+      &parse_flag_denied("/foo/bar"),
+      Ordering::Less,
+    );
+
+    // Test path hierarchy: child < parent for prompt denied
+    check_comparison(
+      &parse_prompt_denied("/foo/bar"),
+      &parse_prompt_denied("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar/baz"),
+      &parse_prompt_denied("/foo/bar"),
+      Ordering::Less,
+    );
+
+    // Test equal paths with same type
+    check_comparison(
+      &parse_granted("/foo/bar"),
+      &parse_granted("/foo/bar"),
+      Ordering::Equal,
+    );
+    check_comparison(
+      &parse_flag_denied("/foo/bar"),
+      &parse_flag_denied("/foo/bar"),
+      Ordering::Equal,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar"),
+      &parse_prompt_denied("/foo/bar"),
+      Ordering::Equal,
+    );
+
+    // Test unrelated paths (lexicographic ordering)
+    check_comparison(
+      &parse_granted("/aaa"),
+      &parse_granted("/bbb"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("/xyz"),
+      &parse_granted("/abc"),
+      Ordering::Greater,
+    );
+    check_comparison(
+      &parse_flag_denied("/aaa"),
+      &parse_flag_denied("/zzz"),
+      Ordering::Less,
+    );
+
+    // Test different types with same path
+    // FlagDenied < PromptDenied < Granted (by kind_precedence)
+    check_comparison(
+      &parse_flag_denied("/foo"),
+      &parse_granted("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo"),
+      &parse_granted("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_flag_denied("/foo"),
+      &parse_prompt_denied("/foo"),
+      Ordering::Less,
+    );
+
+    // Test different types with parent/child relationship
+    check_comparison(
+      &parse_granted("/foo/bar"),
+      &parse_flag_denied("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("/foo"),
+      &parse_flag_denied("/foo/bar"),
+      Ordering::Greater,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar"),
+      &parse_granted("/foo"),
+      Ordering::Less,
+    );
+
+    // Test root vs subdirectories
+    check_comparison(
+      &parse_granted("/"),
+      &parse_granted("/foo"),
+      Ordering::Greater,
+    );
+    check_comparison(
+      &parse_flag_denied("/"),
+      &parse_flag_denied("/foo"),
+      Ordering::Greater,
+    );
+
+    // Test deeply nested paths
+    check_comparison(
+      &parse_granted("/a/b/c/d/e/f"),
+      &parse_granted("/a/b/c"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("/a/b/c"),
+      &parse_granted("/a/b/d"),
+      Ordering::Less,
+    );
+
+    // Test paths with similar prefixes but different branches
+    check_comparison(
+      &parse_granted("/foo/bar"),
+      &parse_granted("/foo/baz"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("/prefix123"),
+      &parse_granted("/prefix456"),
       Ordering::Less,
     );
   }
