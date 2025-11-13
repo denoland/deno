@@ -3,6 +3,7 @@
 
 import { op_preview_entries } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { emitWarning } from "node:process";
 const {
   ArrayIsArray,
   ArrayFrom,
