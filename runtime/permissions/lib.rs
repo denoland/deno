@@ -721,7 +721,7 @@ fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
   Allow(&'a TAllowDesc),
-  Deny(&'a TAllowDesc::DenyDesc, /* is prompt */ bool),
+  Deny(&'a TAllowDesc::DenyDesc, /* precedence */ u8),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -760,7 +760,7 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
           }
         }
       }
-      AllowOrDenyDescRef::Deny(self_desc, self_is_prompt) => {
+      AllowOrDenyDescRef::Deny(self_desc, self_precedence) => {
         match other.allow_or_deny_desc() {
           AllowOrDenyDescRef::Allow(other_desc) => {
             match other_desc.cmp_deny(self_desc) {
@@ -772,9 +772,9 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
               Ordering::Greater => Ordering::Less,
             }
           }
-          AllowOrDenyDescRef::Deny(other_desc, other_is_prompt) => {
+          AllowOrDenyDescRef::Deny(other_desc, other_precedence) => {
             match self_desc.cmp_deny(other_desc) {
-              Ordering::Equal => self_is_prompt.cmp(&other_is_prompt),
+              Ordering::Equal => self_precedence.cmp(&other_precedence),
               ordering => ordering,
             }
           }
@@ -789,10 +789,13 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDesc<TAllowDesc> {
     match self {
       UnaryPermissionDesc::Granted(desc) => AllowOrDenyDescRef::Allow(desc),
       UnaryPermissionDesc::FlagDenied(desc) => {
-        AllowOrDenyDescRef::Deny(desc, false)
+        AllowOrDenyDescRef::Deny(desc, 0)
       }
       UnaryPermissionDesc::PromptDenied(desc) => {
-        AllowOrDenyDescRef::Deny(desc, true)
+        AllowOrDenyDescRef::Deny(desc, 1)
+      }
+      UnaryPermissionDesc::FlagIgnored(desc) => {
+        AllowOrDenyDescRef::Deny(desc, 2)
       }
     }
   }
