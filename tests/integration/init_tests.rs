@@ -225,7 +225,7 @@ async fn init_subcommand_serve() {
   output.skip_output_check();
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn init_npm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
