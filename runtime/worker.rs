@@ -585,7 +585,7 @@ impl MainWorker {
           ..Default::default()
         }),
         deno_io::deno_io::args(Some(options.stdio)),
-        deno_fs::deno_fs::args::<PermissionsContainer>(services.fs.clone()),
+        deno_fs::deno_fs::args(services.fs.clone()),
         deno_os::deno_os::args(Some(exit_code.clone())),
         deno_process::deno_process::args(services.npm_process_state_provider),
         deno_node::deno_node::args::<
@@ -1066,7 +1066,7 @@ fn common_extensions<
     deno_napi::deno_napi::lazy_init::<PermissionsContainer>(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
-    deno_fs::deno_fs::lazy_init::<PermissionsContainer>(),
+    deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
     deno_node::deno_node::lazy_init::<

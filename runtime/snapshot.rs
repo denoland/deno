@@ -47,7 +47,7 @@ pub fn create_runtime_snapshot(
     deno_napi::deno_napi::lazy_init::<Permissions>(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
-    deno_fs::deno_fs::lazy_init::<Permissions>(),
+    deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
     deno_node::deno_node::lazy_init::<

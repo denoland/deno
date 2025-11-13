@@ -573,7 +573,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_io::deno_io::init(Some(options.stdio)),
-      deno_fs::deno_fs::init::<PermissionsContainer>(services.fs.clone()),
+      deno_fs::deno_fs::init(services.fs.clone()),
       deno_os::deno_os::init(None),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<

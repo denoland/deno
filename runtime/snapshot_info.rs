@@ -77,49 +77,6 @@ impl deno_node::NodePermissions for Permissions {
   }
 }
 
-impl deno_fs::FsPermissions for Permissions {
-  fn check_open<'a>(
-    &self,
-    _path: Cow<'a, Path>,
-    _access_kind: OpenAccessKind,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_open_blind<'a>(
-    &self,
-    _path: Cow<'a, Path>,
-    _access_kind: OpenAccessKind,
-    _display: &str,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read_all(
-    &self,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_partial<'a>(
-    &self,
-    _path: Cow<'a, Path>,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_all(
-    &self,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
   fn check_open<'a>(
     &mut self,
@@ -162,7 +119,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_napi::deno_napi::init::<Permissions>(None),
     deno_http::deno_http::init(deno_http::Options::default()),
     deno_io::deno_io::init(Some(Default::default())),
-    deno_fs::deno_fs::init::<Permissions>(fs.clone()),
+    deno_fs::deno_fs::init(fs.clone()),
     deno_os::deno_os::init(Default::default()),
     deno_process::deno_process::init(Default::default()),
     deno_node::deno_node::init::<
