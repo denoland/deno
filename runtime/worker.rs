@@ -538,18 +538,16 @@ impl MainWorker {
           options.bootstrap.location.clone(),
           services.broadcast_channel.clone(),
         ),
-        deno_fetch::deno_fetch::args::<PermissionsContainer>(
-          deno_fetch::Options {
-            user_agent: options.bootstrap.user_agent.clone(),
-            root_cert_store_provider: services.root_cert_store_provider.clone(),
-            unsafely_ignore_certificate_errors: options
-              .unsafely_ignore_certificate_errors
-              .clone(),
-            file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-            resolver: services.fetch_dns_resolver,
-            ..Default::default()
-          },
-        ),
+        deno_fetch::deno_fetch::args(deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store_provider: services.root_cert_store_provider.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          resolver: services.fetch_dns_resolver,
+          ..Default::default()
+        }),
         deno_cache::deno_cache::args(create_cache),
         deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
@@ -1057,7 +1055,7 @@ fn common_extensions<
     >(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
+    deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),

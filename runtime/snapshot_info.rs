@@ -33,43 +33,6 @@ impl deno_web::TimersPermission for Permissions {
   }
 }
 
-impl deno_fetch::FetchPermissions for Permissions {
-  fn check_net(
-    &mut self,
-    _host: &str,
-    _port: u16,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_open<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _open_access: OpenAccessKind,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_net_vsock(
-    &mut self,
-    _cid: u32,
-    _port: u32,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_ffi::FfiPermissions for Permissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -224,7 +187,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
+    deno_fetch::deno_fetch::init(Default::default()),
     deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init::<Permissions>(),
     deno_webstorage::deno_webstorage::init(None),
