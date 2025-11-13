@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { op_preview_entries } from "ext:core/ops";
+import { emitWarning } from "node:process";
 
 // Mock trace for now
 const trace = () => {};
