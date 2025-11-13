@@ -1593,7 +1593,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.5.6"
+version = "3.0.0-rc.0"
 dependencies = [
  "anstream",
  "async-trait",
@@ -3235,7 +3235,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "2.5.6"
+version = "3.0.0-rc.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5554,9 +5554,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.27.0"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ec4ac49f13c7b00f435f8a5bb55d725705e2cf620df35a5859321595102eb7e"
+checksum = "01958dcb05b69d9612853b47df8f7881810e4f61b5cedd8894be04291f28ccb9"
 dependencies = [
  "serde_json",
 ]
