@@ -728,6 +728,7 @@ enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
 enum UnaryPermissionDesc<TAllowDesc: AllowDescriptor> {
   Granted(TAllowDesc),
   FlagDenied(TAllowDesc::DenyDesc),
+  FlagIgnored(TAllowDesc::DenyDesc),
   PromptDenied(TAllowDesc::DenyDesc),
 }
 
@@ -800,7 +801,8 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDesc<TAllowDesc> {
     match self {
       UnaryPermissionDesc::FlagDenied(_) => 0,
       UnaryPermissionDesc::PromptDenied(_) => 1,
-      UnaryPermissionDesc::Granted(_) => 2,
+      UnaryPermissionDesc::FlagIgnored(_) => 2,
+      UnaryPermissionDesc::Granted(_) => 3,
     }
   }
 }
@@ -810,6 +812,7 @@ struct UnaryPermissionDescriptors<TAllowDesc: AllowDescriptor> {
   inner: Vec<UnaryPermissionDesc<TAllowDesc>>,
   has_flag_denied: bool,
   has_prompt_denied: bool,
+  has_flag_ignored: bool,
 }
 
 impl<TAllowDesc: AllowDescriptor> Default
@@ -820,6 +823,7 @@ impl<TAllowDesc: AllowDescriptor> Default
       inner: Default::default(),
       has_flag_denied: false,
       has_prompt_denied: false,
+      has_flag_ignored: false,
     }
   }
 }
@@ -836,8 +840,8 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
     self.inner.iter()
   }
 
-  pub fn has_any_denied(&self) -> bool {
-    self.has_flag_denied || self.has_prompt_denied
+  pub fn has_any_denied_or_ignored(&self) -> bool {
+    self.has_flag_denied || self.has_prompt_denied || self.has_flag_ignored
   }
 
   pub fn has_prompt_denied(&self) -> bool {
@@ -849,6 +853,9 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
       UnaryPermissionDesc::Granted(_) => {}
       UnaryPermissionDesc::FlagDenied(_) => {
         self.has_flag_denied = true;
+      }
+      UnaryPermissionDesc::FlagIgnored(_) => {
+        self.has_flag_ignored = true;
       }
       UnaryPermissionDesc::PromptDenied(_) => {
         self.has_prompt_denied = true;
@@ -863,6 +870,7 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
     self.inner.retain(|v| match v {
       UnaryPermissionDesc::Granted(v) => !desc.revokes(v),
       UnaryPermissionDesc::FlagDenied(_)
+      | UnaryPermissionDesc::FlagIgnored(_)
       | UnaryPermissionDesc::PromptDenied(_) => true,
     })
   }
@@ -871,6 +879,7 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
     self.inner.retain(|v| match v {
       UnaryPermissionDesc::Granted(_) => false,
       UnaryPermissionDesc::FlagDenied(_)
+      | UnaryPermissionDesc::FlagIgnored(_)
       | UnaryPermissionDesc::PromptDenied(_) => true,
     })
   }
@@ -928,7 +937,6 @@ impl<
     self.granted_global
       && !self.flag_denied_global
       && !self.prompt_denied_global
-      && !self.descriptors.has_any_denied()
       && !self.flag_ignored_global
       && !self.descriptors.has_any_denied_or_ignored()
       && !has_broker()
@@ -1018,6 +1026,11 @@ impl<
         UnaryPermissionDesc::FlagDenied(v) => {
           if desc.matches_deny(v) {
             return Some(PermissionState::Denied);
+          }
+        }
+        UnaryPermissionDesc::FlagIgnored(v) => {
+          if desc.matches_deny(v) {
+            return Some(PermissionState::Ignored);
           }
         }
         UnaryPermissionDesc::PromptDenied(v) => {
@@ -1125,9 +1138,12 @@ impl<
     query: Option<&TAllowDesc::QueryDesc<'_>>,
   ) -> bool {
     match query {
-      None => self.descriptors.has_flag_denied,
+      None => {
+        self.descriptors.has_flag_denied || self.descriptors.has_flag_ignored
+      }
       Some(query) => self.descriptors.iter().any(|desc| match desc {
-        UnaryPermissionDesc::FlagDenied(v) => query.overlaps_deny(v),
+        UnaryPermissionDesc::FlagIgnored(v)
+        | UnaryPermissionDesc::FlagDenied(v) => query.overlaps_deny(v),
         UnaryPermissionDesc::Granted(_)
         | UnaryPermissionDesc::PromptDenied(_) => false,
       }),
