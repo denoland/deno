@@ -177,11 +177,11 @@ export class FileHandle extends EventEmitter {
     return new Promise((resolve, reject) => {
       try {
         core.close(this.fd);
+        this.#rid = -1;
+        resolve();
       } catch (err) {
         reject(denoErrorToNodeError(err as Error, { syscall: "close" }));
       }
-      this.#rid = -1;
-      resolve();
     });
   }
 
