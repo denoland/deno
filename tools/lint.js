@@ -37,6 +37,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
+  promises.push(ensureCliVersionMatchesLibVersion());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -379,5 +380,26 @@ async function ensureNoUnusedOutFiles() {
       console.error(`Unreferenced .out file: ${file}`);
     }
     throw new Error(`${notFoundPaths.length} unreferenced .out files`);
+  }
+}
+
+async function ensureCliVersionMatchesLibVersion() {
+  function extractVersion(text) {
+    const match = text.match(/^version\s*=\s*"([^"]+)"/m);
+    if (!match?.[1]) {
+      throw new Error("Could not find version in TOML");
+    }
+    return match[1];
+  }
+
+  const cliCrateTomlText = await Deno.readTextFile(
+    join(ROOT_PATH, "cli/Cargo.toml"),
+  );
+  const libCrateTomlText = await Deno.readTextFile(
+    join(ROOT_PATH, "cli/lib/Cargo.toml"),
+  );
+
+  if (extractVersion(cliCrateTomlText) !== extractVersion(libCrateTomlText)) {
+    throw new Error("deno crate version did not match deno_lib crate version");
   }
 }
