@@ -6112,16 +6112,18 @@
       ],
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's setter throws when called on incompatible object",
-        "Global object's operation throws when called on incompatible object",
         "Global object's getter works when called on null / undefined",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
+        "Global object's setter throws when called on incompatible object",
         "Global object's setter works when called on null / undefined"
       ],
       "global-object-implicit-this-value.any.worker.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's setter throws when called on incompatible object",
-        "Global object's operation throws when called on incompatible object",
         "Global object's getter works when called on null / undefined",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
+        "Global object's setter throws when called on incompatible object",
         "Global object's setter works when called on null / undefined"
       ],
       "legacy-factor-function-subclass.window.html": false,
