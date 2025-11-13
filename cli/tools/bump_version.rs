@@ -170,27 +170,22 @@ fn increment_version(
   Ok(new_version)
 }
 
-fn find_config_files(
+fn find_config_file(
   cli_options: &CliOptions,
-) -> Result<Vec<ConfigUpdater>, AnyError> {
+) -> Result<ConfigUpdater, AnyError> {
   let start_dir = &cli_options.start_dir;
-  let mut configs = Vec::new();
 
   // Check for deno.json first - it takes priority
   if let Some(deno_json) = start_dir.maybe_deno_json() {
     let config_path = deno_path_util::url_to_file_path(&deno_json.specifier)
       .context("Failed to convert deno.json URL to path")?;
-    configs.push(ConfigUpdater::new(config_path)?);
+    return ConfigUpdater::new(config_path);
   } else if let Some(pkg_json) = start_dir.maybe_pkg_json() {
     // Only fall back to package.json if deno.json doesn't exist
-    configs.push(ConfigUpdater::new(pkg_json.path.clone())?);
+    return ConfigUpdater::new(pkg_json.path.clone());
   }
 
-  if configs.is_empty() {
-    bail!("No deno.json or package.json found in the current directory");
-  }
-
-  Ok(configs)
+  bail!("No deno.json or package.json found in the current directory")
 }
 
 pub fn bump_version_command(
@@ -200,37 +195,27 @@ pub fn bump_version_command(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
 
-  // Find and load config files
-  let mut configs = find_config_files(cli_options)?;
+  // Find and load config file
+  let mut config = find_config_file(cli_options)?;
 
-  // Find the current version from the first config file that has one
-  let mut current_version = None;
-  for config in &configs {
-    if let Some(version_str) = config.get_version() {
-      current_version =
-        Some(Version::parse_standard(&version_str).with_context(|| {
-          format!(
-            "Failed to parse version '{}' in {}",
-            version_str,
-            config.display_path()
-          )
-        })?);
-      break;
+  // Get the current version from the config file
+  let current_version = if let Some(version_str) = config.get_version() {
+    Version::parse_standard(&version_str).with_context(|| {
+      format!(
+        "Failed to parse version '{}' in {}",
+        version_str,
+        config.display_path()
+      )
+    })?
+  } else {
+    if version_flags.increment.is_none() {
+      // If no increment specified and no version found, just show current state
+      info!("No version found in configuration file");
+      return Ok(());
     }
-  }
-
-  let current_version = match current_version {
-    Some(v) => v,
-    None => {
-      if version_flags.increment.is_none() {
-        // If no increment specified and no version found, just show current state
-        info!("No version found in configuration files");
-        return Ok(());
-      }
-      // Default to 0.1.0 if no version is found but increment is specified
-      Version::parse_standard("0.1.0")
-        .with_context(|| "Failed to create default version")?
-    }
+    // Default to 0.1.0 if no version is found but increment is specified
+    Version::parse_standard("0.1.0")
+      .with_context(|| "Failed to create default version")?
   };
 
   let new_version = match &version_flags.increment {
@@ -242,12 +227,10 @@ pub fn bump_version_command(
     }
   };
 
-  // Update version in all config files
-  for config in &mut configs {
-    config.set_version(&new_version.to_string());
-    config.commit()?;
-    info!("Updated version in {}", config.display_path());
-  }
+  // Update version in config file
+  config.set_version(&new_version.to_string());
+  config.commit()?;
+  info!("Updated version in {}", config.display_path());
 
   info!(
     "Version updated from {} to {}",
