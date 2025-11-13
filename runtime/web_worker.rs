@@ -543,7 +543,7 @@ impl WebWorker {
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
       deno_ffi::deno_ffi::init(services.deno_rt_native_addon_loader.clone()),
-      deno_net::deno_net::init::<PermissionsContainer>(
+      deno_net::deno_net::init(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),

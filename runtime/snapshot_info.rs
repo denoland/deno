@@ -77,34 +77,6 @@ impl deno_node::NodePermissions for Permissions {
   }
 }
 
-impl deno_net::NetPermissions for Permissions {
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    _host: &(T, Option<u16>),
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_open<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _open_access: OpenAccessKind,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_vsock(
-    &mut self,
-    _cid: u32,
-    _port: u32,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
     &self,
@@ -180,7 +152,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),
     deno_ffi::deno_ffi::init(None),
-    deno_net::deno_net::init::<Permissions>(None, None),
+    deno_net::deno_net::init(None, None),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::init(
       deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None, None),
