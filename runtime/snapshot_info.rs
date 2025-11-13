@@ -33,19 +33,6 @@ impl deno_web::TimersPermission for Permissions {
   }
 }
 
-impl deno_ffi::FfiPermissions for Permissions {
-  fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_partial_with_path<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_napi::NapiPermissions for Permissions {
   fn check<'a>(
     &mut self,
@@ -192,7 +179,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_websocket::deno_websocket::init::<Permissions>(),
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),
-    deno_ffi::deno_ffi::init::<Permissions>(None),
+    deno_ffi::deno_ffi::init(None),
     deno_net::deno_net::init::<Permissions>(None, None),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::init(

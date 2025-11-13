@@ -554,9 +554,7 @@ impl MainWorker {
           options.origin_storage_dir.clone(),
         ),
         deno_crypto::deno_crypto::args(options.seed),
-        deno_ffi::deno_ffi::args::<PermissionsContainer>(
-          services.deno_rt_native_addon_loader.clone(),
-        ),
+        deno_ffi::deno_ffi::args(services.deno_rt_native_addon_loader.clone()),
         deno_net::deno_net::args::<PermissionsContainer>(
           services.root_cert_store_provider.clone(),
           options.unsafely_ignore_certificate_errors.clone(),
@@ -1060,7 +1058,7 @@ fn common_extensions<
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
-    deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
+    deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init::<PermissionsContainer>(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
