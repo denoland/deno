@@ -8,12 +8,6 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::io::TcpStreamResource;
-use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
-use crate::tcp::TcpListener;
-use crate::tunnel::TunnelAddr;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -46,6 +40,13 @@ use socket2::Socket;
 use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+
+use crate::io::TcpStreamResource;
+use crate::raw::NetworkListenerResource;
+use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
+use crate::tunnel::TunnelAddr;
 
 pub type Fd = u32;
 
@@ -1411,8 +1412,9 @@ mod tests {
     }
     .boxed_local();
 
-    use deno_permissions::RuntimePermissionDescriptorParser;
     use std::sync::Arc;
+
+    use deno_permissions::RuntimePermissionDescriptorParser;
 
     deno_core::extension!(
       test_ext,

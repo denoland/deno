@@ -177,9 +177,8 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
 
 #[cfg(test)]
 mod test {
-  use crate::PermissionDescriptorParser;
-
   use super::*;
+  use crate::PermissionDescriptorParser;
 
   #[test]
   fn test_handle_empty_value() {
