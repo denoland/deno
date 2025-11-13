@@ -103,6 +103,7 @@ yoke.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 errno = "0.3.10"
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

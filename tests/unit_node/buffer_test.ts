@@ -688,3 +688,18 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "[node/buffer] Buffer.from with hex encoding should truncate first non-hex character",
+  fn() {
+    const buf = Buffer.from("00aafffz", "hex");
+    assertEquals(buf, Buffer.from([0x00, 0xaa, 0xff]));
+
+    const buf2 = Buffer.from("zz34", "hex");
+    assertEquals(buf2, Buffer.from([]));
+
+    const buf3 = Buffer.from("123😁aa", "hex");
+    assertEquals(buf3, Buffer.from([0x12]));
+  },
+});

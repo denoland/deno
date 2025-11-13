@@ -1,4 +1,4 @@
-Check [WILDCARD]/ops_sanitizer_unstable.ts
+Check [WILDCARD]ops_sanitizer_unstable.ts
 running 2 tests from [WILDCARD]/ops_sanitizer_unstable.ts
 no-op ... ok ([WILDCARD])
 leak interval ... FAILED ([WILDCARD])

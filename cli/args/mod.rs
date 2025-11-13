@@ -1348,6 +1348,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
+      denied: Default::default(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(
@@ -1605,7 +1606,7 @@ fn flags_to_permissions_options(
     }
     None => value.to_string(),
   };
-  let no_op = |value: &str| value.to_string();
+  let identity = |value: &str| value.to_string();
 
   Ok(PermissionsOptions {
     allow_env: handle_allow(
@@ -1613,24 +1614,24 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_env.as_ref(),
       config.and_then(|c| c.permissions.env.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_env: handle_deny(
       flags.deny_env.as_ref(),
       config.and_then(|c| c.permissions.env.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_net: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
       flags.allow_net.as_ref(),
       config.and_then(|c| c.permissions.net.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_net: handle_deny(
       flags.deny_net.as_ref(),
       config.and_then(|c| c.permissions.net.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_ffi: handle_allow(
       flags.allow_all,
@@ -1673,12 +1674,12 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_sys: handle_deny(
       flags.deny_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_write: handle_allow(
       flags.allow_all,
@@ -1697,12 +1698,12 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_import.as_ref(),
       config.and_then(|c| c.permissions.import.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_import: handle_deny(
       flags.deny_import.as_ref(),
       config.and_then(|c| c.permissions.import.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     prompt: !resolve_no_prompt(flags),
   })
