@@ -53,13 +53,16 @@ fn handle_signal(signal: i32) -> bool {
 fn init() -> Handle {
   use signal_hook::iterator::Signals;
 
-  let mut signals = Signals::new::<[i32; 0], i32>([]).unwrap();
+  let mut signals = Signals::new([SIGHUP, SIGTERM, SIGINT]).unwrap();
   let handle = signals.handle();
 
   std::thread::spawn(move || {
     for signal in signals.forever() {
       let handled = handle_signal(signal);
       if !handled {
+        if signal == SIGHUP || signal == SIGTERM || signal == SIGINT {
+          run_exit();
+        }
         signal_hook::low_level::emulate_default_handler(signal).unwrap();
       }
     }
@@ -150,9 +153,6 @@ pub fn unregister(signal: i32, id: u32) {
 static BEFORE_EXIT: OnceLock<Mutex<Vec<Handler>>> = OnceLock::new();
 
 pub fn before_exit(f: fn()) {
-  register(SIGHUP, false, Box::new(f)).unwrap();
-  register(SIGTERM, false, Box::new(f)).unwrap();
-  register(SIGINT, false, Box::new(f)).unwrap();
   BEFORE_EXIT
     .get_or_init(|| Mutex::new(vec![]))
     .lock()
