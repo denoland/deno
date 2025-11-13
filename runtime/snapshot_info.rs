@@ -33,15 +33,6 @@ impl deno_web::TimersPermission for Permissions {
   }
 }
 
-impl deno_napi::NapiPermissions for Permissions {
-  fn check<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_node::NodePermissions for Permissions {
   fn check_net_url(
     &mut self,
@@ -116,7 +107,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       deno_kv::KvConfig::builder().build(),
     ),
     deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
-    deno_napi::deno_napi::init::<Permissions>(None),
+    deno_napi::deno_napi::init(None),
     deno_http::deno_http::init(deno_http::Options::default()),
     deno_io::deno_io::init(Some(Default::default())),
     deno_fs::deno_fs::init(fs.clone()),
