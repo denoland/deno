@@ -18,8 +18,6 @@ use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 
-use crate::NodePermissions;
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
   #[class(inherit)]

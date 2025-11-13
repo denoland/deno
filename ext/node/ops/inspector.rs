@@ -13,8 +13,6 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionsContainer;
 
-use crate::NodePermissions;
-
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {
   // TODO: hook up to InspectorServer

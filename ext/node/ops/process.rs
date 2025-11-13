@@ -14,8 +14,6 @@ use nix::unistd::Uid;
 #[cfg(unix)]
 use nix::unistd::User;
 
-use crate::NodePermissions;
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]

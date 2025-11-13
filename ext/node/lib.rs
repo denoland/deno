@@ -15,7 +15,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
-use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -50,77 +49,6 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-pub trait NodePermissions {
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  fn check_net(
-    &mut self,
-    host: (&str, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn query_read_all(&mut self) -> bool;
-  fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl NodePermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-
-  fn check_net(
-    &mut self,
-    host: (&str, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
-  }
-
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open(
-      self,
-      path,
-      open_access,
-      api_name,
-    )
-  }
-
-  fn query_read_all(&mut self) -> bool {
-    deno_permissions::PermissionsContainer::query_read_all(self)
-  }
-
-  fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
-  }
-}
-
 #[allow(clippy::disallowed_types)]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
@@ -128,7 +56,7 @@ pub trait NodeRequireLoader {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox>;
 

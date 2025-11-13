@@ -17,51 +17,6 @@ use crate::shared::runtime;
 #[derive(Clone)]
 pub struct Permissions;
 
-impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
-impl deno_node::NodePermissions for Permissions {
-  fn check_net_url(
-    &mut self,
-    _url: &deno_core::url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_net(
-    &mut self,
-    _host: (&str, Option<u16>),
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_open<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _open_access: OpenAccessKind,
-    _api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn query_read_all(&mut self) -> bool {
-    unreachable!("snapshotting!")
-  }
-  fn check_sys(
-    &mut self,
-    _kind: &str,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
   fn check_open<'a>(
     &mut self,

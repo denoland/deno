@@ -8,8 +8,6 @@ use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use sys_traits::EnvHomeDir;
 
-use crate::NodePermissions;
-
 mod cpus;
 pub mod priority;
 

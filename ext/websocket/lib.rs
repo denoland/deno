@@ -102,25 +102,6 @@ pub enum WebsocketError {
   Canceled(#[from] deno_core::Canceled),
 }
 
-pub trait WebSocketPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl WebSocketPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &url::Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-}
-
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {

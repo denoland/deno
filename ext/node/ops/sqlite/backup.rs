@@ -15,7 +15,6 @@ use serde::Serialize;
 
 use super::DatabaseSync;
 use super::SqliteError;
-use crate::NodePermissions;
 
 const DEFAULT_BACKUP_RATE: c_int = 5;
 
