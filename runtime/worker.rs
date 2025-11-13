@@ -546,7 +546,7 @@ impl MainWorker {
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
+        deno_websocket::deno_websocket::args(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
@@ -1049,7 +1049,7 @@ fn common_extensions<
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
-    deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
+    deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
     deno_ffi::deno_ffi::lazy_init(),

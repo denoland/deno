@@ -32,7 +32,7 @@ pub fn create_runtime_snapshot(
     deno_canvas::deno_canvas::lazy_init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
-    deno_websocket::deno_websocket::lazy_init::<Permissions>(),
+    deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
     deno_ffi::deno_ffi::lazy_init(),
