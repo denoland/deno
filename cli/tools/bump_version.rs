@@ -176,15 +176,13 @@ fn find_config_files(
   let start_dir = &cli_options.start_dir;
   let mut configs = Vec::new();
 
-  // Check for deno.json
+  // Check for deno.json first - it takes priority
   if let Some(deno_json) = start_dir.maybe_deno_json() {
     let config_path = deno_path_util::url_to_file_path(&deno_json.specifier)
       .context("Failed to convert deno.json URL to path")?;
     configs.push(ConfigUpdater::new(config_path)?);
-  }
-
-  // Check for package.json
-  if let Some(pkg_json) = start_dir.maybe_pkg_json() {
+  } else if let Some(pkg_json) = start_dir.maybe_pkg_json() {
+    // Only fall back to package.json if deno.json doesn't exist
     configs.push(ConfigUpdater::new(pkg_json.path.clone())?);
   }
 

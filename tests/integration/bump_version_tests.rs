@@ -5,7 +5,7 @@ use util::TestContextBuilder;
 use util::assert_contains;
 
 #[test]
-fn deno_version_patch_increments_correctly() {
+fn deno_bump_version_patch_increments_correctly() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -27,7 +27,7 @@ fn deno_version_patch_increments_correctly() {
 }
 
 #[test]
-fn deno_version_minor_increments_correctly() {
+fn deno_bump_version_minor_increments_correctly() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -49,7 +49,7 @@ fn deno_version_minor_increments_correctly() {
 }
 
 #[test]
-fn deno_version_major_increments_correctly() {
+fn deno_bump_version_major_increments_correctly() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -71,7 +71,7 @@ fn deno_version_major_increments_correctly() {
 }
 
 #[test]
-fn deno_version_prerelease_increments_correctly() {
+fn deno_bump_version_prerelease_increments_correctly() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -103,7 +103,7 @@ fn deno_version_prerelease_increments_correctly() {
 }
 
 #[test]
-fn deno_version_works_with_deno_json() {
+fn deno_bump_version_works_with_deno_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -138,7 +138,7 @@ fn deno_version_works_with_deno_json() {
 }
 
 #[test]
-fn deno_version_works_with_package_json() {
+fn deno_bump_version_works_with_package_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -171,35 +171,7 @@ fn deno_version_works_with_package_json() {
 }
 
 #[test]
-fn deno_version_works_with_both_files() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let cwd = context.temp_dir().path();
-
-  // Create both deno.json and package.json
-  cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
-  cwd
-    .join("package.json")
-    .write(r#"{"name": "test", "version": "1.0.0"}"#);
-
-  let output = context
-    .new_command()
-    .args("bump-version patch")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.0.0 to 1.0.1");
-
-  // Verify both files were updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.0.1""#);
-
-  let package_json_content = cwd.join("package.json").read_to_string();
-  assert_contains!(package_json_content, r#""version": "1.0.1""#);
-}
-
-#[test]
-fn deno_version_fails_without_config_files() {
+fn deno_bump_version_fails_without_config_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
 
   let output = context
@@ -213,7 +185,7 @@ fn deno_version_fails_without_config_files() {
 }
 
 #[test]
-fn deno_version_without_increment_shows_current() {
+fn deno_bump_version_without_increment_shows_current() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
@@ -234,7 +206,7 @@ fn deno_version_without_increment_shows_current() {
 }
 
 #[test]
-fn deno_version_creates_default_version_when_missing() {
+fn deno_bump_version_creates_default_version_when_missing() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
