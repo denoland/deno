@@ -27,12 +27,6 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
-    unreachable!("snapshotting!")
-  }
-}
-
 impl deno_node::NodePermissions for Permissions {
   fn check_net_url(
     &mut self,
@@ -87,7 +81,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   vec![
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init::<Permissions, deno_web::InMemoryBroadcastChannel>(
+    deno_web::deno_web::init::<deno_web::InMemoryBroadcastChannel>(
       Default::default(),
       Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),

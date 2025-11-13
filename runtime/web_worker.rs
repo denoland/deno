@@ -522,7 +522,7 @@ impl WebWorker {
       deno_telemetry::deno_telemetry::init(),
       // Web APIs
       deno_webidl::deno_webidl::init(),
-      deno_web::deno_web::init::<PermissionsContainer, InMemoryBroadcastChannel>(
+      deno_web::deno_web::init::<InMemoryBroadcastChannel>(
         services.blob_store,
         Some(options.main_module.clone()),
         services.broadcast_channel,
