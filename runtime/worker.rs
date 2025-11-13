@@ -557,7 +557,7 @@ impl MainWorker {
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+          MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {

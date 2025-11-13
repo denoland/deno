@@ -13,7 +13,6 @@ use deno_resolver::npm::NpmResolver;
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::runtime;
-use crate::snapshot_info::Permissions;
 
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
@@ -38,8 +37,7 @@ pub fn create_runtime_snapshot(
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::lazy_init(),
-    deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler<Permissions>>(
-    ),
+    deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler>(),
     deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),

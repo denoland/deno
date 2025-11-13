@@ -1,32 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_core::Extension;
-use deno_permissions::CheckedPath;
-use deno_permissions::OpenAccessKind;
-use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::shared::runtime;
-
-#[derive(Clone)]
-pub struct Permissions;
-
-impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
-  fn check_open<'a>(
-    &mut self,
-    _p: Cow<'a, Path>,
-    _open_access: OpenAccessKind,
-    _api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    unreachable!("snapshotting!");
-  }
-}
 
 pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
@@ -52,7 +33,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_net::deno_net::init(None, None),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::init(
-      deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None, None),
+      deno_kv::sqlite::SqliteDbHandler::new(None, None),
       deno_kv::KvConfig::builder().build(),
     ),
     deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
