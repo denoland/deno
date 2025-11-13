@@ -575,7 +575,6 @@ impl WebWorker {
       deno_os::deno_os::init(None),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<
-        PermissionsContainer,
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,

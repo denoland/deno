@@ -586,7 +586,6 @@ impl MainWorker {
         deno_os::deno_os::args(Some(exit_code.clone())),
         deno_process::deno_process::args(services.npm_process_state_provider),
         deno_node::deno_node::args::<
-          PermissionsContainer,
           TInNpmPackageChecker,
           TNpmPackageFolderResolver,
           TExtNodeSys,
@@ -1064,7 +1063,6 @@ fn common_extensions<
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
     deno_node::deno_node::lazy_init::<
-      PermissionsContainer,
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
       TExtNodeSys,

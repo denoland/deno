@@ -48,7 +48,6 @@ pub fn create_runtime_snapshot(
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
     deno_node::deno_node::lazy_init::<
-      Permissions,
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,

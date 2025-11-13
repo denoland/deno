@@ -5,6 +5,7 @@ use std::mem::MaybeUninit;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use sys_traits::EnvHomeDir;
 
 use crate::NodePermissions;
@@ -34,15 +35,12 @@ pub enum OsError {
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_node_os_get_priority<P>(
+pub fn op_node_os_get_priority(
   state: &mut OpState,
   pid: u32,
-) -> Result<i32, OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<i32, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("getPriority", "node:os.getPriority()")?;
   }
 
@@ -50,16 +48,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_node_os_set_priority<P>(
+pub fn op_node_os_set_priority(
   state: &mut OpState,
   pid: u32,
   priority: i32,
-) -> Result<(), OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("setPriority", "node:os.setPriority()")?;
   }
 
@@ -207,15 +202,12 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_node_os_user_info<P>(
+pub fn op_node_os_user_info(
   state: &mut OpState,
   #[smi] uid: u32,
-) -> Result<UserInfo, OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<UserInfo, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_sys("userInfo", "node:os.userInfo()")
       .map_err(OsError::Permission)?;
@@ -225,12 +217,9 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_geteuid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("uid", "node:os.geteuid()")?;
   }
 
@@ -244,12 +233,9 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_getegid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("getegid", "node:os.getegid()")?;
   }
 
@@ -264,12 +250,9 @@ where
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_cpus(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
@@ -278,14 +261,11 @@ where
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_homedir<P>(
+pub fn op_homedir(
   state: &mut OpState,
-) -> Result<Option<String>, PermissionCheckError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Option<String>, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("homedir", "node:os.homedir()")?;
   }
 

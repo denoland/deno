@@ -108,7 +108,6 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_os::deno_os::init(Default::default()),
     deno_process::deno_process::init(Default::default()),
     deno_node::deno_node::init::<
-      Permissions,
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
