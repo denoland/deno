@@ -1,10 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
+
+mod broadcast_channel;
 mod compression;
+mod console;
 mod message_port;
 mod stream_resource;
 mod timers;
+mod url;
+mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -36,6 +41,8 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+pub use crate::broadcast_channel::BroadcastChannel;
+pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -53,8 +60,8 @@ use crate::timers::op_now;
 use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
-  deps = [ deno_webidl, deno_console, deno_url ],
-  parameters = [P: TimersPermission],
+  deps = [ deno_webidl ],
+  parameters = [P: TimersPermission, BC: BroadcastChannel],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -91,6 +98,19 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    url::op_url_reparse,
+    url::op_url_parse,
+    url::op_url_get_serialization,
+    url::op_url_parse_with_base,
+    url::op_url_parse_search_params,
+    url::op_url_stringify_search_params,
+    urlpattern::op_urlpattern_parse,
+    urlpattern::op_urlpattern_process_match_input,
+    console::op_preview_entries,
+    broadcast_channel::op_broadcast_subscribe<BC>,
+    broadcast_channel::op_broadcast_unsubscribe<BC>,
+    broadcast_channel::op_broadcast_send<BC>,
+    broadcast_channel::op_broadcast_recv<BC>,
   ],
   esm = [
     "00_infra.js",
@@ -111,11 +131,16 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "00_url.js",
+    "01_urlpattern.js",
+    "01_console.js",
+    "01_broadcast_channel.js"
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    bc: BC,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -123,6 +148,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
+    state.put(options.bc);
   }
 );
 

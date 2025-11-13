@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "envs": { "COMPLETE": "fish" },
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "basic.out"
+    },
+    "config_flag": {
+      "envs": { "COMPLETE": "fish" },
+      "args": [
+        "--",
+        "/thing/deno",
+        "task",
+        "--config",
+        "./subdir/deno.json",
+        ""
+      ],
+      "output": "config_flag.out"
+    },
+    "workspace": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace/member",
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "workspace.out"
+    },
+    "workspace_package_json": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace/member2",
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "workspace_package_json.out"
+    }
+  }
+}

@@ -7692,6 +7692,241 @@ fn lsp_quote_style_from_workspace_settings() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { z, y } from "./z.ts";
+import { c, a, b } from "./b.ts";
+import { d } from "./a.ts";
+import unused from "./c.ts";
+
+console.log(b, a, c, d, y, z);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                // All organized imports in the first replacement:
+                // files sorted alphabetically, imports within files sorted alphabetically
+                "newText": concat!(
+                  "import { d } from \"./a.ts\";\n",
+                  "import { a, b, c } from \"./b.ts\";\n",
+                  "import { y, z } from \"./z.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                // Second line removed (replaced by organized imports above)
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 0 }
+                },
+                // Third line removed (replaced by organized imports above)
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 3, "character": 0 },
+                  "end": { "line": 4, "character": 0 }
+                },
+                // Unused import from "./c.ts" is removed
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_code_actions_organize_imports_already_organized() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let tmp_dir = context.temp_dir();
+  let file = tmp_dir.source_file(
+    "file.ts",
+    r#"import { a, b, c } from "./b.ts";
+
+console.log(a, b, c);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_code_actions_organize_imports_with_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // File with unordered imports and a type error
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { b } from "./b.ts";
+import { a } from "./a.ts";
+import unused from "./c.ts";
+
+// Type error: using undeclared variable
+console.log(undeclaredVariable);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action with diagnostics indicating an error
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 5, "character": 12 },
+              "end": { "line": 5, "character": 29 }
+            },
+            "severity": 1,
+            "message": "Cannot find name 'undeclaredVariable'.",
+            "source": "deno-ts"
+          }
+        ],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                // Imports sorted alphabetically, but unused imports NOT removed due to error
+                "newText": concat!(
+                  "import { a } from \"./a.ts\";\n",
+                  "import { b } from \"./b.ts\";\n",
+                  "import unused from \"./c.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 0 }
+                },
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -13775,8 +14010,8 @@ console.log(snake_case);
         "changes": {
           "file:///a/file.ts": [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 0 }
             },
             "newText": "// deno-lint-ignore-file\n"
           }]
@@ -13791,32 +14026,26 @@ console.log(snake_case);
 #[timeout(300_000)]
 fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir
+    .source_file("file.ts", "// Copyright x-y. MIT licence.\nwindow;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "window;",
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   let diagnostics = diagnostics.all();
   let diagnostic = &diagnostics[0];
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
+      "textDocument": { "uri": file.uri() },
       "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 0, "character": 6 }
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 6 },
       },
       "context": {
         "diagnostics": [diagnostic],
-        "only": ["quickfix"]
-      }
+        "only": ["quickfix"],
+      },
     }),
   );
   assert_eq!(
@@ -13827,61 +14056,61 @@ fn lsp_code_actions_lint_fixes() {
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 6 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 6 },
             },
-            "newText": "globalThis"
-          }]
-        }
-      }
+            "newText": "globalThis",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for this line",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore-file no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Ignore lint errors for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file\n"
-          }]
-        }
-      }
-    }])
+            "newText": "// deno-lint-ignore-file\n",
+          }],
+        },
+      },
+    }]),
   );
   client.shutdown();
 }
@@ -15344,14 +15573,9 @@ fn lsp_node_modules_dir() {
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
-  // a lockfile will be created here because someone did an explicit cache
-  let lockfile_path = temp_dir.path().join("deno.lock");
-  assert!(lockfile_path.exists());
-  lockfile_path.remove_file();
-
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -15381,7 +15605,6 @@ fn lsp_node_modules_dir() {
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
-  assert!(!lockfile_path.exists()); // was disabled
 
   // now add a lockfile and cache
   temp_dir.write(
@@ -15391,8 +15614,6 @@ fn lsp_node_modules_dir() {
   refresh_config(&mut client);
   let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
-
-  assert!(lockfile_path.exists());
 
   // the declaration should be found in the node_modules directory
   let res = client.write_request(
@@ -19709,5 +19930,38 @@ fn lsp_push_diagnostics() {
         "version": 1,
       },
     ]),
+  );
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_isolated_declarations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "isolatedDeclarations": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"export function add(a: number, b: number) {
+  return a + b;
+}
+"#,
+  );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true }}));
+
+  let diagnostics = client.did_open_file(&file);
+  let diagnostics = diagnostics.all();
+  assert_eq!(
+    diagnostics[0].message,
+    "Function must have an explicit return type annotation with --isolatedDeclarations."
   );
 }

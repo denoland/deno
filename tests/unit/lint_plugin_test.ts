@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
 import { assertSnapshot } from "@std/testing/snapshot";
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
@@ -1245,4 +1245,29 @@ Deno.test("Plugin - enumerable properties", () => {
   });
 
   assert(keys.length > 0);
+});
+
+Deno.test("Plugin - error when reported range start > end", () => {
+  // assertThrows doesn't support checking the error message.
+  try {
+    testPlugin(`foo;`, {
+      create(ctx) {
+        return {
+          Identifier(node) {
+            ctx.report({
+              message: "not ok",
+              range: node.range.reverse() as Deno.lint.Range,
+            });
+          },
+        };
+      },
+    });
+    throw new Error("fail");
+  } catch (err) {
+    if (!(err instanceof Error)) {
+      throw err;
+    }
+
+    assertStringIncludes((err.cause as Error).message, "Invalid range");
+  }
 });

@@ -2374,7 +2374,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     println!("{err}");
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2403,7 +2403,7 @@ async fn test_resolve_dns() {
       eprintln!("stderr: {err}");
     }
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2429,7 +2429,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -2450,7 +2450,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -3582,11 +3582,11 @@ fn test_permission_broker() {
   test_util::assertions::assert_wildcard_match(
     &line,
     r#"[WILDCARD]
-{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+{"v":1,"pid":[WILDCARD],"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
 }

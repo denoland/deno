@@ -20,6 +20,7 @@ use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::MemoryFiles as _;
 use deno_core::FastString;
+use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleResolutionError;
@@ -1013,8 +1014,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleLoadReferrer>,
-    _is_dynamic: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     let inner = self.0.clone();
 
@@ -1032,7 +1032,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .load_inner(
             &specifier,
             maybe_referrer.as_ref().map(|r| &r.specifier),
-            &requested_module_type,
+            &options.requested_module_type,
           )
           .await
           .map_err(|err| {
@@ -1067,15 +1067,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    is_dynamic: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
     // decremented unconditionally in "finish_load"
     self.0.shared.in_flight_loads_tracker.increase();
 
     if matches!(
-      requested_module_type,
+      options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
@@ -1097,13 +1096,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
-      let permissions = if is_dynamic {
+      let permissions = if options.is_dynamic_import {
         &inner.permissions
       } else {
         &inner.parent_permissions
       };
 
-      if is_dynamic {
+      if options.is_dynamic_import {
         // This doesn't acquire a graph update permit because that will
         // clone the graph which is a bit slow.
         let mut graph = graph_container.graph();
@@ -1133,7 +1132,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
+      let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let specifiers = &[specifier];

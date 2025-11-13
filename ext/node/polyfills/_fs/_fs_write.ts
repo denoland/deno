@@ -57,7 +57,7 @@ export function writeSync(
     position: number | null | undefined,
   ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
-    if (typeof position === "number") {
+    if (typeof position === "number" && position >= 0) {
       op_fs_seek_sync(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
@@ -122,7 +122,7 @@ export function write(
     position: number | null | undefined,
   ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
-    if (typeof position === "number") {
+    if (typeof position === "number" && position >= 0) {
       await op_fs_seek_async(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;

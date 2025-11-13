@@ -21,8 +21,8 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import {
   defineEventHandler,

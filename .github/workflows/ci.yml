@@ -97,7 +97,7 @@ jobs:
             job: test
             profile: release
             use_sysroot: true
-            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') && (github.ref == ''refs/heads/main'' || contains(github.event.pull_request.labels.*.name, ''ci-wpt-test'')) }}'
+            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
           - os: linux
             arch: x86_64
             runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -112,11 +112,6 @@ jobs:
             profile: debug
             use_sysroot: true
           - os: linux
-            arch: x86_64
-            runner: ubuntu-24.04
-            job: lint
-            profile: debug
-          - os: linux
             arch: aarch64
             runner: ubicloud-standard-16-arm
             job: test
@@ -128,22 +123,11 @@ jobs:
             profile: release
             use_sysroot: true
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-          - os: macos
-            arch: x86_64
-            runner: macos-13
-            job: lint
-            profile: debug
-          - os: windows
-            arch: x86_64
-            runner: windows-2022
-            job: lint
-            profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUST_LIB_BACKTRACE: 0
-      CI_SKIP_NODE_TEST: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-node-test'') }}'
     steps:
       - name: Configure git
         run: |-
@@ -189,12 +173,12 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '77-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '77-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '79-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '79-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
@@ -203,9 +187,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
+        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && ((matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -392,7 +376,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '77-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -404,22 +388,6 @@ jobs:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
         if: '!(matrix.skip)'
-      - name: test_format.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
-      - name: lint.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
-      - name: jsdoc_checker.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
-      - name: Check tracing build
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
-        run: cargo check -p deno --features=lsp-tracing
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets --features=panic-trace
@@ -685,7 +653,7 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(matrix.skip) && (matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
@@ -765,7 +733,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
-        if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
+        if: '!(matrix.skip) && (matrix.job == ''test'' && github.ref == ''refs/heads/main'')'
         with:
           path: |-
             ./target
@@ -773,7 +741,96 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '77-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+  lint:
+    name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
+    runs-on: '${{ matrix.runner }}'
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            profile: debug
+            job: lint
+          - os: macos
+            arch: x86_64
+            runner: macos-13
+            profile: debug
+            job: lint
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
+            profile: debug
+            job: lint
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '79-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '79-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+      - uses: dsherret/rust-toolchain-file@v1
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Restore cache build output (PR)
+        uses: actions/cache/restore@v4
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
+          restore-keys: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+      - name: test_format.js
+        if: matrix.os == 'linux'
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+      - name: lint.js
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
+      - name: jsdoc_checker.js
+        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
+      - name: Save cache build output (main)
+        uses: actions/cache/save@v4
+        if: matrix.job == 'test' && github.ref == 'refs/heads/main'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:
@@ -811,6 +868,7 @@ jobs:
           cargo check --no-default-features --features package_json -p deno_config
           cargo check --no-default-features --features workspace --features sync -p deno_config
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
+          cargo check -p deno --features=lsp-tracing
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary

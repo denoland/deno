@@ -28,17 +28,17 @@ pub struct PermissionArgs {
 
 #[derive(Serialize)]
 pub struct PermissionStatus {
-  state: String,
+  state: &'static str,
   partial: bool,
 }
 
 impl From<PermissionState> for PermissionStatus {
   fn from(state: PermissionState) -> Self {
     PermissionStatus {
-      state: if state == PermissionState::GrantedPartial {
-        PermissionState::Granted.to_string()
-      } else {
-        state.to_string()
+      state: match state {
+        PermissionState::Granted | PermissionState::GrantedPartial => "granted",
+        PermissionState::DeniedPartial | PermissionState::Denied => "denied",
+        PermissionState::Prompt => "prompt",
       },
       partial: state == PermissionState::GrantedPartial,
     }
