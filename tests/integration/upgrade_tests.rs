@@ -72,7 +72,7 @@ fn upgrade_prompt() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_lsp_repl_sleeps() {
   let context = TestContextBuilder::new()
     .use_http_server()

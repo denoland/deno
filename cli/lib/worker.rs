@@ -350,6 +350,7 @@ pub struct LibMainWorkerOptions {
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub maybe_initial_cwd: Option<Url>,
 }
 
 #[derive(Default, Clone)]
@@ -462,6 +463,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         ),
         permissions: args.permissions,
       };
+      let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -503,7 +505,9 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           .clone(),
         seed: shared.options.seed,
         create_web_worker_cb,
-        format_js_error_fn: Some(Arc::new(format_js_error)),
+        format_js_error_fn: Some(Arc::new(move |a| {
+          format_js_error(a, maybe_initial_cwd.as_ref())
+        })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
@@ -657,6 +661,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       bundle_provider: shared.bundle_provider.clone(),
     };
 
+    let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -694,7 +700,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,

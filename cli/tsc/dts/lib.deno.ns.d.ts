@@ -1700,9 +1700,6 @@ declare namespace Deno {
    *
    * Throws {@linkcode Deno.errors.NotFound} if directory not available.
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function cwd(): string;

@@ -8,7 +8,7 @@ Download http://localhost:4260/@denotest/globals/1.0.0.tgz
 Download http://localhost:4260/@types/node/node-[WILDLINE].tgz
 Download http://localhost:4260/undici-types/undici-types-[WILDLINE].tgz
 [UNORDERED_END]
-Check file:///[WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 true
 true
 []
