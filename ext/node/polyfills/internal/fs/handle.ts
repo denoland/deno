@@ -199,7 +199,7 @@ export class FileHandle extends EventEmitter {
       this[kClosePromise] = SafePromisePrototypeFinally(
         this.#close(),
         () => {
-          this[kClosePromise] = undefined;
+          this[kClosePromise] = null;
         },
       );
     } else {
@@ -209,7 +209,7 @@ export class FileHandle extends EventEmitter {
           this[kCloseReject] = reject;
         }),
         () => {
-          this[kClosePromise] = undefined;
+          this[kClosePromise] = null;
           this[kCloseReject] = undefined;
           this[kCloseResolve] = undefined;
         },
