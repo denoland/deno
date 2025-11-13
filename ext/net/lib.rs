@@ -155,8 +155,6 @@ deno_core::extension!(deno_net,
 mod ops_unix {
   use deno_core::op2;
 
-  use crate::NetPermissions;
-
   macro_rules! stub_op {
     ($name:ident) => {
       #[op2(fast)]
@@ -173,7 +171,7 @@ mod ops_unix {
     };
     ($name:ident) => {
       #[op2(fast)]
-      pub fn $name<P: NetPermissions>() -> Result<(), std::io::Error> {
+      pub fn $name() -> Result<(), std::io::Error> {
         let error_msg = format!(
           "Operation `{:?}` not supported on non-unix platforms.",
           stringify!($name)
