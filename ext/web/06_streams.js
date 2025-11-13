@@ -5158,7 +5158,7 @@ class ReadableStream {
   /** @type {Deferred<void>} */
   [_isClosedPromise];
 
-  [core.hostObjectBrand] = core.hostObjectBrand;
+  [core.hostObjectBrand] = "ReadableStream";
 
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
@@ -6167,7 +6167,7 @@ class TransformStream {
   /** @type {WritableStream<I>} */
   [_writable];
 
-  [core.hostObjectBrand] = core.hostObjectBrand;
+  [core.hostObjectBrand] = "TransformStream";
 
   /**
    * @param {Transformer<I, O>} transformer
@@ -6383,7 +6383,7 @@ class WritableStream {
   /** @type {Deferred<void>[]} */
   [_writeRequests];
 
-  [core.hostObjectBrand] = core.hostObjectBrand;
+  [core.hostObjectBrand] = "WritableStream";
 
   /**
    * @param {UnderlyingSink<W>=} underlyingSink
@@ -6984,6 +6984,50 @@ function transformStreamTransferReceivingSteps(portR, portW) {
   return stream;
 }
 
+core.registerTransferableResource(
+  "ReadableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    readableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return readableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "WritableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    writableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return writableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "TransformStream",
+  (value) => {
+    const { port1: portR1, port2: portR2 } = new MessageChannel();
+    const { port1: portW1, port2: portW2 } = new MessageChannel();
+    transformStreamTransferSteps(value, portR1, portW1);
+    return [
+      core.getTransferableResource("MessagePort").send(portR2),
+      core.getTransferableResource("MessagePort").send(portW2),
+    ];
+  },
+  (rids) => {
+    const portR = core.getTransferableResource("MessagePort").receive(rids[0]);
+    const portW = core.getTransferableResource("MessagePort").receive(rids[1]);
+    return transformStreamTransferReceivingSteps(portR, portW);
+  },
+);
+
 webidl.converters.ReadableStream = webidl
   .createInterfaceConverter("ReadableStream", ReadableStream.prototype);
 webidl.converters.WritableStream = webidl
@@ -7229,20 +7273,12 @@ export {
   ReadableStreamPrototype,
   readableStreamTee,
   readableStreamThrowIfErrored,
-  readableStreamTransferReceivingSteps,
-  readableStreamTransferSteps,
   resourceForReadableStream,
   TransformStream,
   TransformStreamDefaultController,
-  TransformStreamPrototype,
-  transformStreamTransferReceivingSteps,
-  transformStreamTransferSteps,
   WritableStream,
   writableStreamClose,
   WritableStreamDefaultController,
   WritableStreamDefaultWriter,
   writableStreamForRid,
-  WritableStreamPrototype,
-  writableStreamTransferReceivingSteps,
-  writableStreamTransferSteps,
 };

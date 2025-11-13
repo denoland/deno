@@ -46,10 +46,8 @@ pub enum MessagePortError {
 
 pub enum Transferable {
   Resource(String, Box<dyn TransferredResource>),
+  MultiResource(String, Vec<Box<dyn TransferredResource>>),
   ArrayBuffer(u32),
-  ReadableStream(MessagePort),
-  WritableStream(MessagePort),
-  TransformStream(MessagePort, MessagePort),
 }
 
 type MessagePortMessage = (DetachedBuffer, Vec<Transferable>);
@@ -183,9 +181,7 @@ pub fn op_message_port_create_entangled(
 pub enum JsTransferable {
   ArrayBuffer(u32),
   Resource(String, ResourceId),
-  ReadableStream(ResourceId),
-  WritableStream(ResourceId),
-  TransformStream(ResourceId, ResourceId),
+  MultiResource(String, Vec<ResourceId>),
 }
 
 pub fn deserialize_js_transferables(
@@ -203,50 +199,20 @@ pub fn deserialize_js_transferables(
         let tx = resource.transfer().map_err(MessagePortError::Generic)?;
         transferables.push(Transferable::Resource(name, tx));
       }
+      JsTransferable::MultiResource(name, rids) => {
+        let mut txs = Vec::with_capacity(rids.len());
+        for rid in rids {
+          let resource = state
+            .resource_table
+            .take_any(rid)
+            .map_err(|_| MessagePortError::InvalidTransfer)?;
+          let tx = resource.transfer().map_err(MessagePortError::Generic)?;
+          txs.push(tx);
+        }
+        transferables.push(Transferable::MultiResource(name, txs));
+      }
       JsTransferable::ArrayBuffer(id) => {
         transferables.push(Transferable::ArrayBuffer(id));
-      }
-      JsTransferable::ReadableStream(id) => {
-        let resource = state
-          .resource_table
-          .take::<MessagePortResource>(id)
-          .map_err(|_| MessagePortError::InvalidTransfer)?;
-        resource.cancel.cancel();
-        let resource =
-          Rc::try_unwrap(resource).map_err(|_| MessagePortError::NotReady)?;
-        transferables.push(Transferable::ReadableStream(resource.port));
-      }
-      JsTransferable::WritableStream(id) => {
-        let resource = state
-          .resource_table
-          .take::<MessagePortResource>(id)
-          .map_err(|_| MessagePortError::InvalidTransfer)?;
-        resource.cancel.cancel();
-        let resource =
-          Rc::try_unwrap(resource).map_err(|_| MessagePortError::NotReady)?;
-        transferables.push(Transferable::WritableStream(resource.port));
-      }
-      JsTransferable::TransformStream(id_r, id_w) => {
-        let resource_r = state
-          .resource_table
-          .take::<MessagePortResource>(id_r)
-          .map_err(|_| MessagePortError::InvalidTransfer)?;
-        resource_r.cancel.cancel();
-        let resource_r =
-          Rc::try_unwrap(resource_r).map_err(|_| MessagePortError::NotReady)?;
-
-        let resource_w = state
-          .resource_table
-          .take::<MessagePortResource>(id_w)
-          .map_err(|_| MessagePortError::InvalidTransfer)?;
-        resource_w.cancel.cancel();
-        let resource_w =
-          Rc::try_unwrap(resource_w).map_err(|_| MessagePortError::NotReady)?;
-
-        transferables.push(Transferable::TransformStream(
-          resource_r.port,
-          resource_w.port,
-        ));
       }
     }
   }
@@ -265,33 +231,15 @@ pub fn serialize_transferables(
         let rid = state.resource_table.add_rc_dyn(rx);
         js_transferables.push(JsTransferable::Resource(name, rid));
       }
+      Transferable::MultiResource(name, txs) => {
+        let rids = txs
+          .into_iter()
+          .map(|tx| state.resource_table.add_rc_dyn(tx.receive()))
+          .collect();
+        js_transferables.push(JsTransferable::MultiResource(name, rids));
+      }
       Transferable::ArrayBuffer(id) => {
         js_transferables.push(JsTransferable::ArrayBuffer(id));
-      }
-      Transferable::ReadableStream(port) => {
-        let rid = state.resource_table.add(MessagePortResource {
-          port,
-          cancel: CancelHandle::new(),
-        });
-        js_transferables.push(JsTransferable::ReadableStream(rid));
-      }
-      Transferable::WritableStream(port) => {
-        let rid = state.resource_table.add(MessagePortResource {
-          port,
-          cancel: CancelHandle::new(),
-        });
-        js_transferables.push(JsTransferable::WritableStream(rid));
-      }
-      Transferable::TransformStream(port_r, port_w) => {
-        let rid_r = state.resource_table.add(MessagePortResource {
-          port: port_r,
-          cancel: CancelHandle::new(),
-        });
-        let rid_w = state.resource_table.add(MessagePortResource {
-          port: port_w,
-          cancel: CancelHandle::new(),
-        });
-        js_transferables.push(JsTransferable::TransformStream(rid_r, rid_w));
       }
     }
   }
