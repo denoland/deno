@@ -583,11 +583,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     permissions: PermissionsContainer,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       vec![],
       Default::default(),
@@ -602,6 +604,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -724,6 +727,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     Ok(LibMainWorker {
       main_module,
       preload_modules,
+      require_modules,
       worker,
     })
   }
@@ -811,6 +815,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 pub struct LibMainWorker {
   main_module: Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -875,6 +880,11 @@ impl LibMainWorker {
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    for require_module_url in self.require_modules.iter() {
+      let id = self.worker.preload_side_module(require_module_url).await?;
       self.worker.evaluate_module(id).await?;
       self.worker.run_event_loop(false).await?;
     }
