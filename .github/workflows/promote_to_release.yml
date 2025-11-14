@@ -47,7 +47,9 @@ jobs:
 
       - name: Remove signature for Windows
         run: |
-          signtool remove /s deno.exe
+          $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $SignToolPath = $SignTool.FullName
+          & $SignToolPath remove /s deno.exe
 
       - name: Run patchver for Windows
         run: |
