@@ -1,0 +1,8 @@
+{
+  "envs": {
+    "VAR1": "1",
+    "VAR2": "2"
+  },
+  "args": "run --quiet -P main.ts",
+  "output": "undefined\nundefined\n[Object: null prototype] {}\n"
+}
