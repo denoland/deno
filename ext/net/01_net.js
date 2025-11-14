@@ -100,7 +100,6 @@ async function resolveDns(query, recordType, options) {
 }
 
 class Conn {
-  #rid = 0;
   #remoteAddr = null;
   #localAddr = null;
   #unref = false;
@@ -112,6 +111,9 @@ class Conn {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
+      // TODO(littledivy): remove this
+      configurable: true,
+      writable: true,
       value: rid,
     });
     ObjectDefineProperty(this, internalFdSymbol, {
@@ -119,9 +121,12 @@ class Conn {
       enumerable: false,
       value: fd,
     });
-    this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
+  }
+
+  get #rid() {
+    return this[internalRidSymbol];
   }
 
   get remoteAddr() {
@@ -229,6 +234,9 @@ class TcpConn extends Conn {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
+      // TODO(littledivy): remove this
+      configurable: true,
+      writable: true,
       value: rid,
     });
     this.#rid = rid;
