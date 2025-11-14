@@ -42,8 +42,10 @@ jobs:
           $CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"
           Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"
           Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"
+          Invoke-WebRequest -Uri https://github.com/rweijnen/SigntoolCheck/archive/refs/tags/v1.0.0.0.zip -OutFile "SigntoolCheck.zip"
           Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
+          Expand-Archive -Path "SigntoolCheck.zip" -DestinationPath "."
 
       - name: Remove signature for Windows
         run: |
@@ -54,6 +56,12 @@ jobs:
       - name: Run patchver for Windows
         run: |
           deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
+
+      - name: Fix binary after patchver
+        run: |
+          SigntoolCheck.exe -p deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe -v -f -o deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}-fixed.exe
+          Remove-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
+          Rename-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}-fixed.exe deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
 
       - name: Authenticate with Azure
         uses: azure/login@v1
