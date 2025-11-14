@@ -14,8 +14,6 @@ use nix::unistd::Uid;
 #[cfg(unix)]
 use nix::unistd::User;
 
-use crate::NodePermissions;
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]
@@ -122,16 +120,13 @@ fn serialize_id<'a>(
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setegid<P, 'a>(
+pub fn op_node_process_setegid<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
   id: v8::Local<'a, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("setegid", "node:process.setegid")?;
   }
 
@@ -147,14 +142,11 @@ where
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setegid<P>(
+pub fn op_node_process_setegid(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }
 
@@ -174,16 +166,13 @@ fn get_user_id(name: &str) -> Result<Uid, ProcessError> {
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_seteuid<P, 'a>(
+pub fn op_node_process_seteuid<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
   id: v8::Local<'a, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("seteuid", "node:process.seteuid")?;
   }
 
@@ -199,29 +188,23 @@ where
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_seteuid<P>(
+pub fn op_node_process_seteuid(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setgid<P, 'a>(
+pub fn op_node_process_setgid<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
   id: v8::Local<'a, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("setgid", "node:process.setgid")?;
   }
 
@@ -237,29 +220,23 @@ where
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setgid<P>(
+pub fn op_node_process_setgid(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setuid<P, 'a>(
+pub fn op_node_process_setuid<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
   id: v8::Local<'a, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("setuid", "node:process.setuid")?;
   }
 
@@ -275,13 +252,10 @@ where
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(fast, stack_trace)]
-pub fn op_node_process_setuid<P>(
+pub fn op_node_process_setuid(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
-) -> Result<(), ProcessError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }

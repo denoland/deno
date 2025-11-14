@@ -3,8 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,9 +13,8 @@ use async_trait::async_trait;
 use deno_core::OpState;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
-use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
-use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
@@ -29,40 +26,12 @@ use crate::DatabaseHandler;
 static SQLITE_NOTIFIERS_MAP: OnceLock<Mutex<HashMap<PathBuf, SqliteNotifier>>> =
   OnceLock::new();
 
-pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
+pub struct SqliteDbHandler {
   pub default_storage_dir: Option<PathBuf>,
   versionstamp_rng_seed: Option<u64>,
-  _permissions: PhantomData<P>,
 }
 
-pub trait SqliteDbHandlerPermissions {
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open<'a>(
-    &mut self,
-    p: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-}
-
-impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_open<'a>(
-    &mut self,
-    p: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open(
-      self,
-      p,
-      open_access,
-      Some(api_name),
-    )
-  }
-}
-
-impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
+impl SqliteDbHandler {
   pub fn new(
     default_storage_dir: Option<PathBuf>,
     versionstamp_rng_seed: Option<u64>,
@@ -70,7 +39,6 @@ impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
     Self {
       default_storage_dir,
       versionstamp_rng_seed,
-      _permissions: PhantomData,
     }
   }
 }
@@ -88,7 +56,7 @@ enum Mode {
 }
 
 #[async_trait(?Send)]
-impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
+impl DatabaseHandler for SqliteDbHandler {
   type DB = denokv_sqlite::Sqlite;
 
   async fn open(
@@ -102,7 +70,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     }
 
     #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-    fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
+    fn validate_path(
       state: &RefCell<OpState>,
       path: Option<String>,
     ) -> Result<Option<PathOrInMemory>, JsErrorBox> {
@@ -121,20 +89,20 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         ));
       }
       {
-        let mut state = state.borrow_mut();
-        let permissions = state.borrow_mut::<P>();
+        let state = state.borrow();
+        let permissions = state.borrow::<PermissionsContainer>();
         let path = permissions
           .check_open(
             Cow::Owned(PathBuf::from(path)),
             OpenAccessKind::ReadWriteNoFollow,
-            "Deno.openKv",
+            Some("Deno.openKv"),
           )
           .map_err(JsErrorBox::from_err)?;
         Ok(Some(PathOrInMemory::Path(path.into_owned_path())))
       }
     }
 
-    let path = validate_path::<P>(&state, path)?;
+    let path = validate_path(&state, path)?;
     let default_storage_dir = self.default_storage_dir.clone();
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;

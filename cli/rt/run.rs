@@ -610,7 +610,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if self.shared.modules.has_file(&path) {

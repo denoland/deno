@@ -54,14 +54,13 @@ use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
 pub use crate::timers::StartTime;
-pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
-  parameters = [P: TimersPermission, BC: BroadcastChannel],
+  parameters = [BC: BroadcastChannel],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -87,8 +86,8 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
-    op_now<P>,
-    op_time_origin<P>,
+    op_now,
+    op_time_origin,
     op_defer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
