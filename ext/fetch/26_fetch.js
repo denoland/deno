@@ -15,8 +15,8 @@ import {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
-  op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
+  op_wasm_streaming_stream_feed,
 } from "ext:core/ops";
 const {
   ArrayPrototypePush,
@@ -578,18 +578,26 @@ function handleWasmStreaming(source, rid) {
     op_wasm_streaming_set_url(rid, res.url);
 
     if (res.body !== null) {
+      let streamRid, autoClose;
+      const innerResponse = toInnerResponse(res);
+      const resourceBacking = getReadableStreamResourceBacking(
+        innerResponse.body?.stream,
+      );
+      if (resourceBacking) {
+        streamRid = resourceBacking.rid;
+        autoClose = resourceBacking.autoClose;
+      } else {
+        streamRid = resourceForReadableStream(
+          innerResponse.body?.stream,
+        );
+        autoClose = true;
+      }
+
       // 2.6.
       // Rather than consuming the body as an ArrayBuffer, this passes each
       // chunk to the feed as soon as it's available.
       PromisePrototypeThen(
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            op_wasm_streaming_feed(rid, chunk);
-          }
-        })(),
+        op_wasm_streaming_stream_feed(rid, streamRid, autoClose),
         // 2.7
         () => core.close(rid),
         // 2.8
