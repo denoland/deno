@@ -1259,7 +1259,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let code = match graph.get(&specifier) {
       Some(deno_graph::Module::Js(module)) => &module.source.text,
       Some(deno_graph::Module::Json(module)) => &module.source.text,
-      _ => {
+      Some(
+        deno_graph::Module::Wasm(_)
+        | deno_graph::Module::Npm(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::External(_),
+      ) => {
+        return None;
+      }
+      None => {
         // Not in graph, try to read from file system (for source-mapped original files)
         if let Ok(Some(file)) = self
           .0
