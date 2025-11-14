@@ -261,7 +261,7 @@ Deno.test({
   name:
     "[node/fs filehandle.utimes] Change the file system timestamps of the file",
   async fn() {
-    const fileHandle = await fs.open(testData);
+    const fileHandle = await fs.open(testData, "a");
 
     const atime = new Date();
     const mtime = new Date(0);
