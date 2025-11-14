@@ -237,7 +237,7 @@ impl LocalUrlOrPath {
 /// multiple times.
 struct MaybeTypesResolvedUrl(LocalUrlOrPath);
 
-/// Kind of method that resolution suceeded with.
+/// Kind of method that resolution succeeded with.
 enum ResolvedMethod {
   Url,
   RelativeOrAbsolute,
@@ -2095,7 +2095,7 @@ impl<
       && specifier.path().contains("/node_modules/")
     {
       // Specifiers in the node_modules directory are canonicalized
-      // so canoncalize then check if it's in the node_modules directory.
+      // so canonicalize then check if it's in the node_modules directory.
       let specifier = resolve_specifier_into_node_modules(&self.sys, specifier);
       return Some(specifier);
     }
