@@ -826,79 +826,88 @@ async fn install_global(
     factory.npm_version_resolver()?.clone(),
   ));
 
-  let entry_text = install_flags_global.module_url.as_str();
-  if !cli_options.initial_cwd().join(entry_text).exists() {
-    // check for package requirement missing prefix
-    if let Ok(Err(package_req)) =
-      super::pm::AddRmPackageReq::parse(entry_text, None)
-    {
-      if jsr_resolver
-        .req_to_nv(&package_req)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
+  for module_url in &install_flags_global.module_urls {
+    let entry_text = module_url;
+    if !cli_options.initial_cwd().join(entry_text).exists() {
+      // check for package requirement missing prefix
+      if let Ok(Err(package_req)) =
+        super::pm::AddRmPackageReq::parse(entry_text, None)
       {
-        bail!(
-          "{entry_text} is missing a prefix. Did you mean `{}`?",
-          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-        );
-      } else if npm_resolver
-        .req_to_nv(&package_req)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-      {
-        bail!(
-          "{entry_text} is missing a prefix. Did you mean `{}`?",
-          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-        );
+        if jsr_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+          );
+        } else if npm_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+          );
+        }
       }
     }
-  }
 
-  factory
-    .main_module_graph_container()
-    .await?
-    .load_and_type_check_files(
-      std::slice::from_ref(&install_flags_global.module_url),
-      CollectSpecifiersOptions {
-        include_ignored_specified: true,
-      },
+    factory
+      .main_module_graph_container()
+      .await?
+      .load_and_type_check_files(
+        std::slice::from_ref(module_url),
+        CollectSpecifiersOptions {
+          include_ignored_specified: true,
+        },
+      )
+      .await?;
+
+    if matches!(flags.config_flag, ConfigFlag::Discover)
+      && cli_options.workspace().deno_jsons().next().is_some()
+    {
+      log::warn!(
+        "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
+        crate::colors::yellow("Warning")
+      );
+    }
+
+    let bin_name_resolver = factory.bin_name_resolver()?;
+    // create the install shim
+    create_install_shim(
+      &bin_name_resolver,
+      cli_options.initial_cwd(),
+      &flags,
+      &install_flags_global,
+      module_url,
     )
     .await?;
-
-  if matches!(flags.config_flag, ConfigFlag::Discover)
-    && cli_options.workspace().deno_jsons().next().is_some()
-  {
-    log::warn!(
-      "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
-      crate::colors::yellow("Warning")
-    );
   }
-
-  let bin_name_resolver = factory.bin_name_resolver()?;
-
-  // create the install shim
-  create_install_shim(
-    &bin_name_resolver,
-    cli_options.initial_cwd(),
-    &flags,
-    install_flags_global,
-  )
-  .await
+  Ok(())
 }
 
 async fn create_install_shim(
   bin_name_resolver: &BinNameResolver<'_>,
   cwd: &Path,
   flags: &Flags,
-  install_flags_global: InstallFlagsGlobal,
+  install_flags_global: &InstallFlagsGlobal,
+  module_url: &str,
 ) -> Result<(), AnyError> {
-  let shim_data =
-    resolve_shim_data(bin_name_resolver, cwd, flags, &install_flags_global)
-      .await?;
+  let shim_data = resolve_shim_data(
+    bin_name_resolver,
+    cwd,
+    flags,
+    install_flags_global,
+    module_url,
+  )
+  .await?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -953,13 +962,13 @@ async fn resolve_shim_data(
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
+  module_url: &str,
 ) -> Result<ShimData, AnyError> {
   let installation_dir =
     get_installer_bin_dir(cwd, install_flags_global.root.as_deref())?;
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags_global.module_url, cwd)?;
-
+  let module_url = resolve_url_or_path(module_url, cwd)?;
   let name = if install_flags_global.name.is_some() {
     install_flags_global.name.clone()
   } else {
@@ -1182,8 +1191,14 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    super::create_install_shim(&resolver, &cwd, flags, install_flags_global)
-      .await
+    super::create_install_shim(
+      &resolver,
+      &cwd,
+      flags,
+      &install_flags_global,
+      &install_flags_global.module_urls[0],
+    )
+    .await
   }
 
   async fn resolve_shim_data(
@@ -1196,7 +1211,14 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    super::resolve_shim_data(&resolver, &cwd, flags, install_flags_global).await
+    super::resolve_shim_data(
+      &resolver,
+      &cwd,
+      flags,
+      install_flags_global,
+      &install_flags_global.args[0],
+    )
+    .await
   }
 
   #[tokio::test]
@@ -1208,7 +1230,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1244,7 +1266,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1266,7 +1288,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Default::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1294,7 +1316,7 @@ mod tests {
         ..Default::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1322,7 +1344,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/subdir/main.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/subdir/main.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1345,8 +1367,10 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
-          .to_string(),
+        module_urls: vec![
+          "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts]"
+            .to_string(),
+        ],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1372,7 +1396,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1403,7 +1427,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1439,7 +1463,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1471,7 +1495,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1504,7 +1528,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "npm:cowsay".to_string(),
+        module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
         root: Some(temp_dir.to_string_lossy().into_owned()),
@@ -1541,7 +1565,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "npm:cowsay".to_string(),
+        module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1576,7 +1600,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: local_module_str.to_string(),
+        module_urls: vec![local_module_str.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1605,7 +1629,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1625,7 +1649,7 @@ mod tests {
     let no_force_result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()], // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1648,7 +1672,7 @@ mod tests {
     let force_result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()], // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1678,7 +1702,7 @@ mod tests {
         ..Flags::default()
       },
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1707,7 +1731,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1747,7 +1771,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: local_module_str.to_string(),
+        module_urls: vec![local_module_str.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1792,7 +1816,7 @@ mod tests {
         ..Flags::default()
       },
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1834,7 +1858,7 @@ mod tests {
     let result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: file_module_string.to_string(),
+        module_urls: vec![file_module_string.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
