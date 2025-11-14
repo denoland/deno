@@ -529,6 +529,12 @@ pub async fn upgrade(
     return Ok(());
   };
 
+  let banner_handle = spawn_banner_task(
+    &selected_version_to_upgrade.version_or_hash,
+    selected_version_to_upgrade.release_channel,
+    http_client_provider.get_or_create()?,
+  );
+
   let download_url = get_download_url(
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
@@ -603,6 +609,10 @@ pub async fn upgrade(
       &client,
     )
     .await;
+  }
+
+  if let Ok(Some(text)) = banner_handle.await {
+    log::info!("\n{}\n", text);
   }
 
   drop(temp_dir); // delete the temp dir
@@ -879,6 +889,41 @@ fn get_download_url(
       download_url
     )
   })
+}
+
+fn spawn_banner_task(
+  version: &str,
+  release_channel: ReleaseChannel,
+  client: HttpClient,
+) -> deno_core::unsync::JoinHandle<Option<String>> {
+  let banner_url = get_banner_url(version, release_channel);
+  deno_core::unsync::spawn(async move {
+    let banner_url = banner_url?;
+    tokio::select! {
+      result = client.download_text(banner_url) => {
+        result.ok()
+      }
+      _ = tokio::time::sleep(Duration::from_secs(5)) => {
+        None
+      }
+    }
+  })
+}
+
+fn get_banner_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Option<Url> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
+    }
+    ReleaseChannel::Rc | ReleaseChannel::Lts | ReleaseChannel::Canary => {
+      return None;
+    }
+  };
+
+  Url::parse(&download_url).ok()
 }
 
 async fn download_package(
