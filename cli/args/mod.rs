@@ -57,7 +57,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 pub use flags::*;
-use indexmap::IndexSet;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -636,26 +635,6 @@ impl CliOptions {
 
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
     self.flags.env_file.as_ref()
-  }
-
-  /// Returns preload/import modules and require modules
-  pub fn all_preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
-    if self.flags.preload.is_empty() && self.flags.require.is_empty() {
-      return Ok(vec![]);
-    }
-
-    let mut modules = IndexSet::new();
-    for preload_specifier in self.flags.preload.iter() {
-      modules
-        .insert(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
-    }
-
-    for require_specifier in self.flags.require.iter() {
-      modules
-        .insert(resolve_url_or_path(require_specifier, self.initial_cwd())?);
-    }
-
-    Ok(modules.into_iter().collect())
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {

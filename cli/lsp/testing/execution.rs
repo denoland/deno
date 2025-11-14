@@ -323,6 +323,8 @@ impl TestRun {
             specifier,
             // Executing tests in the LSP currently doesn't support preload option
             vec![],
+            // Executing tests in the LSP currently doesn't support require option
+            vec![],
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
