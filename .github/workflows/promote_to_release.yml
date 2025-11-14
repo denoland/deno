@@ -45,6 +45,10 @@ jobs:
           Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
 
+      - name: Remove signature for Windows
+        run: |
+          signtool remove /s deno.exe
+
       - name: Run patchver for Windows
         run: |
           deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
@@ -61,7 +65,6 @@ jobs:
         uses: azure/trusted-signing-action@v0
         with:
           cache-dependencies: false
-          append-signature: true
           endpoint: https://eus.codesigning.azure.net/
           trusted-signing-account-name: deno-cli-code-signing
           certificate-profile-name: deno-cli-code-signing-cert
