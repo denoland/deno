@@ -4789,7 +4789,9 @@ fn require_arg() -> Arg {
     .long("require")
     .value_name("FILE")
     .action(ArgAction::Append)
-    .help("A list of CommonJS modules that will be executed before the main module")
+    .help(
+      "A list of CommonJS modules that will be executed before the main module",
+    )
     .value_hint(ValueHint::FilePath)
 }
 

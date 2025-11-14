@@ -1083,7 +1083,7 @@ pub async fn run(
     Err(_) => main_module,
   };
 
-  let mut preload_modules = metadata
+  let preload_modules = metadata
     .preload_modules
     .iter()
     .map(|key| root_dir_url.join(key).unwrap())
@@ -1095,13 +1095,12 @@ pub async fn run(
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
 
-  preload_modules.extend(require_modules);
-
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
     preload_modules,
+    require_modules,
   )?;
 
   let exit_code = worker.run().await?;
