@@ -5881,7 +5881,10 @@ fn install_parse(
     if module_urls.len() > 1 && name.is_some() {
       return Err(clap::Error::raw(
         clap::error::ErrorKind::InvalidValue,
-        "Cannot specify --name when providing multiple packages to install.",
+        format!(
+          "Cannot specify --name when providing multiple packages to install ({}).",
+          module_urls.join(", ")
+        ),
       ));
     }
 

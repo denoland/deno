@@ -294,7 +294,7 @@ fn installer_test_remote_module_run() {
   let bin_dir = root_dir.join("bin");
   context
     .new_command()
-    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts hello")
+    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts -- hello")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
