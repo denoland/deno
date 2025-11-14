@@ -1216,7 +1216,7 @@ mod tests {
       &cwd,
       flags,
       install_flags_global,
-      &install_flags_global.args[0],
+      &install_flags_global.module_urls[0],
     )
     .await
   }
@@ -1368,7 +1368,7 @@ mod tests {
       &Flags::default(),
       &InstallFlagsGlobal {
         module_urls: vec![
-          "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts]"
+          "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
             .to_string(),
         ],
         args: vec![],
