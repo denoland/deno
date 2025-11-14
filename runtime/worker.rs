@@ -538,6 +538,7 @@ impl MainWorker {
           options.bootstrap.location.clone(),
           services.broadcast_channel.clone(),
         ),
+        deno_geometry::deno_geometry::args(true),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
             user_agent: options.bootstrap.user_agent.clone(),
@@ -1056,6 +1057,7 @@ fn common_extensions<
       InMemoryBroadcastChannel,
     >(),
     deno_webgpu::deno_webgpu::init(),
+    deno_geometry::deno_geometry::lazy_init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
     deno_cache::deno_cache::lazy_init(),

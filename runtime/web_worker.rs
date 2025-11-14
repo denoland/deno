@@ -528,6 +528,7 @@ impl WebWorker {
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
+      deno_geometry::deno_geometry::init(false),
       deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
