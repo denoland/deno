@@ -18,7 +18,7 @@ jobs:
   # Handle Windows binary patching and re-signing in a separate job
   promote-to-release-windows:
     name: Promote Windows to Release
-    runs-on: windows-latest
+    runs-on: windows-2022
     if: github.repository == 'denoland/deno'
     permissions:
       contents: write
