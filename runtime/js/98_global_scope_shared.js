@@ -52,6 +52,7 @@ const windowOrWorkerGlobalScope = {
   AbortController: core.propNonEnumerable(abortSignal.AbortController),
   AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
   Blob: core.propNonEnumerable(file.Blob),
+  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
   ByteLengthQueuingStrategy: core.propNonEnumerable(
     streams.ByteLengthQueuingStrategy,
   ),
@@ -303,9 +304,6 @@ const windowOrWorkerGlobalScope = {
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
-unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
-  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
-};
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
   WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
