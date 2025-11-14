@@ -1,0 +1,3 @@
+[WILDCARD]error: Uncaught[WILDCARD] Error: Test error from inline sourcemap
+[WILDCARD]at throwError ([WILDCARD]test.ts:3:[WILDCARD]
+[WILDCARD]at [WILDCARD]test.ts:6:[WILDCARD]

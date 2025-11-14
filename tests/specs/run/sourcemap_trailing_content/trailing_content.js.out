@@ -1,0 +1,3 @@
+[WILDCARD]error: Uncaught[WILDCARD] Error: Test error with trailing content
+[WILDCARD]at throwError ([WILDCARD]test.ts:4:[WILDCARD]
+[WILDCARD]at [WILDCARD]test.ts:6:[WILDCARD]

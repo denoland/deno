@@ -1,0 +1,5 @@
+[WILDCARD]error: Uncaught[WILDCARD] Error: Test error with external sourcemap
+[WILDCARD]throw new Error("Test error with external sourcemap");
+[WILDCARD]^
+[WILDCARD]at throwError ([WILDCARD]original.ts:3:[WILDCARD]
+[WILDCARD]at [WILDCARD]original.ts:6:[WILDCARD]

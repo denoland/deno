@@ -1,0 +1,3 @@
+[WILDCARD]error: Uncaught[WILDCARD] Error: Test error without sourcemap
+[WILDCARD]at throwError ([WILDCARD]no_sourcemap.js:3:[WILDCARD]
+[WILDCARD]at [WILDCARD]no_sourcemap.js:6:[WILDCARD]
