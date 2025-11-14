@@ -752,19 +752,18 @@ const ci = {
           },
         },
         {
-          name: "Upload PR artifact (linux)",
+          name: "Upload PR artifact (macos)",
           if: [
+            `matrix.os == 'macos' &&`,
             "matrix.job == 'test' &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno'",
           ].join("\n"),
           uses: "actions/upload-artifact@v4",
           with: {
             name:
-              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/release/deno",
+              "denort-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+            path: "target/release/denort",
           },
         },
         {

@@ -421,17 +421,16 @@ jobs:
           du -h target/release/deno
         env:
           NO_COLOR: 1
-      - name: Upload PR artifact (linux)
+      - name: Upload PR artifact (macos)
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
-          matrix.profile == 'release' && (matrix.use_sysroot ||
-          (github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/')))))
+          !(matrix.skip) && (matrix.os == 'macos' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno')
         uses: actions/upload-artifact@v4
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
-          path: target/release/deno
+          name: 'denort-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          path: target/release/denort
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
