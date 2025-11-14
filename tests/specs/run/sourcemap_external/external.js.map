@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["original.ts"],
+  "sourcesContent": ["// Original TypeScript file\nfunction throwError() {\n  throw new Error(\"Test error with external sourcemap\");\n}\n\nthrowError();\n"],
+  "names": [],
+  "mappings": "AAAA;AACA;AACA;AACA;AACA;AACA"
+}
