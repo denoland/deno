@@ -24,7 +24,7 @@ pub fn handle_wasm_streaming<'a>(
     }
     Err(e) => {
       // 2.8
-      let err = v8::String::new(scope, &e.to_string()).unwrap();
+      let err = deno_core::error::to_v8_error(scope, &e);
       wasm_streaming.abort(Some(err.into()));
       return;
     }
@@ -79,6 +79,7 @@ pub fn handle_wasm_streaming<'a>(
       wasm_streaming.on_bytes_received(&view[..bytes]);
     }
 
+    let _ = state.borrow_mut().resource_table.take_any(rid);
     /* Spawn a task on JS loop to finish the streaming compilation */
     state
       .borrow()
@@ -107,7 +108,7 @@ pub fn compile_response<'a>(
     let content_type = call_method(scope, headers, "get", "Content-Type")?;
 
     if content_type.to_lowercase() != "application/wasm" {
-      return Err(JsErrorBox::type_error("Response is not a wasm file."));
+      return Err(JsErrorBox::type_error("Invalid WebAssembly content type."));
     }
   }
 
