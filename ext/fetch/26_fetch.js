@@ -587,7 +587,9 @@ function handleWasmStreaming(source, rid) {
         streamRid = resourceBacking.rid;
         autoClose = resourceBacking.autoClose;
       } else {
-        streamRid = resourceForReadableStream(stream);
+        streamRid = resourceForReadableStream(
+          innerResponse.body?.stream,
+        );
         autoClose = true;
       }
 
