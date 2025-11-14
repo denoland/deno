@@ -642,12 +642,25 @@ impl CliOptions {
       return Ok(vec![]);
     }
 
-    let mut preload = Vec::with_capacity(self.flags.preload.len());
+    let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      preload.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
     }
 
-    Ok(preload)
+    Ok(modules)
+  }
+
+  pub fn require_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.require.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut require = Vec::with_capacity(self.flags.require.len());
+    for require_specifier in self.flags.require.iter() {
+      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+    }
+
+    Ok(require)
   }
 
   fn resolve_main_module_with_resolver_if_bare(
