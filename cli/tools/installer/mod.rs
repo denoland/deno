@@ -826,19 +826,35 @@ async fn install_global(
     factory.npm_version_resolver()?.clone(),
   ));
 
-  for module_url in &install_flags_global.module_urls {
+  for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
     let entry_text = module_url;
     if !cli_options.initial_cwd().join(entry_text).exists() {
+      // provide a helpful error message for users migrating from Deno < 3.0
+      if i == 1
+        && install_flags_global.args.is_empty()
+        && Url::parse(entry_text).is_err()
+      {
+        bail!(
+          concat!(
+            "{} is missing a prefix. Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
+            "Did you mean `deno install -g {} -- {}`? Or maybe provide a `jsr:` or `npm:` prefix?",
+          ),
+          entry_text,
+          &install_flags_global.module_urls[0],
+          install_flags_global.module_urls[1..].join(" "),
+        )
+      }
       // check for package requirement missing prefix
       if let Ok(Err(package_req)) =
         super::pm::AddRmPackageReq::parse(entry_text, None)
       {
-        if jsr_resolver
-          .req_to_nv(&package_req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
+        if package_req.name.starts_with("@")
+          && jsr_resolver
+            .req_to_nv(&package_req)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
         {
           bail!(
             "{entry_text} is missing a prefix. Did you mean `{}`?",

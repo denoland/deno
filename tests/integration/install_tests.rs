@@ -453,3 +453,24 @@ fn installer_multiple() {
     assert!(bin_file_path.exists());
   }
 }
+
+#[test]
+fn installer_second_module_looks_like_script_argument() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  // in Deno < 3.0, we didn't require `--` before script arguments, so we try to provide a helpful
+  // error message for people migrating
+  context
+    .new_command()
+    .args("install --root ./root -g http://localhost:4545/echo.ts non_existent")
+    .run()
+    .assert_matches_text(concat!(
+      "[WILDCARD]Successfully installed echo[WILDCARD]error: non_existent is missing a prefix. ",
+      "Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
+      "Did you mean `deno install -g http://localhost:4545/echo.ts -- non_existent`? ",
+      "Or maybe provide a `jsr:` or `npm:` prefix?\n"
+    ))
+    .assert_exit_code(1);
+}
