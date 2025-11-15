@@ -402,6 +402,16 @@ jobs:
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
+      - name: Upload PR artifact (macos)
+        if: |-
+          !(matrix.skip) && (matrix.os == 'macos' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno')
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'denort-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          path: target/release/denort
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'
         run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
@@ -421,16 +431,6 @@ jobs:
           du -h target/release/deno
         env:
           NO_COLOR: 1
-      - name: Upload PR artifact (macos)
-        if: |-
-          !(matrix.skip) && (matrix.os == 'macos' &&
-          matrix.job == 'test' &&
-          matrix.profile == 'release' &&
-          github.repository == 'denoland/deno')
-        uses: actions/upload-artifact@v4
-        with:
-          name: 'denort-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
-          path: target/release/denort
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
