@@ -55,6 +55,13 @@ jobs:
         run: |
           deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
 
+      - name: Rename binaries
+        run: |
+          Remove-File deno.exe
+          Remove-File denort.exe
+          Rename-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe deno.exe
+          Rename-Item denort-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe denort.exe
+
       - name: Authenticate with Azure
         uses: azure/login@v1
         with:
@@ -73,7 +80,7 @@ jobs:
           trusted-signing-account-name: deno-cli-code-signing
           certificate-profile-name: deno-cli-code-signing-cert
           files-folder: .
-          files-folder-filter: deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
+          files-folder-filter: deno.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -84,6 +91,11 @@ jobs:
           exclude-visual-studio-credential: true
           exclude-visual-studio-code-credential: true
           exclude-azure-cli-credential: false
+
+      - name: Rename binaries
+        run: |
+          Rename-Item deno.exe deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
+          Rename-Item denort.exe denort-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
 
       - name: Verify signature
         shell: pwsh
