@@ -2435,7 +2435,7 @@
       "Event-dispatch-single-activation-behavior.html": false,
       "Event-dispatch-target-moved.html": false,
       "Event-dispatch-target-removed.html": false,
-      "Event-dispatch-throwing.html": true,
+      "Event-dispatch-throwing.html": false,
       "Event-init-while-dispatching.html": false,
       "Event-initEvent.html": false,
       "Event-propagation.html": false,
