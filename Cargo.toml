@@ -183,12 +183,10 @@ hickory-server = "0.25.2"
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
-http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
 hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
-hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
 ignore = "0.4"
 import_map = { version = "0.24.0", features = ["ext"] }

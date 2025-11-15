@@ -8,6 +8,7 @@ use std::io;
 use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -26,8 +27,11 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::external;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::futures::future::Shared;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
@@ -157,10 +161,10 @@ pub enum HttpNextError {
   #[error(transparent)]
   Resource(#[from] deno_core::error::ResourceError),
   #[class(inherit)]
-  #[error("{0}")]
+  #[error(transparent)]
   Io(#[from] io::Error),
   #[class("Http")]
-  #[error("{0}")]
+  #[error(transparent)]
   Hyper(#[from] hyper::Error),
   #[class(inherit)]
   #[error(transparent)]
@@ -180,7 +184,7 @@ pub enum HttpNextError {
   #[error(transparent)]
   UpgradeUnavailable(#[from] crate::service::UpgradeUnavailableError),
   #[class(inherit)]
-  #[error("{0}")]
+  #[error(transparent)]
   Other(
     #[from]
     #[inherit]
@@ -192,6 +196,9 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("raw upgrade failed")]
   RawUpgradeFailed,
+  #[class(inherit)]
+  #[error(transparent)]
+  Hack(Arc<HttpNextError>),
 }
 
 #[op2(fast)]
@@ -574,16 +581,15 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted =
-    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
-      matches!(
-        r,
-        Ok((
-          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-          _
-        ))
-      )
-    });
+  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
+    matches!(
+      r,
+      Ok((
+        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+        _
+      ))
+    )
+  });
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
@@ -766,7 +772,80 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  Ok(http.response_body_finished().await)
+  Ok(http.response_body_finished().await.unwrap_or(false))
+}
+
+#[op2(async)]
+pub async fn op_http_set_response_body_legacy(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+  #[smi] join_handle_rid: ResourceId,
+  status: u16,
+  #[serde] static_body: Option<StringOrBuffer>,
+  #[smi] stream_rid: ResourceId,
+  stream_auto_close: bool,
+) -> Result<bool, HttpNextError> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_body_resource") };
+
+  let join_handle = state
+    .borrow_mut()
+    .resource_table
+    .get::<HttpJoinHandle>(join_handle_rid)?;
+
+  *http.needs_close_after_finish() = true;
+
+  match static_body {
+    Some(StringOrBuffer::String(s)) if !s.is_empty() => {
+      set_response(http.clone(), Some(s.len()), status, false, |compression| {
+        ResponseBytesInner::from_vec(compression, s.into_bytes())
+      });
+    }
+    Some(StringOrBuffer::Buffer(b)) if !b.is_empty() => {
+      set_response(http.clone(), Some(b.len()), status, false, |compression| {
+        ResponseBytesInner::from_vec(compression, b.to_vec())
+      });
+    }
+    None if stream_rid != 0 => {
+      let resource = {
+        let mut state = state.borrow_mut();
+        if stream_auto_close {
+          state.resource_table.take_any(stream_rid)?
+        } else {
+          state.resource_table.get_any(stream_rid)?
+        }
+      };
+
+      set_response(
+        http.clone(),
+        resource.size_hint().1.map(|s| s as usize),
+        status,
+        true,
+        move |compression| {
+          ResponseBytesInner::from_resource(
+            compression,
+            resource,
+            stream_auto_close,
+          )
+        },
+      );
+    }
+    _ => {
+      set_promise_complete(http.clone(), status);
+    }
+  }
+
+  tokio::select! {
+    biased;
+    consumed = http.response_body_finished() => {
+      Ok(consumed?)
+    }
+    res = join_handle.closed() => {
+      res?;
+      Ok(false)
+    }
+  }
 }
 
 #[op2(fast)]
@@ -1017,39 +1096,49 @@ struct HttpLifetime {
   server_state: SignallingRc<HttpServerState>,
 }
 
-struct HttpJoinHandle {
-  join_handle: AsyncRefCell<Option<JoinHandle<Result<(), HttpNextError>>>>,
-  connection_cancel_handle: Rc<CancelHandle>,
-  listen_cancel_handle: Rc<CancelHandle>,
-  rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
-  server_state: SignallingRc<HttpServerState>,
-}
-
-impl HttpJoinHandle {
-  fn new(rx: tokio::sync::mpsc::Receiver<Rc<HttpRecord>>) -> Self {
+impl HttpLifetime {
+  fn new() -> Self {
     Self {
-      join_handle: AsyncRefCell::new(None),
       connection_cancel_handle: CancelHandle::new_rc(),
       listen_cancel_handle: CancelHandle::new_rc(),
-      rx: AsyncRefCell::new(rx),
       server_state: HttpServerState::new(),
     }
   }
+}
 
-  fn lifetime(self: &Rc<Self>) -> HttpLifetime {
-    HttpLifetime {
-      connection_cancel_handle: self.connection_cancel_handle.clone(),
-      listen_cancel_handle: self.listen_cancel_handle.clone(),
-      server_state: self.server_state.clone(),
+struct HttpJoinHandle {
+  #[allow(clippy::type_complexity)]
+  join_handle:
+    Shared<Pin<Box<dyn Future<Output = Result<(), Arc<HttpNextError>>>>>>,
+  lifetime: HttpLifetime,
+  rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
+}
+
+impl HttpJoinHandle {
+  fn new(
+    lifetime: HttpLifetime,
+    rx: tokio::sync::mpsc::Receiver<Rc<HttpRecord>>,
+    handle: JoinHandle<Result<(), HttpNextError>>,
+  ) -> Self {
+    let handle: Pin<Box<dyn Future<Output = _>>> =
+      Box::pin(async move { handle.await.unwrap().map_err(Arc::new) });
+    Self {
+      join_handle: handle.shared(),
+      lifetime,
+      rx: AsyncRefCell::new(rx),
     }
   }
 
   fn connection_cancel_handle(self: &Rc<Self>) -> Rc<CancelHandle> {
-    self.connection_cancel_handle.clone()
+    self.lifetime.connection_cancel_handle.clone()
   }
 
   fn listen_cancel_handle(self: &Rc<Self>) -> Rc<CancelHandle> {
-    self.listen_cancel_handle.clone()
+    self.lifetime.listen_cancel_handle.clone()
+  }
+
+  async fn closed(&self) -> Result<(), HttpNextError> {
+    self.join_handle.clone().await.map_err(HttpNextError::Hack)
   }
 }
 
@@ -1060,16 +1149,16 @@ impl Resource for HttpJoinHandle {
 
   fn close(self: Rc<Self>) {
     // During a close operation, we cancel everything
-    self.connection_cancel_handle.cancel();
-    self.listen_cancel_handle.cancel();
+    self.lifetime.connection_cancel_handle.cancel();
+    self.lifetime.listen_cancel_handle.cancel();
   }
 }
 
 impl Drop for HttpJoinHandle {
   fn drop(&mut self) {
     // In some cases we may be dropped without closing, so let's cancel everything on the way out
-    self.connection_cancel_handle.cancel();
-    self.listen_cancel_handle.cancel();
+    self.lifetime.connection_cancel_handle.cancel();
+    self.lifetime.listen_cancel_handle.cancel();
   }
 }
 
@@ -1087,39 +1176,37 @@ where
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
+  let lifetime = HttpLifetime::new();
   let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
-  let listen_cancel_clone = resource.listen_cancel_handle();
-
-  let lifetime = resource.lifetime();
 
   let options = {
     let state = state.borrow();
     *state.borrow::<Options>()
   };
 
-  let listen_properties_clone: HttpListenProperties = listen_properties.clone();
-  let handle = spawn(async move {
-    loop {
-      let conn = HTTP::accept_connection_from_listener(&listener)
-        .try_or_cancel(listen_cancel_clone.clone())
-        .await?;
-      serve_http_on::<HTTP>(
-        conn,
-        &listen_properties_clone,
-        lifetime.clone(),
-        tx.clone(),
-        options,
-      );
+  let handle = spawn({
+    let lifetime = lifetime.clone();
+    let listen_properties = listen_properties.clone();
+    async move {
+      loop {
+        let conn = HTTP::accept_connection_from_listener(&listener)
+          .try_or_cancel(lifetime.listen_cancel_handle.clone())
+          .await?;
+        serve_http_on::<HTTP>(
+          conn,
+          &listen_properties,
+          lifetime.clone(),
+          tx.clone(),
+          options,
+        );
+      }
+      #[allow(unreachable_code)]
+      Ok::<_, HttpNextError>(())
     }
-    #[allow(unreachable_code)]
-    Ok::<_, HttpNextError>(())
   });
 
-  // Set the handle after we start the future
-  *RcRef::map(&resource, |this| &this.join_handle)
-    .try_borrow_mut()
-    .unwrap() = Some(handle);
+  let resource: Rc<HttpJoinHandle> =
+    Rc::new(HttpJoinHandle::new(lifetime, rx, handle));
 
   Ok((
     state.borrow_mut().resource_table.add_rc(resource),
@@ -1143,8 +1230,8 @@ where
 
   let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
+  let lifetime = HttpLifetime::new();
   let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
 
   let options = {
     let state = state.borrow();
@@ -1154,15 +1241,13 @@ where
   let handle = serve_http_on::<HTTP>(
     connection,
     &listen_properties,
-    resource.lifetime(),
+    lifetime.clone(),
     tx,
     options,
   );
 
-  // Set the handle after we start the future
-  *RcRef::map(&resource, |this| &this.join_handle)
-    .try_borrow_mut()
-    .unwrap() = Some(handle);
+  let resource: Rc<HttpJoinHandle> =
+    Rc::new(HttpJoinHandle::new(lifetime, rx, handle));
 
   Ok((
     state.borrow_mut().resource_table.add_rc(resource),
@@ -1227,12 +1312,7 @@ pub async fn op_http_wait(
   }
 
   // No - we're shutting down
-  let res = RcRef::map(join_handle, |this| &this.join_handle)
-    .borrow_mut()
-    .await
-    .take()
-    .unwrap()
-    .await?;
+  let res = join_handle.closed().await;
 
   // Filter out shutdown (ENOTCONN) errors
   if let Err(err) = res {
@@ -1336,7 +1416,7 @@ pub async fn op_http_close(
     http_general_trace!("graceful shutdown");
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
-    poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
+    poll_fn(|cx| join_handle.lifetime.server_state.poll_complete(cx)).await;
   } else {
     http_general_trace!("forceful shutdown");
     // In a forceful shutdown, we close everything
@@ -1348,12 +1428,7 @@ pub async fn op_http_close(
 
   http_general_trace!("awaiting shutdown");
 
-  let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
-    .borrow_mut()
-    .await;
-  if let Some(join_handle) = join_handle.take() {
-    join_handle.await??;
-  }
+  join_handle.closed().await?;
 
   Ok(())
 }

@@ -998,7 +998,7 @@ function serveHttpOn(context, addr, callback) {
       let req;
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
-        // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
+        // a synchronous, non-blocking API that returns null if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
           PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
         }
@@ -1025,7 +1025,7 @@ function serveHttpOn(context, addr, callback) {
 
     try {
       if (!context.closing && !context.closed) {
-        context.closing = await op_http_close(rid, false);
+        context.closing = op_http_close(rid, false);
         context.close();
       }
 
@@ -1164,6 +1164,8 @@ function registerDeclarativeServer(exports) {
 
 export {
   addTrailers,
+  CallbackContext,
+  InnerRequest,
   registerDeclarativeServer,
   serve,
   serveHttpOnConnection,

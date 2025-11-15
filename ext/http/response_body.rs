@@ -16,12 +16,11 @@ use deno_core::Resource;
 use deno_core::futures::FutureExt;
 use deno_error::JsErrorBox;
 use flate2::write::GzEncoder;
-use hyper::body::Frame;
 use hyper::body::SizeHint;
 use pin_project::pin_project;
 
-/// Simplification for nested types we use for our streams. We provide a way to convert from
-/// this type into Hyper's body [`Frame`].
+/// Simplification for nested types we use for our streams.
+#[derive(Debug)]
 pub enum ResponseStreamResult {
   /// Stream is over.
   EndOfStream,
@@ -33,18 +32,6 @@ pub enum ResponseStreamResult {
   NoData,
   /// Stream failed.
   Error(JsErrorBox),
-}
-
-impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, JsErrorBox>> {
-  fn from(value: ResponseStreamResult) -> Self {
-    match value {
-      ResponseStreamResult::EndOfStream => None,
-      ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
-      ResponseStreamResult::Error(err) => Some(Err(err)),
-      // This result should be handled by retrying
-      ResponseStreamResult::NoData => unimplemented!(),
-    }
-  }
 }
 
 pub trait PollFrame: Unpin {
@@ -86,7 +73,7 @@ pub enum ResponseBytesInner {
   #[default]
   Empty,
   /// A completed stream.
-  Done,
+  Done(Option<JsErrorBox>),
   /// A static buffer of bytes, sent in one fell swoop.
   Bytes(BufView),
   /// An uncompressed stream.
@@ -100,7 +87,7 @@ pub enum ResponseBytesInner {
 impl std::fmt::Debug for ResponseBytesInner {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::Done => f.write_str("Done"),
+      Self::Done(_) => f.write_str("Done"),
       Self::Empty => f.write_str("Empty"),
       Self::Bytes(..) => f.write_str("Bytes"),
       Self::UncompressedStream(..) => f.write_str("Uncompressed"),
@@ -113,7 +100,7 @@ impl std::fmt::Debug for ResponseBytesInner {
 impl ResponseBytesInner {
   pub fn abort(self) {
     match self {
-      Self::Done | Self::Empty | Self::Bytes(..) => {}
+      Self::Done(_) | Self::Empty | Self::Bytes(..) => {}
       Self::BrotliStream(stm) => stm.abort(),
       Self::GZipStream(stm) => stm.abort(),
       Self::UncompressedStream(stm) => stm.abort(),
@@ -122,7 +109,7 @@ impl ResponseBytesInner {
 
   pub fn size_hint(&self) -> SizeHint {
     match self {
-      Self::Done => SizeHint::with_exact(0),
+      Self::Done(_) => SizeHint::with_exact(0),
       Self::Empty => SizeHint::with_exact(0),
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
       Self::UncompressedStream(res) => res.size_hint(),
@@ -198,8 +185,15 @@ impl ResponseBytesInner {
   }
 
   /// Did we complete this response successfully?
-  pub fn is_complete(&self) -> bool {
-    matches!(self, ResponseBytesInner::Done | ResponseBytesInner::Empty)
+  pub fn completion(&mut self) -> Result<bool, JsErrorBox> {
+    match self {
+      ResponseBytesInner::Done(e) => match e.take() {
+        Some(e) => Err(e),
+        None => Ok(true),
+      },
+      ResponseBytesInner::Empty => Ok(true),
+      _ => Ok(false),
+    }
   }
 }
 

@@ -65,6 +65,7 @@ const {
   SafeFinalizationRegistry,
   SafePromiseAll,
   SafeWeakMap,
+  SafeWeakRef,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype,
   String,
@@ -818,6 +819,15 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
   }
 }
 
+/** @type Record<string, WeakRef<Error>> */
+const REGISTERED_ERRORS = { __proto__: null };
+const ERROR_REGISTRY = new SafeFinalizationRegistry((h) => {
+  delete REGISTERED_ERRORS[h];
+});
+core.registerErrorBuilder("JsValueError", (message) => {
+  return REGISTERED_ERRORS[message].deref();
+});
+
 /**
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
@@ -850,9 +860,14 @@ async function readableStreamReadFn(reader, sink) {
         promise.resolve(false);
       },
       errorSteps(error) {
+        const key = crypto.randomUUID();
+        ERROR_REGISTRY.register(error, key);
+        REGISTERED_ERRORS[key] = new SafeWeakRef(error);
         const success = op_readable_stream_resource_write_error(
           sink.external,
-          extractStringErrorFromError(error),
+          // extractStringErrorFromError(error),
+          key,
+          error,
         );
         // We don't cancel the reader if there was an error reading. We'll let the downstream
         // consumer close the resource after it receives the error.

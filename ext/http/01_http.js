@@ -7,42 +7,30 @@ const {
   internalRidSymbol,
 } = core;
 import {
-  op_http_accept,
-  op_http_headers,
-  op_http_shutdown,
-  op_http_start,
-  op_http_upgrade_websocket,
-  op_http_write,
-  op_http_write_headers,
-  op_http_write_resource,
+  op_http_close_after_finish,
+  op_http_serve_on,
+  op_http_set_promise_complete,
+  op_http_set_response_body_legacy,
+  op_http_set_response_header,
+  op_http_set_response_headers,
+  op_http_try_wait,
+  op_http_wait,
 } from "ext:core/ops";
 const {
   ObjectPrototypeIsPrototypeOf,
-  SafeSet,
-  SafeSetIterator,
-  SetPrototypeAdd,
-  SetPrototypeDelete,
-  StringPrototypeIncludes,
-  Symbol,
   SymbolAsyncIterator,
   SymbolDispose,
+  StringPrototypeIncludes,
+  Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import {
-  abortRequest,
-  fromInnerRequest,
-  newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+import { fromInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -52,54 +40,36 @@ import {
   _rid,
   _role,
   _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
   getReadableStreamResourceBacking,
-  readableStreamClose,
-  readableStreamForRid,
   ReadableStreamPrototype,
+  resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
+import { CallbackContext, InnerRequest } from "./00_serve.ts";
 
 const connErrorSymbol = Symbol("connError");
 
-/** @type {(self: HttpConn, rid: number) => boolean} */
-let deleteManagedResource;
-
 class HttpConn {
-  #rid = 0;
-  #closed = false;
-  #remoteAddr;
-  #localAddr;
+  #context;
 
-  // This set holds resource ids of resources
-  // that were created during lifecycle of this request.
-  // When the connection is closed these resources should be closed
-  // as well.
-  #managedResources = new SafeSet();
-
-  static {
-    deleteManagedResource = (self, rid) =>
-      SetPrototypeDelete(self.#managedResources, rid);
-  }
-
-  constructor(rid, remoteAddr, localAddr) {
-    this.#rid = rid;
-    this.#remoteAddr = remoteAddr;
-    this.#localAddr = localAddr;
+  constructor(context) {
+    this.#context = context;
   }
 
   /** @returns {number} */
   get rid() {
-    return this.#rid;
+    return this.#context.serverRid;
   }
 
   /** @returns {Promise<RequestEvent | null>} */
   async nextRequest() {
-    let nextRequest;
+    let req;
     try {
-      nextRequest = await op_http_accept(this.#rid);
+      req = op_http_try_wait(this.#context.serverRid);
+      if (req === null) {
+        req = await op_http_wait(this.#context.serverRid);
+      }
     } catch (error) {
       this.close();
       // A connection error seen here would cause disrupted responses to throw
@@ -115,48 +85,21 @@ class HttpConn {
       }
       throw error;
     }
-    if (nextRequest == null) {
-      // Work-around for servers (deno_std/http in particular) that call
-      // `nextRequest()` before upgrading a previous request which has a
-      // `connection: upgrade` header.
-      await null;
 
+    if (req === null) {
       this.close();
       return null;
     }
 
-    const { 0: readStreamRid, 1: writeStreamRid, 2: method, 3: url } =
-      nextRequest;
-    SetPrototypeAdd(this.#managedResources, readStreamRid);
-    SetPrototypeAdd(this.#managedResources, writeStreamRid);
-
-    /** @type {ReadableStream<Uint8Array> | undefined} */
-    let body = null;
-    // There might be a body, but we don't expose it for GET/HEAD requests.
-    // It will be closed automatically once the request has been handled and
-    // the response has been sent.
-    if (method !== "GET" && method !== "HEAD") {
-      body = readableStreamForRid(readStreamRid, false);
-    }
-
-    const innerRequest = newInnerRequest(
-      method,
-      url,
-      () => op_http_headers(readStreamRid),
-      body !== null ? new InnerBody(body) : null,
-      false,
-    );
-    const request = fromInnerRequest(
-      innerRequest,
-      "immutable",
-      false,
-    );
+    const innerRequest = new InnerRequest(req, this.#context);
+    const request = fromInnerRequest(innerRequest, "immutable");
+    innerRequest.request = request;
 
     const respondWith = createRespondWith(
       this,
-      request,
-      readStreamRid,
-      writeStreamRid,
+      this.#context,
+      req,
+      innerRequest,
     );
 
     return { request, respondWith };
@@ -164,22 +107,22 @@ class HttpConn {
 
   /** @returns {void} */
   close() {
-    if (!this.#closed) {
-      this.#closed = true;
-      core.tryClose(this.#rid);
-      for (const rid of new SafeSetIterator(this.#managedResources)) {
-        SetPrototypeDelete(this.#managedResources, rid);
-        core.tryClose(rid);
+    try {
+      this.#context.close();
+    } catch (error) {
+      if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+        return;
       }
+      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        return;
+      }
+
+      throw error;
     }
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.#rid);
-    for (const rid of new SafeSetIterator(this.#managedResources)) {
-      SetPrototypeDelete(this.#managedResources, rid);
-      core.tryClose(rid);
-    }
+    this.close();
   }
 
   [SymbolAsyncIterator]() {
@@ -195,208 +138,113 @@ class HttpConn {
   }
 }
 
-function createRespondWith(
-  httpConn,
-  request,
-  readStreamRid,
-  writeStreamRid,
-) {
-  return async function respondWith(resp) {
+function createRespondWith(httpConn, context, req, innerRequest) {
+  return async function respondWith(response) {
     try {
-      resp = await resp;
-      if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
+      response = await response;
+      if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, response))) {
         throw new TypeError(
           "First argument to 'respondWith' must be a Response or a promise resolving to a Response",
         );
       }
 
-      const innerResp = toInnerResponse(resp);
+      const inner = toInnerResponse(response);
 
-      // If response body length is known, it will be sent synchronously in a
-      // single op, in other case a "response body" resource will be created and
-      // we'll be streaming it.
-      /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
-      let respBody = null;
-      if (innerResp.body !== null) {
-        if (innerResp.body.unusable()) {
-          throw new TypeError("Body is unusable");
+      if (innerRequest?.upgraded) {
+        innerRequest.upgraded();
+        return;
+      }
+
+      if (context.closed) {
+        innerRequest?.close();
+        op_http_set_promise_complete(req, 503);
+        return;
+      }
+
+      const status = inner.status;
+      const headers = inner.headerList;
+      if (headers && headers.length > 0) {
+        if (headers.length == 1) {
+          op_http_set_response_header(req, headers[0][0], headers[0][1]);
+        } else {
+          op_http_set_response_headers(req, headers);
         }
+      }
+
+      let staticBody = null;
+      let streamRid = 0;
+      let streamAutoClose = false;
+      if (inner.body != null) {
+        const stream = inner.body.streamOrStatic;
+        const body = stream.body;
+        if (body !== undefined) {
+          stream.consumed = true;
+        }
+
         if (
-          ObjectPrototypeIsPrototypeOf(
-            ReadableStreamPrototype,
-            innerResp.body.streamOrStatic,
-          )
+          typeof body === "string" ||
+          TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array"
         ) {
-          if (
-            innerResp.body.length === null ||
-            ObjectPrototypeIsPrototypeOf(
-              BlobPrototype,
-              innerResp.body.source,
-            )
-          ) {
-            respBody = innerResp.body.stream;
+          staticBody = body;
+        } else {
+          if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
+            throw new TypeError("Invalid response");
+          }
+
+          const resourceBacking = getReadableStreamResourceBacking(stream);
+          if (resourceBacking) {
+            streamRid = resourceBacking.rid;
+            streamAutoClose = resourceBacking.autoClose;
           } else {
-            const reader = innerResp.body.stream.getReader();
-            const r1 = await reader.read();
-            if (r1.done) {
-              respBody = new Uint8Array(0);
-            } else {
-              respBody = r1.value;
-              const r2 = await reader.read();
-              if (!r2.done) throw new TypeError("Unreachable");
-            }
+            streamRid = resourceForReadableStream(stream);
+            streamAutoClose = true;
           }
-        } else {
-          innerResp.body.streamOrStatic.consumed = true;
-          respBody = innerResp.body.streamOrStatic.body;
         }
-      } else {
-        respBody = new Uint8Array(0);
       }
-      const isStreamingResponseBody = !(
-        typeof respBody === "string" ||
-        TypedArrayPrototypeGetSymbolToStringTag(respBody) === "Uint8Array"
-      );
+
       try {
-        await op_http_write_headers(
-          writeStreamRid,
-          innerResp.status ?? 200,
-          innerResp.headerList,
-          isStreamingResponseBody ? null : respBody,
+        const consumed = await op_http_set_response_body_legacy(
+          req,
+          context.serverRid,
+          status,
+          staticBody,
+          streamRid,
+          streamAutoClose,
         );
-      } catch (error) {
-        const connError = httpConn[connErrorSymbol];
-        if (
-          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-          connError != null
-        ) {
-          // deno-lint-ignore no-ex-assign
-          error = new connError.constructor(connError.message);
-        }
-        if (
-          respBody !== null &&
-          ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
-        ) {
-          await respBody.cancel(error);
-        }
-        throw error;
-      }
-
-      if (isStreamingResponseBody) {
-        let success = false;
-        if (
-          respBody === null ||
-          !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
-        ) {
-          throw new TypeError("Unreachable");
-        }
-        const resourceBacking = getReadableStreamResourceBacking(respBody);
-        let reader;
-        if (resourceBacking) {
-          if (respBody.locked) {
-            throw new TypeError("ReadableStream is locked");
-          }
-          reader = respBody.getReader(); // Acquire JS lock.
-          try {
-            await op_http_write_resource(
-              writeStreamRid,
-              resourceBacking.rid,
-            );
-            if (resourceBacking.autoClose) core.tryClose(resourceBacking.rid);
-            readableStreamClose(respBody); // Release JS lock.
-            success = true;
-          } catch (error) {
-            const connError = httpConn[connErrorSymbol];
-            if (
-              ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-              connError != null
-            ) {
-              // deno-lint-ignore no-ex-assign
-              error = new connError.constructor(connError.message);
-            }
-            await reader.cancel(error);
-            throw error;
-          }
-        } else {
-          reader = respBody.getReader();
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (
-              TypedArrayPrototypeGetSymbolToStringTag(value) !== "Uint8Array"
-            ) {
-              await reader.cancel(new TypeError("Value not a Uint8Array"));
-              break;
-            }
-            try {
-              await op_http_write(writeStreamRid, value);
-            } catch (error) {
-              const connError = httpConn[connErrorSymbol];
-              if (
-                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-                connError != null
-              ) {
-                // deno-lint-ignore no-ex-assign
-                error = new connError.constructor(connError.message);
-              }
-              await reader.cancel(error);
-              throw error;
-            }
-          }
-          success = true;
-        }
-
-        if (success) {
-          try {
-            await op_http_shutdown(writeStreamRid);
-          } catch (error) {
-            await reader.cancel(error);
-            throw error;
-          }
-        }
-      }
-
-      const ws = resp[_ws];
-      if (ws) {
-        const wsRid = await op_http_upgrade_websocket(
-          readStreamRid,
-        );
-        ws[_rid] = wsRid;
-        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-        httpConn.close();
-
-        ws[_readyState] = WebSocket.OPEN;
-        ws[_role] = SERVER;
-        const event = new Event("open");
-        ws.dispatchEvent(event);
-
-        ws[_eventLoop]();
-        if (ws[_idleTimeoutDuration]) {
-          ws.addEventListener(
-            "close",
-            () => clearTimeout(ws[_idleTimeoutTimeout]),
+        innerRequest.close(consumed);
+        if (!consumed) {
+          throw core.buildCustomError(
+            "Http",
+            "The connection closed while writing the response body",
           );
         }
-        ws[_serverHandleIdleTimeout]();
+      } finally {
+        op_http_close_after_finish(req);
       }
     } catch (error) {
-      abortRequest(request);
+      innerRequest.close(false);
+
+      const connError = httpConn[connErrorSymbol];
+      if (
+        ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+        connError != null
+      ) {
+        // deno-lint-ignore no-ex-assign
+        error = new connError.constructor(connError.message);
+      }
+
       throw error;
-    } finally {
-      if (deleteManagedResource(httpConn, readStreamRid)) {
-        core.tryClose(readStreamRid);
-      }
-      if (deleteManagedResource(httpConn, writeStreamRid)) {
-        core.tryClose(writeStreamRid);
-      }
     }
   };
 }
 
 function serveHttp(conn) {
-  const rid = op_http_start(conn[internalRidSymbol]);
-  return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
+  const context = new CallbackContext(
+    null,
+    op_http_serve_on(conn[internalRidSymbol]),
+    conn,
+  );
+  return new HttpConn(context);
 }
 
 export { HttpConn, serveHttp };

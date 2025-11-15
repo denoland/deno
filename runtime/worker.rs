@@ -1085,7 +1085,6 @@ fn common_extensions<
     ops::fs_events::deno_fs_events::init(),
     ops::permissions::deno_permissions::init(),
     ops::tty::deno_tty::init(),
-    ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
