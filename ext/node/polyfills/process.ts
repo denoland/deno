@@ -75,16 +75,12 @@ import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
 
 export let argv0 = "";
-
 export let arch = "";
-
 export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
-
 export let pid = 0;
 export let ppid = 0;
 
 let stdin, stdout, stderr;
-
 export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
@@ -99,42 +95,29 @@ const notImplementedEvents = [
   "multipleResolves",
 ];
 
-export const argv: string[] = ["", ""];
+export const argv: string[] = ["", ""]; // Now always string array
 
 // In Node, `process.exitCode` is initially `undefined` until set.
-// And retains any value as long as it's nullish or number-ish.
 let ProcessExitCode: undefined | null | string | number;
 
 export const execArgv: string[] = [];
 
-/** https://nodejs.org/api/process.html#process_process_exit_code */
+/** [https://nodejs.org/api/process.html#process_process_exit_code](https://nodejs.org/api/process.html#process_process_exit_code) */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
     process.exitCode = code;
   } else if (Number.isNaN(code)) {
     process.exitCode = 1;
   }
-
   ProcessExitCode = denoOs.getExitCode();
   if (!process._exiting) {
     process._exiting = true;
-    // FIXME(bartlomieju): this is wrong, we won't be using syscall to exit
-    // and thus the `unload` event will not be emitted to properly trigger "emit"
-    // event on `process`.
     process.emit("exit", ProcessExitCode);
   }
-
-  // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
-  // At this point, we don't have to pass around Node's raw/string exit value.
   process.reallyExit(ProcessExitCode);
 };
 
-/** https://nodejs.org/api/process.html#processumaskmask */
 export const umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
   return 0o22;
 };
 
@@ -148,7 +131,6 @@ function addReadOnlyProcessAlias(
   enumerable = true,
 ) {
   const value = getOptionValue(option);
-
   if (value) {
     Object.defineProperty(process, name, {
       writable: false,
@@ -164,26 +146,21 @@ interface CpuUsage {
   system: number;
 }
 
-// Ensure that a previously passed in value is valid. Currently, the native
-// implementation always returns numbers <= Number.MAX_SAFE_INTEGER.
 function previousCpuUsageValueIsValid(num) {
   return typeof num === "number" && num >= 0 && num <= NumberMAX_SAFE_INTEGER;
 }
 
 export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
   const cpuValues = Deno.cpuUsage(previousValue);
-
   if (previousValue) {
     if (!previousCpuUsageValueIsValid(previousValue.user)) {
       validateObject(previousValue, "prevValue");
-
       validateNumber(previousValue.user, "prevValue.user");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
         "prevValue.user",
         previousValue.user,
       );
     }
-
     if (!previousCpuUsageValueIsValid(previousValue.system)) {
       validateNumber(previousValue.system, "prevValue.system");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
@@ -191,13 +168,11 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
         previousValue.system,
       );
     }
-
     return {
       user: cpuValues.user - previousValue.user,
       system: cpuValues.system - previousValue.system,
     };
   }
-
   return cpuValues;
 }
 
@@ -205,26 +180,19 @@ function createWarningObject(
   warning: string,
   type: string,
   code?: string,
-  // deno-lint-ignore ban-types
   ctor?: Function,
   detail?: string,
 ): Error {
   assert(typeof warning === "string");
-
-  // deno-lint-ignore no-explicit-any
   const warningErr: any = new Error(warning);
   warningErr.name = String(type || "Warning");
-
   if (code !== undefined) {
     warningErr.code = code;
   }
   if (detail !== undefined) {
     warningErr.detail = detail;
   }
-
-  // @ts-ignore this function is not available in lib.dom.d.ts
   Error.captureStackTrace(warningErr, ctor || process.emitWarning);
-
   return warningErr;
 }
 
@@ -232,68 +200,52 @@ function doEmitWarning(warning: Error) {
   process.emit("warning", warning);
 }
 
-/** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
 export function emitWarning(
   warning: string | Error,
   type:
-    // deno-lint-ignore ban-types
     | { type: string; detail: string; code: string; ctor: Function }
     | string
     | null,
   code?: string,
-  // deno-lint-ignore ban-types
   ctor?: Function,
 ) {
   let detail;
-
   if (type !== null && typeof type === "object" && !Array.isArray(type)) {
     ctor = type.ctor;
     code = type.code;
-
     if (typeof type.detail === "string") {
       detail = type.detail;
     }
-
     type = type.type || "Warning";
   } else if (typeof type === "function") {
     ctor = type;
     code = undefined;
     type = "Warning";
   }
-
   if (type !== undefined) {
     validateString(type, "type");
   }
-
   if (typeof code === "function") {
     ctor = code;
     code = undefined;
   } else if (code !== undefined) {
     validateString(code, "code");
   }
-
   if (typeof warning === "string") {
     warning = createWarningObject(warning, type as string, code, ctor, detail);
   } else if (!(warning instanceof Error)) {
     throw new ERR_INVALID_ARG_TYPE("warning", ["Error", "string"], warning);
   }
-
   if (warning.name === "DeprecationWarning") {
-    // deno-lint-ignore no-explicit-any
     if ((process as any).noDeprecation) {
       return;
     }
-
-    // deno-lint-ignore no-explicit-any
     if ((process as any).throwDeprecation) {
-      // Delay throwing the error to guarantee that all former warnings were
-      // properly logged.
       return process.nextTick(() => {
         throw warning;
       });
     }
   }
-
   process.nextTick(doEmitWarning, warning);
 }
 
@@ -330,19 +282,15 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
-// Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
-    // the windows implementation is ported from libuv, so the error numbers already match libuv and don't need mapping
     res === 0 ? res : isWindows ? res : uv.mapSysErrnoToUvErrno(res);
-  // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
   }
   const maybeSignal = Object.entries(constants.os.signals).find((
     [_, numericCode],
   ) => numericCode === sig);
-
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
   }
@@ -350,9 +298,6 @@ function _kill(pid: number, sig: number): number {
 }
 
 export function dlopen(module, filename, _flags) {
-  // NOTE(bartlomieju): _flags is currently ignored, but we don't warn for it
-  // as it makes DX bad, even though it might not be needed:
-  // https://github.com/denoland/deno/issues/20075
   Module._extensions[".node"](module, filename);
   return module;
 }
@@ -361,23 +306,19 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
   }
-
   let err;
   if (typeof sig === "number") {
     err = process._kill(pid, sig);
   } else {
     if (sig in constants.os.signals) {
-      // @ts-ignore Index previously checked
       err = process._kill(pid, constants.os.signals[sig]);
     } else {
       throw new ERR_UNKNOWN_SIGNAL(sig);
     }
   }
-
   if (err) {
     throw errnoException(err, "kill");
   }
-
   return true;
 }
 
@@ -394,7 +335,6 @@ function wrapIdSetter(
     } else if (typeof id !== "string") {
       throw new ERR_INVALID_ARG_TYPE("id", ["number", "string"], id);
     }
-
     try {
       fn(id);
     } catch (err) {
@@ -408,7 +348,6 @@ if (!isWindows) {
   getuid = () => Deno.uid();
   getegid = () => op_getegid();
   geteuid = () => op_geteuid();
-
   if (!isAndroid) {
     setegid = wrapIdSetter("setegid", op_node_process_setegid);
     seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
@@ -421,15 +360,7 @@ export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
-// deno-lint-ignore no-explicit-any
 function uncaughtExceptionHandler(err: any, origin: string) {
-  // The origin parameter can be 'unhandledRejection' or 'uncaughtException'
-  // depending on how the uncaught exception was created. In Node.js,
-  // exceptions thrown from the top level of a CommonJS module are reported as
-  // 'uncaughtException', while exceptions thrown from the top level of an ESM
-  // module are reported as 'unhandledRejection'. Deno does not have a true
-  // CommonJS implementation, so all exceptions thrown from the top level are
-  // reported as 'uncaughtException'.
   process.emit("uncaughtExceptionMonitor", err, origin);
   process.emit("uncaughtException", err, origin);
 }
@@ -446,27 +377,19 @@ export let execPath: string = Object.freeze({
   [Symbol.for("Deno.customInspect")](inspect, options) {
     return inspect(this.toString(), options);
   },
-  // deno-lint-ignore no-explicit-any
 }) as any as string;
 
 // The process class needs to be an ES5 class because it can be instantiated
-// in Node without the `new` keyword. It's not a true class in Node. Popular
-// test runners like Jest rely on this.
-// deno-lint-ignore no-explicit-any
+// in Node without the `new` keyword. It's not a true class in Node.
 function Process(this: any) {
-  // deno-lint-ignore no-explicit-any
   if (!(this instanceof Process)) return new (Process as any)();
-
   EventEmitter.call(this);
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 
-/** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
   event: string,
-  // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
@@ -474,13 +397,10 @@ Process.prototype.on = function (
     EventEmitter.prototype.on.call(this, event, listener);
   } else if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
-      // Ignores SIGTERM on windows.
     } else if (
       event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
-      // TODO(#26331): Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -488,15 +408,12 @@ Process.prototype.on = function (
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
   }
-
   return this;
 };
 
 Process.prototype.off = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
   event: string,
-  // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
@@ -504,11 +421,9 @@ Process.prototype.off = function (
     EventEmitter.prototype.off.call(this, event, listener);
   } else if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
     } else if (
       event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
-      // Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
       EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
@@ -516,35 +431,28 @@ Process.prototype.off = function (
   } else {
     EventEmitter.prototype.off.call(this, event, listener);
   }
-
   return this;
 };
 
 Process.prototype.emit = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
   event: string,
-  // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): boolean {
   if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
     } else {
       Deno.kill(Deno.pid, event as Deno.Signal);
     }
   } else {
     return EventEmitter.prototype.emit.call(this, event, ...args);
   }
-
   return true;
 };
 
 Process.prototype.prependListener = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
   event: string,
-  // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
@@ -552,7 +460,6 @@ Process.prototype.prependListener = function (
     EventEmitter.prototype.prependListener.call(this, event, listener);
   } else if (event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -560,42 +467,34 @@ Process.prototype.prependListener = function (
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
   }
-
   return this;
 };
 
 Process.prototype.addListener = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
   event: string,
-  // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.addListener("${event}")`);
   }
-
   return this.on(event, listener);
 };
 
 Process.prototype.removeListener = function (
-  // deno-lint-ignore no-explicit-any
   this: any,
-  event: string, // deno-lint-ignore no-explicit-any
+  event: string,
   listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.removeListener("${event}")`);
   }
-
   return this.off(event, listener);
 };
 
-/** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
 
-/** https://nodejs.org/api/process.html#processrelease */
 Object.defineProperty(process, "release", {
   get() {
     return {
@@ -608,7 +507,6 @@ Object.defineProperty(process, "release", {
   },
 });
 
-/** https://nodejs.org/api/process.html#process_process_arch */
 Object.defineProperty(process, "arch", {
   get() {
     return arch;
@@ -625,15 +523,11 @@ Object.defineProperty(process, "title", {
   get() {
     return "deno";
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
-  },
+  set(_value) {},
 });
 
 /**
- * https://nodejs.org/api/process.html#process_process_argv
+ * [https://nodejs.org/api/process.html#process_process_argv](https://nodejs.org/api/process.html#process_process_argv)
  * Read permissions are required in order to get the executable route
  */
 process.argv = argv;
@@ -645,10 +539,7 @@ Object.defineProperty(process, "argv0", {
   set(_val) {},
 });
 
-/** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
-
-/** https://nodejs.org/api/process.html#processconfig */
 process.config = {
   target_defaults: {
     default_configuration: "Release",
@@ -660,42 +551,19 @@ process.config = {
 };
 
 process.cpuUsage = cpuUsage;
-
-/** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
-
-/**
- * https://nodejs.org/api/process.html#process_process_env
- * Requires env permissions
- */
 process.env = env;
-
-/** https://nodejs.org/api/process.html#process_process_execargv */
 process.execArgv = execArgv;
-
-/** https://nodejs.org/api/process.html#process_process_exit_code */
 process.exit = exit;
-
-/** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
-
-// NB(bartlomieju): this is a private API in Node.js, but there are packages like
-// `aws-iot-device-sdk-v2` that depend on it
-// https://github.com/denoland/deno/issues/30115
 process._rawDebug = (...args: unknown[]) => {
   core.print(`${format(...args)}\n`, true);
 };
-
-// Undocumented Node API that is used by `signal-exit` which in turn
-// is used by `node-tap`. It was marked for removal a couple of years
-// ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
 process.reallyExit = (code: number) => {
   return Deno.exit(code || 0);
 };
-
 process._exiting = _exiting;
 
-/** https://nodejs.org/api/process.html#processexitcode_1 */
 Object.defineProperty(process, "exitCode", {
   get() {
     return ProcessExitCode;
@@ -711,136 +579,64 @@ Object.defineProperty(process, "exitCode", {
     } else {
       throw new ERR_INVALID_ARG_TYPE("code", "number", code);
     }
-
     if (!Number.isInteger(parsedCode)) {
       throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
     }
-
     denoOs.setExitCode(parsedCode);
     ProcessExitCode = code;
   },
 });
 
-// Typed as any to avoid importing "module" module for types
 process.mainModule = undefined;
-
-/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 process.nextTick = _nextTick;
-
 process.dlopen = dlopen;
 
-/** https://nodejs.org/api/process.html#process_process_pid */
 Object.defineProperty(process, "pid", {
   get() {
     return pid;
   },
 });
 
-/** https://nodejs.org/api/process.html#processppid */
 Object.defineProperty(process, "ppid", {
   get() {
     return Deno.ppid;
   },
 });
 
-/** https://nodejs.org/api/process.html#process_process_platform */
 Object.defineProperty(process, "platform", {
   get() {
     return platform;
   },
 });
 
-// https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
-  // This is a no-op in Deno. Source maps are always enabled.
-  // TODO(@satyarohith): support disabling source maps if needed.
-};
+process.setSourceMapsEnabled = (_val: boolean) => {};
 
-/**
- * Returns the current high-resolution real time in a [seconds, nanoseconds]
- * tuple.
- *
- * Note: You need to give --allow-hrtime permission to Deno to actually get
- * nanoseconds precision values. If you don't give 'hrtime' permission, the returned
- * values only have milliseconds precision.
- *
- * `time` is an optional parameter that must be the result of a previous process.hrtime() call to diff with the current time.
- *
- * These times are relative to an arbitrary time in the past, and not related to the time of day and therefore not subject to clock drift. The primary use is for measuring performance between intervals.
- * https://nodejs.org/api/process.html#process_process_hrtime_time
- */
 process.hrtime = hrtime;
 
-/**
- * @private
- *
- * NodeJS internal, use process.kill instead
- */
 process._kill = _kill;
-
-/** https://nodejs.org/api/process.html#processkillpid-signal */
 process.kill = kill;
-
 process.memoryUsage = memoryUsage;
-
-/** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
-
-/** https://nodejs.org/api/process.html#process_process_stdin */
 process.stdin = stdin;
-
-/** https://nodejs.org/api/process.html#process_process_stdout */
 process.stdout = stdout;
-
-/** https://nodejs.org/api/process.html#process_process_version */
 process.version = version;
-
-/** https://nodejs.org/api/process.html#process_process_versions */
 process.versions = versions;
-
-/** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
 process.emitWarning = emitWarning;
-
 process.binding = (name: BindingName) => {
   return getBinding(name);
 };
-
-/** https://nodejs.org/api/process.html#processumaskmask */
 process.umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
   return 0o22;
 };
-
-/** This method is removed on Windows */
 process.getgid = getgid;
-
-/** This method is removed on Windows */
 process.getuid = getuid;
-
-/** This method is removed on Windows */
 process.getegid = getegid;
-
-/** This method is removed on Windows */
 process.geteuid = geteuid;
-
-/** This method is removed on Windows */
 process.setegid = setegid;
-
-/** This method is removed on Windows */
 process.seteuid = seteuid;
-
-/** This method is removed on Windows */
 process.setgid = setgid;
-
-/** This method is removed on Windows */
 process.setuid = setuid;
-
 process.getBuiltinModule = getBuiltinModule;
-
-// TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
 
 export function loadEnvFile(path = ".env") {
@@ -848,8 +644,6 @@ export function loadEnvFile(path = ".env") {
 }
 
 process.loadEnvFile = loadEnvFile;
-
-/** https://nodejs.org/api/process.html#processexecpath */
 
 Object.defineProperty(process, "execPath", {
   get() {
@@ -860,12 +654,10 @@ Object.defineProperty(process, "execPath", {
   },
 });
 
-/** https://nodejs.org/api/process.html#processuptime */
 process.uptime = () => {
   return Number((performance.now() / 1000).toFixed(9));
 };
 
-/** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
 Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
   get() {
     return ALLOWED_FLAGS;
@@ -873,12 +665,8 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 });
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
-
 process.features = { inspector: false };
-
-// TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
-
 process.moduleLoadList = [];
 
 if (isWindows) {
@@ -957,7 +745,6 @@ function processOnError(event: ErrorEvent) {
   if (process.listenerCount("uncaughtException") > 0) {
     event.preventDefault();
   }
-
   uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
@@ -975,31 +762,21 @@ function dispatchProcessExitEvent() {
 }
 
 function synchronizeListeners() {
-  // Install special "unhandledrejection" handler, that will be called
-  // last.
   if (
     unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
-        // The Node.js default behavior is to raise an uncaught exception if
-        // an unhandled rejection occurs and there are no unhandledRejection
-        // listeners.
-
         event.preventDefault();
         uncaughtExceptionHandler(event.reason, "unhandledRejection");
         return;
       }
-
       event.preventDefault();
       process.emit("unhandledRejection", event.reason, event.promise);
     };
   } else {
     internals.nodeProcessUnhandledRejectionCallback = undefined;
   }
-
-  // Install special "handledrejection" handler, that will be called
-  // last.
   if (rejectionHandledListenerCount > 0) {
     internals.nodeProcessRejectionHandledCallback = (event) => {
       process.emit("rejectionHandled", event.reason, event.promise);
@@ -1007,7 +784,6 @@ function synchronizeListeners() {
   } else {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
-
   if (uncaughtExceptionListenerCount > 0) {
     globalThis.addEventListener("error", processOnError);
   } else {
@@ -1015,22 +791,8 @@ function synchronizeListeners() {
   }
 }
 
-// Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule?.startsWith("file:")) {
-      return pathFromURL(new URL(Deno.mainModule));
-    } else {
-      return join(Deno.cwd(), "$deno$node.mjs");
-    }
-  },
-});
-
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
-// Should be called only once, in `runtime/js/99_main.js` when the runtime is
-// bootstrapped.
 internals.__bootstrapNodeProcess = function (
   argv0Val: string | undefined,
   args: string[],
@@ -1040,65 +802,50 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    // Manually concatenate these arrays to avoid triggering the getter
+
+    // Initialize argv[0] and argv[1] as concrete strings
+    argv[0] = argv0;
+    if (Deno.mainModule?.startsWith("file:")) {
+      argv[1] = pathFromURL(new URL(Deno.mainModule));
+    } else {
+      argv[1] = join(Deno.cwd(), "$deno$node.mjs");
+    }
     for (let i = 0; i < args.length; i++) {
       argv[i + 2] = args[i];
     }
-
     for (const [key, value] of Object.entries(denoVersions)) {
       versions[key] = value;
     }
-
     core.setNextTickCallback(processTicksAndRejections);
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
-        "stdout",
-      );
+      stdout = process.stdout = createWritableStdioStream(io.stdout, "stdout");
     }
-
     if (!io.stderr.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
-        "stderr",
-      );
+      stderr = process.stderr = createWritableStdioStream(io.stderr, "stderr");
     }
-
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
     ppid = Deno.ppid;
     initializeDebugEnv(nodeDebug);
-
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
     }
-
-    // Replace stdin if it is not a terminal
     const newStdin = initStdin();
     if (newStdin) {
       stdin = process.stdin = newStdin;
     }
-
     delete internals.__bootstrapNodeProcess;
   } else {
-    // Warmup, assuming stdin/stdout/stderr are all terminals
     stdin = process.stdin = initStdin(true);
-
-    /** https://nodejs.org/api/process.html#process_process_stdout */
     stdout = process.stdout = createWritableStdioStream(
       io.stdout,
       "stdout",
       true,
     );
-
-    /** https://nodejs.org/api/process.html#process_process_stderr */
     stderr = process.stderr = createWritableStdioStream(
       io.stderr,
       "stderr",
