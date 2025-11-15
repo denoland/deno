@@ -26,7 +26,6 @@ use deno_fetch::ClientConnectError;
 use deno_fetch::HttpClientCreateError;
 use deno_fetch::HttpClientResource;
 use deno_fetch::get_or_create_client_from_state;
-use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
 use deno_tls::SocketUse;
 use fastwebsockets::CloseCode;
@@ -57,6 +56,7 @@ use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 
 use crate::stream::WebSocketStream;
+pub use crate::stream::WsStreamKind;
 
 mod stream;
 
@@ -571,14 +571,11 @@ impl Resource for ServerWebSocket {
 
 pub fn ws_create_server_stream(
   state: &mut OpState,
-  transport: NetworkStream,
+  transport: WsStreamKind,
   read_buf: Bytes,
 ) -> ResourceId {
   let mut ws = WebSocket::after_handshake(
-    WebSocketStream::new(
-      stream::WsStreamKind::Network(transport),
-      Some(read_buf),
-    ),
+    WebSocketStream::new(transport, Some(read_buf)),
     Role::Server,
   );
   ws.set_writev(*USE_WRITEV);

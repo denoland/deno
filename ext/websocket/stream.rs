@@ -17,7 +17,7 @@ use tokio::io::ReadBuf;
 
 // TODO(bartlomieju): remove this
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum WsStreamKind {
+pub enum WsStreamKind {
   Upgraded(TokioIo<Upgraded>),
   Network(NetworkStream),
   H2(SendStream<Bytes>, RecvStream),
