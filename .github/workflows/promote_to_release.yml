@@ -57,8 +57,8 @@ jobs:
 
       - name: Rename binaries
         run: |
-          Remove-File deno.exe
-          Remove-File denort.exe
+          Remove-Item deno.exe
+          Remove-Item denort.exe
           Rename-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe deno.exe
           Rename-Item denort-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe denort.exe
 
