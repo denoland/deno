@@ -55,12 +55,6 @@ jobs:
         run: |
           deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
 
-      - name: Fix binary after patchver
-        run: |
-          SigntoolCheck.exe -p deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe -v -f -o deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}-fixed.exe
-          Remove-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
-          Rename-Item deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}-fixed.exe deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
-
       - name: Authenticate with Azure
         uses: azure/login@v1
         with:
