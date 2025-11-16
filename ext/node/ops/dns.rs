@@ -126,7 +126,7 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
     const NI_MAXSERV: u32 = 32;
 
     let mut c_host = [0_u8; libc::NI_MAXHOST as usize];
-    let mut c_service = [0_u8; libc::NI_MAXSERV as usize];
+    let mut c_service = [0_u8; NI_MAXSERV as usize];
 
     // SAFETY: Calling getnameinfo
     let code = unsafe {
@@ -137,10 +137,9 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
         c_host.len() as _,
         c_service.as_mut_ptr() as _,
         c_service.len() as _,
-        NI_NAMEREQD as _,
+        libc::NI_NAMEREQD as _,
       )
     };
-
     assert_success(code)?;
 
     // SAFETY: c_host is initialized by getnameinfo on success.
@@ -183,7 +182,6 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
         WinSock::NI_NAMEREQD as _,
       )
     };
-
     assert_success(code)?;
 
     let host_str_len = c_host.iter().take_while(|&&c| c != 0).count();
@@ -207,6 +205,9 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
 
 #[cfg(any(unix, windows))]
 fn assert_success(code: i32) -> Result<(), DnsError> {
+  #[cfg(windows)]
+  use windows_sys::Win32::Networking::WinSock;
+
   use crate::ops::constant;
 
   if code == 0 {
@@ -225,9 +226,8 @@ fn assert_success(code: i32) -> Result<(), DnsError> {
     libc::EAI_SYSTEM => DnsError::Io(std::io::Error::last_os_error()),
     _ => DnsError::Io(std::io::Error::from_raw_os_error(code)),
   };
-  #[cfg(windows)]
-  use windows_sys::Win32::Networking::WinSock;
 
+  #[cfg(windows)]
   let err = match code {
     WinSock::WSATRY_AGAIN => DnsError::RawUvErr(constant::UV_EAI_AGAIN),
     WinSock::WSAEINVAL => DnsError::RawUvErr(constant::UV_EAI_BADFLAGS),
