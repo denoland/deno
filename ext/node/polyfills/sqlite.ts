@@ -11,6 +11,7 @@ import { Buffer } from "node:buffer";
 const {
   ObjectDefineProperty,
   SymbolFor,
+  SymbolDispose,
 } = primordials;
 
 interface BackupOptions {
@@ -109,6 +110,14 @@ ObjectDefineProperty(DatabaseSync.prototype, sqliteTypeSymbol, {
   enumerable: false,
   configurable: true,
 });
+
+DatabaseSync.prototype[SymbolDispose] = function () {
+  try {
+    this.close();
+  } catch {
+    // Ignore errors.
+  }
+};
 
 export { backup, DatabaseSync, StatementSync };
 
