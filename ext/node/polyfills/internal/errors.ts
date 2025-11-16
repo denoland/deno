@@ -334,9 +334,9 @@ export const exceptionWithHostPort = hideStackFrames(
 export const handleDnsError = hideStackFrames(
   (err: Error, syscall: string, address: string) => {
     //@ts-expect-error code is safe to access with optional chaining
-    if (typeof err?.code === "number") {
+    if (typeof err?.uv_errcode === "number") {
       //@ts-expect-error code is safe to access with optional chaining
-      return dnsException(err?.code, syscall, address);
+      return dnsException(err?.uv_errcode, syscall, address);
     }
 
     if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {

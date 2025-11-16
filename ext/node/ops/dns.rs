@@ -5,6 +5,8 @@ use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
+#[cfg(target_family = "windows")]
+use std::sync::OnceLock;
 
 use deno_core::OpState;
 use deno_core::op2;
@@ -16,29 +18,6 @@ use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use socket2::SockAddr;
 use tower_service::Service;
-
-// https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/uv/include/uv/errno.h#L35-L48
-#[allow(dead_code)]
-const UV_EAI_ADDRFAMILY: i32 = -3000;
-const UV_EAI_AGAIN: i32 = -3001;
-const UV_EAI_BADFLAGS: i32 = -3002;
-#[allow(dead_code)]
-const UV_EAI_CANCELED: i32 = -3003;
-const UV_EAI_FAIL: i32 = -3004;
-const UV_EAI_FAMILY: i32 = -3005;
-const UV_EAI_MEMORY: i32 = -3006;
-#[allow(dead_code)]
-const UV_EAI_NODATA: i32 = -3007;
-const UV_EAI_NONAME: i32 = -3008;
-const UV_EAI_OVERFLOW: i32 = -3009;
-#[allow(dead_code)]
-const UV_EAI_SERVICE: i32 = -3010;
-#[allow(dead_code)]
-const UV_EAI_SOCKTYPE: i32 = -3011;
-#[allow(dead_code)]
-const UV_EAI_BADHINTS: i32 = -3013;
-#[allow(dead_code)]
-const UV_EAI_PROTOCOL: i32 = -3014;
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum DnsError {
@@ -60,18 +39,25 @@ pub enum DnsError {
   ),
   #[class(generic)]
   #[error("{0}")]
-  #[property("code" = self.code())]
-  RawSysErr(i32),
+  #[property("uv_errcode" = self.code())]
+  RawUvErr(i32),
+  #[cfg(not(any(unix, windows)))]
+  #[class(generic)]
+  #[error("Unsupported platform.")]
+  UnsupportedPlatform,
 }
 
 impl DnsError {
   fn code(&self) -> i32 {
     match self {
-      Self::RawSysErr(code) => *code,
+      Self::RawUvErr(code) => *code,
       _ => 0,
     }
   }
 }
+
+#[cfg(target_family = "windows")]
+static WINSOCKET_INIT: OnceLock<i32> = OnceLock::new();
 
 #[op2(async, stack_trace)]
 #[cppgc]
@@ -125,67 +111,137 @@ where
   let ip_addr: IpAddr = ip.parse()?;
   let socket_addr = SocketAddr::new(ip_addr, port);
 
-  match spawn_blocking(move || getnameinfo(&socket_addr)).await {
+  match spawn_blocking(move || getnameinfo(socket_addr)).await {
     Ok(result) => result,
     Err(err) => Err(DnsError::Io(err.into())),
   }
 }
 
-fn getnameinfo(socket_addr: &SocketAddr) -> Result<(String, String), DnsError> {
-  #[cfg(unix)]
-  use libc::getnameinfo as libc_getnameinfo;
-  
-  let sock: SockAddr = (*socket_addr).into();
+fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
+  let sock: SockAddr = socket_addr.into();
   let c_sockaddr = sock.as_ptr();
   let c_sockaddr_len = sock.len();
+  #[cfg(unix)]
+  {
+    const NI_MAXSERV: u32 = 32;
 
-  let mut c_host = [0_u8; libc::NI_MAXHOST as usize];
-  let mut c_service = [0_u8; 32];
+    let mut c_host = [0_u8; libc::NI_MAXHOST as usize];
+    let mut c_service = [0_u8; libc::NI_MAXSERV as usize];
 
-  // SAFETY: Calling getnameinfo with valid parameters.
-  let code = unsafe {
-    libc_getnameinfo(
-      c_sockaddr,
-      c_sockaddr_len,
-      c_host.as_mut_ptr() as *mut i8,
-      c_host.len() as u32,
-      c_service.as_mut_ptr() as *mut i8,
-      c_service.len() as u32,
-      libc::NI_NAMEREQD,
-    )
-  };
+    // SAFETY: Calling getnameinfo
+    let code = unsafe {
+      libc::getnameinfo(
+        c_sockaddr,
+        c_sockaddr_len,
+        c_host.as_mut_ptr() as _,
+        c_host.len() as _,
+        c_service.as_mut_ptr() as _,
+        c_service.len() as _,
+        NI_NAMEREQD as _,
+      )
+    };
 
-  assert_success(code)?;
+    assert_success(code)?;
 
-  // SAFETY: c_host is initialized by getnameinfo on success.
-  let host_cstr =
-    unsafe { std::ffi::CStr::from_ptr(c_host.as_ptr() as *const i8) };
-  // SAFETY: c_service is initialized by getnameinfo on success.
-  let service_cstr =
-    unsafe { std::ffi::CStr::from_ptr(c_service.as_ptr() as *const i8) };
+    // SAFETY: c_host is initialized by getnameinfo on success.
+    let host_cstr = unsafe { std::ffi::CStr::from_ptr(c_host.as_ptr() as _) };
+    // SAFETY: c_service is initialized by getnameinfo on success.
+    let service_cstr =
+      unsafe { std::ffi::CStr::from_ptr(c_service.as_ptr() as _) };
 
-  Ok((
-    host_cstr.to_string_lossy().into_owned(),
-    service_cstr.to_string_lossy().into_owned(),
-  ))
+    Ok((
+      host_cstr.to_string_lossy().into_owned(),
+      service_cstr.to_string_lossy().into_owned(),
+    ))
+  }
+  #[cfg(windows)]
+  {
+    use std::os::windows::ffi::OsStringExt;
+
+    use winapi::shared::minwindef::MAKEWORD;
+    use windows_sys::Win32::Networking::WinSock;
+
+    // SAFETY: winapi call
+    let wsa_startup_code = *WINSOCKET_INIT.get_or_init(|| unsafe {
+      let mut wsa_data: WinSock::WSADATA = std::mem::zeroed();
+      WinSock::WSAStartup(MAKEWORD(2, 2), &mut wsa_data)
+    });
+    assert_success(wsa_startup_code)?;
+
+    let mut c_host = [0_u16; WinSock::NI_MAXHOST as usize];
+    let mut c_service = [0_u16; WinSock::NI_MAXSERV as usize];
+
+    // SAFETY: Calling getnameinfo
+    let code = unsafe {
+      WinSock::GetNameInfoW(
+        c_sockaddr as _,
+        c_sockaddr_len,
+        c_host.as_mut_ptr() as _,
+        c_host.len() as _,
+        c_service.as_mut_ptr() as _,
+        c_service.len() as _,
+        WinSock::NI_NAMEREQD as _,
+      )
+    };
+
+    assert_success(code)?;
+
+    let host_str_len = c_host.iter().take_while(|&&c| c != 0).count();
+    let host_str = std::ffi::OsString::from_wide(&c_host[..host_str_len])
+      .to_string_lossy()
+      .into_owned();
+
+    let service_str_len = c_service.iter().take_while(|&&c| c != 0).count();
+    let service_str =
+      std::ffi::OsString::from_wide(&c_service[..service_str_len])
+        .to_string_lossy()
+        .into_owned();
+
+    Ok((host_str, service_str))
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    Err(DnsError::UnsupportedPlatform)
+  }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn assert_success(code: i32) -> Result<(), DnsError> {
+  use crate::ops::constant;
+
   if code == 0 {
     return Ok(());
   }
 
+  #[cfg(unix)]
   let err = match code {
-    libc::EAI_AGAIN => DnsError::RawSysErr(UV_EAI_AGAIN),
-    libc::EAI_BADFLAGS => DnsError::RawSysErr(UV_EAI_BADFLAGS),
-    libc::EAI_FAIL => DnsError::RawSysErr(UV_EAI_FAIL),
-    libc::EAI_FAMILY => DnsError::RawSysErr(UV_EAI_FAMILY),
-    libc::EAI_MEMORY => DnsError::RawSysErr(UV_EAI_MEMORY),
-    libc::EAI_NONAME => DnsError::RawSysErr(UV_EAI_NONAME),
-    libc::EAI_OVERFLOW => DnsError::RawSysErr(UV_EAI_OVERFLOW),
+    libc::EAI_AGAIN => DnsError::RawUvErr(constant::UV_EAI_AGAIN),
+    libc::EAI_BADFLAGS => DnsError::RawUvErr(constant::UV_EAI_BADFLAGS),
+    libc::EAI_FAIL => DnsError::RawUvErr(constant::UV_EAI_FAIL),
+    libc::EAI_FAMILY => DnsError::RawUvErr(constant::UV_EAI_FAMILY),
+    libc::EAI_MEMORY => DnsError::RawUvErr(constant::UV_EAI_MEMORY),
+    libc::EAI_NONAME => DnsError::RawUvErr(constant::UV_EAI_NONAME),
+    libc::EAI_OVERFLOW => DnsError::RawUvErr(constant::UV_EAI_OVERFLOW),
     libc::EAI_SYSTEM => DnsError::Io(std::io::Error::last_os_error()),
-    _ => DnsError::RawSysErr(code),
+    _ => DnsError::Io(std::io::Error::from_raw_os_error(code)),
+  };
+  #[cfg(windows)]
+  use windows_sys::Win32::Networking::WinSock;
+
+  let err = match code {
+    WinSock::WSATRY_AGAIN => DnsError::RawUvErr(constant::UV_EAI_AGAIN),
+    WinSock::WSAEINVAL => DnsError::RawUvErr(constant::UV_EAI_BADFLAGS),
+    WinSock::WSANO_RECOVERY => DnsError::RawUvErr(constant::UV_EAI_FAIL),
+    WinSock::WSAEAFNOSUPPORT => DnsError::RawUvErr(constant::UV_EAI_FAMILY),
+    WinSock::WSA_NOT_ENOUGH_MEMORY => {
+      DnsError::RawUvErr(constant::UV_EAI_MEMORY)
+    }
+    WinSock::WSAHOST_NOT_FOUND => DnsError::RawUvErr(constant::UV_EAI_NONAME),
+    WinSock::WSATYPE_NOT_FOUND => DnsError::RawUvErr(constant::UV_EAI_SERVICE),
+    WinSock::WSAESOCKTNOSUPPORT => {
+      DnsError::RawUvErr(constant::UV_EAI_SOCKTYPE)
+    }
+    _ => DnsError::Io(std::io::Error::from_raw_os_error(code)),
   };
 
   Err(err)
