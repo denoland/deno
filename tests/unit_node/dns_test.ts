@@ -56,7 +56,7 @@ Deno.test("lookupService promise", async () => {
 });
 
 Deno.test("lookupService not found", async () => {
-  const address = "0.0.0.0";
+  const address = "10.0.0.0";
 
   // Promise
   try {
@@ -65,7 +65,7 @@ Deno.test("lookupService not found", async () => {
   } catch (err) {
     assertEquals(
       (err as ErrnoException).message,
-      "getnameinfo ENOTFOUND 0.0.0.0",
+      "getnameinfo ENOTFOUND 10.0.0.0",
     );
     assertEquals((err as ErrnoException).code, "ENOTFOUND");
     assertEquals((err as ErrnoException).syscall, "getnameinfo");
@@ -82,7 +82,7 @@ Deno.test("lookupService not found", async () => {
   ).then(() => fail(), (err) => {
     assertEquals(
       (err as ErrnoException).message,
-      "getnameinfo ENOTFOUND 0.0.0.0",
+      "getnameinfo ENOTFOUND 10.0.0.0",
     );
     assertEquals((err as ErrnoException).code, "ENOTFOUND");
     assertEquals((err as ErrnoException).syscall, "getnameinfo");
