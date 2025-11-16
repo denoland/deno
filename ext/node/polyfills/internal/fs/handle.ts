@@ -13,8 +13,6 @@ import {
   write as writeAsync,
   WriteStream,
 } from "node:fs";
-import { createInterface } from "node:readline";
-import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
@@ -48,6 +46,11 @@ const {
   Symbol,
   SymbolAsyncDispose,
   Uint8ArrayPrototype,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeReplace,
+  ArrayFrom,
+  SafeRegExp,
 } = primordials;
 
 const kRefs = Symbol("kRefs");
@@ -239,6 +242,53 @@ export class FileHandle extends EventEmitter {
     return fsCall(fsyncPromise, "fsync", this);
   }
 
+  readLines(options: { encoding?: string } = Object.create(null)): AsyncIterableIterator<string> {
+    const encoding = options.encoding ?? "utf8";
+    const decoder = new TextDecoder(encoding);
+    const fh = this;
+    const chunkSize = 64 * 1024; // 64KB
+    const temp = new Uint8Array(chunkSize);
+    let buffer = "";
+    let isReading = true;
+
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      async next(): Promise<IteratorResult<string>> {
+        while (isReading) {
+          const { bytesRead } = await fh.read(temp, 0, chunkSize, null);
+          if (bytesRead === 0) {
+            isReading = false;
+            break;
+          }
+
+          buffer += decoder.decode(temp.subarray(0, bytesRead));
+
+          const newlineIndex = StringPrototypeIndexOf(buffer, "\n");
+          if (newlineIndex !== -1) {
+            const line = StringPrototypeReplace(
+              StringPrototypeSlice(buffer, 0, newlineIndex),
+              new SafeRegExp("\\r$"),
+              ""
+            );
+            buffer = StringPrototypeSlice(buffer, newlineIndex + 1);
+            return { value: line, done: false };
+          }
+        }
+
+        // Handle the last line if it exists
+        if (buffer.length > 0) {
+          const line = buffer;
+          buffer = "";
+          return { value: line, done: false };
+        }
+
+        return { value: undefined, done: true };
+      },
+    };
+  }
+
   utimes(
     atime: number | string | Date,
     mtime: number | string | Date,
@@ -258,15 +308,23 @@ export class FileHandle extends EventEmitter {
     return new WriteStream(undefined, { ...options, fd: this.fd });
   }
 
-  readLines(options?: CreateReadStreamOptions): ReadlineInterface {
-    return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
-      crlfDelay: Infinity,
-    });
-  }
-
   [SymbolAsyncDispose]() {
     return this.close();
+  }
+
+  appendFile(
+    data: string | ArrayBufferView | ArrayBuffer | DataView,
+    options?: string | { encoding?: string; mode?: number; flag?: string },
+  ): Promise<void> {
+    const resolvedOptions =
+      typeof options === "string" ? { encoding: options } : (options ?? {});
+
+    const optsWithAppend = {
+      ...resolvedOptions,
+      flag: resolvedOptions.flag ?? "a",
+    };
+
+    return this.writeFile(data, optsWithAppend);
   }
 }
 
