@@ -37,6 +37,7 @@ import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 const {
   Error,
   ObjectAssign,
+  ObjectCreate,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
@@ -45,11 +46,12 @@ const {
   SafeArrayIterator,
   Symbol,
   SymbolAsyncDispose,
+  SymbolAsyncIterator,
+  Uint8Array,
   Uint8ArrayPrototype,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeReplace,
-  ArrayFrom,
   SafeRegExp,
 } = primordials;
 
@@ -242,28 +244,30 @@ export class FileHandle extends EventEmitter {
     return fsCall(fsyncPromise, "fsync", this);
   }
 
-  readLines(options: { encoding?: string } = Object.create(null)): AsyncIterableIterator<string> {
+  readLines(
+    options: { encoding?: string } = ObjectCreate(null)
+  ): AsyncIterableIterator<string> {
     const encoding = options.encoding ?? "utf8";
     const decoder = new TextDecoder(encoding);
-    const fh = this;
     const chunkSize = 64 * 1024; // 64KB
     const temp = new Uint8Array(chunkSize);
     let buffer = "";
     let isReading = true;
+    const self = this as FileHandle;
 
     return {
-      [Symbol.asyncIterator]() {
+      [SymbolAsyncIterator]() {
         return this;
       },
       async next(): Promise<IteratorResult<string>> {
         while (isReading) {
-          const { bytesRead } = await fh.read(temp, 0, chunkSize, null);
+          const { bytesRead } = await self.read(temp, 0, chunkSize, null);
           if (bytesRead === 0) {
             isReading = false;
             break;
           }
 
-          buffer += decoder.decode(temp.subarray(0, bytesRead));
+buffer += decoder.decode(Uint8ArrayPrototype.subarray(temp, 0, bytesRead));
 
           const newlineIndex = StringPrototypeIndexOf(buffer, "\n");
           if (newlineIndex !== -1) {
