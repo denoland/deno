@@ -772,16 +772,20 @@ function innerInvokeEventListeners(
       setInPassiveListener(eventImpl, true);
     }
 
-    if (typeof listener.callback === "object") {
-      if (typeof listener.callback.handleEvent === "function") {
-        listener.callback.handleEvent(eventImpl);
+    try {
+      if (typeof listener.callback === "object") {
+        if (typeof listener.callback.handleEvent === "function") {
+          listener.callback.handleEvent(eventImpl);
+        }
+      } else {
+        FunctionPrototypeCall(
+          listener.callback,
+          eventImpl.currentTarget,
+          eventImpl,
+        );
       }
-    } else {
-      FunctionPrototypeCall(
-        listener.callback,
-        eventImpl.currentTarget,
-        eventImpl,
-      );
+    } catch (error) {
+      reportException(error);
     }
 
     setInPassiveListener(eventImpl, false);
