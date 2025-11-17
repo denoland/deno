@@ -21,6 +21,7 @@ const libs = [
 ];
 
 const unstableLibs = [
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.unstable.d.ts"),
 ];
 

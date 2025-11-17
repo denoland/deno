@@ -26,6 +26,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno_crypto.d.ts",
     "lib.deno_cache.d.ts",
     "lib.deno_net.d.ts",
+    "lib.deno_broadcast_channel.d.ts",
     "lib.decorators.d.ts",
     "lib.decorators.legacy.d.ts",
     "lib.dom.asynciterable.d.ts",
