@@ -120,6 +120,7 @@ export const ucs2 = {
 
 /**
  *  Converts a domain to ASCII as per the IDNA spec
+ *  Returns an empty string if the domain is invalid
  */
 export function domainToASCII(domain: string) {
   return op_node_idna_domain_to_ascii(domain);
