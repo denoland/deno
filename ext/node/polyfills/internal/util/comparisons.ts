@@ -27,6 +27,12 @@ import {
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
 } from "ext:deno_node/internal_binding/util.ts";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ObjectPrototypeHasOwnProperty,
+  ObjectPrototypePropertyIsEnumerable,
+} = primordials;
 
 enum valueType {
   noIterator,
@@ -265,7 +271,7 @@ function keyCheck(
   // Cheap key test
   let i = 0;
   for (; i < aKeys.length; i++) {
-    if (!Object.prototype.propertyIsEnumerable.call(val2, aKeys[i])) {
+    if (!ObjectPrototypeHasOwnProperty(val2, aKeys[i])) {
       return false;
     }
   }
@@ -276,14 +282,14 @@ function keyCheck(
       let count = 0;
       for (i = 0; i < symbolKeysA.length; i++) {
         const key = symbolKeysA[i];
-        if (Object.prototype.propertyIsEnumerable.call(val1, key)) {
-          if (!Object.prototype.propertyIsEnumerable.call(val2, key)) {
+        if (ObjectPrototypeHasOwnProperty(val1, key)) {
+          if (!ObjectPrototypeHasOwnProperty(val2, key)) {
             return false;
           }
           // added toString here
           aKeys.push(key.toString());
           count++;
-        } else if (Object.prototype.propertyIsEnumerable.call(val2, key)) {
+        } else if (ObjectPrototypeHasOwnProperty(val2, key)) {
           return false;
         }
       }
@@ -437,7 +443,7 @@ function isEqualBoxedPrimitive(a: any, b: any): boolean {
 
 function getEnumerables(val: any, keys: any) {
   return keys.filter((key: string) =>
-    Object.prototype.propertyIsEnumerable.call(val, key)
+    ObjectPrototypePropertyIsEnumerable(val, key)
   );
 }
 
@@ -461,21 +467,21 @@ function objEquiv(
     }
   } else if (iterationType === valueType.isArray) {
     for (; i < obj1.length; i++) {
-      if (Object.prototype.hasOwnProperty.call(obj1, i)) {
+      if (ObjectPrototypeHasOwnProperty(obj1, i)) {
         if (
-          !Object.prototype.hasOwnProperty.call(obj2, i) ||
+          !ObjectPrototypeHasOwnProperty(obj2, i) ||
           !innerDeepEqual(obj1[i], obj2[i], strict, memos)
         ) {
           return false;
         }
-      } else if (Object.prototype.hasOwnProperty.call(obj2, i)) {
+      } else if (ObjectPrototypeHasOwnProperty(obj2, i)) {
         return false;
       } else {
         const keys1 = Object.keys(obj1);
         for (; i < keys1.length; i++) {
           const key = keys1[i];
           if (
-            !Object.prototype.hasOwnProperty.call(obj2, key) ||
+            !ObjectPrototypeHasOwnProperty(obj2, key) ||
             !innerDeepEqual(obj1[key], obj2[key], strict, memos)
           ) {
             return false;
