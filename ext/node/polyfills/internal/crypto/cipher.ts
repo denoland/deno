@@ -190,6 +190,8 @@ export class Cipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -202,7 +204,12 @@ export class Cipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(false);
-    this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
