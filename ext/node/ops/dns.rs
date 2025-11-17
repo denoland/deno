@@ -9,6 +9,7 @@ use deno_core::op2;
 use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use tower_service::Service;
@@ -25,18 +26,15 @@ pub enum GetAddrInfoError {
 
 #[op2(async, stack_trace)]
 #[cppgc]
-pub async fn op_node_getaddrinfo<P>(
+pub async fn op_node_getaddrinfo(
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
   port: Option<u16>,
-) -> Result<NetPermToken, GetAddrInfoError>
-where
-  P: crate::NodePermissions + 'static,
-{
+) -> Result<NetPermToken, GetAddrInfoError> {
   {
     let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<P>();
-    permissions.check_net((hostname.as_str(), port), "node:dns.lookup()")?;
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    permissions.check_net(&(hostname.as_str(), port), "node:dns.lookup()")?;
   }
 
   let mut resolver = GaiResolver::new();

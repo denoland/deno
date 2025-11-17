@@ -35,11 +35,13 @@ use url::Url;
 pub mod broker;
 mod ipc_pipe;
 pub mod prompter;
+mod runtime_descriptor_parser;
 pub mod which;
 
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
 use prompter::permission_prompt;
+pub use runtime_descriptor_parser::RuntimePermissionDescriptorParser;
 
 use self::prompter::PromptResponse;
 use self::which::WhichSys;

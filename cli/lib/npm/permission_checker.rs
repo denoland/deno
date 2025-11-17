@@ -7,8 +7,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_permissions::OpenAccessKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use parking_lot::Mutex;
 
 use crate::sys::DenoLibSys;
@@ -49,7 +49,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   pub fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if permissions.query_read_all() {

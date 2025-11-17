@@ -4,16 +4,10 @@ mod interface;
 mod ops;
 mod std_fs;
 
-use std::borrow::Cow;
-use std::path::Path;
-
 pub use deno_io::fs::FsError;
 pub use deno_maybe_sync as sync;
 pub use deno_maybe_sync::MaybeSend;
 pub use deno_maybe_sync::MaybeSync;
-use deno_permissions::CheckedPath;
-use deno_permissions::OpenAccessKind;
-use deno_permissions::PermissionCheckError;
 
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
@@ -27,138 +21,57 @@ use crate::ops::*;
 pub use crate::std_fs::RealFs;
 pub use crate::std_fs::open_options_for_checked_path;
 
-pub trait FsPermissions {
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    access_kind: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open_blind<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    access_kind: OpenAccessKind,
-    display: &str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn check_read_all(&self, api_name: &str) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write_partial<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn check_write_all(&self, api_name: &str)
-  -> Result<(), PermissionCheckError>;
-}
-
-impl FsPermissions for deno_permissions::PermissionsContainer {
-  fn check_open<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    access_kind: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open(
-      self,
-      path,
-      access_kind,
-      Some(api_name),
-    )
-  }
-
-  fn check_open_blind<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    access_kind: OpenAccessKind,
-    display: &str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open_blind(
-      self,
-      path,
-      access_kind,
-      display,
-      Some(api_name),
-    )
-  }
-
-  fn check_write_partial<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_partial(
-      self, path, api_name,
-    )
-  }
-
-  fn check_read_all(&self, api_name: &str) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_all(self, api_name)
-  }
-
-  fn check_write_all(
-    &self,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_all(self, api_name)
-  }
-}
-
 pub const UNSTABLE_FEATURE_NAME: &str = "fs";
 
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],
-  parameters = [P: FsPermissions],
   ops = [
     op_fs_cwd,
     op_fs_umask,
-    op_fs_chdir<P>,
+    op_fs_chdir,
 
-    op_fs_open_sync<P>,
-    op_fs_open_async<P>,
-    op_fs_mkdir_sync<P>,
-    op_fs_mkdir_async<P>,
-    op_fs_chmod_sync<P>,
-    op_fs_chmod_async<P>,
-    op_fs_chown_sync<P>,
-    op_fs_chown_async<P>,
-    op_fs_remove_sync<P>,
-    op_fs_remove_async<P>,
-    op_fs_copy_file_sync<P>,
-    op_fs_copy_file_async<P>,
-    op_fs_stat_sync<P>,
-    op_fs_stat_async<P>,
-    op_fs_lstat_sync<P>,
-    op_fs_lstat_async<P>,
-    op_fs_realpath_sync<P>,
-    op_fs_realpath_async<P>,
-    op_fs_read_dir_sync<P>,
-    op_fs_read_dir_async<P>,
-    op_fs_rename_sync<P>,
-    op_fs_rename_async<P>,
-    op_fs_link_sync<P>,
-    op_fs_link_async<P>,
-    op_fs_symlink_sync<P>,
-    op_fs_symlink_async<P>,
-    op_fs_read_link_sync<P>,
-    op_fs_read_link_async<P>,
-    op_fs_truncate_sync<P>,
-    op_fs_truncate_async<P>,
-    op_fs_utime_sync<P>,
-    op_fs_utime_async<P>,
-    op_fs_make_temp_dir_sync<P>,
-    op_fs_make_temp_dir_async<P>,
-    op_fs_make_temp_file_sync<P>,
-    op_fs_make_temp_file_async<P>,
-    op_fs_write_file_sync<P>,
-    op_fs_write_file_async<P>,
-    op_fs_read_file_sync<P>,
-    op_fs_read_file_async<P>,
-    op_fs_read_file_text_sync<P>,
-    op_fs_read_file_text_async<P>,
+    op_fs_open_sync,
+    op_fs_open_async,
+    op_fs_mkdir_sync,
+    op_fs_mkdir_async,
+    op_fs_chmod_sync,
+    op_fs_chmod_async,
+    op_fs_chown_sync,
+    op_fs_chown_async,
+    op_fs_remove_sync,
+    op_fs_remove_async,
+    op_fs_copy_file_sync,
+    op_fs_copy_file_async,
+    op_fs_stat_sync,
+    op_fs_stat_async,
+    op_fs_lstat_sync,
+    op_fs_lstat_async,
+    op_fs_realpath_sync,
+    op_fs_realpath_async,
+    op_fs_read_dir_sync,
+    op_fs_read_dir_async,
+    op_fs_rename_sync,
+    op_fs_rename_async,
+    op_fs_link_sync,
+    op_fs_link_async,
+    op_fs_symlink_sync,
+    op_fs_symlink_async,
+    op_fs_read_link_sync,
+    op_fs_read_link_async,
+    op_fs_truncate_sync,
+    op_fs_truncate_async,
+    op_fs_utime_sync,
+    op_fs_utime_async,
+    op_fs_make_temp_dir_sync,
+    op_fs_make_temp_dir_async,
+    op_fs_make_temp_file_sync,
+    op_fs_make_temp_file_async,
+    op_fs_write_file_sync,
+    op_fs_write_file_async,
+    op_fs_read_file_sync,
+    op_fs_read_file_async,
+    op_fs_read_file_text_sync,
+    op_fs_read_file_text_async,
 
     op_fs_seek_sync,
     op_fs_seek_async,
@@ -166,8 +79,8 @@ deno_core::extension!(deno_fs,
     op_fs_file_sync_data_async,
     op_fs_file_sync_sync,
     op_fs_file_sync_async,
-    op_fs_file_stat_sync<P>,
-    op_fs_file_stat_async<P>,
+    op_fs_file_stat_sync,
+    op_fs_file_stat_async,
     op_fs_fchmod_async,
     op_fs_fchmod_sync,
     op_fs_fchown_async,
@@ -178,8 +91,8 @@ deno_core::extension!(deno_fs,
     op_fs_funlock_sync,
     op_fs_ftruncate_sync,
     op_fs_file_truncate_async,
-    op_fs_futime_sync<P>,
-    op_fs_futime_async<P>,
+    op_fs_futime_sync,
+    op_fs_futime_async,
 
   ],
   esm = [ "30_fs.js" ],

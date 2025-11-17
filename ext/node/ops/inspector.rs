@@ -11,8 +11,7 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
-
-use crate::NodePermissions;
+use deno_permissions::PermissionsContainer;
 
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {
@@ -21,14 +20,11 @@ pub fn op_inspector_enabled() -> bool {
 }
 
 #[op2(stack_trace)]
-pub fn op_inspector_open<P>(
+pub fn op_inspector_open(
   _state: &mut OpState,
   _port: Option<u16>,
   #[string] _host: Option<String>,
-) -> Result<(), JsErrorBox>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), JsErrorBox> {
   // TODO: hook up to InspectorServer
   /*
   let server = state.borrow_mut::<InspectorServer>();
@@ -106,18 +102,15 @@ pub enum InspectorConnectError {
 
 #[op2(stack_trace)]
 #[cppgc]
-pub fn op_inspector_connect<'s, P>(
+pub fn op_inspector_connect<'s>(
   isolate: &v8::Isolate,
   scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
-) -> Result<JSInspectorSession, InspectorConnectError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<JSInspectorSession, InspectorConnectError> {
   state
-    .borrow_mut::<P>()
+    .borrow_mut::<PermissionsContainer>()
     .check_sys("inspector", "inspector.Session.connect")?;
 
   if connect_to_main_thread {
