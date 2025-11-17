@@ -1,6 +1,0 @@
-require_node.js loading
-Platform: [WILDCARD]
-Path separator: [WILDCARD]
-main_node.ts starts
-SUCCESS: require('node:*') worked in --require module
-main_node.ts finished

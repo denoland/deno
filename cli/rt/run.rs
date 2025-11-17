@@ -864,7 +864,7 @@ pub async fn run(
     } else {
       IsCjsResolutionMode::ExplicitTypeCommonJs
     },
-    require_modules,
+    require_modules.clone(),
   ));
   let npm_req_resolver = Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
     sys: sys.clone(),
@@ -1085,12 +1085,6 @@ pub async fn run(
 
   let preload_modules = metadata
     .preload_modules
-    .iter()
-    .map(|key| root_dir_url.join(key).unwrap())
-    .collect::<Vec<_>>();
-
-  let require_modules = metadata
-    .require_modules
     .iter()
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
