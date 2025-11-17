@@ -2347,21 +2347,10 @@ impl Inner {
         })?;
 
       if !organize_imports_edit.is_empty() {
-        let mut changes_with_modules = IndexMap::new();
-        changes_with_modules.extend(
-          fix_ts_import_changes(&organize_imports_edit, &module, self, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!("Unable to fix import changes: {:#}", err);
-                LspError::internal_error()
-              }
-            })?
-            .into_iter()
-            .map(|c| (c, module.clone())),
-        );
-
+        let changes_with_modules = organize_imports_edit
+          .into_iter()
+          .map(|c| (c, module.clone()))
+          .collect::<IndexMap<_, _>>();
         all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
           title: "Organize imports".to_string(),
           kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
