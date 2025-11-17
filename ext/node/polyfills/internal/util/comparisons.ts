@@ -271,7 +271,7 @@ function keyCheck(
   // Cheap key test
   let i = 0;
   for (; i < aKeys.length; i++) {
-    if (!ObjectPrototypeHasOwnProperty(val2, aKeys[i])) {
+    if (!ObjectPrototypePropertyIsEnumerable(val2, aKeys[i])) {
       return false;
     }
   }
@@ -282,14 +282,14 @@ function keyCheck(
       let count = 0;
       for (i = 0; i < symbolKeysA.length; i++) {
         const key = symbolKeysA[i];
-        if (ObjectPrototypeHasOwnProperty(val1, key)) {
-          if (!ObjectPrototypeHasOwnProperty(val2, key)) {
+        if (ObjectPrototypePropertyIsEnumerable(val1, key)) {
+          if (!ObjectPrototypePropertyIsEnumerable(val2, key)) {
             return false;
           }
           // added toString here
           aKeys.push(key.toString());
           count++;
-        } else if (ObjectPrototypeHasOwnProperty(val2, key)) {
+        } else if (ObjectPrototypePropertyIsEnumerable(val2, key)) {
           return false;
         }
       }
