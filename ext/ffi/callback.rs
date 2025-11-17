@@ -21,10 +21,10 @@ use deno_core::ResourceId;
 use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::v8;
+use deno_permissions::PermissionsContainer;
 use libffi::middle::Cif;
 use serde::Deserialize;
 
-use crate::FfiPermissions;
 use crate::ForeignFunction;
 use crate::symbol::NativeType;
 
@@ -575,17 +575,14 @@ pub struct RegisterCallbackArgs {
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
+pub fn op_ffi_unsafe_callback_create<'scope>(
   state: &mut OpState,
   scope: &mut v8::PinScope<'scope, '_>,
   #[serde] args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, CallbackError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<v8::Local<'scope, v8::Value>, CallbackError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
