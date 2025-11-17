@@ -5,7 +5,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -25,7 +24,6 @@ use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
-use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
@@ -161,15 +159,6 @@ pub fn default_resolve_require_node_module_paths(from: &Path) -> Vec<String> {
 
   paths
 }
-
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  let mut set = HashSet::new();
-  set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_OPTIONS".to_string());
-  set
-});
 
 #[op2]
 #[string]

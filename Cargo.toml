@@ -73,7 +73,7 @@ deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.42.0"
 deno_path_util = "=0.6.4"
-deno_semver = "=0.9.0"
+deno_semver = "=0.9.1"
 deno_task_shell = "=0.26.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
@@ -141,8 +141,8 @@ async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
-aws-lc-rs = { version = "1.0.0" }
-aws-lc-sys = { version = "0.26.0" }
+aws-lc-rs = { version = "1.13.1" }
+aws-lc-sys = { version = "0.29.0" }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
@@ -172,7 +172,7 @@ file_test_runner = "0.7.3"
 filetime = "0.2.16"
 flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
-fqdn = "0.3.4"
+fqdn = "0.4.6"
 fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"
@@ -196,7 +196,7 @@ indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
-jsonc-parser = { version = "0.27.0", features = ["serde"] }
+jsonc-parser = { version = "0.27.1", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
 libc = "0.2.168"
