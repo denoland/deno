@@ -441,6 +441,7 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
         || e.url.starts_with("data:")
+        || e.url.starts_with("blob:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
         || e.url.contains("/$deno$stdin.")

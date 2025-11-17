@@ -5,34 +5,38 @@
 
 import {
   BinaryOptionsArgument,
+  FileOptions,
   FileOptionsArgument,
-  getEncoding,
-  getSignal,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
 import { readAll, readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
-import {
-  BinaryEncodings,
-  Encodings,
-  TextEncodings,
-} from "ext:deno_node/_utils.ts";
+import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
+import { core } from "ext:core/mod.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
 
-function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
+const defaultOptions = {
+  __proto__: null,
+  flag: "r",
+};
+
+function maybeDecode(data: Uint8Array, encoding: Encodings): string;
 function maybeDecode(
   data: Uint8Array,
-  encoding: BinaryEncodings | null,
+  encoding: null | undefined,
 ): Buffer;
 function maybeDecode(
   data: Uint8Array,
-  encoding: Encodings | null,
+  encoding: Encodings | null | undefined,
 ): string | Buffer {
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  if (encoding && encoding !== "binary") return buffer.toString(encoding);
+  if (encoding) return buffer.toString(encoding);
   return buffer;
 }
 
@@ -41,6 +45,37 @@ type BinaryCallback = (err: Error | null, data?: Buffer) => void;
 type GenericCallback = (err: Error | null, data?: string | Buffer) => void;
 type Callback = TextCallback | BinaryCallback | GenericCallback;
 type Path = string | URL | FileHandle | number;
+
+async function readFileAsync(
+  path: string,
+  options: FileOptions | undefined,
+): Promise<Uint8Array> {
+  let cancelRid: number | undefined;
+  let abortHandler: (rid: number) => void;
+  const flagsNumber = stringToFlags(options!.flag, "options.flag");
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = core.createCancelHandle();
+    abortHandler = () => core.tryClose(cancelRid as number);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    const read = await op_fs_read_file_async(
+      path,
+      cancelRid,
+      flagsNumber,
+    );
+    return read;
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
 
 export function readFile(
   path: Path,
@@ -71,8 +106,7 @@ export function readFile(
     cb = callback;
   }
 
-  const encoding = getEncoding(optOrCallback);
-  const signal = getSignal(optOrCallback);
+  const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
 
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
@@ -82,17 +116,13 @@ export function readFile(
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
-    p = Deno.readFile(path, { signal: signal });
+    p = readFileAsync(path, options);
   }
 
   if (cb) {
     p.then((data: Uint8Array) => {
-      if (encoding && encoding !== "binary") {
-        const text = maybeDecode(data, encoding);
-        return (cb as TextCallback)(null, text);
-      }
-      const buffer = maybeDecode(data, encoding);
-      (cb as BinaryCallback)(null, buffer);
+      const textOrBuffer = maybeDecode(data, options?.encoding);
+      (cb as BinaryCallback)(null, textOrBuffer);
     }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
   }
 }
@@ -123,22 +153,19 @@ export function readFileSync(
   opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? pathFromURL(path) : path;
+  const options = getOptions<FileOptions>(opt, defaultOptions);
   let data;
   if (typeof path === "number") {
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     data = readAllSync(fsFile);
   } else {
+    const flagsNumber = stringToFlags(options?.flag, "options.flag");
     try {
-      data = Deno.readFileSync(path);
+      data = op_fs_read_file_sync(path, flagsNumber);
     } catch (err) {
       throw denoErrorToNodeError(err, { path, syscall: "open" });
     }
   }
-  const encoding = getEncoding(opt);
-  if (encoding && encoding !== "binary") {
-    const text = maybeDecode(data, encoding);
-    return text;
-  }
-  const buffer = maybeDecode(data, encoding);
-  return buffer;
+  const textOrBuffer = maybeDecode(data, options?.encoding);
+  return textOrBuffer;
 }

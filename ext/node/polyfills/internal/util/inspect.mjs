@@ -65,7 +65,7 @@ import {
   formatNumber,
   formatValue,
   styles,
-} from "ext:deno_console/01_console.js";
+} from "ext:deno_web/01_console.js";
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
 // Each color consists of an array with the color code as first entry and the

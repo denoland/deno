@@ -60,9 +60,10 @@ const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
+use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::flags_from_vec;
+use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -119,6 +120,9 @@ async fn run_subcommand(
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
     }),
+    DenoSubcommand::Audit(audit_flags) => {
+      spawn_subcommand(async { tools::pm::audit(flags, audit_flags).await })
+    }
     DenoSubcommand::Remove(remove_flags) => {
       spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
     }
@@ -410,7 +414,16 @@ async fn run_subcommand(
     }
     DenoSubcommand::Completions(completions_flags) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)
+        match completions_flags {
+          CompletionsFlags::Static(buf) => {
+            display::write_to_stdout_ignore_sigpipe(&buf)
+              .map_err(AnyError::from)
+          }
+          CompletionsFlags::Dynamic(f) => {
+            f()?;
+            Ok(())
+          }
+        }
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
@@ -545,9 +558,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   deno_runtime::exit(code);
 }
 
-fn exit_for_error(error: AnyError) -> ! {
+fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
   let error_string = match js_error_downcast_ref(&error) {
-    Some(e) => format_js_error(e),
+    Some(e) => {
+      let initial_cwd = initial_cwd
+        .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
+      format_js_error(e, initial_cwd.as_ref())
+    }
     None => format!("{error:?}"),
   };
 
@@ -560,6 +577,19 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
     feature
   );
   deno_runtime::exit(70);
+}
+
+fn maybe_setup_permission_broker() {
+  let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") else {
+    return;
+  };
+  log::warn!(
+    "{} Permission broker is an experimental feature",
+    colors::yellow("Warning")
+  );
+  let broker =
+    deno_runtime::deno_permissions::broker::PermissionBroker::new(socket_path);
+  deno_runtime::deno_permissions::broker::set_broker(broker);
 }
 
 pub fn main() {
@@ -577,10 +607,12 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
-  deno_runtime::deno_permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  maybe_setup_permission_broker();
 
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
@@ -591,62 +623,88 @@ pub fn main() {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured_runtime, waited_args) =
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
       match wait_for_start(&args, roots.clone()) {
         Some(f) => match f.await {
           Ok(v) => match v {
-            Some((u, a)) => (Some(u), Some(a)),
-            None => (None, None),
+            Some((u, a, c)) => (Some(u), Some(a), Some(c)),
+            None => (None, None, None),
           },
           Err(e) => {
             panic!("Failure from control sock: {e}");
           }
         },
-        None => (None, None),
+        None => (None, None, None),
       };
 
     #[cfg(not(unix))]
-    let (waited_unconfigured_runtime, waited_args) = (None, None);
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
+      (None, None, None);
 
     let args = waited_args.unwrap_or(args);
+    let initial_cwd = waited_cwd.map(Some).unwrap_or_else(|| {
+      match std::env::current_dir().with_context(|| "Failed getting cwd.") {
+        Ok(cwd) => Some(cwd),
+        Err(err) => {
+          log::error!("Failed getting cwd: {err}");
+          None
+        }
+      }
+    });
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
-    let flags = resolve_flags_and_init(args).await?;
+    let flags = match resolve_flags_and_init(args, initial_cwd.clone()).await {
+      Ok(flags) => flags,
+      Err(err) => return (Err(err), initial_cwd),
+    };
 
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
 
-    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
+    (
+      run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await,
+      initial_cwd,
+    )
   };
 
-  let result = create_and_run_current_thread_with_maybe_metrics(future);
+  let (result, initial_cwd) =
+    create_and_run_current_thread_with_maybe_metrics(future);
 
   #[cfg(feature = "dhat-heap")]
   drop(profiler);
 
   match result {
     Ok(exit_code) => deno_runtime::exit(exit_code),
-    Err(err) => exit_for_error(err),
+    Err(err) => exit_for_error(err, initial_cwd.as_deref()),
   }
 }
 
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
+  initial_cwd: Option<std::path::PathBuf>,
 ) -> Result<Flags, AnyError> {
-  let mut flags = match flags_from_vec(args) {
-    Ok(flags) => flags,
-    Err(err @ clap::Error { .. })
-      if err.kind() == clap::error::ErrorKind::DisplayVersion =>
-    {
-      // Ignore results to avoid BrokenPipe errors.
-      let _ = err.print();
-      deno_runtime::exit(0);
-    }
-    Err(err) => exit_for_error(AnyError::from(err)),
-  };
+  // this env var is used by clap to enable dynamic completions, it's set by the shell when
+  // executing deno to get dynamic completions.
+  if std::env::var("COMPLETE").is_ok() {
+    crate::args::handle_shell_completion()?;
+    deno_runtime::exit(0);
+  }
+
+  let mut flags =
+    match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
+      Ok(flags) => flags,
+      Err(err @ clap::Error { .. })
+        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
+      {
+        // Ignore results to avoid BrokenPipe errors.
+        let _ = err.print();
+        deno_runtime::exit(0);
+      }
+      Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
+    };
   // preserve already loaded env variables
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
@@ -658,13 +716,16 @@ async fn resolve_flags_and_init(
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
-    flags.connected = true;
+    flags.tunnel = true;
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.connected {
+  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy) {
     if let Err(err) = initialize_tunnel(&flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
+      exit_for_error(
+        err.context("Failed to start with tunnel"),
+        initial_cwd.as_deref(),
+      );
     }
     // SAFETY: We're doing this before any threads are created.
     unsafe {
@@ -774,7 +835,7 @@ fn wait_for_start(
 ) -> Option<
   impl Future<
     Output = Result<
-      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>, PathBuf)>,
       AnyError,
     >,
   > + use<>,
@@ -893,7 +954,7 @@ fn wait_for_start(
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(cmd.cwd)?;
+    std::env::set_current_dir(&cmd.cwd)?;
 
     for (k, v) in cmd.env {
       // SAFETY: We're doing this before any threads are created.
@@ -905,7 +966,7 @@ fn wait_for_start(
       .chain(cmd.args.into_iter().map(Into::into))
       .collect();
 
-    Ok(Some((unconfigured, args)))
+    Ok(Some((unconfigured, args, PathBuf::from(cmd.cwd))))
   })
 }
 
@@ -914,9 +975,9 @@ async fn auth_tunnel(
 ) -> Result<String, deno_core::anyhow::Error> {
   let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
 
-  if let Some(token) = env_token {
+  if let Some(token) = &env_token {
     args.push("--token".to_string());
-    args.push(token);
+    args.push(token.clone());
   }
 
   let mut child = tokio::process::Command::new(env::current_exe()?)
@@ -928,7 +989,11 @@ async fn auth_tunnel(
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  if let Some(token) = env_token {
+    Ok(token)
+  } else {
+    Ok(tools::deploy::get_token_entry()?.get_password()?)
+  }
 }
 
 #[allow(clippy::print_stderr)]
@@ -1030,7 +1095,9 @@ async fn initialize_tunnel(
           format!("https://{}:{}", addr.hostname(), addr.port())
         };
 
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        eprintln!(
           "{}",
           colors::green(format!("You are connected to {endpoint}"))
         );
@@ -1041,7 +1108,9 @@ async fn initialize_tunnel(
         } else {
           "".into()
         };
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        eprintln!(
           "{}",
           colors::green(format!(
             "Reconnecting tunnel in {}s...{}",

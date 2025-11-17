@@ -48,15 +48,15 @@ pub fn disable_before_exit() {
 }
 
 pub fn before_exit() {
-  if let Some(tunnel) = get_tunnel() {
-    log::trace!("deno_net::tunnel::before_exit >");
+  log::trace!("deno_net::tunnel::before_exit >");
 
+  if let Some(tunnel) = get_tunnel() {
     // stay alive long enough to actually send the close frame, since
     // we can't rely on the linux kernel to close this like with tcp.
     deno_core::futures::executor::block_on(tunnel.close(1u32, b""));
-
-    log::trace!("deno_net::tunnel::before_exit <");
   }
+
+  log::trace!("deno_net::tunnel::before_exit <");
 }
 
 pub fn get_tunnel() -> Option<&'static TunnelConnection> {
@@ -169,6 +169,7 @@ impl Resource for TunnelStreamResource {
   }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum StreamHeader {
   Control {
@@ -183,6 +184,7 @@ enum StreamHeader {
   Agent {},
 }
 
+#[allow(dead_code)]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum ControlMessage {
   Authenticated {

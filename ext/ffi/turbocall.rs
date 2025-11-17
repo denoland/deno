@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::v8::fast_api;
 
 use crate::NativeType;
@@ -411,11 +412,9 @@ unsafe extern "C" fn turbocall_raise(
   options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
 ) {
   // SAFETY: This is called with valid FastApiCallbackOptions from within fast callback.
-  let mut scope = unsafe { deno_core::v8::CallbackScope::new(&*options) };
-  let exception = deno_core::error::to_v8_error(
-    &mut scope,
-    &crate::IRError::InvalidBufferType,
-  );
+  v8::callback_scope!(unsafe scope, unsafe { &*options });
+  let exception =
+    deno_core::error::to_v8_error(scope, &crate::IRError::InvalidBufferType);
   scope.throw_exception(exception);
 }
 
@@ -425,14 +424,14 @@ unsafe extern "C" fn turbocall_trace(
   options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
 ) {
   // SAFETY: This is called with valid FastApiCallbackOptions from within fast callback.
-  let mut scope = unsafe { deno_core::v8::CallbackScope::new(&*options) };
+  v8::callback_scope!(unsafe let scope, unsafe { &*options });
   let func_data = deno_core::cppgc::try_unwrap_cppgc_object::<FunctionData>(
-    &mut scope,
+    scope,
     // SAFETY: This is valid if the options are valid.
     unsafe { (&*options).data },
   )
   .unwrap();
-  deno_core::JsRuntime::op_state_from(&scope)
+  deno_core::JsRuntime::op_state_from(scope)
     .borrow_mut()
     .put(TurbocallTarget(func_data.symbol.name.clone()));
 }

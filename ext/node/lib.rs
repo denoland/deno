@@ -5,7 +5,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -25,7 +24,6 @@ use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
-use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
@@ -161,15 +159,6 @@ pub fn default_resolve_require_node_module_paths(from: &Path) -> Vec<String> {
 
   paths
 }
-
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  let mut set = HashSet::new();
-  set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_OPTIONS".to_string());
-  set
-});
 
 #[op2]
 #[string]
@@ -349,8 +338,6 @@ deno_core::extension!(deno_node,
     ops::dns::op_node_getaddrinfo<P>,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
-    ops::fs::op_node_cp_sync<P>,
-    ops::fs::op_node_cp<P>,
     ops::fs::op_node_lchmod_sync<P>,
     ops::fs::op_node_lchmod<P>,
     ops::fs::op_node_lchown_sync<P>,
@@ -459,6 +446,10 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
+    ops::process::op_node_process_setegid<P>,
+    ops::process::op_node_process_seteuid<P>,
+    ops::process::op_node_process_setgid<P>,
+    ops::process::op_node_process_setuid<P>,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -474,6 +465,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::sqlite::op_node_database_backup<P>,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
@@ -501,7 +493,9 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.js",
+    "_fs/_fs_cp.ts",
+    "_fs/cp/cp.ts",
+    "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
     "_fs/_fs_fchmod.ts",
@@ -537,7 +531,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
-    "_fs/_fs_write.mjs",
+    "_fs/_fs_write.ts",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.ts",
     "_next_tick.ts",
@@ -550,8 +544,6 @@ deno_core::extension!(deno_node,
     "_util/async.ts",
     "_util/os.ts",
     "_util/std_asserts.ts",
-    "_util/std_fmt_colors.ts",
-    "_util/std_testing_diff.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
     "assertion_error.ts",
@@ -881,11 +873,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 
@@ -904,7 +892,7 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
 
 #[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);
   let value = v8::Boolean::new(scope, true);

@@ -87,7 +87,7 @@ impl NodeAnalysisCache for NullNodeAnalysisCache {
 
 #[sys_traits::auto_impl]
 pub trait DenoCjsCodeAnalyzerSys:
-  sys_traits::FsRead + MaybeSend + MaybeSync + 'static
+  sys_traits::FsRead + sys_traits::FsMetadata + MaybeSend + MaybeSync + 'static
 {
 }
 

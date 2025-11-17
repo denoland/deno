@@ -11,6 +11,8 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::MinimumDependencyAgeConfig;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
@@ -24,7 +26,9 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_semver::VersionReq;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -85,7 +89,6 @@ use crate::npmrc::discover_npmrc_from_workspace;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
-use crate::workspace::WorkspaceNpmLinkPackages;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 
@@ -109,6 +112,12 @@ pub type DenoNodeCodeTranslatorRc<TSys> = NodeCodeTranslatorRc<
   NpmResolver<TSys>,
   TSys,
 >;
+#[allow(clippy::disallowed_types)]
+pub type NpmVersionResolverRc = deno_maybe_sync::MaybeArc<NpmVersionResolver>;
+#[cfg(feature = "graph")]
+#[allow(clippy::disallowed_types)]
+pub type JsrVersionResolverRc =
+  deno_maybe_sync::MaybeArc<deno_graph::packages::JsrVersionResolver>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -222,6 +231,7 @@ pub trait WorkspaceFactorySys:
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
   + crate::loader::NpmModuleLoaderSys
+  + sys_traits::SystemTimeNow
 {
 }
 
@@ -628,9 +638,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .workspace_npm_link_packages
       .get_or_try_init(|| {
         let workspace_dir = self.workspace_directory()?;
-        let npm_packages = new_rc(WorkspaceNpmLinkPackages::from_workspace(
+        let npm_packages = WorkspaceNpmLinkPackagesRc::from_workspace(
           workspace_dir.workspace.as_ref(),
-        ));
+        );
         if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
           bail!("Linking npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
         } else {
@@ -652,6 +662,8 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 pub struct ResolverFactoryOptions {
   pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
+  /// Prevents installing packages newer than the specified date.
+  pub newest_dependency_date: Option<NewestDependencyDate>,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
   pub node_resolver_options: NodeResolverOptions,
@@ -667,6 +679,9 @@ pub struct ResolverFactoryOptions {
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
   pub allow_json_imports: AllowJsonImports,
+  /// Known good version requirement to use for the `@types/node` package
+  /// when the version is unspecified or "latest".
+  pub types_node_version_req: Option<VersionReq>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -683,8 +698,10 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "graph")]
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
+  #[cfg(feature = "graph")]
+  jsr_version_resolver: Deferred<JsrVersionResolverRc>,
+  minimum_dependency_age: Deferred<MinimumDependencyAgeConfig>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
-  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
       DenoInNpmPackageChecker,
@@ -693,6 +710,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
       TSys,
     >,
   >,
+  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   npm_req_resolver: Deferred<
     NpmReqResolverRc<
       DenoInNpmPackageChecker,
@@ -703,6 +721,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
+  npm_version_resolver: Deferred<NpmVersionResolverRc>,
   #[cfg(feature = "deno_ast")]
   parsed_source_cache: crate::cache::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
@@ -734,12 +753,16 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       #[cfg(feature = "graph")]
       found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
+      #[cfg(feature = "graph")]
+      jsr_version_resolver: Default::default(),
+      minimum_dependency_age: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
+      npm_version_resolver: Default::default(),
       #[cfg(feature = "deno_ast")]
       parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
@@ -906,6 +929,56 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
+  #[cfg(feature = "graph")]
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
+    self.jsr_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
+      Ok(new_rc(deno_graph::packages::JsrVersionResolver {
+        newest_dependency_date_options:
+          deno_graph::packages::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_graph::packages::NewestDependencyDate),
+            exclude_jsr_pkgs: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("jsr:"))
+              .map(|v| v.into())
+              .collect(),
+          },
+      }))
+    })
+  }
+
+  /// The newest allowed dependency date.
+  pub fn minimum_dependency_age_config(
+    &self,
+  ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
+    self.minimum_dependency_age.get_or_try_init(|| {
+      let config = if let Some(date) = self.options.newest_dependency_date {
+        MinimumDependencyAgeConfig {
+          age: Some(date),
+          exclude: Vec::new(),
+        }
+      } else {
+        let workspace_factory = self.workspace_factory();
+        let workspace = &workspace_factory.workspace_directory()?.workspace;
+        workspace.minimum_dependency_age(workspace_factory.sys())?
+      };
+      if let Some(newest_dependency_date) =
+        config.age.and_then(|d| d.into_option())
+      {
+        log::debug!("Newest dependency date: {}", newest_dependency_date);
+      }
+      Ok(config)
+    })
+  }
+
   pub fn node_code_translator(
     &self,
   ) -> Result<&DenoNodeCodeTranslatorRc<TSys>, anyhow::Error> {
@@ -1008,6 +1081,37 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           npm_system_info: self.options.npm_system_info.clone(),
           npmrc: self.workspace_factory.npmrc()?.clone(),
         })
+      }))
+    })
+  }
+
+  pub fn npm_version_resolver(
+    &self,
+  ) -> Result<&NpmVersionResolverRc, anyhow::Error> {
+    self.npm_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
+      Ok(new_rc(NpmVersionResolver {
+        types_node_version_req: self.options.types_node_version_req.clone(),
+        newest_dependency_date_options:
+          deno_npm::resolution::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_npm::resolution::NewestDependencyDate),
+            exclude: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|v| v.into())
+              .collect(),
+          },
+        link_packages: self
+          .workspace_factory
+          .workspace_npm_link_packages()?
+          .0
+          .clone(),
       }))
     })
   }

@@ -202,9 +202,12 @@ pub async fn outdated(
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
     factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
-  let jsr_fetch_resolver =
-    Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
 
   if !cli_options.start_dir.has_deno_json()
     && !cli_options.start_dir.has_pkg_json()
@@ -302,13 +305,23 @@ fn choose_new_version_req(
         latest_available: false,
       };
     };
-    let exact = if let Some(range) = dep.req.version_req.range() {
-      range.0[0].start == range.0[0].end
+    // Detect the original operator to preserve it
+    let version_req_str = dep.req.version_req.to_string();
+    let operator = if version_req_str.starts_with('~') {
+      "~"
+    } else if version_req_str.starts_with('^') {
+      "^"
     } else {
-      false
+      // Check if it's an exact version (no operator)
+      let exact = if let Some(range) = dep.req.version_req.range() {
+        range.0[0].start == range.0[0].end
+      } else {
+        false
+      };
+      if exact { "" } else { "^" }
     };
     let candidate_version_req = VersionReq::parse_from_specifier(
-      format!("{}{}", if exact { "" } else { "^" }, preferred.version).as_str(),
+      format!("{}{}", operator, preferred.version).as_str(),
     )
     .unwrap();
     if preferred.version <= resolved.version
@@ -515,6 +528,7 @@ async fn dep_manager_args(
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
     npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
     progress_bar: factory.text_only_progress_bar().clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory

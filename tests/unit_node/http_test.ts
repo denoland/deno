@@ -2181,3 +2181,46 @@ Deno.test("[node/http] server.listen respects signal option", async () => {
   `);
   assertEquals(exitCode, 0);
 });
+
+// Test for empty chunk in chunked POST request
+// Regression test for: https://github.com/denoland/deno/issues/31056
+Deno.test("[node/http] client request with empty write in chunked POST completes", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let requestBody = "";
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      requestBody = body;
+      res.statusCode = 200;
+      res.end("OK");
+    });
+  });
+
+  server.listen(() => {
+    const { port } = server.address() as { port: number };
+
+    const req = http.request({
+      hostname: "localhost",
+      port,
+      path: "/",
+      method: "POST",
+    }, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    // This should complete successfully even with an empty write
+    req.write("");
+    req.end();
+  });
+
+  await promise;
+  assertEquals(requestBody, "");
+});

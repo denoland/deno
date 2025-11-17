@@ -2,27 +2,13 @@
 
 [package]
 name = "deno_url"
-version = "0.216.0"
+version = "0.222.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
-description = "URL API implementation for Deno"
+description = "DEPRECATED: use deno_web instead"
 
 [lib]
 path = "lib.rs"
-
-[dependencies]
-deno_core.workspace = true
-deno_error.workspace = true
-urlpattern.workspace = true
-
-[dev-dependencies]
-deno_bench_util.workspace = true
-deno_console.workspace = true
-deno_webidl.workspace = true
-
-[[bench]]
-name = "url_ops"
-harness = false

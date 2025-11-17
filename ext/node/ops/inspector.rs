@@ -6,7 +6,6 @@ use std::rc::Rc;
 use deno_core::GarbageCollected;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_core::op2;
@@ -108,8 +107,8 @@ pub enum InspectorConnectError {
 #[op2(stack_trace)]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
-  isolate: *mut v8::Isolate,
-  scope: &mut v8::HandleScope<'s>,
+  isolate: &v8::Isolate,
+  scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
@@ -131,6 +130,9 @@ where
 
   let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
 
+  // SAFETY: just grabbing the raw pointer
+  let isolate = unsafe { isolate.as_raw_isolate_ptr() };
+
   // The inspector connection does not keep the event loop alive but
   // when the inspector sends a message to the frontend, the JS that
   // that runs may keep the event loop alive so we have to call back
@@ -140,10 +142,11 @@ where
     // SAFETY: This function is called directly by the inspector, so
     //   1) The isolate is still valid
     //   2) We are on the same thread as the Isolate
-    let scope = unsafe { &mut v8::CallbackScope::new(&mut *isolate) };
+    let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate) };
+    v8::callback_scope!(unsafe let scope, &mut isolate);
     let context = v8::Local::new(scope, context.clone());
     let scope = &mut v8::ContextScope::new(scope, context);
-    let scope = &mut v8::TryCatch::new(scope);
+    v8::tc_scope!(let scope, scope);
     let recv = v8::undefined(scope);
     if let Some(message) = v8::String::new(scope, &message.content) {
       let callback = v8::Local::new(scope, callback.clone());
@@ -154,10 +157,8 @@ where
   let session = JsRuntimeInspector::create_local_session(
     inspector,
     callback,
-    InspectorSessionOptions {
-      kind: InspectorSessionKind::NonBlocking {
-        wait_for_disconnect: false,
-      },
+    InspectorSessionKind::NonBlocking {
+      wait_for_disconnect: false,
     },
   );
 
@@ -166,17 +167,17 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_inspector_dispatch(
-  #[cppgc] session: &JSInspectorSession,
+  #[cppgc] inspector: &JSInspectorSession,
   #[string] message: String,
 ) {
-  if let Some(session) = &mut *session.session.borrow_mut() {
+  if let Some(session) = &mut *inspector.session.borrow_mut() {
     session.dispatch(message);
   }
 }
 
 #[op2(fast)]
-pub fn op_inspector_disconnect(#[cppgc] session: &JSInspectorSession) {
-  drop(session.session.borrow_mut().take());
+pub fn op_inspector_disconnect(#[cppgc] inspector: &JSInspectorSession) {
+  inspector.session.borrow_mut().take();
 }

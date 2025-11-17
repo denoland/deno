@@ -11,7 +11,6 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -52,6 +51,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
@@ -116,7 +116,7 @@ pub enum WorkerThreadType {
 impl<'s> WorkerThreadType {
   pub fn to_v8(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::String> {
     v8::String::new(
       scope,
@@ -522,11 +522,10 @@ impl WebWorker {
       deno_telemetry::deno_telemetry::init(),
       // Web APIs
       deno_webidl::deno_webidl::init(),
-      deno_console::deno_console::init(),
-      deno_url::deno_url::init(),
-      deno_web::deno_web::init::<PermissionsContainer>(
+      deno_web::deno_web::init::<PermissionsContainer, InMemoryBroadcastChannel>(
         services.blob_store,
         Some(options.main_module.clone()),
+        services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_canvas::deno_canvas::init(),
@@ -545,9 +544,6 @@ impl WebWorker {
       deno_websocket::deno_websocket::init::<PermissionsContainer>(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init(
-        services.broadcast_channel,
-      ),
       deno_ffi::deno_ffi::init::<PermissionsContainer>(
         services.deno_rt_native_addon_loader.clone(),
       ),
@@ -687,7 +683,7 @@ impl WebWorker {
     if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(
         options.main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         false,
       );
     }
@@ -704,7 +700,7 @@ impl WebWorker {
 
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -751,7 +747,7 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
-      let scope = &mut self.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut self.js_runtime);
       let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -1003,7 +999,7 @@ impl WebWorker {
   // Starts polling for messages from worker host from JavaScript.
   fn start_polling_for_messages(&mut self) {
     let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let poll_for_messages =
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
@@ -1015,7 +1011,7 @@ impl WebWorker {
   fn has_message_event_listener(&mut self) -> bool {
     let has_message_event_listener_fn =
       self.has_message_event_listener_fn.as_ref().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let has_message_event_listener =
       v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
     let fn_ =

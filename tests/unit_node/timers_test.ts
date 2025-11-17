@@ -1,9 +1,23 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, fail } from "@std/assert";
+import { assert, assertRejects, fail } from "@std/assert";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 import { assertEquals } from "@std/assert";
+import { performance } from "node:perf_hooks";
+
+Deno.test("[node/perf_hooks] performance.timerify()", () => {
+  function sayHello() {
+    return "hello world";
+  }
+
+  const wrapped = performance.timerify(sayHello);
+  const result = wrapped();
+
+  if (result !== "hello world") {
+    throw new Error(`Expected "hello world", got "${result}"`);
+  }
+});
 
 Deno.test("[node/timers setTimeout]", () => {
   {
@@ -268,5 +282,25 @@ Deno.test({
         } duration (${delta}ms) should be within ±${DELTA_TOLERANCE_MS}ms of ${INTERVAL_MS}ms`,
       );
     });
+  },
+});
+
+Deno.test({
+  name: "[timers/promises] setTimeout aborted by AbortSignal",
+  async fn() {
+    const timerPromise = new Promise((resolve, reject) => {
+      const abortController = new AbortController();
+      const timer = timersPromises.setTimeout(1000, "foo", {
+        signal: abortController.signal,
+      });
+      abortController.abort();
+      timer.then(resolve).catch(reject);
+    });
+
+    await assertRejects(
+      () => timerPromise,
+      Error,
+      "The operation was aborted",
+    );
   },
 });

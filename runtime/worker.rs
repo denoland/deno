@@ -10,25 +10,24 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadOptions;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
-use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
@@ -49,6 +48,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -98,7 +98,8 @@ pub fn create_validate_import_attributes_callback(
   enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
-    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+    move |scope: &mut v8::PinScope<'_, '_>,
+          attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
         enable_raw_imports.load(Ordering::Relaxed)
           && matches!(kind, "bytes" | "text")
@@ -529,9 +530,13 @@ impl MainWorker {
 
     js_runtime
       .lazy_init_extensions(vec![
-        deno_web::deno_web::args::<PermissionsContainer>(
+        deno_web::deno_web::args::<
+          PermissionsContainer,
+          InMemoryBroadcastChannel,
+        >(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
@@ -551,9 +556,6 @@ impl MainWorker {
           options.origin_storage_dir.clone(),
         ),
         deno_crypto::deno_crypto::args(options.seed),
-        deno_broadcast_channel::deno_broadcast_channel::args(
-          services.broadcast_channel.clone(),
-        ),
         deno_ffi::deno_ffi::args::<PermissionsContainer>(
           services.deno_rt_native_addon_loader.clone(),
         ),
@@ -627,7 +629,7 @@ impl MainWorker {
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
@@ -642,7 +644,7 @@ impl MainWorker {
       dispatch_process_exit_event_fn_global,
     ) = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -750,8 +752,8 @@ impl MainWorker {
       }
     }
 
-    let scope = &mut self.js_runtime.handle_scope();
-    let scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(scope, scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -918,9 +920,7 @@ impl MainWorker {
     JsRuntimeInspector::create_local_session(
       insp,
       cb,
-      InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+      InspectorSessionKind::Blocking,
     )
   }
 
@@ -947,8 +947,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_load_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -964,8 +964,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_unload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -979,8 +979,8 @@ impl MainWorker {
 
   /// Dispatches process.emit("exit") event for node compat.
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_exit_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -996,8 +996,8 @@ impl MainWorker {
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_beforeunload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -1015,8 +1015,8 @@ impl MainWorker {
   pub fn dispatch_process_beforeexit_event(
     &mut self,
   ) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
       tc_scope,
       &self.dispatch_process_beforeexit_event_fn_global,
@@ -1051,9 +1051,10 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
-    deno_web::deno_web::lazy_init::<PermissionsContainer>(),
+    deno_web::deno_web::lazy_init::<
+      PermissionsContainer,
+      InMemoryBroadcastChannel,
+    >(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
@@ -1061,9 +1062,6 @@ fn common_extensions<
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
-    deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
-      InMemoryBroadcastChannel,
-    >(),
     deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
     deno_net::deno_net::lazy_init::<PermissionsContainer>(),
     deno_tls::deno_tls::init(),
@@ -1169,7 +1167,7 @@ pub fn create_permissions_stack_trace_callback()
         .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            frame,
+            frame, None,
           )
         })
         .collect()
@@ -1255,15 +1253,13 @@ impl ModuleLoader for PlaceholderModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    is_dyn_import: bool,
-    requested_module_type: deno_core::RequestedModuleType,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     self.0.borrow_mut().clone().unwrap().load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
@@ -1271,8 +1267,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
-    is_dyn_import: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
@@ -1283,8 +1278,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
@@ -1322,7 +1316,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<v8::Local<'s, v8::Data>> {
     self

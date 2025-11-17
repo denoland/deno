@@ -1452,8 +1452,13 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        allow_json_imports:
+          deno_resolver::loader::AllowJsonImports::WithAttribute,
+        bare_node_builtins: false,
         compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
+        on_mapped_resolution_diagnostic: None,
+        newest_dependency_date: None,
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
@@ -1462,11 +1467,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        bare_node_builtins: false,
+        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
-        on_mapped_resolution_diagnostic: None,
-        allow_json_imports:
-          deno_resolver::loader::AllowJsonImports::WithAttribute,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1774,18 +1776,6 @@ impl ConfigTree {
   }
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
-    let path = specifier.path();
-    if !path.contains("/node_modules/")
-      && (path.ends_with("/deno.json")
-        || path.ends_with("/deno.jsonc")
-        || path.ends_with("/package.json"))
-      || path.ends_with("/node_modules/.package-lock.json")
-      || path.ends_with("/node_modules/.yarn-integrity.json")
-      || path.ends_with("/node_modules/.modules.yaml")
-      || path.ends_with("/node_modules/.deno/.setup-cache.bin")
-    {
-      return true;
-    }
     self
       .scopes
       .values()

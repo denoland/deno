@@ -26,8 +26,6 @@ use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::PackageJsonLoadError;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 
 use crate::ExtNodeSys;
@@ -702,10 +700,10 @@ pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
 
 #[op2(fast)]
 pub fn op_require_can_parse_as_esm(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] source: &str,
 ) -> bool {
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(scope, scope);
   let Some(source) = v8::String::new(scope, source) else {
     return false;
   };

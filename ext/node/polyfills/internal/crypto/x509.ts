@@ -31,6 +31,9 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
+import { inspect } from "node:util";
+import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
+import type { InspectOptions } from "node:util";
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;
@@ -75,6 +78,36 @@ export class X509Certificate {
     }
 
     this.#handle = op_node_x509_parse(buffer);
+  }
+
+  [kInspect](depth: number, options: InspectOptions) {
+    if (depth < 0) {
+      return this;
+    }
+
+    const opts = {
+      ...options,
+      depth: options.depth == null ? null : options.depth - 1,
+    };
+
+    return `X509Certificate ${
+      inspect({
+        subject: this.subject,
+        subjectAltName: this.subjectAltName,
+        issuer: this.issuer,
+        // TODO(Tango992): replace with the actual value once implemented
+        infoAccess: undefined,
+        validFrom: this.validFrom,
+        validTo: this.validTo,
+        validFromDate: this.validFromDate,
+        validToDate: this.validToDate,
+        fingerprint: this.fingerprint,
+        fingerprint256: this.fingerprint256,
+        fingerprint512: this.fingerprint512,
+        keyUsage: this.keyUsage,
+        serialNumber: this.serialNumber,
+      }, opts)
+    }`;
   }
 
   get ca(): boolean {
@@ -168,7 +201,7 @@ export class X509Certificate {
   }
 
   get subject(): string {
-    return op_node_x509_get_subject(this.#handle);
+    return op_node_x509_get_subject(this.#handle) || undefined;
   }
 
   get subjectAltName(): string | undefined {
@@ -191,8 +224,16 @@ export class X509Certificate {
     return op_node_x509_get_valid_from(this.#handle);
   }
 
+  get validFromDate(): Date {
+    return new Date(this.validFrom);
+  }
+
   get validTo(): string {
     return op_node_x509_get_valid_to(this.#handle);
+  }
+
+  get validToDate(): Date {
+    return new Date(this.validTo);
   }
 
   verify(_publicKey: KeyObject): boolean {
