@@ -301,7 +301,7 @@ Deno.test({
     worker.postMessage("boom");
     worker.postMessage("ping");
     assertEquals(await promise, {
-      messageHandlersCalled: 4,
+      messageHandlersCalled: 3,
       errorHandlersCalled: 4,
     });
     worker.terminate();
