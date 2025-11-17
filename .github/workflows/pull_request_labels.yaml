@@ -1,0 +1,25 @@
+name: Add labels to pull requests
+
+on:
+  pull_request_target:
+    types: [
+      opened,
+      reopened,
+      review_requested,
+    ]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+jobs:
+  pull_request_labels:
+    runs-on: ubuntu-22.04
+    if: github.repository == 'denoland/deno'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Label pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            require('./tools/label_pull_request.js')({ context, github })
