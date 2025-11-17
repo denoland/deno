@@ -62,7 +62,6 @@ jobs:
         with:
           cache-dependencies: false
           trace: true
-          append-signature: true
           endpoint: https://eus.codesigning.azure.net/
           trusted-signing-account-name: deno-cli-code-signing
           certificate-profile-name: deno-cli-code-signing-cert
