@@ -389,6 +389,7 @@ pub struct WebWorkerServiceOptions<
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WebWorkerOptions {
@@ -596,7 +597,7 @@ impl WebWorker {
       ops::permissions::deno_permissions::init(),
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
-      deno_bundle_runtime::deno_bundle_runtime::init(None),
+      deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
