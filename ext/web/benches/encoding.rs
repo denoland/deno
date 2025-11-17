@@ -9,12 +9,6 @@ use deno_core::Extension;
 #[derive(Clone)]
 struct Permissions;
 
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
-    false
-  }
-}
-
 fn setup() -> Vec<Extension> {
   deno_core::extension!(
     bench_setup,
@@ -33,7 +27,7 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init::<Permissions, deno_web::InMemoryBroadcastChannel>(
+    deno_web::deno_web::init::<deno_web::InMemoryBroadcastChannel>(
       Default::default(),
       None,
       Default::default(),
