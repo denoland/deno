@@ -70,7 +70,6 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.webstorage",
     "deno.canvas",
     "deno.crypto",
-    "deno.broadcast_channel",
     "deno.net",
     "deno.shared_globals",
     "deno.cache",
@@ -187,10 +186,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     ),
     maybe_compressed_lib!("lib.deno.canvas.d.ts", "lib.deno_canvas.d.ts"),
     maybe_compressed_lib!("lib.deno.crypto.d.ts", "lib.deno_crypto.d.ts"),
-    maybe_compressed_lib!(
-      "lib.deno.broadcast_channel.d.ts",
-      "lib.deno_broadcast_channel.d.ts"
-    ),
     maybe_compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
     maybe_compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),

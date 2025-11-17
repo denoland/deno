@@ -33,6 +33,14 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
   },
   UnstableFeatureDescription {
+    name: "broadcast-channel",
+    help_text: "Enable unstable `BroadcastChannel` API",
+    show_in_help: false,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "byonm",
     help_text: "",
     show_in_help: false,

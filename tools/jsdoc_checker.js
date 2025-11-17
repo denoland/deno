@@ -6,7 +6,6 @@ import { join, ROOT_PATH } from "./util.js";
 const libs = [
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_cache.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_console.d.ts"),
-  join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_url.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_web.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_fetch.d.ts"),
