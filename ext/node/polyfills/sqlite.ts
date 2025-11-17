@@ -120,8 +120,9 @@ ObjectDefineProperties(DatabaseSync.prototype, {
         // Ignore errors.
       }
     },
-    enumerable: false,
-    configurable: false,
+    enumerable: true,
+    configurable: true,
+    writable: true,
   },
 });
 
