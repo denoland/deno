@@ -1,5 +1,0 @@
-{
-  "args": "run --require require_node.js main_node.ts",
-  "exitCode": 0,
-  "output": "node.out"
-}

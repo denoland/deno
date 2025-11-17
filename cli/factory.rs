@@ -1271,7 +1271,7 @@ impl CliFactory {
           } else {
             deno_resolver::loader::AllowJsonImports::WithAttribute
           },
-          require_modules: options.require_modules().unwrap_or_default(),
+          require_modules: options.require_modules()?,
         },
       )))
     })

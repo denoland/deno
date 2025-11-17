@@ -884,6 +884,8 @@ impl LibMainWorker {
       self.worker.evaluate_module(id).await?;
       self.worker.run_event_loop(false).await?;
     }
+    // Even though we load as ESM here, these files will be forced to be loaded as CJS
+    // because of checks in get_known_mode_with_is_script
     for require_module_url in self.require_modules.iter() {
       let id = self.worker.preload_side_module(require_module_url).await?;
       self.worker.evaluate_module(id).await?;
