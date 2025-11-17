@@ -15,7 +15,7 @@ Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
-      resolveWorker("worker_types.ts"),
+      resolveWorker("test_worker.js"),
       { type: "module" },
     );
     assert(w);
