@@ -26,8 +26,6 @@ use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
-
-mod global;
 pub mod ops;
 
 pub use deno_package_json::PackageJson;
@@ -41,10 +39,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -482,7 +476,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -754,8 +747,6 @@ deno_core::extension!(deno_node,
 
     state.put(AsyncId::default());
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -827,42 +818,6 @@ deno_core::extension!(deno_node,
       vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
         ExternalReference {
           enumerator: *enumerator,
-        }
-      }),
-
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
         }
       }),
     ];
