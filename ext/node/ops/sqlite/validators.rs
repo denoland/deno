@@ -110,7 +110,7 @@ pub(super) fn allow_unknown_named_params_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"allowUnknownNamedParameters\" argument must be a boolean.",
+    "The \"enabled\" argument must be a boolean.",
   ))
 }
 

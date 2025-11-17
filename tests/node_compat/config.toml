@@ -973,6 +973,7 @@
 "parallel/test-source-map-enable.js" = {}
 "parallel/test-sqlite-data-types.js" = {}
 "parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-named-parameters.js" = {}
 "parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-transactions.js" = {}
 "parallel/test-sqlite-typed-array-and-data-view.js" = {}
