@@ -7927,6 +7927,114 @@ console.log(undeclaredVariable);
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports_in_a_workspace() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["./member", "./other"]
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "name": "@scope/member",
+      "version": "1.0.0",
+      "exports": {
+        ".": "./member.ts",
+        "./submodule": "./submodule.ts"
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "member/member.ts",
+    r#"import { submodule } from "./submodule.ts";
+import { other } from "@scope/other";
+export const member = 0;
+console.log(other, submodule);
+"#,
+  );
+  temp_dir.source_file("member/submodule.ts", r#"export const submodule = 0;"#);
+  temp_dir.write(
+    "other/deno.json",
+    json!({
+      "name": "@scope/other",
+      "version": "1.0.0",
+      "exports": "./other.ts"
+    })
+    .to_string(),
+  );
+  temp_dir.source_file("other/other.ts", r#"export const other = 0;"#);
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            // Relative imports come after scoped imports.
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                "newText": concat!(
+                  "import { other } from \"@scope/other\";\n",
+                  "import { submodule } from \"./submodule.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
