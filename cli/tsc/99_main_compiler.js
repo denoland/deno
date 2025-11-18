@@ -163,6 +163,9 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
       : ts.sortAndDeduplicateDiagnostics(
         checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
       )),
+    ...(options.isolatedDeclarations
+      ? program.getDeclarationDiagnostics()
+      : []),
   ].filter(filterMapDiagnostic);
 
   // emit the tsbuildinfo file

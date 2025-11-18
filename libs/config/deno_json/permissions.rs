@@ -71,6 +71,12 @@ pub struct AllowDenyPermissionConfig {
   pub deny: Option<PermissionConfigValue>,
 }
 
+impl AllowDenyPermissionConfig {
+  pub fn is_none(&self) -> bool {
+    self.allow.is_none() && self.deny.is_none()
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum AllowDenyPermissionConfigValue {
@@ -101,7 +107,7 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
         deny: None,
       }
     }
-    AllowDenyPermissionConfigValue::Object(allow_deny) => allow_deny,
+    AllowDenyPermissionConfigValue::Object(obj) => obj,
   })
 }
 
@@ -139,6 +145,21 @@ pub struct PermissionsObject {
   pub ffi: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub sys: AllowDenyPermissionConfig,
+}
+
+impl PermissionsObject {
+  /// Returns true if the permissions object is empty (no permissions are set).
+  pub fn is_empty(&self) -> bool {
+    self.all.is_none()
+      && self.read.is_none()
+      && self.write.is_none()
+      && self.import.is_none()
+      && self.env.is_none()
+      && self.net.is_none()
+      && self.run.is_none()
+      && self.ffi.is_none()
+      && self.sys.is_none()
+  }
 }
 
 #[derive(Clone, Debug, Default)]

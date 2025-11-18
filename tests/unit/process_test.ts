@@ -623,7 +623,7 @@ Deno.test(
 
     // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
     const p = Deno.run({
-      cmd: ["deno", "run", "--watch", tempFile],
+      cmd: [Deno.execPath(), "run", "--watch", tempFile],
       stdout: "piped",
       stderr: "null",
     });
@@ -661,7 +661,7 @@ Deno.serve({ signal: ac.signal }, () => new Response("Hello World"));
 
     // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
     const p = Deno.run({
-      cmd: ["deno", "run", "--watch", tempFile],
+      cmd: [Deno.execPath(), "run", "--watch", tempFile],
       stdout: "piped",
       stderr: "null",
     });
@@ -677,3 +677,25 @@ Deno.serve({ signal: ac.signal }, () => new Response("Hello World"));
     await Deno.remove(tempDir);
   },
 );
+
+Deno.test({
+  name: "process.ppid matches parent process",
+  permissions: { run: true, read: true },
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        "import { ppid } from 'node:process'; console.log(ppid);",
+      ],
+      stdout: "piped",
+    });
+
+    const { stdout } = await command.output();
+    const stdoutPpid = parseInt(
+      new TextDecoder().decode(stdout).trim(),
+    );
+
+    assertEquals(stdoutPpid, Deno.pid);
+  },
+});

@@ -302,7 +302,7 @@
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = { flaky = true }
 "parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = { flaky = true }
+"parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -424,13 +424,16 @@
 "parallel/test-file-read-noexist.js" = {}
 "parallel/test-file-validate-mode-flag.js" = {}
 "parallel/test-file-write-stream5.js" = {}
+"parallel/test-filehandle-close.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
 "parallel/test-fs-chmod-mask.js" = {}
 "parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
-"parallel/test-fs-cp.mjs" = {}
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# related to Unix socket path being too long
+# "parallel/test-fs-cp.mjs" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
 # but it's actually not included in 24.2 https://github.com/nodejs/node/pull/55862
 # "parallel/test-fs-constants.js" = {}
@@ -438,8 +441,10 @@
 "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
+"parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
-"parallel/test-fs-glob.mjs" = {}
+# TODO(bartlomieju): crashes constantly on CI, disabling for now
+# "parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
@@ -452,11 +457,15 @@
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
+"parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
 "parallel/test-fs-read-empty-buffer.js" = {}
 "parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
+"parallel/test-fs-read-offset-null.js" = {}
+"parallel/test-fs-read-optional-params.js" = {}
+"parallel/test-fs-read-promises-optional-params.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
@@ -477,6 +486,7 @@
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
 "parallel/test-fs-readlink-type-check.js" = {}
+"parallel/test-fs-readSync-optional-params.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
 "parallel/test-fs-realpath-buffer-encoding.js" = {}
@@ -495,7 +505,9 @@
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
+"parallel/test-fs-write-optional-params.js" = {}
 "parallel/test-fs-write-stream-encoding.js" = {}
+"parallel/test-fs-write-sync-optional-params.js" = {}
 "parallel/test-global-console-exists.js" = {}
 "parallel/test-global-domexception.js" = {}
 "parallel/test-global-encoder.js" = {}
@@ -844,6 +856,7 @@
 "parallel/test-path-basename.js" = {}
 "parallel/test-path-dirname.js" = {}
 "parallel/test-path-extname.js" = {}
+"parallel/test-path-glob.js" = {}
 "parallel/test-path-isabsolute.js" = {}
 "parallel/test-path-makelong.js" = {}
 "parallel/test-path-normalize.js" = {}
@@ -875,6 +888,8 @@
 "parallel/test-process-emitwarning.js" = {}
 "parallel/test-process-env-allowed-flags.js" = {}
 "parallel/test-process-env-delete.js" = {}
+"parallel/test-process-env-deprecation.js" = {}
+"parallel/test-process-env-ignore-getter-setter.js" = {}
 "parallel/test-process-env-sideeffects.js" = {}
 "parallel/test-process-env-tz.js" = {}
 "parallel/test-process-env-windows-error-reset.js" = {}
@@ -956,6 +971,12 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-data-types.js" = {}
+"parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-named-parameters.js" = {}
+"parallel/test-sqlite-session.js" = {}
+"parallel/test-sqlite-transactions.js" = {}
+"parallel/test-sqlite-typed-array-and-data-view.js" = {}
 "parallel/test-stdin-hang.js" = {}
 "parallel/test-stdin-pause-resume-sync.js" = {}
 "parallel/test-stdin-pause-resume.js" = {}

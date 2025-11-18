@@ -229,7 +229,7 @@ impl<'a> ApplyChangesetOptions<'a> {
 }
 
 pub struct DatabaseSync {
-  conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
   statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
   options: DatabaseSyncOptions,
   location: String,
@@ -569,6 +569,7 @@ impl DatabaseSync {
       statements: Rc::clone(&self.statements),
       use_big_ints: Cell::new(false),
       allow_bare_named_params: Cell::new(true),
+      allow_unknown_named_params: Cell::new(false),
       is_iter_finished: false,
     })
   }

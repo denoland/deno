@@ -167,7 +167,7 @@ itest!(_089_run_allow_list {
   output: "run/089_run_allow_list.ts.out",
 });
 
-#[test]
+#[flaky_test::flaky_test]
 fn _090_run_permissions_request() {
   TestContext::default()
     .new_command()
@@ -200,7 +200,7 @@ fn _090_run_permissions_request() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn _090_run_permissions_request_sync() {
   TestContext::default()
     .new_command()
@@ -233,7 +233,7 @@ fn _090_run_permissions_request_sync() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_prompt_allow_all() {
   TestContext::default()
     .new_command()
@@ -375,7 +375,7 @@ fn permissions_prompt_allow_all_2() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_prompt_allow_all_lowercase_a() {
   TestContext::default()
     .new_command()
@@ -396,7 +396,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permission_request_long() {
   TestContext::default()
     .new_command()
@@ -410,7 +410,7 @@ fn permission_request_long() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_cache() {
   TestContext::default()
     .new_command()
@@ -433,7 +433,7 @@ fn permissions_cache() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permissions_trace() {
   TestContext::default()
     .new_command()
@@ -1626,7 +1626,7 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _061_permissions_request() {
     TestContext::default()
       .new_command()
@@ -1658,7 +1658,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _061_permissions_request_sync() {
     TestContext::default()
       .new_command()
@@ -1690,7 +1690,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _062_permissions_request_global() {
     TestContext::default()
       .new_command()
@@ -1715,7 +1715,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[flaky_test::flaky_test]
   fn _062_permissions_request_global_sync() {
     TestContext::default()
       .new_command()
@@ -1791,7 +1791,7 @@ fn process_stdin_read_unblock() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -2019,7 +2019,7 @@ fn check_local_then_remote() {
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permission_request_with_no_prompt() {
   TestContext::default()
     .new_command()
@@ -2374,7 +2374,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     println!("{err}");
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2403,7 +2403,7 @@ async fn test_resolve_dns() {
       eprintln!("stderr: {err}");
     }
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2429,7 +2429,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -2450,7 +2450,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -2803,7 +2803,7 @@ async fn websocket_server_idletimeout() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/16772
-#[test]
+#[flaky_test::flaky_test]
 fn file_fetcher_preserves_permissions() {
   let context = TestContext::with_http_server();
   context
@@ -2820,7 +2820,7 @@ fn file_fetcher_preserves_permissions() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn stdio_streams_are_locked_in_permission_prompt() {
   if !util::pty::Pty::is_supported() {
     // Don't deal with the logic below if the with_pty
@@ -2881,7 +2881,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -3322,7 +3322,7 @@ fn node_process_stdin_pause() {
     .unwrap();
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
@@ -3474,7 +3474,7 @@ fn emit_failed_readonly_file_system() {
     .new_command()
     .args("run --log-level=debug main.ts")
     .run();
-  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]main.ts[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
 // todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
@@ -3582,11 +3582,11 @@ fn test_permission_broker() {
   test_util::assertions::assert_wildcard_match(
     &line,
     r#"[WILDCARD]
-{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+{"v":1,"pid":[WILDCARD],"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
 }

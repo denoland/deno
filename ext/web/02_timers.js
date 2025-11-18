@@ -7,6 +7,7 @@ const {
   TypeError,
   indirectEval,
   ReflectApply,
+  Symbol,
 } = primordials;
 const {
   getAsyncContext,
@@ -14,6 +15,8 @@ const {
 } = core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+
+export const kTimerId = Symbol("timerId");
 
 // ---------------------------------------------------------------------------
 
@@ -116,17 +119,25 @@ function clearInterval(id = 0) {
   core.cancelTimer(id);
 }
 
+// TODO(bartlomieju): this should be deprecated I think
 /**
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   core.unrefTimer(id);
 }
 
+// TODO(bartlomieju): this should be deprecated I think
 /**
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   core.refTimer(id);
 }
 

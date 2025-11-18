@@ -151,15 +151,6 @@ function addNumericalSeparator(val: string) {
   return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
 
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    ErrorCaptureStackTrace(err);
-
-    return err;
-  },
-);
-
 export interface ErrnoException extends Error {
   errno?: number;
   code?: string;
@@ -207,7 +198,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -235,7 +226,7 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
@@ -291,7 +282,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -336,7 +327,7 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -376,7 +367,7 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 /**
@@ -479,7 +470,7 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
     ObjectDefineProperties(this, {
       [kIsNodeError]: {
@@ -1610,6 +1601,14 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
+  constructor(message: string) {
+    super(
+      "ERR_INVALID_OBJECT_DEFINE_PROPERTY",
+      message,
+    );
   }
 }
 export class ERR_INVALID_OPT_VALUE_ENCODING extends NodeTypeError {
@@ -3028,6 +3027,7 @@ export default {
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
   ERR_INVALID_MODULE_SPECIFIER,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
   ERR_INVALID_OPT_VALUE_ENCODING,
   ERR_INVALID_PACKAGE_CONFIG,

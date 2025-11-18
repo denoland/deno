@@ -1065,12 +1065,15 @@ impl CliOptions {
         let set_config_permission_name = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir
             .to_bench_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
           DenoSubcommand::Compile(_) => dir
             .to_compile_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),
           DenoSubcommand::Test(_) => dir
             .to_test_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Test", &permissions.base)),
           _ => None,
         };
@@ -1210,6 +1213,10 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
+  pub fn unstable_tsgo(&self) -> bool {
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
+  }
+
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
@@ -1341,6 +1348,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
+      denied: Default::default(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(
@@ -1350,12 +1358,6 @@ impl CliOptions {
           | DenoSubcommand::Add(_)
       ),
     }
-  }
-
-  pub fn newest_dependency_date(
-    &self,
-  ) -> Option<chrono::DateTime<chrono::Utc>> {
-    self.flags.minimum_dependency_age
   }
 
   pub fn unstable_npm_lazy_caching(&self) -> bool {
@@ -1372,7 +1374,7 @@ impl CliOptions {
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
-    } else if self.flags.unstable_config.npm_lazy_caching {
+    } else if self.unstable_npm_lazy_caching() {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager
@@ -1604,7 +1606,7 @@ fn flags_to_permissions_options(
     }
     None => value.to_string(),
   };
-  let no_op = |value: &str| value.to_string();
+  let identity = |value: &str| value.to_string();
 
   Ok(PermissionsOptions {
     allow_env: handle_allow(
@@ -1612,24 +1614,24 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_env.as_ref(),
       config.and_then(|c| c.permissions.env.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_env: handle_deny(
       flags.deny_env.as_ref(),
       config.and_then(|c| c.permissions.env.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_net: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
       flags.allow_net.as_ref(),
       config.and_then(|c| c.permissions.net.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_net: handle_deny(
       flags.deny_net.as_ref(),
       config.and_then(|c| c.permissions.net.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_ffi: handle_allow(
       flags.allow_all,
@@ -1672,12 +1674,12 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_sys: handle_deny(
       flags.deny_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     allow_write: handle_allow(
       flags.allow_all,
@@ -1696,12 +1698,12 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.all),
       flags.allow_import.as_ref(),
       config.and_then(|c| c.permissions.import.allow.as_ref()),
-      &no_op,
+      &identity,
     ),
     deny_import: handle_deny(
       flags.deny_import.as_ref(),
       config.and_then(|c| c.permissions.import.deny.as_ref()),
-      &no_op,
+      &identity,
     ),
     prompt: !resolve_no_prompt(flags),
   })

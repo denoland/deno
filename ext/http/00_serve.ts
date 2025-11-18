@@ -893,7 +893,7 @@ function serveInner(options, handler) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
-    backlog: options.backlog,
+    tcpBacklog: options.tcpBacklog,
   };
 
   if (options.certFile || options.keyFile) {
@@ -933,7 +933,8 @@ function serveInner(options, handler) {
       const host = formatHostName(addr.hostname);
 
       const url = `${scheme}${host}:${addr.port}/`;
-      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+      const helper = host !== "localhost" &&
+          (addr.hostname === "0.0.0.0" || addr.hostname === "::")
         ? ` (${scheme}localhost:${addr.port}/)`
         : "";
 

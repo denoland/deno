@@ -1129,7 +1129,7 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    buffer.Buffer,
+    buffer.Buffer.from,
     reportError,
   );
 };

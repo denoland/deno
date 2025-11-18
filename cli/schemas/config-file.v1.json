@@ -32,6 +32,14 @@
         "$ref": "#/$defs/allowDenyPermissionConfig"
       }]
     },
+    "allowScriptsList": {
+      "type": "array",
+      "description": "List of npm package constraints to allow or deny for lifecycle scripts.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:npm:).+"
+      }
+    },
     "permissionSet": {
       "type": "object",
       "description": "Collection of permissions.",
@@ -59,9 +67,44 @@
       }, {
         "$ref": "#/$defs/permissionSet"
       }]
+    },
+    "minimumDependencyAgeDate": {
+      "oneOf": [{
+        "description": "(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable).",
+        "type": "string"
+      }, {
+        "description": "(Unstable) The age in minutes.",
+        "type": "number"
+      }]
     }
   },
   "properties": {
+    "allowScripts": {
+      "oneOf": [{
+        "description": "Whether to allow npm lifecycle scripts.",
+        "type": "boolean"
+      }, {
+        "$ref": "#/$defs/allowScriptsList"
+      }, {
+        "type": "object",
+        "description": "Allow or deny config for lifecycle scripts.",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "oneOf": [{
+              "description": "Whether to allow running npm lifecycle scripts.",
+              "type": "boolean"
+            }, {
+              "$ref": "#/$defs/allowScriptsList"
+            }]
+          },
+          "deny": {
+            "description": "List of npm package constraints to deny running lifecycle scripts for.",
+            "$ref": "#/$defs/allowScriptsList"
+          }
+        }
+      }]
+    },
     "compile": {
       "type": "object",
       "description": "Configuration for `deno compile`.",
@@ -247,7 +290,7 @@
               ]
             },
             {
-              "pattern": "^([Nn]ode[Nn]ext)|([Bb]undler))$"
+              "pattern": "^([Nn]ode[Nn]ext|[Bb]undler)$"
             }
           ],
           "markdownDescription": "Specify how TypeScript looks up a file from a given module specifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#moduleResolution"
@@ -671,6 +714,26 @@
           }
         }
       }
+    },
+    "minimumDependencyAge": {
+      "oneOf": [{
+        "$ref": "#/$defs/minimumDependencyAgeDate"
+      }, {
+        "type": "object",
+        "description": "Minimum dependency age config.",
+        "additionalProperties": false,
+        "properties": {
+          "age": { "$ref": "#/$defs/minimumDependencyAgeDate" },
+          "exclude": {
+            "type": "array",
+            "description": "List of jsr or npm packages to exclude from requiring a minimum dependnecy age.",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:npm:|jsr:).+"
+            }
+          }
+        }
+      }]
     },
     "nodeModulesDir": {
       "oneOf": [
