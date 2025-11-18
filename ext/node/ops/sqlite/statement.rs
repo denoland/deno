@@ -70,6 +70,7 @@ pub struct StatementSync {
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
+  pub allow_unknown_named_params: Cell<bool>,
 
   pub is_iter_finished: bool,
 }
@@ -487,6 +488,10 @@ impl StatementSync {
             }
 
             if r == 0 {
+              if self.allow_unknown_named_params.get() {
+                continue;
+              }
+
               return Err(SqliteError::UnknownNamedParameter(
                 key_c.into_string().unwrap(),
               ));
@@ -764,6 +769,16 @@ impl StatementSync {
 
   #[fast]
   #[undefined]
+  fn set_allow_unknown_named_parameters(
+    &self,
+    #[validate(validators::allow_unknown_named_params_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
+    self.allow_unknown_named_params.set(enabled);
+    Ok(())
+  }
+
+  #[fast]
+  #[undefined]
   fn set_read_big_ints(
     &self,
     #[validate(validators::read_big_ints_bool)] enabled: bool,
@@ -803,5 +818,131 @@ impl StatementSync {
       ffi::sqlite3_free(raw as _);
       Ok(sql)
     }
+  }
+
+  fn columns<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
+    v8_static_strings! {
+      NAME = "name",
+      COLUMN = "column",
+      TABLE = "table",
+      DATABASE = "database",
+      TYPE = "type",
+    }
+
+    let column_count = self.column_count();
+    let mut columns = Vec::with_capacity(column_count as usize);
+
+    // Pre-create property keys
+    let name_key = NAME.v8_string(scope).unwrap().into();
+    let column_key = COLUMN.v8_string(scope).unwrap().into();
+    let table_key = TABLE.v8_string(scope).unwrap().into();
+    let database_key = DATABASE.v8_string(scope).unwrap().into();
+    let type_key = TYPE.v8_string(scope).unwrap().into();
+
+    let keys = &[name_key, column_key, table_key, database_key, type_key];
+
+    for i in 0..column_count {
+      // name: The name of the column in the result set
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let name = unsafe {
+        let name_ptr = ffi::sqlite3_column_name(self.inner, i);
+        if !name_ptr.is_null() {
+          let name_cstr = std::ffi::CStr::from_ptr(name_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            name_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // column: The unaliased name of the column in the origin table
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let column = unsafe {
+        let column_ptr = ffi::sqlite3_column_origin_name(self.inner, i);
+        if !column_ptr.is_null() {
+          let column_cstr = std::ffi::CStr::from_ptr(column_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            column_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // table: The unaliased name of the origin table
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let table = unsafe {
+        let table_ptr = ffi::sqlite3_column_table_name(self.inner, i);
+        if !table_ptr.is_null() {
+          let table_cstr = std::ffi::CStr::from_ptr(table_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            table_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // database: The unaliased name of the origin database
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let database = unsafe {
+        let database_ptr = ffi::sqlite3_column_database_name(self.inner, i);
+        if !database_ptr.is_null() {
+          let database_cstr = std::ffi::CStr::from_ptr(database_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            database_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // type: The declared data type of the column
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let col_type = unsafe {
+        let type_ptr = ffi::sqlite3_column_decltype(self.inner, i);
+        if !type_ptr.is_null() {
+          let type_cstr = std::ffi::CStr::from_ptr(type_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            type_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      let values = &[name, column, table, database, col_type];
+      let null = v8::null(scope).into();
+      let obj =
+        v8::Object::with_prototype_and_properties(scope, null, keys, values);
+
+      columns.push(obj.into());
+    }
+
+    Ok(v8::Array::new_with_elements(scope, &columns))
   }
 }

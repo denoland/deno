@@ -20,7 +20,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     name: "broadcast-channel",
     flag_name: "unstable-broadcast-channel",
     help_text: "Enable unstable `BroadcastChannel` API",
-    show_in_help: true,
+    show_in_help: false,
     id: 1,
     kind: UnstableFeatureKind::Runtime,
     config_file_option: "broadcast-channel",

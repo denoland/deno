@@ -32,6 +32,14 @@
         "$ref": "#/$defs/allowDenyPermissionConfig"
       }]
     },
+    "allowScriptsList": {
+      "type": "array",
+      "description": "List of npm package constraints to allow or deny for lifecycle scripts.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:npm:).+"
+      }
+    },
     "permissionSet": {
       "type": "object",
       "description": "Collection of permissions.",
@@ -71,6 +79,32 @@
     }
   },
   "properties": {
+    "allowScripts": {
+      "oneOf": [{
+        "description": "Whether to allow npm lifecycle scripts.",
+        "type": "boolean"
+      }, {
+        "$ref": "#/$defs/allowScriptsList"
+      }, {
+        "type": "object",
+        "description": "Allow or deny config for lifecycle scripts.",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "oneOf": [{
+              "description": "Whether to allow running npm lifecycle scripts.",
+              "type": "boolean"
+            }, {
+              "$ref": "#/$defs/allowScriptsList"
+            }]
+          },
+          "deny": {
+            "description": "List of npm package constraints to deny running lifecycle scripts for.",
+            "$ref": "#/$defs/allowScriptsList"
+          }
+        }
+      }]
+    },
     "compile": {
       "type": "object",
       "description": "Configuration for `deno compile`.",
@@ -848,7 +882,6 @@
       "items": {
         "type": "string",
         "examples": [
-          "broadcast-channel",
           "bare-node-builtins",
           "byonm",
           "cron",

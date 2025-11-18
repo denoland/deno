@@ -651,10 +651,16 @@ impl CliFactory {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
-        None => self
-          .sys()
-          .env_current_dir()
-          .with_context(|| "Failed getting cwd.")?,
+        None => {
+          if let Some(initial_cwd) = self.flags.initial_cwd.clone() {
+            initial_cwd
+          } else {
+            self
+              .sys()
+              .env_current_dir()
+              .with_context(|| "Failed getting cwd.")?
+          }
+        }
       };
       let options = new_workspace_factory_options(&initial_cwd, &self.flags);
       let mut factory =
@@ -1135,6 +1141,9 @@ impl CliFactory {
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       enable_raw_imports: cli_options.unstable_raw_imports(),
+      maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
+        cli_options.initial_cwd(),
+      )?),
     })
   }
 
@@ -1154,11 +1163,15 @@ impl CliFactory {
     };
     let maybe_coverage_dir = cli_options.coverage_dir();
 
+    let initial_cwd =
+      deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
+
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
       maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
+      maybe_initial_cwd: Some(Arc::new(initial_cwd)),
     })
   }
 

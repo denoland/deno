@@ -1002,6 +1002,8 @@ pub fn init(
 }
 
 fn before_exit() {
+  log::trace!("deno_telemetry::before_exit");
+
   let Some(OtelGlobals {
     span_processor: spans,
     log_processor: logs,
@@ -1011,8 +1013,6 @@ fn before_exit() {
   else {
     return;
   };
-
-  log::trace!("deno_telemetry::before_exit");
 
   let r = spans.shutdown();
   log::trace!("spans={:?}", r);

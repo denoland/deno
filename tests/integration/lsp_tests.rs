@@ -7927,6 +7927,114 @@ console.log(undeclaredVariable);
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports_in_a_workspace() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["./member", "./other"]
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "name": "@scope/member",
+      "version": "1.0.0",
+      "exports": {
+        ".": "./member.ts",
+        "./submodule": "./submodule.ts"
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "member/member.ts",
+    r#"import { submodule } from "./submodule.ts";
+import { other } from "@scope/other";
+export const member = 0;
+console.log(other, submodule);
+"#,
+  );
+  temp_dir.source_file("member/submodule.ts", r#"export const submodule = 0;"#);
+  temp_dir.write(
+    "other/deno.json",
+    json!({
+      "name": "@scope/other",
+      "version": "1.0.0",
+      "exports": "./other.ts"
+    })
+    .to_string(),
+  );
+  temp_dir.source_file("other/other.ts", r#"export const other = 0;"#);
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            // Relative imports come after scoped imports.
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                "newText": concat!(
+                  "import { other } from \"@scope/other\";\n",
+                  "import { submodule } from \"./submodule.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -14010,8 +14118,8 @@ console.log(snake_case);
         "changes": {
           "file:///a/file.ts": [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 0 }
             },
             "newText": "// deno-lint-ignore-file\n"
           }]
@@ -14026,32 +14134,26 @@ console.log(snake_case);
 #[timeout(300_000)]
 fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir
+    .source_file("file.ts", "// Copyright x-y. MIT licence.\nwindow;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "window;",
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   let diagnostics = diagnostics.all();
   let diagnostic = &diagnostics[0];
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
+      "textDocument": { "uri": file.uri() },
       "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 0, "character": 6 }
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 6 },
       },
       "context": {
         "diagnostics": [diagnostic],
-        "only": ["quickfix"]
-      }
+        "only": ["quickfix"],
+      },
     }),
   );
   assert_eq!(
@@ -14062,61 +14164,61 @@ fn lsp_code_actions_lint_fixes() {
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 6 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 6 },
             },
-            "newText": "globalThis"
-          }]
-        }
-      }
+            "newText": "globalThis",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for this line",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore-file no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Ignore lint errors for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file\n"
-          }]
-        }
-      }
-    }])
+            "newText": "// deno-lint-ignore-file\n",
+          }],
+        },
+      },
+    }]),
   );
   client.shutdown();
 }
@@ -15579,14 +15681,9 @@ fn lsp_node_modules_dir() {
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
-  // a lockfile will be created here because someone did an explicit cache
-  let lockfile_path = temp_dir.path().join("deno.lock");
-  assert!(lockfile_path.exists());
-  lockfile_path.remove_file();
-
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -15616,7 +15713,6 @@ fn lsp_node_modules_dir() {
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
-  assert!(!lockfile_path.exists()); // was disabled
 
   // now add a lockfile and cache
   temp_dir.write(
@@ -15626,8 +15722,6 @@ fn lsp_node_modules_dir() {
   refresh_config(&mut client);
   let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
-
-  assert!(lockfile_path.exists());
 
   // the declaration should be found in the node_modules directory
   let res = client.write_request(
