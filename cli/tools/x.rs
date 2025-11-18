@@ -23,6 +23,8 @@ use crate::args::XFlagsKind;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::util::console::ConfirmOptions;
+use crate::util::console::confirm;
 use node_resolver::BinValue;
 
 fn resolve_local_bins(
@@ -416,6 +418,23 @@ async fn autoinstall_package(
     XTempDir::Existing(_) => Ok((new_flags, new_factory)),
 
     XTempDir::New(temp_dir) => {
+      let confirmed = match confirm(ConfirmOptions {
+        default: true,
+        message: format!("Install {}?", req_ref.req().name),
+      }) {
+        Some(true) => true,
+        Some(false) => false,
+        None => {
+          log::warn!(
+            "Unable to prompt, installing {} without confirmation",
+            req_ref.req()
+          );
+          true
+        }
+      };
+      if !confirmed {
+        return Err(anyhow::anyhow!("Installation rejected"));
+      }
       match req_ref {
         ReqRef::Npm(req_ref) => {
           let pkg_json = temp_dir.join("package.json");
