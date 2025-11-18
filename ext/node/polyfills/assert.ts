@@ -16,7 +16,10 @@ import {
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
-import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import {
+  isDeepEqual,
+  isDeepStrictEqual,
+} from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
@@ -394,7 +397,7 @@ function deepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (!asserts.equal(actual, expected)) {
+  if (!isDeepStrictEqual(actual, expected)) {
     throw new AssertionError({
       message,
       actual,
