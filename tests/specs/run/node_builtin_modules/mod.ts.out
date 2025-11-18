@@ -1,4 +1,8 @@
-// Updated to match Node.js behavior: argv entries are now strings, not getters.
 [Function: createRequire]
 v[WILDCARD].[WILDCARD].[WILDCARD]
-[ <WILDCARD>, <WILDCARD>, "hello", "there" ]
+[
+  "[WILDCARD]",
+  "[WILDCARD]/mod.ts",
+  "hello",
+  "there"
+]
