@@ -391,7 +391,7 @@ pub struct Env {
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
   pub global: v8::Global<v8::Object>,
-  pub buffer_constructor: v8::Global<v8::Function>,
+  pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
 }
 
@@ -404,7 +404,7 @@ impl Env {
     isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
-    buffer_constructor: v8::Global<v8::Function>,
+    create_buffer: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
@@ -414,7 +414,7 @@ impl Env {
       isolate_ptr,
       context: context.into_raw(),
       global,
-      buffer_constructor,
+      create_buffer,
       report_error,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
@@ -505,9 +505,8 @@ impl Env {
 }
 
 deno_core::extension!(deno_napi,
-  parameters = [P: NapiPermissions],
   ops = [
-    op_napi_open<P>
+    op_napi_open
   ],
   options = {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
@@ -522,26 +521,6 @@ deno_core::extension!(deno_napi,
   },
 );
 
-pub trait NapiPermissions {
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
-}
-
-// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
-// change in the future.
-impl NapiPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_ffi(self, path)
-  }
-}
-
 unsafe impl Sync for NapiModuleHandle {}
 unsafe impl Send for NapiModuleHandle {}
 
@@ -553,18 +532,15 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[op2(reentrant, stack_trace)]
-fn op_napi_open<NP, 'scope>(
+fn op_napi_open<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   isolate: &mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
-  buffer_constructor: v8::Local<'scope, v8::Function>,
+  create_buffer: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, NApiError>
-where
-  NP: NapiPermissions + 'static,
-{
+) -> Result<v8::Local<'scope, v8::Value>, NApiError> {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
   let (
@@ -575,8 +551,9 @@ where
     path,
   ) = {
     let mut op_state = op_state.borrow_mut();
-    let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(Cow::Borrowed(Path::new(path)))?;
+    let permissions =
+      op_state.borrow_mut::<deno_permissions::PermissionsContainer>();
+    let path = permissions.check_ffi(Cow::Borrowed(Path::new(path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -605,7 +582,7 @@ where
     unsafe { isolate.as_raw_isolate_ptr() },
     v8::Global::new(scope, ctx),
     v8::Global::new(scope, global),
-    v8::Global::new(scope, buffer_constructor),
+    v8::Global::new(scope, create_buffer),
     v8::Global::new(scope, report_error),
     async_work_sender,
     cleanup_hooks,

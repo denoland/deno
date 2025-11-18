@@ -1100,51 +1100,59 @@ impl CodeActionCollection {
       .actions
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
-    // Disable a lint error for the entire file.
-    let maybe_ignore_comment = module
+    let parsed_source = module
       .open_data
       .as_ref()
-      .and_then(|d| d.parsed_source.as_ref())
-      .and_then(|ps| {
-        let ps = ps.as_ref().ok()?;
-        // Note: we can use ps.get_leading_comments() but it doesn't
-        // work when shebang is present at the top of the file.
-        ps.comments().get_vec().iter().find_map(|c| {
-          let comment_text = c.text.trim();
-          comment_text.split_whitespace().next().and_then(|prefix| {
-            if prefix == "deno-lint-ignore-file" {
-              Some(c.clone())
-            } else {
-              None
-            }
-          })
+      .and_then(|d| d.parsed_source.as_ref()?.as_ref().ok());
+    let next_leading_comment_range = {
+      let line = parsed_source
+        .and_then(|ps| {
+          let last_comment = ps.get_leading_comments()?.iter().last()?;
+          Some(module.text_info().line_index(last_comment.end()) as u32 + 1)
         })
-      });
-
-    let mut new_text = format!("// deno-lint-ignore-file {code}\n");
-    let mut range = lsp::Range {
-      start: lsp::Position {
-        line: 0,
-        character: 0,
-      },
-      end: lsp::Position {
-        line: 0,
-        character: 0,
-      },
+        .unwrap_or(0);
+      let position = lsp::Position { line, character: 0 };
+      lsp::Range {
+        start: position,
+        end: position,
+      }
     };
+
+    // Disable a lint error for the entire file.
+    let maybe_ignore_comment = parsed_source.and_then(|ps| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
+        let comment_text = c.text.trim();
+        comment_text.split_whitespace().next().and_then(|prefix| {
+          if prefix == "deno-lint-ignore-file" {
+            Some(c.clone())
+          } else {
+            None
+          }
+        })
+      })
+    });
+
+    let new_text;
+    let range;
     // If ignore file comment already exists, append the lint code
     // to the existing comment.
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = text_info.line_and_column_index(ignore_comment.end());
+      let index = text_info.line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
-        line: line.line_index as u32,
-        character: line.column_index as u32,
+        line: index.line_index as u32,
+        character: index.column_index as u32,
       };
-      // Set the edit range to the end of the comment.
-      range.start = position;
-      range.end = position;
+      range = lsp::Range {
+        start: position,
+        end: position,
+      };
+    } else {
+      new_text = format!("// deno-lint-ignore-file {code}\n");
+      range = next_leading_comment_range;
     }
 
     let mut changes = HashMap::new();
@@ -1172,16 +1180,7 @@ impl CodeActionCollection {
       uri.clone(),
       vec![lsp::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
-        range: lsp::Range {
-          start: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-          end: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-        },
+        range: next_leading_comment_range,
       }],
     );
     let ignore_file_action = lsp::CodeAction {

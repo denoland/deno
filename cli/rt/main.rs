@@ -44,7 +44,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Ok(value) => value,
     Err(error) => {
       let error_string = match js_error_downcast_ref(&error) {
-        Some(js_error) => format_js_error(js_error),
+        Some(js_error) => format_js_error(js_error, None),
         None => format!("{:?}", error),
       };
 

@@ -395,6 +395,55 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function commandKillWithIntegerSignal() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    // Kill with integer signal (9 = SIGKILL)
+    child.kill(9);
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    assertEquals(status.code, 137);
+    assertEquals(status.signal, "SIGKILL");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function commandKillWithSignalZero() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    // Signal 0 checks if the process exists
+    child.kill(0); // Should not actually kill the process
+
+    // Now kill it for real
+    child.kill("SIGTERM");
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    assertEquals(status.code, 143);
+    assertEquals(status.signal, "SIGTERM");
+  },
+);
+
+Deno.test(
   { permissions: { run: true, read: true } },
   async function commandAbort() {
     const ac = new AbortController();
@@ -786,19 +835,26 @@ Deno.test(
   },
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
-    for (const ext of [".bat", ".BaT", ".bAT", ".BAT"]) {
+    Deno.writeTextFileSync(tempDir + "/test.bat", "@echo off\r\necho 1 2 3 %*");
+    for (
+      const ext of [
+        ".bat",
+        ".BaT",
+        ".bAT",
+        ".BAT",
+        ".bat.",
+        ".bat  ",
+        ".bat . ",
+      ]
+    ) {
       const fileName = tempDir + "/test" + ext;
-      const file = await Deno.open(fileName, {
-        create: true,
-        write: true,
-      });
-
-      await assertRejects(async () => {
-        await new Deno.Command(fileName, {
-          args: ["&calc.exe"],
-        }).output();
-      }, Deno.errors.PermissionDenied);
-      file.close();
+      const output = await new Deno.Command(fileName, {
+        args: ["&calc.exe"],
+        stdout: "piped",
+      }).output();
+      const stdout = new TextDecoder().decode(output.stdout);
+      // should have calc escaped here instead of executing it
+      assert(stdout.includes(`1 2 3 "&calc.exe\"`), `Text: ${stdout}`);
     }
   },
 );

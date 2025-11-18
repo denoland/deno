@@ -393,13 +393,13 @@ mod npm {
       if actions.len() == 1 {
         _ =
           writeln!(stdout, "╰ {}    {}", colors::gray("Actions:"), actions[0]);
-      } else {
+      } else if actions.len() > 1 {
         _ =
           writeln!(stdout, "│ {}    {}", colors::gray("Actions:"), actions[0]);
-        for action in &actions[1..actions.len() - 2] {
+        for action in &actions[0..actions.len() - 2] {
           _ = writeln!(stdout, "│             {}", action);
         }
-        _ = writeln!(stdout, "╰            {}", actions[actions.len() - 1]);
+        _ = writeln!(stdout, "╰             {}", actions[actions.len() - 1]);
       }
       _ = writeln!(stdout);
     }
@@ -444,12 +444,12 @@ mod npm {
 
   #[derive(Debug, Deserialize)]
   pub struct AuditAction {
-    #[serde(rename = "isMajor")]
+    #[serde(rename = "isMajor", default)]
     pub is_major: bool,
     pub action: String,
     pub resolves: Vec<AuditActionResolve>,
     pub module: String,
-    pub target: String,
+    pub target: Option<String>,
   }
 
   #[derive(Debug, Deserialize)]
@@ -485,10 +485,14 @@ mod npm {
           .any(|action_resolve| action_resolve.id == self.id)
         {
           acts.push(format!(
-            "{} {}@{}{}",
+            "{} {}{}{}",
             action.action,
             action.module,
-            action.target,
+            if let Some(target) = &action.target {
+              &format!("@{}", target)
+            } else {
+              ""
+            },
             if action.is_major {
               " (major upgrade)"
             } else {

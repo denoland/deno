@@ -823,7 +823,9 @@ testing[WILDCARD]this
     .args("compile --output binary main.ts")
     .run()
     .assert_exit_code(0)
-    .assert_matches_text("Check file:///[WILDLINE]/main.ts\nCompile file:///[WILDLINE]/main.ts to binary[WILDLINE]\n");
+    .assert_matches_text(
+      "Check main.ts\nCompile main.ts to binary[WILDLINE]\n",
+    );
 
   context
     .new_command()
@@ -1104,8 +1106,8 @@ console.log(getValue());"#,
     r#"Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
-Check file:///[WILDCARD]/main.ts
-Compile file:///[WILDCARD]/main.ts to [WILDCARD]
+Check main.ts
+Compile main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])

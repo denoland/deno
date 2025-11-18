@@ -25,7 +25,7 @@ import {
   toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_url/00_url.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 import { getHeader } from "ext:deno_fetch/20_headers.js";
 import {
   getReadableStreamResourceBacking,

@@ -3,7 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_console/01_console.js";
+import * as internalConsole from "ext:deno_web/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -64,9 +64,9 @@ import {
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_console/01_console.js";
+} from "ext:deno_web/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_url/00_url.js";
+import * as url from "ext:deno_web/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {

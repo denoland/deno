@@ -12,7 +12,7 @@ fn setup() -> Vec<Extension> {
     esm_entry_point = "ext:bench_setup/setup",
     esm = ["ext:bench_setup/setup" = {
       source = r#"
-        import { URL } from "ext:deno_url/00_url.js";
+        import { URL } from "ext:deno_web/00_url.js";
         globalThis.URL = URL;
       "#
     }]
@@ -20,8 +20,11 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
+    deno_web::deno_web::init::<deno_web::InMemoryBroadcastChannel>(
+      Default::default(),
+      None,
+      Default::default(),
+    ),
     bench_setup::init(),
   ]
 }

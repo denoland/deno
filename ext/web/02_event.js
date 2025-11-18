@@ -35,7 +35,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "./01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 // This should be set via setGlobalThis this is required so that if even
 // user deletes globalThis it is still usable
@@ -772,16 +772,20 @@ function innerInvokeEventListeners(
       setInPassiveListener(eventImpl, true);
     }
 
-    if (typeof listener.callback === "object") {
-      if (typeof listener.callback.handleEvent === "function") {
-        listener.callback.handleEvent(eventImpl);
+    try {
+      if (typeof listener.callback === "object") {
+        if (typeof listener.callback.handleEvent === "function") {
+          listener.callback.handleEvent(eventImpl);
+        }
+      } else {
+        FunctionPrototypeCall(
+          listener.callback,
+          eventImpl.currentTarget,
+          eventImpl,
+        );
       }
-    } else {
-      FunctionPrototypeCall(
-        listener.callback,
-        eventImpl.currentTarget,
-        eventImpl,
-      );
+    } catch (error) {
+      reportException(error);
     }
 
     setInPassiveListener(eventImpl, false);
