@@ -3503,7 +3503,7 @@ fn x_subcommand() -> Command {
       .arg(
         Arg::new("install-alias")
           .long("install-alias")
-          .num_args(0..1)
+          .num_args(0..=1)
           .default_missing_value("dx")
           .require_equals(true)
           .value_parser(deno_x_shim_name_parser)

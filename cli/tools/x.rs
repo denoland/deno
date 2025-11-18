@@ -25,6 +25,7 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
+use crate::util::draw_thread::DrawThread;
 use node_resolver::BinValue;
 
 fn resolve_local_bins(
@@ -145,7 +146,7 @@ impl XTempDir {
   }
 }
 
-fn create_temp_node_modules_parent_dir(
+fn create_package_temp_dir(
   prefix: Option<&str>,
   package_req: &PackageReq,
   reload: bool,
@@ -159,7 +160,7 @@ fn create_temp_node_modules_parent_dir(
       .replace("<", "lt"),
   );
   let temp_dir = std::env::temp_dir()
-    .join("deno_x_nm")
+    .join("deno_x_cache")
     .join(package_req_folder);
   if temp_dir.exists() {
     if reload || !temp_dir.join("deno.lock").exists() {
@@ -408,11 +409,8 @@ async fn autoinstall_package(
     let new_flags = Arc::new(new_flags);
     new_flags
   }
-  let temp_dir = create_temp_node_modules_parent_dir(
-    Some(req_ref.prefix()),
-    req_ref.req(),
-    reload,
-  )?;
+  let temp_dir =
+    create_package_temp_dir(Some(req_ref.prefix()), req_ref.req(), reload)?;
 
   let new_flags = make_new_flags(old_flags, &temp_dir.path());
   let new_factory = CliFactory::from_flags(new_flags.clone());
@@ -424,17 +422,18 @@ async fn autoinstall_package(
       let confirmed = yes
         || match confirm(ConfirmOptions {
           default: true,
-          message: format!("Install {}?", req_ref.req().name),
+          message: format!("Install {}?", req_ref),
         }) {
           Some(true) => true,
           Some(false) => false,
-          None => {
+          None if !DrawThread::is_supported() => {
             log::warn!(
               "Unable to prompt, installing {} without confirmation",
               req_ref.req()
             );
             true
           }
+          None => false,
         };
       if !confirmed {
         return Err(anyhow::anyhow!("Installation rejected"));
@@ -478,6 +477,14 @@ async fn autoinstall_package(
 enum ReqRef<'a> {
   Npm(&'a NpmPackageReqReference),
   Jsr(&'a JsrPackageReqReference),
+}
+impl<'a> std::fmt::Display for ReqRef<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      ReqRef::Npm(req) => write!(f, "{}", req),
+      ReqRef::Jsr(req) => write!(f, "{}", req),
+    }
+  }
 }
 impl<'a> ReqRef<'a> {
   fn req(&self) -> &PackageReq {
