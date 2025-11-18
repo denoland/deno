@@ -2,7 +2,7 @@
 v[WILDCARD].[WILDCARD].[WILDCARD]
 [
   "[WILDCARD]",
-  "[WILDCARD]/mod.ts",
+  "[WILDCARD]mod.ts",
   "hello",
   "there"
 ]
