@@ -1907,6 +1907,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.368.0"
+source = "git+https://github.com/denoland/deno_core?rev=70c2762#70c2762ded58fce96f492b46ec499aa2ad8c7138"
 dependencies = [
  "anyhow",
  "az",
@@ -2628,6 +2629,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.244.0"
+source = "git+https://github.com/denoland/deno_core?rev=70c2762#70c2762ded58fce96f492b46ec499aa2ad8c7138"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8228,6 +8230,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.277.0"
+source = "git+https://github.com/denoland/deno_core?rev=70c2762#70c2762ded58fce96f492b46ec499aa2ad8c7138"
 dependencies = [
  "deno_error",
  "num-bigint",
