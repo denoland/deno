@@ -404,9 +404,27 @@ impl RunFlags {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub enum DenoXShimName {
+  #[default]
+  Dx,
+  Denox,
+  Other(String),
+}
+
+impl DenoXShimName {
+  pub fn name(&self) -> &str {
+    match self {
+      Self::Dx => "dx",
+      Self::Denox => "denox",
+      Self::Other(name) => name,
+    }
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum XFlagsKind {
-  InstallAlias,
+  InstallAlias(DenoXShimName),
   Command(String),
   Print,
 }
@@ -414,7 +432,6 @@ pub enum XFlagsKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct XFlags {
   pub kind: XFlagsKind,
-  pub default_allow_all: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1547,7 +1564,9 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
-  let args = if args.len() >= 1 && args[0].as_encoded_bytes().ends_with(b"dx") {
+  let args = if args.len() >= 1 && args[0].as_encoded_bytes().ends_with(b"dx")
+    || args[0].as_encoded_bytes().ends_with(b"denox")
+  {
     let mut new_args = Vec::with_capacity(args.len() + 1);
     new_args.push(args[0].clone());
     new_args.push(OsString::from("x"));
@@ -3448,6 +3467,14 @@ The installation root is determined, in order of precedence:
   })
 }
 
+fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
+  match value {
+    "dx" => Ok(DenoXShimName::Dx),
+    "denox" => Ok(DenoXShimName::Denox),
+    _ => Ok(DenoXShimName::Other(value.to_string())),
+  }
+}
+
 fn x_subcommand() -> Command {
   command(
     "x",
@@ -3468,7 +3495,11 @@ fn x_subcommand() -> Command {
       .arg(
         Arg::new("install-alias")
           .long("install-alias")
-          .action(ArgAction::SetTrue)
+          .num_args(0..1)
+          .default_missing_value("dx")
+          .require_equals(true)
+          .value_parser(deno_x_shim_name_parser)
+          .action(ArgAction::Set)
           .conflicts_with("script_arg"),
       )
   })
@@ -6572,8 +6603,10 @@ fn x_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  let kind = if matches.get_flag("install-alias") {
-    XFlagsKind::InstallAlias
+  let kind = if let Some(shim_name) =
+    matches.remove_one::<DenoXShimName>("install-alias")
+  {
+    XFlagsKind::InstallAlias(shim_name)
   } else if let Some(mut script_arg) =
     matches.remove_many::<String>("script_arg")
   {
@@ -6587,17 +6620,10 @@ fn x_parse(
   } else {
     XFlagsKind::Print
   };
-  let default_allow_all = matches.get_flag("default-allow-all");
-  if !flags.permissions.has_permission()
-    && flags.permission_set.is_none()
-    && default_allow_all
-  {
+  if !flags.permissions.has_permission() && flags.permission_set.is_none() {
     flags.permissions.allow_all = true;
   }
-  flags.subcommand = DenoSubcommand::X(XFlags {
-    kind,
-    default_allow_all,
-  });
+  flags.subcommand = DenoSubcommand::X(XFlags { kind });
   Ok(())
 }
 

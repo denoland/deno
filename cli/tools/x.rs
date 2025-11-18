@@ -16,6 +16,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 
+use crate::args::DenoXShimName;
 use crate::args::Flags;
 use crate::args::XFlags;
 use crate::args::XFlagsKind;
@@ -184,10 +185,13 @@ fn create_temp_node_modules_parent_dir(
   Ok(XTempDir::New(temp_dir))
 }
 
-fn write_shim(out_dir: &Path, default_allow_all: bool) -> Result<(), AnyError> {
+fn write_shim(
+  out_dir: &Path,
+  shim_name: DenoXShimName,
+) -> Result<(), AnyError> {
   if cfg!(unix) {
-    let out_path = out_dir.join("dx");
-    if default_allow_all {
+    let out_path = out_dir.join(shim_name.name());
+    if let DenoXShimName::Other(_) = shim_name {
       std::fs::write(
         &out_path,
         r##"#!/bin/sh
@@ -212,19 +216,14 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
       }
     }
   } else {
-    let out_path = out_dir.join("dx.cmd");
+    let out_path = out_dir.join(format!("{}.cmd", shim_name.name()));
     std::fs::write(
       out_path,
       format!(
         r##"@echo off
-./deno x{} %*
+./deno.exe x %*
 exit /b %ERRORLEVEL%
 "##,
-        if default_allow_all {
-          " --default-allow-all"
-        } else {
-          ""
-        },
       )
       .as_bytes(),
     )?;
@@ -240,10 +239,10 @@ pub async fn run(
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   let command = match x_flags.kind {
-    XFlagsKind::InstallAlias => {
+    XFlagsKind::InstallAlias(shim_name) => {
       let exe = std::env::current_exe()?;
       let out_dir = exe.parent().unwrap();
-      write_shim(&out_dir, x_flags.default_allow_all)?;
+      write_shim(&out_dir, shim_name)?;
       return Ok(0);
     }
     XFlagsKind::Command(command) => command,
