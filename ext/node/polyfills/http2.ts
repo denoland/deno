@@ -2785,6 +2785,8 @@ ObjectDefineProperty(Http2Session.prototype, "setTimeout", setTimeoutValue);
 // established.
 class ServerHttp2Session extends Http2Session {
   constructor(options, socket, server) {
+    initCallbacks();
+
     super(NGHTTP2_SESSION_SERVER, options, socket);
     this[kServer] = server;
     if (server) {
@@ -3206,19 +3208,24 @@ function createServer(options, handler) {
   return new Http2Server(options, handler);
 }
 
-op_http2_callbacks(
-  onSessionInternalError,
-  onPriority,
-  onSettings,
-  onPing,
-  onSessionHeaders,
-  onFrameError,
-  onGoawayData,
-  onAltSvc,
-  onOrigin,
-  onStreamTrailers,
-  onStreamClose,
-);
+let _init = false;
+function initCallbacks() {
+  if (_init) return;
+  op_http2_callbacks(
+    onSessionInternalError,
+    onPriority,
+    onSettings,
+    onPing,
+    onSessionHeaders,
+    onFrameError,
+    onGoawayData,
+    onAltSvc,
+    onOrigin,
+    onStreamTrailers,
+    onStreamClose,
+  );
+  _init = true;
+}
 
 export { constants, createSecureServer, createServer };
 
