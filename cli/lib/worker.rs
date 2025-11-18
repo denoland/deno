@@ -461,6 +461,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        bundle_provider: shared.bundle_provider.clone(),
       };
       let options = WebWorkerOptions {
         name: args.name,
