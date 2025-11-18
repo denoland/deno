@@ -561,6 +561,10 @@ mod socket_dev {
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<(), AnyError> {
+    let socket_dev_url = std::env::var("SOCKET_DEV_URL")
+      .ok()
+      .unwrap_or_else(|| "https://firewall-api.socket.dev/".to_string());
+
     let purls = npm_resolution_snapshot
       .all_packages_for_every_system()
       .map(|package| {
@@ -574,7 +578,8 @@ mod socket_dev {
       .into_iter()
       .map(|purl| {
         let url = Url::parse(&format!(
-          "https://firewall-api.socket.dev/purl/{}",
+          "{}purl/{}",
+          socket_dev_url,
           percent_encoding::utf8_percent_encode(
             &purl,
             percent_encoding::NON_ALPHANUMERIC
