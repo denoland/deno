@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.368.0"
+version = "0.369.0"
 dependencies = [
  "anyhow",
  "az",
@@ -2626,16 +2626,16 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.244.0"
+version = "0.245.0"
 dependencies = [
  "indexmap 2.9.0",
- "proc-macro-rules",
  "proc-macro2",
  "quote",
  "stringcase",
  "strum 0.27.1",
  "strum_macros 0.27.1",
  "syn 2.0.87",
+ "syn-match",
  "thiserror 2.0.12",
 ]
 
@@ -7153,29 +7153,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-rules"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07c277e4e643ef00c1233393c673f655e3672cf7eb3ba08a00bdd0ea59139b5f"
-dependencies = [
- "proc-macro-rules-macros",
- "proc-macro2",
- "syn 2.0.87",
-]
-
-[[package]]
-name = "proc-macro-rules-macros"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "207fffb0fe655d1d47f6af98cc2793405e85929bdbc420d685554ff07be27ac7"
-dependencies = [
- "once_cell",
- "proc-macro2",
- "quote",
- "syn 2.0.87",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8249,7 +8226,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.277.0"
+version = "0.278.0"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -9136,6 +9113,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syn-match"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "783c4140d7ed89f37116e865b49e5a9fdd28608b9071a9dd1e158b50fc0a31fc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]
