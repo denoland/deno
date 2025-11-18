@@ -1,5 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+/// Chrome DevTools Protocol (CDP) type definitions.
+/// 
+/// Many structs in this module are marked with #[allow(dead_code)] because they
+/// represent the complete CDP API surface, even if not all methods are currently
+/// used by Deno. This ensures type safety and completeness for future use.
+///
 /// <https://chromedevtools.github.io/devtools-protocol/tot/>
 use deno_core::serde_json::Value;
 use serde::Deserialize;

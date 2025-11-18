@@ -40,6 +40,7 @@ pub struct OidcTokenResponse {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishingTaskError {
+  /// Error code from the registry API. Currently unused but part of the API response.
   #[allow(dead_code)]
   pub code: String,
   pub message: String,
