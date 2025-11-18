@@ -425,8 +425,14 @@ impl DenoXShimName {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum XFlagsKind {
   InstallAlias(DenoXShimName),
-  Command(String),
+  Command(XCommandFlags),
   Print,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XCommandFlags {
+  pub yes: bool,
+  pub command: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3485,10 +3491,12 @@ fn x_subcommand() -> Command {
     runtime_args(cmd, true, true, true)
       .arg(script_arg().trailing_var_arg(true))
       .arg(
-        Arg::new("default-allow-all")
-          .long("default-allow-all")
-          .help("Allow all permissions by default")
-          .action(ArgAction::SetTrue),
+        Arg::new("yes")
+          .long("yes")
+          .short('y')
+          .help("Assume confirmation for all prompts")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("install-alias"),
       )
       .arg(check_arg(false))
       .arg(env_file_arg())
@@ -6611,9 +6619,10 @@ fn x_parse(
     matches.remove_many::<String>("script_arg")
   {
     if let Some(command) = script_arg.next() {
+      let yes = matches.get_flag("yes");
       flags.argv.extend(script_arg);
       runtime_args_parse(flags, matches, true, true, true)?;
-      XFlagsKind::Command(command)
+      XFlagsKind::Command(XCommandFlags { yes, command })
     } else {
       XFlagsKind::Print
     }

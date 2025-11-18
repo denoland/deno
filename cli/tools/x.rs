@@ -240,7 +240,7 @@ pub async fn run(
   mut unconfigured_runtime: Option<UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
-  let command = match x_flags.kind {
+  let command_flags = match x_flags.kind {
     XFlagsKind::InstallAlias(shim_name) => {
       let exe = std::env::current_exe()?;
       let out_dir = exe.parent().unwrap();
@@ -270,7 +270,7 @@ pub async fn run(
     &mut unconfigured_runtime,
     &node_resolver,
     &npm_resolver,
-    &command,
+    &command_flags.command,
   )
   .await?;
   if let Some(exit_code) = result {
@@ -280,17 +280,17 @@ pub async fn run(
   let cli_options = factory.cli_options()?;
   let cwd = cli_options.initial_cwd();
 
-  let is_file_like = command.starts_with('.')
-    || command.starts_with('/')
-    || command.starts_with('~')
-    || command.starts_with('\\')
-    || Path::new(&command).extension().is_some();
+  let is_file_like = command_flags.command.starts_with('.')
+    || command_flags.command.starts_with('/')
+    || command_flags.command.starts_with('~')
+    || command_flags.command.starts_with('\\')
+    || Path::new(&command_flags.command).extension().is_some();
 
   let thing_to_run = if is_file_like {
-    let url = deno_path_util::resolve_url_or_path(&command, cwd)?;
+    let url = deno_path_util::resolve_url_or_path(&command_flags.command, cwd)?;
     ReqRefOrUrl::Url(url)
   } else {
-    match deno_core::url::Url::parse(&command) {
+    match deno_core::url::Url::parse(&command_flags.command) {
       Ok(url) => {
         if url.scheme() == "npm" {
           let req_ref = NpmPackageReqReference::from_specifier(&url)?;
@@ -303,7 +303,7 @@ pub async fn run(
         }
       }
       Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
-        let new_command = format!("npm:{}", command);
+        let new_command = format!("npm:{}", command_flags.command);
         let req_ref = NpmPackageReqReference::from_str(&new_command)?;
         ReqRefOrUrl::Npm(req_ref)
       }
@@ -321,6 +321,7 @@ pub async fn run(
         ReqRef::Npm(&npm_package_req_reference),
         &flags,
         reload,
+        command_flags.yes,
       )
       .await?;
       let mut new_new_flags = (*new_flags).clone();
@@ -351,7 +352,7 @@ pub async fn run(
         let bins = resolve_local_bins(&new_node_resolver, &new_npm_resolver)?;
         return Err(anyhow::anyhow!(
           "Unable to choose binary for {}\n  Available bins:\n{}",
-          command,
+          command_flags.command,
           bins
             .keys()
             .map(|k| format!("    {}", k))
@@ -365,6 +366,7 @@ pub async fn run(
         ReqRef::Jsr(&jsr_package_req_reference),
         &flags,
         reload,
+        command_flags.yes,
       )
       .await?;
 
@@ -389,6 +391,7 @@ async fn autoinstall_package(
   req_ref: ReqRef<'_>,
   old_flags: &Flags,
   reload: bool,
+  yes: bool,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
   fn make_new_flags(old_flags: &Flags, temp_dir: &PathBuf) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
@@ -418,20 +421,21 @@ async fn autoinstall_package(
     XTempDir::Existing(_) => Ok((new_flags, new_factory)),
 
     XTempDir::New(temp_dir) => {
-      let confirmed = match confirm(ConfirmOptions {
-        default: true,
-        message: format!("Install {}?", req_ref.req().name),
-      }) {
-        Some(true) => true,
-        Some(false) => false,
-        None => {
-          log::warn!(
-            "Unable to prompt, installing {} without confirmation",
-            req_ref.req()
-          );
-          true
-        }
-      };
+      let confirmed = yes
+        || match confirm(ConfirmOptions {
+          default: true,
+          message: format!("Install {}?", req_ref.req().name),
+        }) {
+          Some(true) => true,
+          Some(false) => false,
+          None => {
+            log::warn!(
+              "Unable to prompt, installing {} without confirmation",
+              req_ref.req()
+            );
+            true
+          }
+        };
       if !confirmed {
         return Err(anyhow::anyhow!("Installation rejected"));
       }
