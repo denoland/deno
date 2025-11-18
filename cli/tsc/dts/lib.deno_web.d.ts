@@ -659,11 +659,6 @@ declare var FileReader: {
 };
 
 /** @category File */
-/** A generic buffer source used in various binary data APIs.
- * @category Platform */
-type BufferSource = ArrayBufferView | ArrayBuffer;
-
-/** @category File */
 type BlobPart = BufferSource | Blob | string;
 
 /** @category File */
@@ -1220,6 +1215,7 @@ declare var MessageEvent: {
 
 /** @category Events */
 type Transferable = MessagePort | ArrayBuffer;
+
 
 /**
  * Options that control structured serialization operations such as
