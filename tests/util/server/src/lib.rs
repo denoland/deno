@@ -56,6 +56,7 @@ pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
+    ("SOCKET_DEV_URL".to_string(), socket_dev_api_url()),
   ]
 }
 
@@ -214,6 +215,10 @@ pub fn gha_token_url() -> String {
     "http://127.0.0.1:{}/gha_oidc?test=true",
     servers::PROVENANCE_MOCK_SERVER_PORT
   )
+}
+
+pub fn socket_dev_api_url() -> String {
+  format!("http://localhost:{}/", servers::SOCKET_DEV_API_PORT)
 }
 
 pub fn jsr_registry_unset_url() -> String {

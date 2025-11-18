@@ -98,7 +98,7 @@ pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
-pub(crate) const SOCKET_DEV_API_PORT: u16 = 4263;
+pub(crate) const SOCKET_DEV_API_PORT: u16 = 4268;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not

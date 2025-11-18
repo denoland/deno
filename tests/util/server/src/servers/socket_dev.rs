@@ -1,38 +1,25 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;
-use std::net::Ipv6Addr;
 use std::net::SocketAddr;
-use std::net::SocketAddrV6;
-use std::path::PathBuf;
 
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;
-use http::HeaderMap;
-use http::HeaderValue;
-use http_body_util::BodyExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use hyper::body::Incoming;
+use percent_encoding;
 use serde_json::json;
-use sha2::Digest;
 
 use super::ServerKind;
 use super::ServerOptions;
-use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
 use super::string_body;
-use crate::npm;
-use crate::root_path;
 
 pub fn api(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_socket_dev_server(port, "socket.dev server error", socket_dev_handler)
@@ -48,9 +35,6 @@ where
   S: Future<Output = HandlerOutput> + 'static,
 {
   let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
-  let npm_registry_ipv6_addr =
-    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, port, 0, 0));
   vec![
     run_socket_dev_server_for_addr(npm_registry_addr, error_msg, handler)
       .boxed_local(),
@@ -79,5 +63,80 @@ async fn run_socket_dev_server_for_addr<F, S>(
 async fn socket_dev_handler(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  // { id: "81646", name: "weak-lru-cache", version: "1.2.2", score: Some(FirewallScore { license: 1.0, maintenance: 0.77, overall: 0.77, quality: 0.94, supply_chain: 1.0, vulnerability: 1.0 }), alerts: [] }
+  let path = req.uri().path();
+
+  eprintln!("path {:#?}", path);
+  // Expected format: /purl/{percent_encoded_purl}
+  // where purl is like: pkg:npm/package-name@version
+  if !path.starts_with("/purl/") {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(empty_body())?,
+    );
+  }
+
+  // Extract the percent-encoded purl
+  let encoded_purl = &path[6..]; // Skip "/purl/"
+
+  // Decode the percent-encoded purl
+  let decoded_purl =
+    match percent_encoding::percent_decode_str(encoded_purl).decode_utf8() {
+      Ok(s) => s.to_string(),
+      Err(_) => {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(empty_body())?,
+        );
+      }
+    };
+
+  // Parse the purl format: pkg:npm/package-name@version
+  if !decoded_purl.starts_with("pkg:npm/") {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(empty_body())?,
+    );
+  }
+
+  let package_part = &decoded_purl[8..]; // Skip "pkg:npm/"
+
+  // Split by @ to get name and version (split from the right to handle scoped packages like @scope/package@1.0.0)
+  let parts: Vec<&str> = package_part.rsplitn(2, '@').collect();
+  if parts.len() != 2 {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(empty_body())?,
+    );
+  }
+
+  let version = parts[0];
+  let name = parts[1];
+
+  // Create the response JSON matching the FirewallResponse structure
+  let response_json = json!({
+    "id": "81646",
+    "name": name,
+    "version": version,
+    "score": {
+      "license": 1.0,
+      "maintenance": 0.77,
+      "overall": 0.77,
+      "quality": 0.94,
+      "supplyChain": 1.0,
+      "vulnerability": 1.0
+    },
+    "alerts": []
+  });
+
+  let response_body = response_json.to_string();
+  Ok(
+    Response::builder()
+      .status(StatusCode::OK)
+      .header("Content-Type", "application/json")
+      .body(string_body(&response_body))?,
+  )
 }
