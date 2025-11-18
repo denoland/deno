@@ -11,17 +11,24 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::MinimumDependencyAgeConfig;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_semver::VersionReq;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -55,7 +62,6 @@ use crate::cjs::IsCjsResolutionMode;
 use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
-use crate::collections::FolderScopedWithUnscopedMap;
 use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
@@ -80,13 +86,9 @@ use crate::npm::managed::NpmResolutionCellRc;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
 use crate::npmrc::discover_npmrc_from_workspace;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
-use crate::workspace::WorkspaceNpmLinkPackages;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 use crate::workspace::WorkspaceResolver;
 
@@ -95,13 +97,6 @@ use crate::workspace::WorkspaceResolver;
 type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
-
-#[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
 
 pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
   DenoCjsCodeAnalyzer<TSys>,
@@ -117,6 +112,12 @@ pub type DenoNodeCodeTranslatorRc<TSys> = NodeCodeTranslatorRc<
   NpmResolver<TSys>,
   TSys,
 >;
+#[allow(clippy::disallowed_types)]
+pub type NpmVersionResolverRc = deno_maybe_sync::MaybeArc<NpmVersionResolver>;
+#[cfg(feature = "graph")]
+#[allow(clippy::disallowed_types)]
+pub type JsrVersionResolverRc =
+  deno_maybe_sync::MaybeArc<deno_graph::packages::JsrVersionResolver>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -213,12 +214,14 @@ pub struct WorkspaceFactoryOptions {
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub npm_process_state: Option<NpmProcessStateOptions>,
+  /// Override the path to the root node_modules directory.
+  pub root_node_modules_dir_override: Option<PathBuf>,
   pub vendor: Option<bool>,
 }
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceFactoryRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceFactory<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
@@ -228,6 +231,7 @@ pub trait WorkspaceFactorySys:
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
   + crate::loader::NpmModuleLoaderSys
+  + sys_traits::SystemTimeNow
 {
 }
 
@@ -244,7 +248,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
-  workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
@@ -271,7 +274,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
-      workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
       initial_cwd,
@@ -406,6 +408,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     self
       .node_modules_dir_path
       .get_or_try_init(|| {
+        if let Some(path) = &self.options.root_node_modules_dir_override {
+          return Ok(Some(path.clone()));
+        }
         if let Some(process_state) = &self.options.npm_process_state {
           return Ok(
             process_state
@@ -504,7 +509,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           npm_package_info_provider,
         )
         .await?
-        .map(crate::sync::new_rc);
+        .map(deno_maybe_sync::new_rc);
 
         Ok(maybe_lock_file)
       })
@@ -608,17 +613,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           WorkspaceDirectory::empty(resolve_empty_options())
         }
       };
-      Ok(new_rc(dir))
-    })
-  }
-
-  pub fn workspace_directory_provider(
-    &self,
-  ) -> Result<&WorkspaceDirectoryProviderRc, WorkspaceDiscoverError> {
-    self.workspace_directory_provider.get_or_try_init(|| {
-      Ok(new_rc(WorkspaceDirectoryProvider::from_initial_dir(
-        self.workspace_directory()?,
-      )))
+      Ok(dir)
     })
   }
 
@@ -643,9 +638,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .workspace_npm_link_packages
       .get_or_try_init(|| {
         let workspace_dir = self.workspace_directory()?;
-        let npm_packages = new_rc(WorkspaceNpmLinkPackages::from_workspace(
+        let npm_packages = WorkspaceNpmLinkPackagesRc::from_workspace(
           workspace_dir.workspace.as_ref(),
-        ));
+        );
         if !npm_packages.0.is_empty() && !matches!(self.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
           bail!("Linking npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
         } else {
@@ -667,6 +662,8 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 pub struct ResolverFactoryOptions {
   pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
+  /// Prevents installing packages newer than the specified date.
+  pub newest_dependency_date: Option<NewestDependencyDate>,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
   pub node_resolver_options: NodeResolverOptions,
@@ -682,6 +679,9 @@ pub struct ResolverFactoryOptions {
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
   pub allow_json_imports: AllowJsonImports,
+  /// Known good version requirement to use for the `@types/node` package
+  /// when the version is unspecified or "latest".
+  pub types_node_version_req: Option<VersionReq>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -698,8 +698,10 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "graph")]
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
+  #[cfg(feature = "graph")]
+  jsr_version_resolver: Deferred<JsrVersionResolverRc>,
+  minimum_dependency_age: Deferred<MinimumDependencyAgeConfig>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
-  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
       DenoInNpmPackageChecker,
@@ -708,6 +710,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
       TSys,
     >,
   >,
+  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   npm_req_resolver: Deferred<
     NpmReqResolverRc<
       DenoInNpmPackageChecker,
@@ -718,6 +721,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
+  npm_version_resolver: Deferred<NpmVersionResolverRc>,
   #[cfg(feature = "deno_ast")]
   parsed_source_cache: crate::cache::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
@@ -749,12 +753,16 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       #[cfg(feature = "graph")]
       found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
+      #[cfg(feature = "graph")]
+      jsr_version_resolver: Default::default(),
+      minimum_dependency_age: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
+      npm_version_resolver: Default::default(),
       #[cfg(feature = "deno_ast")]
       parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
@@ -850,7 +858,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.compiler_options_resolver.get_or_try_init(|| {
       Ok(new_rc(CompilerOptionsResolver::new(
         &self.sys,
-        self.workspace_factory.workspace_directory_provider()?,
+        &self.workspace_factory.workspace_directory()?.workspace,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
         &self.options.compiler_options_overrides,
@@ -918,6 +926,56 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
       Ok(DenoInNpmPackageChecker::new(options))
+    })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
+    self.jsr_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
+      Ok(new_rc(deno_graph::packages::JsrVersionResolver {
+        newest_dependency_date_options:
+          deno_graph::packages::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_graph::packages::NewestDependencyDate),
+            exclude_jsr_pkgs: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("jsr:"))
+              .map(|v| v.into())
+              .collect(),
+          },
+      }))
+    })
+  }
+
+  /// The newest allowed dependency date.
+  pub fn minimum_dependency_age_config(
+    &self,
+  ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
+    self.minimum_dependency_age.get_or_try_init(|| {
+      let config = if let Some(date) = self.options.newest_dependency_date {
+        MinimumDependencyAgeConfig {
+          age: Some(date),
+          exclude: Vec::new(),
+        }
+      } else {
+        let workspace_factory = self.workspace_factory();
+        let workspace = &workspace_factory.workspace_directory()?.workspace;
+        workspace.minimum_dependency_age(workspace_factory.sys())?
+      };
+      if let Some(newest_dependency_date) =
+        config.age.and_then(|d| d.into_option())
+      {
+        log::debug!("Newest dependency date: {}", newest_dependency_date);
+      }
+      Ok(config)
     })
   }
 
@@ -1027,6 +1085,37 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
+  pub fn npm_version_resolver(
+    &self,
+  ) -> Result<&NpmVersionResolverRc, anyhow::Error> {
+    self.npm_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
+      Ok(new_rc(NpmVersionResolver {
+        types_node_version_req: self.options.types_node_version_req.clone(),
+        newest_dependency_date_options:
+          deno_npm::resolution::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_npm::resolution::NewestDependencyDate),
+            exclude: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|v| v.into())
+              .collect(),
+          },
+        link_packages: self
+          .workspace_factory
+          .workspace_npm_link_packages()?
+          .0
+          .clone(),
+      }))
+    })
+  }
+
   #[cfg(feature = "deno_ast")]
   pub fn parsed_source_cache(&self) -> &crate::cache::ParsedSourceCacheRc {
     &self.parsed_source_cache
@@ -1101,7 +1190,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             {
               SloppyImportsOptions::Enabled
             } else {
-              SloppyImportsOptions::Disabled
+              SloppyImportsOptions::Unspecified
             },
             fs_cache_options: FsCacheOptions::Enabled,
           };
@@ -1110,6 +1199,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             self.workspace_factory.sys.clone(),
             options,
           )?;
+          resolver.set_compiler_options_resolver(
+            self.compiler_options_resolver()?.clone(),
+          );
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility
@@ -1153,64 +1245,3 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     )
   }
 }
-
-#[derive(Debug)]
-pub struct WorkspaceDirectoryProvider {
-  pub workspace: WorkspaceRc,
-  dirs: FolderScopedWithUnscopedMap<Deferred<WorkspaceDirectoryRc>>,
-}
-
-impl WorkspaceDirectoryProvider {
-  pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
-    let workspace = dir.workspace.clone();
-    let mut dirs = FolderScopedWithUnscopedMap::new(Deferred::default());
-    for dir_url in workspace.config_folders().keys() {
-      if dir_url == workspace.root_dir() {
-        continue;
-      } else if dir_url == dir.dir_url() {
-        dirs.insert(dir_url.clone(), Deferred::from(dir.clone()));
-      } else {
-        dirs.insert(dir_url.clone(), Deferred::default());
-      }
-    }
-    Self { workspace, dirs }
-  }
-
-  pub fn for_specifier(&self, specifier: &Url) -> &WorkspaceDirectoryRc {
-    let (dir_url, dir) = self.dirs.entry_for_specifier(specifier);
-    dir.get_or_init(|| {
-      new_rc(
-        self
-          .workspace
-          .resolve_member_dir(dir_url.unwrap_or(self.workspace.root_dir())),
-      )
-    })
-  }
-
-  pub fn root(&self) -> &WorkspaceDirectoryRc {
-    self.dirs.unscoped.get_or_init(|| {
-      new_rc(self.workspace.resolve_member_dir(self.workspace.root_dir()))
-    })
-  }
-
-  pub fn entries(
-    &self,
-  ) -> impl Iterator<Item = (Option<&UrlRc>, &WorkspaceDirectoryRc)> {
-    self.dirs.entries().map(|(s, d)| {
-      (
-        s,
-        d.get_or_init(|| {
-          new_rc(
-            self
-              .workspace
-              .resolve_member_dir(s.unwrap_or(self.workspace.root_dir())),
-          )
-        }),
-      )
-    })
-  }
-}
-
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryProviderRc =
-  crate::sync::MaybeArc<WorkspaceDirectoryProvider>;

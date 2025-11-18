@@ -101,7 +101,7 @@ pub trait ManagedNpmResolverSys: FsCanonicalize + FsMetadata + Clone {}
 
 #[allow(clippy::disallowed_types)]
 pub type ManagedNpmResolverRc<TSys> =
-  crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {
@@ -127,6 +127,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
         options.npm_cache_dir.clone(),
         options.npmrc.clone(),
         options.npm_resolution.clone(),
+        options.sys.clone(),
       )),
     };
 
@@ -200,10 +201,16 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
     Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
   }
 
+  pub fn resolve_pkg_id_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
+    self.resolution.resolve_pkg_id_from_pkg_req(req)
+  }
+
   pub fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
-    _referrer: &Url,
   ) -> Result<PathBuf, ManagedResolvePkgFolderFromDenoReqError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_pkg_req(req)?;
     Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)

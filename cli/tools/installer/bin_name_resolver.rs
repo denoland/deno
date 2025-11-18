@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::NpmPackageVersionResolver;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::http_util::HttpClientProvider;
@@ -13,16 +14,19 @@ use crate::http_util::HttpClientProvider;
 pub struct BinNameResolver<'a> {
   http_client_provider: &'a HttpClientProvider,
   npm_registry_api: &'a dyn NpmRegistryApi,
+  npm_version_resolver: &'a NpmVersionResolver,
 }
 
 impl<'a> BinNameResolver<'a> {
   pub fn new(
     http_client_provider: &'a HttpClientProvider,
     npm_registry_api: &'a dyn NpmRegistryApi,
+    npm_version_resolver: &'a NpmVersionResolver,
   ) -> Self {
     Self {
       http_client_provider,
       npm_registry_api,
+      npm_version_resolver,
     }
   }
 
@@ -113,19 +117,22 @@ impl<'a> BinNameResolver<'a> {
       .npm_registry_api
       .package_info(&npm_ref.req().name)
       .await?;
-    Ok(self.resolve_name_from_npm_package_info(&package_info, npm_ref))
+    let version_resolver =
+      self.npm_version_resolver.get_for_package(&package_info);
+    Ok(self.resolve_name_from_npm_package_info(&version_resolver, npm_ref))
   }
 
   fn resolve_name_from_npm_package_info(
     &self,
-    package_info: &NpmPackageInfo,
+    version_resolver: &NpmPackageVersionResolver,
     npm_ref: &NpmPackageReqReference,
   ) -> Option<String> {
-    let version = crate::npm::version_from_package_info(
-      package_info,
-      &npm_ref.req().version_req,
-    )?;
-    let version_info = package_info.versions.get(version)?;
+    let version_info = version_resolver
+      .resolve_best_package_version_info(
+        &npm_ref.req().version_req,
+        Vec::new().into_iter(),
+      )
+      .ok()?;
     let bin_entries = version_info.bin.as_ref()?;
     match bin_entries {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {}
@@ -145,6 +152,7 @@ mod test {
 
   use deno_core::url::Url;
   use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmVersionResolver;
 
   use super::BinNameResolver;
   use crate::http_util::HttpClientProvider;
@@ -158,7 +166,9 @@ mod test {
         HashMap::from([("gemini".to_string(), "./bin.js".to_string())]),
       ))
     });
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     resolver.infer_name_from_url(url).await
   }
 

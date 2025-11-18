@@ -26,8 +26,10 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
@@ -40,15 +42,14 @@ use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
-use rustls_tokio_stream::TlsStreamRead;
-use rustls_tokio_stream::TlsStreamWrite;
+pub use rustls_tokio_stream::TlsStreamRead;
+pub use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
-use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
@@ -232,6 +233,7 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
   server_name: Option<String>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -242,6 +244,7 @@ pub struct StartTlsArgs {
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
   reject_unauthorized: Option<bool>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[op2]
@@ -266,7 +269,7 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(
@@ -309,14 +312,11 @@ pub fn op_tls_cert_resolver_resolve_error(
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_tls_start<NP>(
+pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let rid = args.rid;
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
@@ -343,6 +343,9 @@ where
     Some(Vec::new())
   };
 
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
+
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
@@ -367,13 +370,14 @@ where
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let key_pair = key_pair.unwrap_or(&tls_null);
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -399,24 +403,23 @@ where
 
 #[op2(async, stack_trace)]
 #[serde]
-pub async fn op_net_connect_tls<NP>(
+pub async fn op_net_connect_tls(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
 
   let cert_file = {
     let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
+    let permissions = s.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")
       .map_err(NetError::Permission)?;
@@ -426,7 +429,7 @@ where
           .check_open(
             Cow::Borrowed(Path::new(path)),
             OpenAccessKind::ReadNoFollow,
-            "Deno.connectTls()",
+            Some("Deno.connectTls()"),
           )
           .map_err(NetError::Permission)?,
       )
@@ -466,13 +469,14 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -504,25 +508,23 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
   #[serde(default)]
   load_balanced: bool,
+  tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_net_listen_tls<NP>(
+pub fn op_net_listen_tls(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   if args.reuse_port {
     super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
   }
 
   {
-    let permissions = state.borrow_mut::<NP>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
       .map_err(NetError::Permission)?;
@@ -533,9 +535,9 @@ where
     .ok_or(NetError::NoResolvedAddress)?;
 
   let tcp_listener = if args.load_balanced {
-    TcpListener::bind_load_balanced(bind_addr)
+    TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)
   } else {
-    TcpListener::bind_direct(bind_addr, args.reuse_port)
+    TcpListener::bind_direct(bind_addr, args.reuse_port, args.tcp_backlog)
   }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args

@@ -30,7 +30,7 @@ impl<'a> ToV8<'a> for RunStatementResult {
 
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     v8_static_strings! {
       LAST_INSERT_ROW_ID = "lastInsertRowid",
@@ -70,6 +70,7 @@ pub struct StatementSync {
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
+  pub allow_unknown_named_params: Cell<bool>,
 
   pub is_iter_finished: bool,
 }
@@ -171,7 +172,10 @@ impl<'a> Iterator for ColumnIterator<'a> {
   }
 }
 
-impl GarbageCollected for StatementSync {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for StatementSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"StatementSync"
   }
@@ -223,7 +227,7 @@ impl StatementSync {
   fn column_value<'a>(
     &self,
     index: i32,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
     // as it lives as long as the StatementSync instance.
@@ -278,7 +282,7 @@ impl StatementSync {
   // Read the current row of the prepared statement.
   fn read_row<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<Option<v8::Local<'a, v8::Object>>, SqliteError> {
     if self.step()? {
       return Ok(None);
@@ -311,7 +315,7 @@ impl StatementSync {
 
   fn bind_value(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
     index: i32,
   ) -> Result<(), SqliteError> {
@@ -406,7 +410,7 @@ impl StatementSync {
   // Bind the parameters to the prepared statement.
   fn bind_params(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
@@ -484,6 +488,10 @@ impl StatementSync {
             }
 
             if r == 0 {
+              if self.allow_unknown_named_params.get() {
+                continue;
+              }
+
               return Err(SqliteError::UnknownNamedParameter(
                 key_c.into_string().unwrap(),
               ));
@@ -544,7 +552,7 @@ impl StatementSync {
   // Optionally, parameters can be bound to the prepared statement.
   fn get<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     self.reset()?;
@@ -568,7 +576,7 @@ impl StatementSync {
   #[to_v8]
   fn run(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
     let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
@@ -596,7 +604,7 @@ impl StatementSync {
   // Optionally, parameters can be bound to the prepared statement.
   fn all<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     let mut arr = vec![];
@@ -614,7 +622,7 @@ impl StatementSync {
 
   fn iterate<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
     macro_rules! v8_static_strings {
@@ -638,7 +646,7 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    let iterate_next = |scope: &mut v8::HandleScope,
+    let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         args: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
@@ -685,7 +693,7 @@ impl StatementSync {
       rv.set(result.into());
     };
 
-    let iterate_return = |scope: &mut v8::HandleScope,
+    let iterate_return = |scope: &mut v8::PinScope<'_, '_>,
                           args: v8::FunctionCallbackArguments,
                           mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
@@ -761,6 +769,16 @@ impl StatementSync {
 
   #[fast]
   #[undefined]
+  fn set_allow_unknown_named_parameters(
+    &self,
+    #[validate(validators::allow_unknown_named_params_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
+    self.allow_unknown_named_params.set(enabled);
+    Ok(())
+  }
+
+  #[fast]
+  #[undefined]
   fn set_read_big_ints(
     &self,
     #[validate(validators::read_big_ints_bool)] enabled: bool,
@@ -800,5 +818,131 @@ impl StatementSync {
       ffi::sqlite3_free(raw as _);
       Ok(sql)
     }
+  }
+
+  fn columns<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
+    v8_static_strings! {
+      NAME = "name",
+      COLUMN = "column",
+      TABLE = "table",
+      DATABASE = "database",
+      TYPE = "type",
+    }
+
+    let column_count = self.column_count();
+    let mut columns = Vec::with_capacity(column_count as usize);
+
+    // Pre-create property keys
+    let name_key = NAME.v8_string(scope).unwrap().into();
+    let column_key = COLUMN.v8_string(scope).unwrap().into();
+    let table_key = TABLE.v8_string(scope).unwrap().into();
+    let database_key = DATABASE.v8_string(scope).unwrap().into();
+    let type_key = TYPE.v8_string(scope).unwrap().into();
+
+    let keys = &[name_key, column_key, table_key, database_key, type_key];
+
+    for i in 0..column_count {
+      // name: The name of the column in the result set
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let name = unsafe {
+        let name_ptr = ffi::sqlite3_column_name(self.inner, i);
+        if !name_ptr.is_null() {
+          let name_cstr = std::ffi::CStr::from_ptr(name_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            name_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // column: The unaliased name of the column in the origin table
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let column = unsafe {
+        let column_ptr = ffi::sqlite3_column_origin_name(self.inner, i);
+        if !column_ptr.is_null() {
+          let column_cstr = std::ffi::CStr::from_ptr(column_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            column_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // table: The unaliased name of the origin table
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let table = unsafe {
+        let table_ptr = ffi::sqlite3_column_table_name(self.inner, i);
+        if !table_ptr.is_null() {
+          let table_cstr = std::ffi::CStr::from_ptr(table_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            table_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // database: The unaliased name of the origin database
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let database = unsafe {
+        let database_ptr = ffi::sqlite3_column_database_name(self.inner, i);
+        if !database_ptr.is_null() {
+          let database_cstr = std::ffi::CStr::from_ptr(database_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            database_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      // type: The declared data type of the column
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      let col_type = unsafe {
+        let type_ptr = ffi::sqlite3_column_decltype(self.inner, i);
+        if !type_ptr.is_null() {
+          let type_cstr = std::ffi::CStr::from_ptr(type_ptr as _);
+          v8::String::new_from_utf8(
+            scope,
+            type_cstr.to_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap()
+          .into()
+        } else {
+          v8::null(scope).into()
+        }
+      };
+
+      let values = &[name, column, table, database, col_type];
+      let null = v8::null(scope).into();
+      let obj =
+        v8::Object::with_prototype_and_properties(scope, null, keys, values);
+
+      columns.push(obj.into());
+    }
+
+    Ok(v8::Array::new_with_elements(scope, &columns))
   }
 }

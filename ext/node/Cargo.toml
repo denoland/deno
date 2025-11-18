@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.151.0"
+version = "0.159.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -40,6 +40,7 @@ deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
+deno_tls.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
@@ -78,6 +79,7 @@ rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
 rusqlite.workspace = true
+rustls-tokio-stream.workspace = true
 scrypt.workspace = true
 sec1.workspace = true
 serde.workspace = true
@@ -101,6 +103,7 @@ yoke.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 errno = "0.3.10"
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

@@ -1,11 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertNotEquals,
-  assertRejects,
-  assertThrows,
-} from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { writeFile, writeFileSync } from "node:fs";
 import * as path from "@std/path";
 
@@ -19,6 +13,17 @@ type TextEncodings =
   | "base64"
   | "latin1"
   | "hex";
+
+let modeAsync: number;
+let modeSync: number;
+// On Windows chmod is only able to manipulate write permission
+if (Deno.build.os === "windows") {
+  modeAsync = 0o444; // read-only
+  modeSync = 0o666; // read-write
+} else {
+  modeAsync = 0o777;
+  modeSync = 0o644;
+}
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testDataDir = path.resolve(moduleDir, "testdata");
@@ -203,18 +208,17 @@ Deno.test({
   // The fs APIs should be rewritten to use actual FDs, not RIDs
   ignore: true,
 }, async function testCorrectFileMode() {
-  if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
   const res = await new Promise((resolve) => {
-    writeFile(filename, "hello world", { mode: 0o777 }, resolve);
+    writeFile(filename, "hello world", { mode: modeAsync }, resolve);
   });
 
   const fileInfo = await Deno.stat(filename);
   await Deno.remove(filename);
   assertEquals(res, null);
   assert(fileInfo && fileInfo.mode);
-  assertEquals(fileInfo.mode & 0o777, 0o777);
+  assertEquals(fileInfo.mode & 0o777, modeAsync);
 });
 
 Deno.test(
@@ -225,8 +229,6 @@ Deno.test(
     ignore: true,
   },
   async function testCorrectFileModeRid() {
-    if (Deno.build.os === "windows") return;
-
     const filename: string = await Deno.makeTempFile();
     using file = await Deno.open(filename, {
       create: true,
@@ -236,7 +238,7 @@ Deno.test(
 
     await new Promise<void>((resolve, reject) => {
       // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
+      writeFile(file.rid, "hello world", { mode: modeAsync }, (err) => {
         if (err) return reject(err);
         resolve();
       });
@@ -245,7 +247,7 @@ Deno.test(
     const fileInfo = await Deno.stat(filename);
     await Deno.remove(filename);
     assert(fileInfo.mode);
-    assertNotEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, modeAsync);
   },
 );
 
@@ -355,14 +357,13 @@ Deno.test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
 Deno.test(
   "Mode is correctly set when writing synchronously",
   function testCorrectFileModeSync() {
-    if (Deno.build.os === "windows") return;
     const filename = "_fs_writeFileSync_test_file.txt";
 
-    writeFileSync(filename, "hello world", { mode: 0o777 });
+    writeFileSync(filename, "hello world", { mode: modeSync });
 
     const fileInfo = Deno.statSync(filename);
     Deno.removeSync(filename);
     assert(fileInfo && fileInfo.mode);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, modeSync);
   },
 );

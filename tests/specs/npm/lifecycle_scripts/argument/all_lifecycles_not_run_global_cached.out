@@ -1,0 +1,9 @@
+╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/node-lifecycle-scripts@1.0.0
+│
+│  Lifecycle scripts are only supported when using a `node_modules` directory.
+│  Enable it in your deno config file:
+│  "nodeModulesDir": "auto"
+╰─

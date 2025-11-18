@@ -15,13 +15,41 @@ import {
   isPosixPathSeparator,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import process from "node:process";
+import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
 
-const { StringPrototypeSlice, StringPrototypeCharCodeAt, TypeError } =
-  primordials;
+const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
+  "ext:deno_node/_fs/_fs_glob.ts",
+);
+
+const {
+  StringPrototypeReplace,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  SafeRegExp,
+} = primordials;
 
 export const sep = "/";
 export const delimiter = ":";
+
+const posixCwd = (() => {
+  if (isWindows) {
+    // Converts Windows' backslash path separators to POSIX forward slashes
+    // and truncates any drive indicator
+    const regexp = new SafeRegExp(/\\/g);
+    return () => {
+      const cwd = StringPrototypeReplace(process.cwd(), regexp, "/");
+      return StringPrototypeSlice(cwd, StringPrototypeIndexOf(cwd, "/"));
+    };
+  }
+
+  // We're already on POSIX, no need for any transformations
+  return () => process.cwd();
+})();
 
 // path.resolve([from ...], to)
 /**
@@ -29,23 +57,22 @@ export const delimiter = ":";
  * @param pathSegments an array of path segments
  */
 export function resolve(...pathSegments: string[]): string {
+  if (
+    pathSegments.length === 0 ||
+    (pathSegments.length === 1 &&
+      (pathSegments[0] === "" || pathSegments[0] === "."))
+  ) {
+    const cwd = posixCwd();
+    if (StringPrototypeCharCodeAt(cwd, 0) === CHAR_FORWARD_SLASH) {
+      return cwd;
+    }
+  }
   let resolvedPath = "";
   let resolvedAbsolute = false;
 
-  for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-    let path: string;
-
-    if (i >= 0) path = pathSegments[i];
-    else {
-      // deno-lint-ignore no-explicit-any
-      const { Deno } = globalThis as any;
-      if (typeof Deno?.cwd !== "function") {
-        throw new TypeError("Resolved a relative path without a CWD.");
-      }
-      path = Deno.cwd();
-    }
-
-    assertPath(path);
+  for (let i = pathSegments.length - 1; i >= 0 && !resolvedAbsolute; i--) {
+    const path = pathSegments[i];
+    validateString(path, `paths[${i}]`);
 
     // Skip empty entries
     if (path.length === 0) {
@@ -55,6 +82,12 @@ export function resolve(...pathSegments: string[]): string {
     resolvedPath = `${path}/${resolvedPath}`;
     resolvedAbsolute =
       StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
+  }
+
+  if (!resolvedAbsolute) {
+    const cwd = posixCwd();
+    resolvedPath = `${cwd}/${resolvedPath}`;
+    resolvedAbsolute = StringPrototypeCharCodeAt(cwd, 0) === CHAR_FORWARD_SLASH;
   }
 
   // At this point the path should be resolved to a full absolute path, but
@@ -69,10 +102,9 @@ export function resolve(...pathSegments: string[]): string {
   );
 
   if (resolvedAbsolute) {
-    if (resolvedPath.length > 0) return `/${resolvedPath}`;
-    else return "/";
-  } else if (resolvedPath.length > 0) return resolvedPath;
-  else return ".";
+    return `/${resolvedPath}`;
+  }
+  return resolvedPath.length > 0 ? resolvedPath : ".";
 }
 
 /**
@@ -138,64 +170,55 @@ export function relative(from: string, to: string): string {
 
   if (from === to) return "";
 
+  // Trim leading forward slashes.
   from = resolve(from);
   to = resolve(to);
 
   if (from === to) return "";
 
-  // Trim any leading backslashes
-  let fromStart = 1;
+  const fromStart = 1;
   const fromEnd = from.length;
-  for (; fromStart < fromEnd; ++fromStart) {
-    if (StringPrototypeCharCodeAt(from, fromStart) !== CHAR_FORWARD_SLASH) {
-      break;
-    }
-  }
   const fromLen = fromEnd - fromStart;
-
-  // Trim any leading backslashes
-  let toStart = 1;
-  const toEnd = to.length;
-  for (; toStart < toEnd; ++toStart) {
-    if (StringPrototypeCharCodeAt(to, toStart) !== CHAR_FORWARD_SLASH) break;
-  }
-  const toLen = toEnd - toStart;
+  const toStart = 1;
+  const toLen = to.length - toStart;
 
   // Compare paths to find the longest common path from root
   const length = fromLen < toLen ? fromLen : toLen;
   let lastCommonSep = -1;
   let i = 0;
-  for (; i <= length; ++i) {
-    if (i === length) {
-      if (toLen > length) {
-        if (StringPrototypeCharCodeAt(to, toStart + i) === CHAR_FORWARD_SLASH) {
-          // We get here if `from` is the exact base path for `to`.
-          // For example: from='/foo/bar'; to='/foo/bar/baz'
-          return StringPrototypeSlice(to, toStart + i + 1);
-        } else if (i === 0) {
-          // We get here if `from` is the root
-          // For example: from='/'; to='/foo'
-          return StringPrototypeSlice(to, toStart + i);
-        }
-      } else if (fromLen > length) {
-        if (
-          StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_FORWARD_SLASH
-        ) {
-          // We get here if `to` is the exact base path for `from`.
-          // For example: from='/foo/bar/baz'; to='/foo/bar'
-          lastCommonSep = i;
-        } else if (i === 0) {
-          // We get here if `to` is the root.
-          // For example: from='/foo'; to='/'
-          lastCommonSep = 0;
-        }
-      }
-      break;
-    }
+  for (; i < length; i++) {
     const fromCode = StringPrototypeCharCodeAt(from, fromStart + i);
-    const toCode = StringPrototypeCharCodeAt(to, toStart + i);
-    if (fromCode !== toCode) break;
-    else if (fromCode === CHAR_FORWARD_SLASH) lastCommonSep = i;
+    if (fromCode !== StringPrototypeCharCodeAt(to, toStart + i)) {
+      break;
+    } else if (fromCode === CHAR_FORWARD_SLASH) {
+      lastCommonSep = i;
+    }
+  }
+  if (i === length) {
+    if (toLen > length) {
+      if (StringPrototypeCharCodeAt(to, toStart + i) === CHAR_FORWARD_SLASH) {
+        // We get here if `from` is the exact base path for `to`.
+        // For example: from='/foo/bar'; to='/foo/bar/baz'
+        return StringPrototypeSlice(to, toStart + i + 1);
+      }
+      if (i === 0) {
+        // We get here if `from` is the root
+        // For example: from='/'; to='/foo'
+        return StringPrototypeSlice(to, toStart + i);
+      }
+    } else if (fromLen > length) {
+      if (
+        StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_FORWARD_SLASH
+      ) {
+        // We get here if `to` is the exact base path for `from`.
+        // For example: from='/foo/bar/baz'; to='/foo/bar'
+        lastCommonSep = i;
+      } else if (i === 0) {
+        // We get here if `to` is the root.
+        // For example: from='/foo/bar'; to='/'
+        lastCommonSep = 0;
+      }
+    }
   }
 
   let out = "";
@@ -205,22 +228,13 @@ export function relative(from: string, to: string): string {
     if (
       i === fromEnd || StringPrototypeCharCodeAt(from, i) === CHAR_FORWARD_SLASH
     ) {
-      if (out.length === 0) out += "..";
-      else out += "/..";
+      out += out.length === 0 ? ".." : "/..";
     }
   }
 
   // Lastly, append the rest of the destination (`to`) path that comes after
   // the common path parts
-  if (out.length > 0) {
-    return out + StringPrototypeSlice(to, toStart + lastCommonSep);
-  } else {
-    toStart += lastCommonSep;
-    if (StringPrototypeCharCodeAt(to, toStart) === CHAR_FORWARD_SLASH) {
-      ++toStart;
-    }
-    return StringPrototypeSlice(to, toStart);
-  }
+  return out + StringPrototypeSlice(to, toStart + lastCommonSep);
 }
 
 /**
@@ -493,6 +507,12 @@ export function parse(path: string): ParsedPath {
 
 export const _makeLong = toNamespacedPath;
 
+let lazyMatchGlobPattern: typeof fsGlob.matchGlobPattern;
+export const matchesGlob = (path: string, pattern: string): boolean => {
+  lazyMatchGlobPattern ??= lazyLoadGlob().matchGlobPattern;
+  return lazyMatchGlobPattern(path, pattern, false);
+};
+
 export default {
   basename,
   delimiter,
@@ -508,4 +528,5 @@ export default {
   sep,
   toNamespacedPath,
   _makeLong,
+  matchesGlob,
 };

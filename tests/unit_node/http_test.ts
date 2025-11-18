@@ -227,9 +227,19 @@ Deno.test("[node/http] .writeHead()", async (t) => {
     );
   });
 
-  await t.step("send status + headers array", async () => {
+  await t.step("send status + headers nested array", async () => {
     await testWriteHead(
       (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, ["foo", "bar"]),
       (res) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
@@ -1777,6 +1787,15 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
       console.log("client socket closed");
       clientSocketClosed.resolve();
     });
+
+    socket.on("error", (e) => {
+      if (!("code" in e) || e.code !== "ECONNRESET") {
+        throw e;
+      }
+      console.log("client socket closed");
+      clientSocketClosed.resolve();
+    });
+
     socket.on("data", async (data) => {
       // receives pong message
       assertEquals(data, Buffer.from("8104706f6e67", "hex"));
@@ -1786,10 +1805,6 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       console.log("process closed");
       serverProcessClosed.resolve();
-
-      // sending some additional message
-      socket.write(Buffer.from("81847de88e01", "hex"));
-      socket.write(Buffer.from("0d81e066", "hex"));
     });
 
     // sending ping message
@@ -2140,4 +2155,72 @@ Deno.test("[node/https] null ca, key and cert req options", {
     resolve();
   }).end();
   await promise;
+});
+
+Deno.test("[node/http] server.listen respects signal option", async () => {
+  const [exitCode, _output] = await execCode(`
+    import { createServer } from 'node:http';
+
+    const abortController = new AbortController();
+
+    const server = createServer((_req, res) => {
+      res.writeHead(404).end();
+    }).on('listening', () => {
+      // Precedes setTimeout and exits with 0
+      abortController.abort();
+      setTimeout(() => process.exit(1), 1000);
+    }).on('close', () => {
+      process.exit(0);
+    });
+
+    server.listen({
+      host: 'localhost',
+      port: 0,
+      signal: abortController.signal
+    });
+  `);
+  assertEquals(exitCode, 0);
+});
+
+// Test for empty chunk in chunked POST request
+// Regression test for: https://github.com/denoland/deno/issues/31056
+Deno.test("[node/http] client request with empty write in chunked POST completes", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let requestBody = "";
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      requestBody = body;
+      res.statusCode = 200;
+      res.end("OK");
+    });
+  });
+
+  server.listen(() => {
+    const { port } = server.address() as { port: number };
+
+    const req = http.request({
+      hostname: "localhost",
+      port,
+      path: "/",
+      method: "POST",
+    }, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    // This should complete successfully even with an empty write
+    req.write("");
+    req.end();
+  });
+
+  await promise;
+  assertEquals(requestBody, "");
 });

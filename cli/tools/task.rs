@@ -63,7 +63,7 @@ pub async fn execute_script(
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!(
-      "deno task couldn't find deno.json(c). See https://docs.deno.com/go/config"
+      "deno task couldn't find deno.json(c) or package.json. See https://docs.deno.com/go/config"
     )
   }
   let force_use_pkg_json =
@@ -182,8 +182,8 @@ pub async fn execute_script(
   let progress_bar = factory.text_only_progress_bar();
   let mut env_vars = task_runner::real_env_vars();
 
-  if let Some(connected) = &flags.connected {
-    env_vars.insert("DENO_CONNECTED".into(), connected.into());
+  if flags.tunnel {
+    env_vars.insert("DENO_CONNECTED".into(), "1".into());
   }
 
   let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
@@ -462,8 +462,8 @@ impl<'a> TaskRunner<'a> {
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     self
@@ -505,8 +505,8 @@ impl<'a> TaskRunner<'a> {
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     for task_name in &task_names {
@@ -784,36 +784,31 @@ fn print_available_tasks_workspace(
   Ok(())
 }
 
-fn print_available_tasks(
-  writer: &mut dyn std::io::Write,
+pub struct AvailableTaskDescription {
+  pub is_root: bool,
+  pub is_deno: bool,
+  pub name: String,
+  pub task: TaskDefinition,
+}
+
+pub fn get_available_tasks_for_completion(
+  flags: Arc<Flags>,
+) -> Result<Vec<AvailableTaskDescription>, AnyError> {
+  let factory = crate::factory::CliFactory::from_flags(flags);
+  let options = factory.cli_options()?;
+
+  let member_dir = &options.start_dir;
+  let tasks_config = member_dir.to_tasks_config()?;
+
+  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+}
+
+fn get_available_tasks(
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
-  pkg_name: Option<String>,
-) -> Result<(), std::io::Error> {
-  let heading = if let Some(s) = pkg_name {
-    format!("Available tasks ({}):", colors::cyan(s))
-  } else {
-    "Available tasks:".to_string()
-  };
-
-  writeln!(writer, "{}", colors::green(heading))?;
+) -> Result<Vec<AvailableTaskDescription>, std::io::Error> {
   let is_cwd_root_dir = tasks_config.root.is_none();
 
-  if tasks_config.is_empty() {
-    writeln!(
-      writer,
-      "  {}",
-      colors::red("No tasks found in configuration file")
-    )?;
-    return Ok(());
-  }
-
-  struct AvailableTaskDescription {
-    is_root: bool,
-    is_deno: bool,
-    name: String,
-    task: TaskDefinition,
-  }
   let mut seen_task_names = HashSet::with_capacity(tasks_config.tasks_count());
   let mut task_descriptions = Vec::with_capacity(tasks_config.tasks_count());
 
@@ -824,7 +819,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
 
       for (name, definition) in &config.tasks {
         if !seen_task_names.insert(name) {
@@ -841,7 +837,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.package_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
       for (name, script) in &config.tasks {
         if !seen_task_names.insert(name) {
           continue; // already seen
@@ -860,6 +857,33 @@ fn print_available_tasks(
       }
     }
   }
+  Ok(task_descriptions)
+}
+
+fn print_available_tasks(
+  writer: &mut dyn std::io::Write,
+  workspace_dir: &Arc<WorkspaceDirectory>,
+  tasks_config: &WorkspaceTasksConfig,
+  pkg_name: Option<String>,
+) -> Result<(), std::io::Error> {
+  let heading = if let Some(s) = pkg_name {
+    format!("Available tasks ({}):", colors::cyan(s))
+  } else {
+    "Available tasks:".to_string()
+  };
+
+  writeln!(writer, "{}", colors::green(heading))?;
+
+  if tasks_config.is_empty() {
+    writeln!(
+      writer,
+      "  {}",
+      colors::red("No tasks found in configuration file")
+    )?;
+    return Ok(());
+  }
+
+  let task_descriptions = get_available_tasks(workspace_dir, tasks_config)?;
 
   for desc in task_descriptions {
     writeln!(

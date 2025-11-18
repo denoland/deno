@@ -8,12 +8,13 @@ use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
+
+use crate::error::GPUGenericError;
 
 mod adapter;
 mod bind_group;
@@ -106,7 +107,7 @@ deno_core::extension!(
 #[cppgc]
 pub fn op_create_gpu(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
   error_event_class: v8::Local<v8::Value>,
@@ -127,7 +128,10 @@ struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 
-impl GarbageCollected for GPU {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPU {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPU"
   }
@@ -135,6 +139,12 @@ impl GarbageCollected for GPU {
 
 #[op2]
 impl GPU {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPU, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[async_method]
   #[cppgc]
   async fn request_adapter(
@@ -207,5 +217,58 @@ fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
     None
   } else {
     Some(std::borrow::Cow::Owned(label))
+  }
+}
+
+#[derive(Debug)]
+pub(crate) struct SameObject<T: GarbageCollected + 'static> {
+  cell: std::cell::OnceCell<v8::Global<v8::Object>>,
+  _phantom_data: std::marker::PhantomData<T>,
+}
+
+impl<T: GarbageCollected + 'static> SameObject<T> {
+  #[allow(clippy::new_without_default)]
+  pub fn new() -> Self {
+    Self {
+      cell: Default::default(),
+      _phantom_data: Default::default(),
+    }
+  }
+
+  pub fn get<F>(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    f: F,
+  ) -> v8::Global<v8::Object>
+  where
+    F: FnOnce(&mut v8::PinScope<'_, '_>) -> T,
+  {
+    self
+      .cell
+      .get_or_init(|| {
+        let v = f(scope);
+        let obj = deno_core::cppgc::make_cppgc_object(scope, v);
+        v8::Global::new(scope, obj)
+      })
+      .clone()
+  }
+
+  #[allow(unused)]
+  pub fn set(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: T,
+  ) -> Result<(), v8::Global<v8::Object>> {
+    let obj = deno_core::cppgc::make_cppgc_object(scope, value);
+    self.cell.set(v8::Global::new(scope, obj))
+  }
+
+  pub fn try_unwrap(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> Option<deno_core::cppgc::UnsafePtr<T>> {
+    let obj = self.cell.get()?;
+    let val = v8::Local::new(scope, obj);
+    deno_core::cppgc::try_unwrap_cppgc_object(scope, val.cast())
   }
 }

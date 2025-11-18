@@ -21,11 +21,10 @@ use deno_core::ResourceId;
 use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::TryCatch;
+use deno_permissions::PermissionsContainer;
 use libffi::middle::Cif;
 use serde::Deserialize;
 
-use crate::FfiPermissions;
 use crate::ForeignFunction;
 use crate::symbol::NativeType;
 
@@ -130,7 +129,7 @@ struct TaskArgs {
 unsafe impl Send for TaskArgs {}
 
 impl TaskArgs {
-  fn run(&mut self, scope: &mut v8::HandleScope) {
+  fn run(&mut self, scope: &mut v8::PinScope<'_, '_>) {
     // SAFETY: making a call using Send-safe pointers turned back into references. We know the
     // lifetime of these will last because we block on the result of the spawn call.
     unsafe {
@@ -170,8 +169,8 @@ unsafe extern "C" fn deno_ffi_callback(
           NonNull<v8::Context>,
           v8::Local<v8::Context>,
         >(context);
-        let mut cb_scope = v8::CallbackScope::new(context);
-        let scope = &mut v8::HandleScope::new(&mut cb_scope);
+        v8::callback_scope!(unsafe cb_scope, context);
+        v8::scope!(scope, cb_scope);
 
         do_ffi_callback(scope, cif, info, result, args);
       } else {
@@ -186,7 +185,7 @@ unsafe extern "C" fn deno_ffi_callback(
 
         async_work_sender.spawn_blocking(move |scope| {
           // We don't have a lot of choice here, so just print an unhandled exception message
-          let tc_scope = &mut TryCatch::new(scope);
+          v8::tc_scope!(tc_scope, scope);
           args.run(tc_scope);
           if tc_scope.exception().is_some() {
             log::error!("Illegal unhandled exception in nonblocking callback");
@@ -198,7 +197,7 @@ unsafe extern "C" fn deno_ffi_callback(
 }
 
 unsafe fn do_ffi_callback(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   cif: &libffi::low::ffi_cif,
   info: &CallbackInfo,
   result: &mut c_void,
@@ -576,17 +575,14 @@ pub struct RegisterCallbackArgs {
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
+pub fn op_ffi_unsafe_callback_create<'scope>(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   #[serde] args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, CallbackError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<v8::Local<'scope, v8::Value>, CallbackError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
@@ -651,7 +647,7 @@ where
 #[op2(fast)]
 pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[smi] rid: ResourceId,
 ) -> Result<(), CallbackError> {
   // SAFETY: This drops the closure and the callback info associated with it.

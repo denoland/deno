@@ -5,7 +5,116 @@
   "description": "A JSON representation of a Deno configuration file.",
   "type": "object",
   "required": [],
+  "$defs": {
+    "permissionConfigValue": {
+      "oneOf": [{
+        "type": "boolean",
+        "description": "Allow or deny the permission."
+      }, {
+        "type": "array",
+        "description": "Subset of items to allow or deny depending on the context.",
+        "items": { "type": "string" }
+      }]
+    },
+    "allowDenyPermissionConfig": {
+      "type": "object",
+      "description": "Object form to allow and/or deny permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" }
+      }
+    },
+    "allowDenyPermissionConfigValue": {
+      "oneOf": [{
+        "$ref": "#/$defs/permissionConfigValue"
+      }, {
+        "$ref": "#/$defs/allowDenyPermissionConfig"
+      }]
+    },
+    "allowScriptsList": {
+      "type": "array",
+      "description": "List of npm package constraints to allow or deny for lifecycle scripts.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:npm:).+"
+      }
+    },
+    "permissionSet": {
+      "type": "object",
+      "description": "Collection of permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "type": "boolean",
+          "description": "Allow all permissions for the program to run unrestricted."
+        },
+        "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "env": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "sys": { "$ref": "#/$defs/allowDenyPermissionConfigValue" }
+      }
+    },
+    "permissionNameOrSet": {
+      "description": "A permission set name to use or inline permission set.",
+      "anyOf": [{
+        "type": "string",
+        "description": "Permission name."
+      }, {
+        "$ref": "#/$defs/permissionSet"
+      }]
+    },
+    "minimumDependencyAgeDate": {
+      "oneOf": [{
+        "description": "(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable).",
+        "type": "string"
+      }, {
+        "description": "(Unstable) The age in minutes.",
+        "type": "number"
+      }]
+    }
+  },
   "properties": {
+    "allowScripts": {
+      "oneOf": [{
+        "description": "Whether to allow npm lifecycle scripts.",
+        "type": "boolean"
+      }, {
+        "$ref": "#/$defs/allowScriptsList"
+      }, {
+        "type": "object",
+        "description": "Allow or deny config for lifecycle scripts.",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "oneOf": [{
+              "description": "Whether to allow running npm lifecycle scripts.",
+              "type": "boolean"
+            }, {
+              "$ref": "#/$defs/allowScriptsList"
+            }]
+          },
+          "deny": {
+            "description": "List of npm package constraints to deny running lifecycle scripts for.",
+            "$ref": "#/$defs/allowScriptsList"
+          }
+        }
+      }]
+    },
+    "compile": {
+      "type": "object",
+      "description": "Configuration for `deno compile`.",
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
+        }
+      }
+    },
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
@@ -149,6 +258,43 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
+        "module": {
+          "description": "Specify what module code is generated.",
+          "type": ["string", "null"],
+          "anyOf": [
+            {
+              "enum": [
+                "esnext",
+                "nodenext",
+                "preserve"
+              ]
+            },
+            {
+              "pattern": "^([Ee][Ss][Nn][Ee][Xx][Tt]|[Nn][Oo][Dd][Ee][Nn][Ee][Xx][Tt]|[Pp][Rr][Ee][Ss][Ee][Rr][Vv][Ee])$"
+            }
+          ],
+          "markdownDescription": "Specify what module code is generated.\n\nSee more: https://www.typescriptlang.org/tsconfig#module"
+        },
+        "moduleResolution": {
+          "description": "Specify how TypeScript looks up a file from a given module specifier.",
+          "type": ["string", "null"],
+          "anyOf": [
+            {
+              "enum": [
+                "nodenext",
+                "bundler"
+              ],
+              "markdownEnumDescriptions": [
+                "This is the recommended setting for libraries and Node.js applications",
+                "This is the recommended setting in TypeScript 5.0+ for applications that use a bundler"
+              ]
+            },
+            {
+              "pattern": "^([Nn]ode[Nn]ext|[Bb]undler)$"
+            }
+          ],
+          "markdownDescription": "Specify how TypeScript looks up a file from a given module specifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#moduleResolution"
+        },
         "noErrorTruncation": {
           "description": "Do not truncate error messages.",
           "type": "boolean",
@@ -208,6 +354,24 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "baseUrl": {
+          "description": "Specify the base directory to resolve non-relative module names.",
+          "type": ["string", "null"],
+          "markdownDescription": "Specify the base directory to resolve non-relative module names.\n\nIn Deno, this is only applied to bare specifier entries in `compilerOptions.paths` and `compilerOptions.rootDirs`.\n\nSee more: https://www.typescriptlang.org/tsconfig#baseUrl"
+        },
+        "paths": {
+          "description": "Specify a set of entries that re-map imports to additional lookup locations.",
+          "type": ["object", "null"],
+          "additionalProperties": {
+            "type": ["array", "null"],
+            "uniqueItems": true,
+            "items": {
+              "type": ["string", "null"],
+              "description": "Path mapping to be computed relative to baseUrl option."
+            }
+          },
+          "markdownDescription": "Specify a set of entries that re-map imports to additional lookup locations.\n\nSee more: https://www.typescriptlang.org/tsconfig#paths"
         },
         "rootDirs": {
           "description": "Declare many “virtual” directories acting as a single root.",
@@ -551,6 +715,26 @@
         }
       }
     },
+    "minimumDependencyAge": {
+      "oneOf": [{
+        "$ref": "#/$defs/minimumDependencyAgeDate"
+      }, {
+        "type": "object",
+        "description": "Minimum dependency age config.",
+        "additionalProperties": false,
+        "properties": {
+          "age": { "$ref": "#/$defs/minimumDependencyAgeDate" },
+          "exclude": {
+            "type": "array",
+            "description": "List of jsr or npm packages to exclude from requiring a minimum dependnecy age.",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:npm:|jsr:).+"
+            }
+          }
+        }
+      }]
+    },
     "nodeModulesDir": {
       "oneOf": [
         {
@@ -622,6 +806,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
@@ -662,6 +849,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
@@ -692,7 +882,6 @@
       "items": {
         "type": "string",
         "examples": [
-          "broadcast-channel",
           "bare-node-builtins",
           "byonm",
           "cron",
@@ -747,6 +936,11 @@
           "examples": [{ ".": "./mod.ts" }]
         }
       ]
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Named permission sets that can be selected with -P/--permission-set or referenced in \"test\", \"bench\", or \"compile\" permissions. A special name \"default\" is used when -P is passed without a value.",
+      "additionalProperties": { "$ref": "#/$defs/permissionSet" }
     },
     "patch": {
       "type": "array",

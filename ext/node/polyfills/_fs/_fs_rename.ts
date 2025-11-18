@@ -5,7 +5,6 @@ import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { primordials } from "ext:core/mod.js";
 import type { Buffer } from "node:buffer";
-import * as pathModule from "node:path";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
 const {
@@ -22,10 +21,7 @@ export function rename(
   validateFunction(callback, "callback");
 
   PromisePrototypeThen(
-    Deno.rename(
-      pathModule.toNamespacedPath(oldPath),
-      pathModule.toNamespacedPath(newPath),
-    ),
+    Deno.rename(oldPath, newPath),
     () => callback(),
     (err: Error) =>
       callback(denoErrorToNodeError(err, {
@@ -49,10 +45,7 @@ export function renameSync(
   newPath = getValidatedPathToString(newPath, "newPath");
 
   try {
-    Deno.renameSync(
-      pathModule.toNamespacedPath(oldPath),
-      pathModule.toNamespacedPath(newPath),
-    );
+    Deno.renameSync(oldPath, newPath);
   } catch (err) {
     throw denoErrorToNodeError(err as Error, {
       syscall: "rename",

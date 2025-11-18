@@ -1,0 +1,5 @@
+[WILDCARD]
+error: Import "bad" not a dependency and not in import map from "[WILDLINE]local_bad.ts"
+    at [WILDLINE]/local_bad.ts:1:13
+    note: You can mark the path "bad" as external to exclude it from the bundle, which will remove this error and leave the unresolved path in the bundle. You can also add ".catch()" here to handle this failure at run-time instead of bundle-time.
+error: bundling failed

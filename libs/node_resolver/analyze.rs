@@ -15,14 +15,12 @@ use futures::stream::FuturesUnordered;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
 use url::Url;
 
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
+use crate::NodeResolverSys;
 use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
@@ -77,6 +75,9 @@ pub enum ResolvedCjsAnalysis<'a> {
   Cjs(BTreeSet<String>),
 }
 
+#[sys_traits::auto_impl]
+pub trait CjsModuleExportAnalyzerSys: NodeResolverSys {}
+
 #[allow(clippy::disallowed_types)]
 pub type CjsModuleExportAnalyzerRc<
   TCjsCodeAnalyzer,
@@ -84,7 +85,7 @@ pub type CjsModuleExportAnalyzerRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -99,7 +100,7 @@ pub struct CjsModuleExportAnalyzer<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: CjsModuleExportAnalyzerSys,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
   in_npm_pkg_checker: TInNpmPackageChecker,
@@ -119,7 +120,7 @@ impl<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: CjsModuleExportAnalyzerSys,
 >
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
@@ -516,7 +517,7 @@ pub struct CjsAnalysisCouldNotLoadError {
 }
 
 #[sys_traits::auto_impl]
-pub trait NodeCodeTranslatorSys: FsCanonicalize + FsMetadata + FsRead {}
+pub trait NodeCodeTranslatorSys: CjsModuleExportAnalyzerSys {}
 
 #[allow(clippy::disallowed_types)]
 pub type NodeCodeTranslatorRc<
@@ -525,7 +526,7 @@ pub type NodeCodeTranslatorRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,

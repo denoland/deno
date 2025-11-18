@@ -15,7 +15,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::source::ResolveError;
 use deno_media_type::MediaType;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
@@ -34,17 +33,30 @@ use crate::RawDenoResolverRc;
 use crate::cjs::CjsTracker;
 use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
+use crate::npm::managed::ManagedResolvePkgFolderFromDenoReqError;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::sloppy_imports_resolve;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
-  crate::sync::MaybeArc<FoundPackageJsonDepFlag>;
+  deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
 /// A flag that indicates if a package.json dependency was
 /// found during resolution.
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
+
+impl FoundPackageJsonDepFlag {
+  #[inline(always)]
+  pub fn raise(&self) -> bool {
+    self.0.raise()
+  }
+
+  #[inline(always)]
+  pub fn is_raised(&self) -> bool {
+    self.0.is_raised()
+  }
+}
 
 #[derive(Debug, deno_error::JsError, Boxed)]
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
@@ -52,7 +64,8 @@ pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 impl ResolveWithGraphError {
   pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
-      ResolveWithGraphErrorKind::CouldNotResolveNpmNv(err) => {
+      ResolveWithGraphErrorKind::ManagedResolvePkgFolderFromDenoReq(_) => None,
+      ResolveWithGraphErrorKind::CouldNotResolveNpmReqRef(err) => {
         err.source.maybe_specifier()
       }
       ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
@@ -86,7 +99,12 @@ impl ResolveWithGraphError {
 pub enum ResolveWithGraphErrorKind {
   #[error(transparent)]
   #[class(inherit)]
-  CouldNotResolveNpmNv(#[from] CouldNotResolveNpmNvError),
+  ManagedResolvePkgFolderFromDenoReq(
+    #[from] ManagedResolvePkgFolderFromDenoReqError,
+  ),
+  #[error(transparent)]
+  #[class(inherit)]
+  CouldNotResolveNpmReqRef(#[from] CouldNotResolveNpmReqRefError),
   #[error(transparent)]
   #[class(inherit)]
   ResolvePkgFolderFromDenoModule(
@@ -109,28 +127,16 @@ pub enum ResolveWithGraphErrorKind {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Could not resolve '{reference}'")]
-pub struct CouldNotResolveNpmNvError {
-  pub reference: deno_semver::npm::NpmPackageNvReference,
+pub struct CouldNotResolveNpmReqRefError {
+  pub reference: deno_semver::npm::NpmPackageReqReference,
   #[source]
   #[inherit]
   pub source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
 }
 
-impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
+impl NodeJsErrorCoded for CouldNotResolveNpmReqRefError {
   fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
     self.source.code()
-  }
-}
-
-impl FoundPackageJsonDepFlag {
-  #[inline(always)]
-  pub fn raise(&self) -> bool {
-    self.0.raise()
-  }
-
-  #[inline(always)]
-  pub fn is_raised(&self) -> bool {
-    self.0.is_raised()
   }
 }
 
@@ -141,7 +147,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
+pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
 
@@ -168,7 +174,7 @@ pub type DenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -193,7 +199,7 @@ pub struct DenoResolver<
   >,
   sys: TSys,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
-  warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
+  warned_pkgs: deno_maybe_sync::MaybeDashSet<PackageReq>,
   on_warning: Option<OnMappedResolutionDiagnosticFn>,
 }
 
@@ -282,12 +288,14 @@ impl<
     };
 
     let specifier = match graph.get(&specifier) {
-      Some(Module::Npm(module)) => {
+      Some(Module::Npm(_)) => {
         if options.maintain_npm_specifiers {
           specifier.into_owned()
         } else {
-          self.resolve_npm_nv_ref(
-            &module.nv_reference,
+          let req_ref =
+            NpmPackageReqReference::from_specifier(&specifier).unwrap();
+          self.resolve_managed_npm_req_ref(
+            &req_ref,
             Some(referrer),
             options.mode,
             options.kind,
@@ -342,32 +350,33 @@ impl<
     )
   }
 
-  pub fn resolve_npm_nv_ref(
+  pub fn resolve_managed_npm_req_ref(
     &self,
-    nv_ref: &NpmPackageNvReference,
+    req_ref: &NpmPackageReqReference,
     maybe_referrer: Option<&Url>,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
   ) -> Result<Url, ResolveWithGraphError> {
     let node_and_npm_resolver =
       self.resolver.node_and_npm_resolver.as_ref().unwrap();
-    let package_folder = node_and_npm_resolver
+    let managed_resolver = node_and_npm_resolver
       .npm_resolver
       .as_managed()
-      .unwrap() // we won't have an nv ref when not managed
-      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
+      .expect("do not call this unless managed");
+    let package_folder = managed_resolver
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())?;
     Ok(
       node_and_npm_resolver
         .node_resolver
         .resolve_package_subpath_from_deno_module(
           &package_folder,
-          nv_ref.sub_path(),
+          req_ref.sub_path(),
           maybe_referrer,
           resolution_mode,
           resolution_kind,
         )
-        .map_err(|source| CouldNotResolveNpmNvError {
-          reference: nv_ref.clone(),
+        .map_err(|source| CouldNotResolveNpmReqRefError {
+          reference: req_ref.clone(),
           source,
         })?
         .into_url()?,
@@ -615,8 +624,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
-  "or run with --unstable-sloppy-imports";
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str = "or run with --sloppy-imports";
 
 fn enhanced_sloppy_imports_error_message(
   sys: &(impl sys_traits::FsMetadata + Clone),
@@ -828,7 +836,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   maybe_specifier.map(|s| s.as_str())
 }
 
-fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
+pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   use deno_terminal::colors;
   format!(
     "{}:{}:{}",

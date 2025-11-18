@@ -12,11 +12,15 @@ pub mod glob;
 #[cfg(feature = "deno_json")]
 pub mod import_map;
 #[cfg(feature = "deno_json")]
-mod sync;
-#[cfg(feature = "deno_json")]
 mod util;
 #[cfg(feature = "workspace")]
 pub mod workspace;
 
 #[cfg(feature = "deno_json")]
 pub use deno_path_util::UrlToFilePathError;
+#[cfg(feature = "deno_json")]
+pub use util::ParseDateOrDurationError;
+#[cfg(feature = "deno_json")]
+pub use util::ParseIso8601DurationError;
+#[cfg(feature = "deno_json")]
+pub use util::parse_minutes_duration_or_date;

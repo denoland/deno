@@ -68,12 +68,14 @@ util::unit_test_factory!(
     crypto_pbkdf2_test = crypto / crypto_pbkdf2_test,
     crypto_scrypt_test = crypto / crypto_scrypt_test,
     crypto_sign_test = crypto / crypto_sign_test,
+    crypto_timing_safe_equal_test = crypto / crypto_timing_safe_equal_test,
     events_test,
     dgram_test,
     domain_test,
     fs_test,
     fetch_test,
     http_test,
+    https_test,
     http_no_cert_flag_test,
     http2_test,
     inspector_test,
@@ -114,12 +116,11 @@ fn node_unit_test(test: String) {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable-broadcast-channel")
     .arg("--unstable-net")
     .arg("-A");
 
   // Some tests require the root CA cert file to be loaded.
-  if test == "http2_test" || test == "http_test" {
+  if test == "http2_test" || test == "http_test" || test == "https_test" {
     deno = deno.arg("--cert=./tests/testdata/tls/RootCA.pem");
   }
 

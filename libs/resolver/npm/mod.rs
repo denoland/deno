@@ -7,6 +7,9 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -47,9 +50,6 @@ pub use self::managed::ManagedNpmResolver;
 use self::managed::ManagedNpmResolverCreateOptions;
 pub use self::managed::ManagedNpmResolverRc;
 use self::managed::create_managed_in_npm_pkg_checker;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 
 mod byonm;
 mod local;
@@ -319,7 +319,7 @@ impl<TSys: NpmResolverSys> NpmResolver<TSys> {
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
       NpmResolver::Managed(managed_resolver) => managed_resolver
-        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .resolve_pkg_folder_from_deno_module_req(req)
         .map_err(ResolvePkgFolderFromDenoReqError::Managed),
     }
   }
@@ -364,7 +364,7 @@ pub type NpmReqResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,

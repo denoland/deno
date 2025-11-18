@@ -78,7 +78,7 @@ import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
-import { URL, URLSearchParams } from "ext:deno_url/00_url.js";
+import { URL, URLSearchParams } from "ext:deno_web/00_url.js";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;

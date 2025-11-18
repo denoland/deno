@@ -35,7 +35,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "broadcast-channel",
     help_text: "Enable unstable `BroadcastChannel` API",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
@@ -130,8 +130,8 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   },
   UnstableFeatureDescription {
     name: "node-globals",
-    help_text: "Expose Node globals everywhere",
-    show_in_help: false,
+    help_text: "Prefer Node.js globals over Deno globals - currently this refers to `setTimeout` and `setInterval` APIs.",
+    show_in_help: true,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
@@ -223,5 +223,21 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
+  },
+  UnstableFeatureDescription {
+    name: "bundle",
+    help_text: "Enable unstable bundle runtime API",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
+    name: "tsgo",
+    help_text: "Enable unstable TypeScript Go integration",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_TSGO"),
   },
 ];

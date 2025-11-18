@@ -91,7 +91,7 @@ pub fn format_test_error(
   if options.hide_stacktraces {
     return js_error.exception_message;
   }
-  format_js_error(&js_error)
+  format_js_error(&js_error, options.initial_cwd.as_ref())
 }
 
 pub fn format_sanitizer_diff(

@@ -2,12 +2,13 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonCacheResult;
 use deno_package_json::PackageJsonRc;
+use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
 use crate::errors::PackageJsonLoadError;
@@ -15,8 +16,8 @@ use crate::errors::PackageJsonLoadError;
 pub trait NodePackageJsonCache:
   deno_package_json::PackageJsonCache
   + std::fmt::Debug
-  + crate::sync::MaybeSend
-  + crate::sync::MaybeSync
+  + deno_maybe_sync::MaybeSend
+  + deno_maybe_sync::MaybeSync
 {
   fn as_deno_package_json_cache(
     &self,
@@ -27,8 +28,8 @@ impl<T> NodePackageJsonCache for T
 where
   T: deno_package_json::PackageJsonCache
     + std::fmt::Debug
-    + crate::sync::MaybeSend
-    + crate::sync::MaybeSync,
+    + deno_maybe_sync::MaybeSend
+    + deno_maybe_sync::MaybeSync,
 {
   fn as_deno_package_json_cache(
     &self,
@@ -38,7 +39,8 @@ where
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
+pub type PackageJsonCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
@@ -54,26 +56,33 @@ impl PackageJsonThreadLocalCache {
 }
 
 impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
-  fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-    CACHE.with_borrow(|cache| cache.get(path).cloned())
+  fn get(&self, path: &Path) -> PackageJsonCacheResult {
+    CACHE.with_borrow(|cache| match cache.get(path).cloned() {
+      Some(value) => PackageJsonCacheResult::Hit(Some(value)),
+      None => PackageJsonCacheResult::NotCached,
+    })
   }
 
-  fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
+  fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>) {
+    let Some(package_json) = package_json else {
+      // We don't cache misses.
+      return;
+    };
     CACHE.with_borrow_mut(|cache| cache.insert(path, package_json));
   }
 }
 
 #[allow(clippy::disallowed_types)]
 pub type PackageJsonResolverRc<TSys> =
-  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TSys: FsRead> {
+pub struct PackageJsonResolver<TSys: FsRead + FsMetadata> {
   sys: TSys,
   loader_cache: Option<PackageJsonCacheRc>,
 }
 
-impl<TSys: FsRead> PackageJsonResolver<TSys> {
+impl<TSys: FsRead + FsMetadata> PackageJsonResolver<TSys> {
   pub fn new(sys: TSys, loader_cache: Option<PackageJsonCacheRc>) -> Self {
     Self { sys, loader_cache }
   }
@@ -110,23 +119,20 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       path,
     );
     match result {
-      Ok(pkg_json) => Ok(Some(pkg_json)),
-      Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
-        if source.kind() == ErrorKind::NotFound =>
-      {
-        Ok(None)
-      }
+      Ok(pkg_json) => Ok(pkg_json),
       Err(err) => Err(PackageJsonLoadError(err)),
     }
   }
 }
 
-pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead> {
+pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead + FsMetadata> {
   current_path: &'a Path,
   resolver: &'a PackageJsonResolver<TSys>,
 }
 
-impl<'a, TSys: FsRead> Iterator for ClosestPackageJsonsIterator<'a, TSys> {
+impl<'a, TSys: FsRead + FsMetadata> Iterator
+  for ClosestPackageJsonsIterator<'a, TSys>
+{
   type Item = Result<PackageJsonRc, PackageJsonLoadError>;
 
   fn next(&mut self) -> Option<Self::Item> {

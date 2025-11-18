@@ -1,0 +1,10 @@
+Check [WILDCARD]main.ts
+running 1 test from ./main.ts
+empty permissions test ...
+------- output -------
+Test runs successfully
+----- output end -----
+empty permissions test ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

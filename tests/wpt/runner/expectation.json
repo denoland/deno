@@ -6112,16 +6112,18 @@
       ],
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's setter throws when called on incompatible object",
-        "Global object's operation throws when called on incompatible object",
         "Global object's getter works when called on null / undefined",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
+        "Global object's setter throws when called on incompatible object",
         "Global object's setter works when called on null / undefined"
       ],
       "global-object-implicit-this-value.any.worker.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's setter throws when called on incompatible object",
-        "Global object's operation throws when called on incompatible object",
         "Global object's getter works when called on null / undefined",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
+        "Global object's setter throws when called on incompatible object",
         "Global object's setter works when called on null / undefined"
       ],
       "legacy-factor-function-subclass.window.html": false,
@@ -6140,9 +6142,9 @@
       "constructors.html": false,
       "default-iterator-object.html": true,
       "default-toJSON-cross-realm.html": false,
-      "global-immutable-prototype.any.worker.html": [
-        "Setting to a different prototype"
-      ],
+      "global-immutable-prototype.any.worker.html": {
+        "ignore": true
+      },
       "global-object-implicit-this-value-cross-realm.html": false,
       "has-instance.html": [
         "Manually-constructed prototype chains are correctly handled by instanceof",
@@ -9615,8 +9617,6 @@
         "request-constructor-init-body-override.any.html": true,
         "request-constructor-init-body-override.any.worker.html": true,
         "request-init-001.sub.html": [
-          "Check method init value of patch and associated getter",
-          "Check method init value of patCh and associated getter",
           "Check referrer init value of /relative/ressource and associated getter",
           "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
           "Check referrer init value of http://web-platform.test:8000/ and associated getter",
@@ -12910,8 +12910,8 @@
         "clearinterval-from-callback.any.worker.html": true,
         "cleartimeout-clearinterval.any.html": true,
         "cleartimeout-clearinterval.any.worker.html": true,
-        "evil-spec-example.any.html": true,
-        "evil-spec-example.any.worker.html": true,
+        "evil-spec-example.any.html": false,
+        "evil-spec-example.any.worker.html": false,
         "missing-timeout-setinterval.any.html": true,
         "missing-timeout-setinterval.any.worker.html": true,
         "negative-setinterval.any.html": true,
@@ -14554,6 +14554,7 @@
     "eventhandlers.any.worker.html?wpt_flags=h2": true,
     "eventhandlers.any.worker.html?wss": true,
     "idlharness.any.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -14572,6 +14573,7 @@
       "Stringification of new CloseEvent(\"close\")"
     ],
     "idlharness.any.worker.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",

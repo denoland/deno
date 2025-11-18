@@ -5,7 +5,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -16,7 +15,6 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
-use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -25,7 +23,6 @@ use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
-use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
@@ -52,77 +49,6 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-pub trait NodePermissions {
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  fn check_net(
-    &mut self,
-    host: (&str, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn query_read_all(&mut self) -> bool;
-  fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl NodePermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-
-  fn check_net(
-    &mut self,
-    host: (&str, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
-  }
-
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open(
-      self,
-      path,
-      open_access,
-      api_name,
-    )
-  }
-
-  fn query_read_all(&mut self) -> bool {
-    deno_permissions::PermissionsContainer::query_read_all(self)
-  }
-
-  fn check_sys(
-    &mut self,
-    kind: &str,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
-  }
-}
-
 #[allow(clippy::disallowed_types)]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
@@ -130,7 +56,7 @@ pub trait NodeRequireLoader {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
@@ -161,15 +87,6 @@ pub fn default_resolve_require_node_module_paths(from: &Path) -> Vec<String> {
 
   paths
 }
-
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  let mut set = HashSet::new();
-  set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_OPTIONS".to_string());
-  set
-});
 
 #[op2]
 #[string]
@@ -226,7 +143,7 @@ pub struct NodeExtInitServices<
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions, TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
+  parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
@@ -346,20 +263,21 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::crypto::x509::op_node_x509_public_key,
-    ops::dns::op_node_getaddrinfo<P>,
-    ops::fs::op_node_fs_exists_sync<P>,
-    ops::fs::op_node_fs_exists<P>,
-    ops::fs::op_node_cp_sync<P>,
-    ops::fs::op_node_cp<P>,
-    ops::fs::op_node_lchmod_sync<P>,
-    ops::fs::op_node_lchmod<P>,
-    ops::fs::op_node_lchown_sync<P>,
-    ops::fs::op_node_lchown<P>,
-    ops::fs::op_node_lutimes_sync<P>,
-    ops::fs::op_node_lutimes<P>,
-    ops::fs::op_node_open_sync<P>,
-    ops::fs::op_node_open<P>,
-    ops::fs::op_node_statfs<P>,
+    ops::dns::op_node_getaddrinfo,
+    ops::fs::op_node_fs_exists_sync,
+    ops::fs::op_node_fs_exists,
+    ops::fs::op_node_lchmod_sync,
+    ops::fs::op_node_lchmod,
+    ops::fs::op_node_lchown_sync,
+    ops::fs::op_node_lchown,
+    ops::fs::op_node_lutimes_sync,
+    ops::fs::op_node_lutimes,
+    ops::fs::op_node_mkdtemp_sync,
+    ops::fs::op_node_mkdtemp,
+    ops::fs::op_node_open_sync,
+    ops::fs::op_node_open,
+    ops::fs::op_node_statfs_sync,
+    ops::fs::op_node_statfs,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -399,7 +317,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
-    ops::http::op_node_http_request_with_conn<P>,
+    ops::http::op_node_http_request_with_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
@@ -414,60 +332,68 @@ deno_core::extension!(deno_node,
     ops::http2::op_http2_accept,
     ops::http2::op_http2_listen,
     ops::http2::op_http2_send_response,
-    ops::os::op_node_os_get_priority<P>,
-    ops::os::op_node_os_set_priority<P>,
-    ops::os::op_node_os_user_info<P>,
-    ops::os::op_geteuid<P>,
-    ops::os::op_getegid<P>,
-    ops::os::op_cpus<P>,
-    ops::os::op_homedir<P>,
+    ops::os::op_node_os_get_priority,
+    ops::os::op_node_os_set_priority,
+    ops::os::op_node_os_user_info,
+    ops::os::op_geteuid,
+    ops::os::op_getegid,
+    ops::os::op_cpus,
+    ops::os::op_homedir,
     op_node_build_os,
     op_node_load_env_file,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
-    ops::require::op_require_node_module_paths<P, TSys>,
+    ops::require::op_require_node_module_paths<TSys>,
     ops::require::op_require_proxy_path,
     ops::require::op_require_is_deno_dir_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_resolve_deno_dir<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
-    ops::require::op_require_try_self<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::require::op_require_real_path<P, TSys>,
+    ops::require::op_require_try_self<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_real_path<TSys>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
-    ops::require::op_require_stat<P, TSys>,
+    ops::require::op_require_stat<TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file<P>,
+    ops::require::op_require_read_file,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::require::op_require_read_package_scope<P, TSys>,
-    ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_read_package_scope<TSys>,
+    ops::require::op_require_package_imports_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-    ops::worker_threads::op_worker_threads_filename<P, TSys>,
+    ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
+    ops::process::op_node_process_setegid,
+    ops::process::op_node_process_seteuid,
+    ops::process::op_node_process_setgid,
+    ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
-    ops::inspector::op_inspector_open<P>,
+    ops::tls::op_node_tls_start,
+    ops::tls::op_node_tls_handshake,
+    ops::inspector::op_inspector_open,
     ops::inspector::op_inspector_close,
     ops::inspector::op_inspector_url,
     ops::inspector::op_inspector_wait,
-    ops::inspector::op_inspector_connect<P>,
+    ops::inspector::op_inspector_connect,
     ops::inspector::op_inspector_dispatch,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::sqlite::op_node_database_backup,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
@@ -495,7 +421,9 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.js",
+    "_fs/_fs_cp.ts",
+    "_fs/cp/cp.ts",
+    "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
     "_fs/_fs_fchmod.ts",
@@ -525,13 +453,13 @@ deno_core::extension!(deno_node,
     "_fs/_fs_rm.ts",
     "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
-    "_fs/_fs_statfs.js",
+    "_fs/_fs_statfs.ts",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
     "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
-    "_fs/_fs_write.mjs",
+    "_fs/_fs_write.ts",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.ts",
     "_next_tick.ts",
@@ -544,8 +472,6 @@ deno_core::extension!(deno_node,
     "_util/async.ts",
     "_util/os.ts",
     "_util/std_asserts.ts",
-    "_util/std_fmt_colors.ts",
-    "_util/std_testing_diff.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
     "assertion_error.ts",
@@ -875,11 +801,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 
@@ -898,7 +820,7 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
 
 #[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);
   let value = v8::Boolean::new(scope, true);

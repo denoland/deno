@@ -43,6 +43,7 @@ use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
+use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::ResolverFactory;
@@ -555,7 +556,7 @@ pub struct WorkspaceSettings {
 
   /// Cache local modules and their dependencies on `textDocument/didSave`
   /// notifications corresponding to them.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub cache_on_save: bool,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -632,7 +633,7 @@ impl Default for WorkspaceSettings {
       disable_paths: vec![],
       enable_paths: None,
       cache: None,
-      cache_on_save: false,
+      cache_on_save: true,
       certificate_stores: None,
       config: None,
       import_map: None,
@@ -1172,6 +1173,24 @@ impl Config {
     .unwrap_or(false)
   }
 
+  /// Whether or not the client supports pull-based diagnostics.
+  pub fn diagnostic_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      Some(text_document.diagnostic.is_some())
+    })()
+    .unwrap_or(false)
+  }
+
+  /// Whether or not the client supports pull-based diagnostics.
+  pub fn diagnostic_refresh_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      workspace.diagnostic.as_ref()?.refresh_support
+    })()
+    .unwrap_or(false)
+  }
+
   pub fn line_folding_only_capable(&self) -> bool {
     (|| {
       let text_document = self.client_capabilities.text_document.as_ref()?;
@@ -1273,7 +1292,6 @@ impl ConfigData {
             maybe_vendor_override: None,
           },
         )
-        .map(Arc::new)
         .map_err(AnyError::from)
       }
       Err(()) => Err(anyhow!("Scope '{}' was not a directory path.", scope)),
@@ -1292,10 +1310,10 @@ impl ConfigData {
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
         let member_dir =
-          Arc::new(WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
+          WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
             root_dir: scope.clone(),
             use_vendor_dir: VendorEnablement::Disable,
-          }));
+          });
         let mut data = Self::load_inner(
           member_dir,
           scope.clone(),
@@ -1416,7 +1434,7 @@ impl ConfigData {
         is_package_manager_subcommand: false,
         frozen_lockfile: None,
         lock_arg: None,
-        lockfile_skip_write: false,
+        lockfile_skip_write: true,
         node_modules_dir: Some(resolve_node_modules_dir_mode(
           &member_dir.workspace,
           byonm,
@@ -1424,6 +1442,7 @@ impl ConfigData {
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
+        root_node_modules_dir_override: None,
         vendor: None,
       },
     );
@@ -1433,8 +1452,13 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        allow_json_imports:
+          deno_resolver::loader::AllowJsonImports::WithAttribute,
+        bare_node_builtins: false,
         compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
+        on_mapped_resolution_diagnostic: None,
+        newest_dependency_date: None,
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
@@ -1443,11 +1467,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        bare_node_builtins: false,
+        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
-        on_mapped_resolution_diagnostic: None,
-        allow_json_imports:
-          deno_resolver::loader::AllowJsonImports::WithAttribute,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1462,6 +1483,7 @@ impl ConfigData {
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,
+      None,
       NpmInstallerFactoryOptions {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
@@ -1754,17 +1776,6 @@ impl ConfigTree {
   }
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
-    let path = specifier.path();
-    if path.ends_with("/deno.json")
-      || path.ends_with("/deno.jsonc")
-      || path.ends_with("/package.json")
-      || path.ends_with("/node_modules/.package-lock.json")
-      || path.ends_with("/node_modules/.yarn-integrity.json")
-      || path.ends_with("/node_modules/.modules.yaml")
-      || path.ends_with("/node_modules/.deno/.setup-cache.bin")
-    {
-      return true;
-    }
     self
       .scopes
       .values()
@@ -1779,7 +1790,7 @@ impl ConfigTree {
       .values()
       .filter_map(|data| {
         let workspace_root_scope_uri =
-          Some(data.member_dir.workspace.root_dir())
+          Some(data.member_dir.workspace.root_dir_url())
             .filter(|s| *s != data.member_dir.dir_url())
             .and_then(|s| url_to_uri(s).ok());
         Some(lsp_custom::DenoConfigurationData {
@@ -1950,18 +1961,14 @@ impl ConfigTree {
       .fs_create_dir_all(config_path.parent().unwrap())
       .unwrap();
     memory_sys.fs_write(&config_path, json_text).unwrap();
-    let workspace_dir = Arc::new(
-      WorkspaceDirectory::discover(
-        &memory_sys,
-        deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
-          &config_path,
-        ),
-        &deno_config::workspace::WorkspaceDiscoverOptions {
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &memory_sys,
+      deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(&config_path),
+      &deno_config::workspace::WorkspaceDiscoverOptions {
+        ..Default::default()
+      },
+    )
+    .unwrap();
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,
@@ -2020,11 +2027,20 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {
-  fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
-    self.0.lock().get(path).cloned()
+  fn get(&self, path: &Path) -> PackageJsonCacheResult {
+    self
+      .0
+      .lock()
+      .get(path)
+      .cloned()
+      .map(|value| PackageJsonCacheResult::Hit(Some(value)))
+      .unwrap_or_else(|| PackageJsonCacheResult::NotCached)
   }
 
-  fn set(&self, path: PathBuf, data: Arc<PackageJson>) {
+  fn set(&self, path: PathBuf, data: Option<Arc<PackageJson>>) {
+    let Some(data) = data else {
+      return;
+    };
     self.0.lock().insert(path, data);
   }
 }
@@ -2131,7 +2147,7 @@ mod tests {
         disable_paths: vec![],
         enable_paths: None,
         cache: None,
-        cache_on_save: false,
+        cache_on_save: true,
         certificate_stores: None,
         config: None,
         import_map: None,

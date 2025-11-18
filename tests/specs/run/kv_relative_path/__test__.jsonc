@@ -1,0 +1,7 @@
+{
+  // Test with -A flag specifically, as the bug only occurred with -A
+  // Issue: https://github.com/denoland/deno/issues/30923
+  "tempDir": true,
+  "args": "run -A --unstable-kv main.ts",
+  "output": "main.out"
+}

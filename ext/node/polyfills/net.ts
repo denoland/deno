@@ -1598,7 +1598,7 @@ Socket.prototype.destroySoon = function () {
 
 Socket.prototype._unrefTimer = function () {
   // deno-lint-ignore no-this-alias
-  for (let s = this; s !== null; s = s._parent) {
+  for (let s = this; s != null; s = s._parent) {
     if (s[kTimeout]) {
       s[kTimeout].refresh();
     }
@@ -1664,7 +1664,7 @@ Socket.prototype._destroy = function (exception, cb) {
   this.connecting = false;
 
   // deno-lint-ignore no-this-alias
-  for (let s = this; s !== null; s = s._parent) {
+  for (let s = this; s != null; s = s._parent) {
     clearTimeout(s[kTimeout]);
   }
 
@@ -1808,6 +1808,9 @@ Object.defineProperty(Socket.prototype, "_handle", {
 
 Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
+
+  // Make sure TLS wrap works after reinitialize.
+  handle.afterConnectTls = this._handle.afterConnectTls;
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;

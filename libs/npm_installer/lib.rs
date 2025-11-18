@@ -12,7 +12,8 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
 mod bin_entries;
@@ -42,6 +43,7 @@ pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
 pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
 use self::extra_info::NpmPackageExtraInfoProviderSys;
+pub use self::factory::InstallReporter;
 pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
@@ -63,11 +65,11 @@ pub enum PackageCaching<'a> {
   All,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
 /// The set of npm packages that are allowed to run lifecycle scripts.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum PackagesAllowedScripts {
   All,
-  Some(Vec<String>),
+  Some(Vec<PackageReq>),
   #[default]
   None,
 }
@@ -76,13 +78,30 @@ pub enum PackagesAllowedScripts {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
+  pub denied: Vec<PackageReq>,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
   pub explicit_install: bool,
 }
 
-pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
+pub trait InstallProgressReporter:
+  std::fmt::Debug + Send + Sync + 'static
+{
+  fn blocking(&self, message: &str);
+  fn initializing(&self, nv: &PackageNv);
+  fn initialized(&self, nv: &PackageNv);
+
+  fn scripts_not_run_warning(
+    &self,
+    warning: crate::lifecycle_scripts::LifecycleScriptsWarning,
+  );
+
+  fn deprecated_message(&self, message: String);
+}
+pub trait Reporter:
+  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
+{
   type Guard;
   type ClearGuard;
 
@@ -164,9 +183,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     maybe_node_modules_path: Option<PathBuf>,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+    install_reporter: Option<Arc<dyn InstallReporter>>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
@@ -179,13 +199,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
-          reporter.clone(),
+          dyn_clone::clone(reporter),
           npm_resolution.clone(),
           sys,
           tarball_cache,
           node_modules_folder,
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -194,6 +215,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_resolution.clone(),
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
       };
     Self {
@@ -241,6 +263,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await
@@ -252,7 +275,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -275,49 +298,65 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
-      // the async mutex is unfortunate, but needed to handle the edge case where two workers
-      // try to cache the same package at the same time. we need to hold the lock while we cache
-      // and since that crosses an await point, we need the async mutex.
-      //
-      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-      // while caching typically takes micro or milli seconds.
-      let _permit = self.install_queue.acquire().await;
-      let uncached = {
-        let cached_reqs = self.cached_reqs.lock();
-        packages
-          .iter()
-          .filter(|req| !cached_reqs.contains(req))
-          .collect::<Vec<_>>()
-      };
-
-      if !uncached.is_empty() {
-        result.dependencies_result = self.cache_packages(caching).await;
-        if result.dependencies_result.is_ok() {
-          let mut cached_reqs = self.cached_reqs.lock();
-          for req in uncached {
-            cached_reqs.insert(req.clone());
-          }
-        }
-      }
+      result.dependencies_result =
+        self.maybe_cache_packages(packages, caching).await;
     }
 
     result
   }
 
+  async fn maybe_cache_packages(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    // the async mutex is unfortunate, but needed to handle the edge case where two workers
+    // try to cache the same package at the same time. we need to hold the lock while we cache
+    // and since that crosses an await point, we need the async mutex.
+    //
+    // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+    // while caching typically takes micro or milli seconds.
+    let _permit = self.install_queue.acquire().await;
+    let uncached = {
+      let cached_reqs = self.cached_reqs.lock();
+      packages
+        .iter()
+        .filter(|req| !cached_reqs.contains(req))
+        .collect::<Vec<_>>()
+    };
+
+    if uncached.is_empty() {
+      return Ok(());
+    }
+    let result = self.fs_installer.cache_packages(caching).await;
+    if result.is_ok() {
+      let mut cached_reqs = self.cached_reqs.lock();
+      for req in uncached {
+        cached_reqs.insert(req.clone());
+      }
+    }
+    result
+  }
+
   pub async fn inject_synthetic_types_node_package(
     &self,
+    cache_strategy: graph::NpmCachingStrategy,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
 
     // don't inject this if it's already been added
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     if self
       .npm_resolution
       .any_top_level_package(|id| id.nv.name == "@types/node")
     {
+      // ensure it's cached though
+      if let Some(caching) = cache_strategy.as_package_caching(reqs) {
+        self.maybe_cache_packages(reqs, caching).await?;
+      }
       return Ok(());
     }
 
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
@@ -339,8 +378,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-    self.fs_installer.cache_packages(caching).await
+    if self.npm_resolution.is_pending() {
+      self.add_package_reqs(&[], caching).await
+    } else {
+      self.npm_resolution_initializer.ensure_initialized().await?;
+      self.fs_installer.cache_packages(caching).await
+    }
   }
 
   pub fn ensure_no_pkg_json_dep_errors(

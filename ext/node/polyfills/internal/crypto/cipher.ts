@@ -52,6 +52,9 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+import { StringDecoder } from "node:string_decoder";
+import assert from "node:assert";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
@@ -173,13 +176,13 @@ export class Cipheriv extends Transform implements Cipher {
   /** plaintext data cache */
   #cache: BlockModeCache;
 
+  #decoder?: StringDecoder;
+
   #needsBlockCache: boolean;
 
   #authTag?: Buffer;
 
   #autoPadding = true;
-
-  #encoding: string | undefined;
 
   constructor(
     cipher: string,
@@ -187,6 +190,8 @@ export class Cipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -199,7 +204,12 @@ export class Cipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(false);
-    this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
@@ -210,7 +220,7 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    this.#validateOutputEncoding(encoding);
+    this.#lazyInitDecoder(encoding);
 
     const buf = new FastBuffer(16);
     if (this.#cache.cache.byteLength == 0) {
@@ -218,6 +228,7 @@ export class Cipheriv extends Transform implements Cipher {
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
+
     if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
       throw new Error("Invalid final block size");
     }
@@ -231,7 +242,12 @@ export class Cipheriv extends Transform implements Cipher {
       this.#authTag = Buffer.from(maybeTag);
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
-    return encoding === "buffer" ? buf : buf.toString(encoding);
+
+    if (encoding !== "buffer") {
+      return this.#decoder!.end(buf);
+    }
+
+    return buf;
   }
 
   getAuthTag(): Buffer {
@@ -266,16 +282,18 @@ export class Cipheriv extends Transform implements Cipher {
     if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
+    this.#lazyInitDecoder(outputEncoding);
 
-    this.#validateOutputEncoding(outputEncoding);
-
-    let output;
+    let output: Buffer;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
       op_node_cipheriv_encrypt(this.#context, buf, output);
-      return outputEncoding === "buffer"
-        ? output
-        : output.toString(outputEncoding);
+
+      if (outputEncoding !== "buffer") {
+        return this.#decoder!.write(output);
+      }
+
+      return output;
     }
 
     this.#cache.add(buf);
@@ -287,25 +305,28 @@ export class Cipheriv extends Transform implements Cipher {
       output = Buffer.allocUnsafe(input.length);
       op_node_cipheriv_encrypt(this.#context, input, output);
     }
-    return outputEncoding === "buffer"
-      ? output
-      : output.toString(outputEncoding);
+
+    if (outputEncoding !== "buffer") {
+      return this.#decoder!.write(output);
+    }
+
+    return output;
   }
 
-  // This is only for validation of encoding change during the update.
-  #validateOutputEncoding(encoding: string) {
+  #lazyInitDecoder(encoding: string) {
     if (encoding === "buffer") {
       return;
     }
 
-    if (!Buffer.isEncoding(encoding)) {
-      throw new ERR_UNKNOWN_ENCODING(encoding);
-    }
+    const normalizedEncoding = normalizeEncoding(encoding);
+    this.#decoder ||= new StringDecoder(normalizedEncoding);
 
-    if (this.#encoding && this.#encoding !== encoding) {
-      throw new Error("Cannot change encoding");
+    if (this.#decoder.encoding !== normalizedEncoding) {
+      if (normalizedEncoding === undefined) {
+        throw new ERR_UNKNOWN_ENCODING(encoding);
+      }
+      assert(false, "Cannot change encoding");
     }
-    this.#encoding = encoding;
   }
 }
 
@@ -371,6 +392,8 @@ export class Decipheriv extends Transform implements Cipher {
   /** ciphertext data cache */
   #cache: BlockModeCache;
 
+  #decoder?: StringDecoder;
+
   #needsBlockCache: boolean;
 
   #authTag?: BinaryLike;
@@ -411,6 +434,8 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    this.#lazyInitDecoder(encoding);
+
     let buf = new FastBuffer(16);
     op_node_decipheriv_final(
       this.#context,
@@ -428,7 +453,11 @@ export class Decipheriv extends Transform implements Cipher {
     }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
-    return encoding === "buffer" ? buf : buf.toString(encoding);
+    if (encoding !== "buffer") {
+      return this.#decoder!.end(buf);
+    }
+
+    return buf;
   }
 
   setAAD(
@@ -463,14 +492,18 @@ export class Decipheriv extends Transform implements Cipher {
     if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
+    this.#lazyInitDecoder(outputEncoding);
 
     let output;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
       op_node_decipheriv_decrypt(this.#context, buf, output);
-      return outputEncoding === "buffer"
-        ? output
-        : output.toString(outputEncoding);
+
+      if (outputEncoding !== "buffer") {
+        return this.#decoder!.write(output);
+      }
+
+      return output;
     }
 
     this.#cache.add(buf);
@@ -481,9 +514,28 @@ export class Decipheriv extends Transform implements Cipher {
       output = new FastBuffer(input.length);
       op_node_decipheriv_decrypt(this.#context, input, output);
     }
-    return outputEncoding === "buffer"
-      ? output
-      : output.toString(outputEncoding);
+
+    if (outputEncoding !== "buffer") {
+      return this.#decoder!.write(output);
+    }
+
+    return output;
+  }
+
+  #lazyInitDecoder(encoding: string) {
+    if (encoding === "buffer") {
+      return;
+    }
+
+    const normalizedEncoding = normalizeEncoding(encoding);
+    this.#decoder ||= new StringDecoder(normalizedEncoding);
+
+    if (this.#decoder.encoding !== normalizedEncoding) {
+      if (normalizedEncoding === undefined) {
+        throw new ERR_UNKNOWN_ENCODING(encoding);
+      }
+      assert(false, "Cannot change encoding");
+    }
   }
 }
 

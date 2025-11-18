@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_path_util::url_from_file_path;
@@ -17,7 +18,6 @@ use deno_runtime::UNSTABLE_FEATURES;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
@@ -37,6 +37,7 @@ use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -330,7 +331,7 @@ pub struct LibMainWorkerOptions {
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
@@ -349,6 +350,7 @@ pub struct LibMainWorkerOptions {
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub maybe_initial_cwd: Option<Url>,
 }
 
 #[derive(Default, Clone)]
@@ -365,6 +367,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
@@ -376,6 +379,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -458,7 +462,9 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        bundle_provider: shared.bundle_provider.clone(),
       };
+      let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -500,13 +506,16 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           .clone(),
         seed: shared.options.seed,
         create_web_worker_cb,
-        format_js_error_fn: Some(Arc::new(format_js_error)),
+        format_js_error_fn: Some(Arc::new(move |a| {
+          format_js_error(a, maybe_initial_cwd.as_ref())
+        })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
@@ -528,6 +537,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    maybe_coverage_dir: Option<PathBuf>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
@@ -540,6 +550,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -550,6 +561,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         deno_rt_native_addon_loader,
         feature_checker,
         fs,
+        maybe_coverage_dir,
         maybe_inspector_server,
         module_loader_factory,
         node_resolver,
@@ -560,6 +572,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -646,7 +659,10 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
+
+    let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
@@ -685,12 +701,14 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
@@ -811,8 +829,11 @@ impl LibMainWorker {
   }
 
   #[inline]
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    self.worker.create_inspector_session()
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
+    self.worker.create_inspector_session(cb)
   }
 
   #[inline]

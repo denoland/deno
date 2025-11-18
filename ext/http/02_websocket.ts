@@ -26,9 +26,9 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   createWebSocketBranded,
+  SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 
@@ -90,16 +90,40 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
 
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
-  socket[_server] = true;
+  socket[_role] = SERVER;
   // Nginx timeout is 60s, so default to a lower number: https://github.com/denoland/deno/pull/23985
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 30;
   socket[_idleTimeoutTimeout] = null;
 
   if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+    const wsPromise = inner._wantsUpgrade("upgradeWebSocket");
+
+    // Start the upgrade in the background.
+    (async () => {
+      try {
+        const wsRid = await wsPromise;
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        const event = new Event("open");
+        socket.dispatchEvent(event);
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        const event = new ErrorEvent("error", { error });
+        socket.dispatchEvent(event);
+      }
+    })();
   }
 
-  const response = fromInnerResponse(r, "immutable");
+  const response = fromInnerResponse(r, "response");
 
   response[_ws] = socket;
 

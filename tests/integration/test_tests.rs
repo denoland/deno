@@ -24,7 +24,7 @@ fn junit_path() {
     .assert_matches_text("<?xml [WILDCARD]");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 // todo(#18480): re-enable
 #[ignore]
 fn sigint_with_hanging_test() {

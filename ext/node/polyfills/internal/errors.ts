@@ -65,6 +65,7 @@ import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
@@ -150,15 +151,6 @@ function addNumericalSeparator(val: string) {
   return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
 
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    ErrorCaptureStackTrace(err);
-
-    return err;
-  },
-);
-
 export interface ErrnoException extends Error {
   errno?: number;
   code?: string;
@@ -206,7 +198,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -234,7 +226,7 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
@@ -290,7 +282,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -335,7 +327,7 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -375,7 +367,7 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 /**
@@ -478,7 +470,7 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
     ObjectDefineProperties(this, {
       [kIsNodeError]: {
@@ -584,6 +576,38 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   };
 }
 
+export const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_DIR_TO_NON_DIR",
+  "Cannot overwrite non-directory with directory",
+);
+export const ERR_FS_CP_EEXIST = makeSystemErrorWithCode(
+  "ERR_FS_CP_EEXIST",
+  "Target already exists",
+);
+export const ERR_FS_CP_EINVAL = makeSystemErrorWithCode(
+  "ERR_FS_CP_EINVAL",
+  "Invalid src or dest",
+);
+export const ERR_FS_CP_FIFO_PIPE = makeSystemErrorWithCode(
+  "ERR_FS_CP_FIFO_PIPE",
+  "Cannot copy a FIFO pipe",
+);
+export const ERR_FS_CP_NON_DIR_TO_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_NON_DIR_TO_DIR",
+  "Cannot overwrite directory with non-directory",
+);
+export const ERR_FS_CP_SOCKET = makeSystemErrorWithCode(
+  "ERR_FS_CP_SOCKET",
+  "Cannot copy a socket file",
+);
+export const ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY = makeSystemErrorWithCode(
+  "ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY",
+  "Cannot overwrite symlink in subdirectory of self",
+);
+export const ERR_FS_CP_UNKNOWN = makeSystemErrorWithCode(
+  "ERR_FS_CP_UNKNOWN",
+  "Cannot copy an unknown file type",
+);
 export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
@@ -1577,6 +1601,14 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
+  constructor(message: string) {
+    super(
+      "ERR_INVALID_OBJECT_DEFINE_PROPERTY",
+      message,
+    );
   }
 }
 export class ERR_INVALID_OPT_VALUE_ENCODING extends NodeTypeError {
@@ -2669,6 +2701,13 @@ interface UvExceptionContext {
   dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -2680,6 +2719,31 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   });
   return ex;
 }
+
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
@@ -2874,7 +2938,15 @@ export default {
   ERR_EVENT_RECURSION,
   ERR_FALSY_VALUE_REJECTION,
   ERR_FEATURE_UNAVAILABLE_ON_PLATFORM,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
   ERR_FS_EISDIR,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
   ERR_FS_FILE_TOO_LARGE,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_FS_RMDIR_ENOTDIR,
@@ -2955,6 +3027,7 @@ export default {
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
   ERR_INVALID_MODULE_SPECIFIER,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
   ERR_INVALID_OPT_VALUE_ENCODING,
   ERR_INVALID_PACKAGE_CONFIG,
@@ -3088,6 +3161,7 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
   errnoException,
   errorMap,

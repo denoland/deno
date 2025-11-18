@@ -49,7 +49,7 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   JsrReqUnsupported { req: PackageReq },
 }
 
-pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
+pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,
@@ -64,7 +64,7 @@ pub trait ByonmNpmResolverSys:
 
 #[allow(clippy::disallowed_types)]
 pub type ByonmNpmResolverRc<TSys> =
-  crate::sync::MaybeArc<ByonmNpmResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<ByonmNpmResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct ByonmNpmResolver<TSys: ByonmNpmResolverSys> {

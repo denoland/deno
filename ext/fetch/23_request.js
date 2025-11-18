@@ -18,18 +18,16 @@ const {
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  byteUpperCase,
-  HTTP_TOKEN_CODE_POINT_RE,
-} from "ext:deno_web/00_infra.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
@@ -213,6 +211,7 @@ function cloneInnerRequest(request, skipBody = false) {
 
 // method => normalized method
 const KNOWN_METHODS = {
+  __proto__: null,
   "DELETE": "DELETE",
   "delete": "DELETE",
   "GET": "GET",
@@ -222,7 +221,6 @@ const KNOWN_METHODS = {
   "OPTIONS": "OPTIONS",
   "options": "OPTIONS",
   "PATCH": "PATCH",
-  "patch": "PATCH",
   "POST": "POST",
   "post": "POST",
   "PUT": "PUT",
@@ -237,13 +235,21 @@ function validateAndNormalizeMethod(m) {
   if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid");
   }
-  const upperCase = byteUpperCase(m);
-  if (
-    upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
-  ) {
-    throw new TypeError("Method is forbidden");
+  const upperCase = StringPrototypeToUpperCase(m);
+  switch (upperCase) {
+    case "DELETE":
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+    case "PUT":
+      return upperCase;
+    case "CONNECT":
+    case "TRACE":
+    case "TRACK":
+      throw new TypeError("Method is forbidden");
   }
-  return upperCase;
+  return m;
 }
 
 class Request {

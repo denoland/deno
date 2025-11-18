@@ -149,6 +149,8 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
   });
   socket.on("connect", () => {
     socket.on("data", () => {});
+    socket.on("close", resolve);
+
     socket.removeAllListeners("data");
 
     const conn = tls.connect({
@@ -157,6 +159,8 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
       socket,
       secureContext: {
         ca: rootCaCert,
+        key: null,
+        cert: null,
         // deno-lint-ignore no-explicit-any
       } as any,
     });
@@ -169,7 +173,6 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
       conn.destroy();
       ctl.abort();
     });
-    conn.on("close", resolve);
   });
 
   await serve.finished;
@@ -229,18 +232,6 @@ Deno.test("tls.createServer creates a TLS server", async () => {
 Deno.test("TLSSocket can construct without options", () => {
   // deno-lint-ignore no-explicit-any
   new tls.TLSSocket(new stream.PassThrough() as any);
-});
-
-Deno.test("tlssocket._handle._parentWrap is set", () => {
-  // Note: This feature is used in popular 'http2-wrapper' module
-  // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
-  const parentWrap =
-    // deno-lint-ignore no-explicit-any
-    ((new tls.TLSSocket(new stream.PassThrough() as any, {}) as any)
-      // deno-lint-ignore no-explicit-any
-      ._handle as any)!
-      ._parentWrap;
-  assertInstanceOf(parentWrap, stream.PassThrough);
 });
 
 Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
@@ -311,6 +302,58 @@ Deno.test("tls connect upgrade tcp", async () => {
     const secure = tls.connect({ socket });
     secure.on("secureConnect", () => resolve());
   });
+
+  await promise;
+  socket.destroy();
+});
+
+Deno.test("tlssocket._handle._parentWrap is set", () => {
+  // Note: This feature is used in popular 'http2-wrapper' module
+  // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
+  const parentWrap =
+    // deno-lint-ignore no-explicit-any
+    ((new tls.TLSSocket(new stream.PassThrough() as any, {}) as any)
+      // deno-lint-ignore no-explicit-any
+      ._handle as any)!
+      ._parentWrap;
+  assertInstanceOf(parentWrap, stream.PassThrough);
+});
+
+Deno.test({
+  name: "tls connect upgrade js socket wrapper",
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  class SocketWrapper extends stream.Duplex {
+    socket: net.Socket;
+
+    constructor() {
+      super();
+      this.socket = new net.Socket();
+    }
+
+    // deno-lint-ignore no-explicit-any
+    override _write(chunk: any, encoding: any, callback: any) {
+      this.socket.write(chunk, encoding, callback);
+    }
+
+    override _read() {
+    }
+
+    connect(port: number, host: string) {
+      this.socket.connect(port, host);
+      this.socket.on("data", (data) => this.push(data));
+      this.socket.on("end", () => this.push(null));
+    }
+  }
+
+  const socket = new SocketWrapper();
+  socket.connect(443, "google.com");
+
+  const secure = tls.connect({ socket, host: "google.com" });
+  secure.on("secureConnect", () => resolve());
 
   await promise;
   socket.destroy();
