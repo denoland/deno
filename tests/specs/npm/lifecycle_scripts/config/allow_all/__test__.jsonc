@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "variants": {
+    "all": {
+      "value": "all"
+    },
+    "some": {
+      "value": "some"
+    },
+    "deny": {
+      "value": "deny"
+    },
+    "arg": {
+      "value": "arg"
+    }
+  },
+  "args": "run -A test.ts ${value}",
+  "output": "[WILDCARD]"
+}

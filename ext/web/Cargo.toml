@@ -19,6 +19,7 @@ base64-simd.workspace = true
 bytes.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
@@ -31,7 +32,6 @@ uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-deno_console.workspace = true
 deno_webidl.workspace = true
 
 [[bench]]

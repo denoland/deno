@@ -5,7 +5,7 @@
 
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
-import { patchver } from "jsr:@deno/patchver@0.2.0";
+import { patchver } from "jsr:@deno/patchver@0.4.0";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
