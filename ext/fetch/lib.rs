@@ -88,6 +88,7 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
+pub use secrets_replacer::SecretsReplacer;
 use serde::Deserialize;
 use serde::Serialize;
 use tower::BoxError;
@@ -99,6 +100,7 @@ use tower_http::decompression::Decompression;
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
+  pub secrets_replacer: Arc<SecretsReplacer>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   /// A callback to customize HTTP client configuration.
@@ -133,6 +135,7 @@ impl Default for Options {
   fn default() -> Self {
     Self {
       user_agent: "".to_string(),
+      secrets_replacer: Default::default(),
       root_cert_store_provider: None,
       proxy: None,
       client_builder_hook: None,
@@ -504,9 +507,13 @@ pub fn op_fetch(
         request.headers_mut().insert(CONTENT_LENGTH, len.into());
       }
 
+      let options = state.borrow::<Options>();
       for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)?;
-        let v = HeaderValue::from_bytes(&value)?;
+        let v = match options.secrets_replacer.replace(&value) {
+          Some(replaced_value) => HeaderValue::from_bytes(&replaced_value)?,
+          None => HeaderValue::from_bytes(&value)?,
+        };
 
         if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           request.headers_mut().append(name, v);
@@ -521,7 +528,6 @@ pub fn op_fetch(
           .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
       }
 
-      let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
           .map_err(FetchError::RequestBuilderHook)?;

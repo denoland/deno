@@ -46,6 +46,7 @@ use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::FeatureChecker;
+use deno_runtime::deno_fetch::SecretsReplacer;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
@@ -1078,6 +1079,10 @@ impl CliFactory {
       pkg_json_resolver.clone(),
       self.root_cert_store_provider().clone(),
       cli_options.resolve_storage_key_resolver(),
+      Arc::new(SecretsReplacer::new(
+        &self.sys(),
+        cli_options.secret_env_var_names(),
+      )),
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,

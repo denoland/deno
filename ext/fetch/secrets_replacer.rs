@@ -2,47 +2,38 @@
 
 use std::collections::BTreeMap;
 
-/// Secrets are specified via the environment key:
-///   DENO_SECRETS_MANAGER="ANTHROPIC_API_KEY:secret1,NEXT_KEY:secret2"
-/// The environment is then populated with:
-///   ANTHROPIC_API_KEY=___D3N0_S3CR3T_1___
-///   NEXT_KEY=___D3N0_S3CR3T_2___
-/// The secret replacer then searches for this string to replace
-/// in the provided string with the original value
+#[sys_traits::auto_impl]
+pub trait SecretsReplacerSys:
+  sys_traits::EnvSetVar + sys_traits::EnvVar
+{
+}
+
+#[derive(Debug, Default)]
 pub struct SecretsReplacer {
   secrets: BTreeMap<u32, String>,
 }
 
 impl SecretsReplacer {
-  /// Creates a new SecretsReplacer by parsing the DENO_SECRETS_MANAGER environment variable.
-  /// Returns None if the environment variable is not set.
-  /// Also sets environment variables with placeholder values.
-  pub fn from_env(
-    sys: &(impl sys_traits::EnvVar + sys_traits::EnvSetVar + sys_traits::Env),
+  pub fn new(
+    sys: &impl SecretsReplacerSys,
+    secret_env_vars: &[String],
   ) -> Self {
-    const VAR_NAME: &str = "DENO_SECRETS_MANAGER";
-    let env_value = sys.env_var(VAR_NAME).ok();
-    set_env_placeholders(sys, &env_value);
-    Self::new(&env_value)
-  }
+    let mut result = BTreeMap::new();
 
-  /// Creates a new SecretsReplacer from a secrets manager string.
-  /// Format: "KEY1:value1,KEY2:value2"
-  fn new(secrets_manager: &str) -> Self {
-    let mut secrets = BTreeMap::new();
-
-    for (index, entry) in secrets_manager.split(',').enumerate() {
-      if let Some((_key, value)) = entry.split_once(':') {
-        secrets.insert((index + 1) as u32, value.to_string());
+    for (index, key) in secret_env_vars.iter().enumerate() {
+      if let Ok(current_var) = sys.env_var(key) {
+        result.insert((index + 1) as u32, current_var);
+        let placeholder = format!("___D3N0_S3CR3T_{}___", index + 1);
+        sys.env_set_var(key, placeholder);
       }
     }
 
-    Self { secrets }
+    Self { secrets: result }
   }
 
   /// Replaces all secret placeholders in the text with their actual values.
   /// Returns Some(new_string) if any replacements were made, None otherwise.
-  pub fn replace(&self, text: &str) -> Option<String> {
+  pub fn replace(&self, bytes: &[u8]) -> Option<Vec<u8>> {
     if self.secrets.is_empty() {
       return None;
     }
@@ -52,15 +43,17 @@ impl SecretsReplacer {
     let prefix_len = PREFIX.len();
     let suffix_len = SUFFIX.len();
 
-    let mut result: Option<String> = None;
+    let mut result: Option<Vec<u8>> = None;
     let mut last_pos = 0;
     let mut search_pos = 0;
-    let bytes = text.as_bytes();
     let len = bytes.len();
 
     while search_pos < len {
       // Find next occurrence of prefix
-      if let Some(prefix_pos) = text[search_pos..].find(PREFIX) {
+      if let Some(prefix_pos) = bytes[search_pos..]
+        .windows(PREFIX.len())
+        .position(|window| window == PREFIX.as_bytes())
+      {
         let abs_prefix_pos = search_pos + prefix_pos;
         let number_start = abs_prefix_pos + prefix_len;
 
@@ -72,19 +65,22 @@ impl SecretsReplacer {
 
         // Check if we have a valid suffix
         if number_end + suffix_len <= len
-          && &text[number_end..number_end + suffix_len] == SUFFIX
+          && &bytes[number_end..number_end + suffix_len] == SUFFIX.as_bytes()
           && number_start < number_end
         {
           // Parse the index
-          if let Ok(index) = text[number_start..number_end].parse::<u32>() {
+          if let Ok(index) =
+            String::from_utf8_lossy(&bytes[number_start..number_end])
+              .parse::<u32>()
+          {
             if let Some(secret_value) = self.secrets.get(&index) {
               // Lazily allocate result only when we find the first replacement
               let output =
-                result.get_or_insert_with(|| String::with_capacity(text.len()));
+                result.get_or_insert_with(|| Vec::with_capacity(bytes.len()));
               // Append everything before the placeholder
-              output.push_str(&text[last_pos..abs_prefix_pos]);
+              output.extend_from_slice(&bytes[last_pos..abs_prefix_pos]);
               // Append the secret value
-              output.push_str(secret_value);
+              output.extend_from_slice(secret_value.as_bytes());
               // Move past the placeholder
               last_pos = number_end + suffix_len;
               search_pos = number_end + suffix_len;
@@ -98,7 +94,7 @@ impl SecretsReplacer {
       } else {
         // No more occurrences, copy the rest
         if let Some(output) = result.as_mut() {
-          output.push_str(&text[last_pos..]);
+          output.extend_from_slice(&bytes[last_pos..]);
         }
         break;
       }
@@ -163,44 +159,44 @@ mod tests {
   #[test]
   fn test_replace_no_secrets() {
     let replacer = SecretsReplacer::new("");
-    let result = replacer.replace("Some text with ___D3N0_S3CR3T_1___");
+    let result = replacer.replace(b"Some text with ___D3N0_S3CR3T_1___");
     assert_eq!(result, None);
   }
 
   #[test]
   fn test_replace_no_placeholders() {
     let replacer = SecretsReplacer::new("API_KEY:secret123");
-    let result = replacer.replace("Some text without placeholders");
+    let result = replacer.replace(b"Some text without placeholders");
     assert_eq!(result, None);
   }
 
   #[test]
   fn test_replace_single_placeholder() {
     let replacer = SecretsReplacer::new("API_KEY:my_secret_key");
-    let result = replacer.replace("Bearer ___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some("Bearer my_secret_key".to_string()));
+    let result = replacer.replace(b"Bearer ___D3N0_S3CR3T_1___");
+    assert_eq!(result, Some(b"Bearer my_secret_key".to_vec()));
   }
 
   #[test]
   fn test_replace_multiple_placeholders() {
     let replacer = SecretsReplacer::new("KEY1:secret1,KEY2:secret2");
     let result = replacer
-      .replace("First: ___D3N0_S3CR3T_1___ Second: ___D3N0_S3CR3T_2___");
-    assert_eq!(result, Some("First: secret1 Second: secret2".to_string()));
+      .replace(b"First: ___D3N0_S3CR3T_1___ Second: ___D3N0_S3CR3T_2___");
+    assert_eq!(result, Some(b"First: secret1 Second: secret2".to_vec()));
   }
 
   #[test]
   fn test_replace_same_placeholder_multiple_times() {
     let replacer = SecretsReplacer::new("KEY:secret");
     let result =
-      replacer.replace("___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_1___ again");
-    assert_eq!(result, Some("secret and secret again".to_string()));
+      replacer.replace(b"___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_1___ again");
+    assert_eq!(result, Some(b"secret and secret again".to_vec()));
   }
 
   #[test]
   fn test_replace_nonexistent_index() {
     let replacer = SecretsReplacer::new("KEY:secret");
-    let result = replacer.replace("___D3N0_S3CR3T_99___");
+    let result = replacer.replace(b"___D3N0_S3CR3T_99___");
     assert_eq!(result, None);
   }
 
@@ -208,13 +204,13 @@ mod tests {
   fn test_replace_invalid_placeholder_format() {
     let replacer = SecretsReplacer::new("KEY:secret");
     // Missing suffix
-    let result = replacer.replace("___D3N0_S3CR3T_1");
+    let result = replacer.replace(b"___D3N0_S3CR3T_1");
     assert_eq!(result, None);
     // Missing number
-    let result = replacer.replace("___D3N0_S3CR3T____");
+    let result = replacer.replace(b"___D3N0_S3CR3T____");
     assert_eq!(result, None);
     // Non-numeric index
-    let result = replacer.replace("___D3N0_S3CR3T_abc___");
+    let result = replacer.replace(b"___D3N0_S3CR3T_abc___");
     assert_eq!(result, None);
   }
 
@@ -223,23 +219,20 @@ mod tests {
     let replacer = SecretsReplacer::new("KEY:secret");
     // Text that contains the prefix but not a valid placeholder
     let result =
-      replacer.replace("___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_invalid");
-    assert_eq!(
-      result,
-      Some("secret and ___D3N0_S3CR3T_invalid".to_string())
-    );
+      replacer.replace(b"___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_invalid");
+    assert_eq!(result, Some(b"secret and ___D3N0_S3CR3T_invalid".to_vec()));
   }
 
   #[test]
   fn test_replace_in_json() {
     let replacer = SecretsReplacer::new("API_KEY:sk-1234567890");
-    let json = r#"{"api_key":"___D3N0_S3CR3T_1___","endpoint":"https://api.example.com"}"#;
+    let json = br#"{"api_key":"___D3N0_S3CR3T_1___","endpoint":"https://api.example.com"}"#;
     let result = replacer.replace(json);
     assert_eq!(
       result,
       Some(
-        r#"{"api_key":"sk-1234567890","endpoint":"https://api.example.com"}"#
-          .to_string()
+        br#"{"api_key":"sk-1234567890","endpoint":"https://api.example.com"}"#
+          .to_vec()
       )
     );
   }
@@ -248,21 +241,21 @@ mod tests {
   fn test_replace_at_boundaries() {
     let replacer = SecretsReplacer::new("KEY:secret");
     // At start
-    let result = replacer.replace("___D3N0_S3CR3T_1___ end");
-    assert_eq!(result, Some("secret end".to_string()));
+    let result = replacer.replace(b"___D3N0_S3CR3T_1___ end");
+    assert_eq!(result, Some(b"secret end".to_vec()));
     // At end
-    let result = replacer.replace("start ___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some("start secret".to_string()));
+    let result = replacer.replace(b"start ___D3N0_S3CR3T_1___");
+    assert_eq!(result, Some(b"start secret".to_vec()));
     // Entire string
-    let result = replacer.replace("___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some("secret".to_string()));
+    let result = replacer.replace(b"___D3N0_S3CR3T_1___");
+    assert_eq!(result, Some(b"secret".to_vec()));
   }
 
   #[test]
   fn test_replace_with_special_characters() {
     let replacer = SecretsReplacer::new("KEY:p@ss$w0rd!#%");
-    let result = replacer.replace("Password: ___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some("Password: p@ss$w0rd!#%".to_string()));
+    let result = replacer.replace(b"Password: ___D3N0_S3CR3T_1___");
+    assert_eq!(result, Some(b"Password: p@ss$w0rd!#%".to_vec()));
   }
 
   #[test]
@@ -298,8 +291,8 @@ mod tests {
     );
 
     // Check that secrets can be replaced
-    let result = replacer.replace("Using ___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some("Using secret123".to_string()));
+    let result = replacer.replace(b"Using ___D3N0_S3CR3T_1___");
+    assert_eq!(result, Some(b"Using secret123".to_vec()));
   }
 
   #[test]
@@ -313,33 +306,30 @@ mod tests {
   #[test]
   fn test_replace_preserves_surrounding_text() {
     let replacer = SecretsReplacer::new("KEY:SECRET");
-    let input = "before ___D3N0_S3CR3T_1___ middle ___D3N0_S3CR3T_1___ after";
+    let input = b"before ___D3N0_S3CR3T_1___ middle ___D3N0_S3CR3T_1___ after";
     let result = replacer.replace(input);
-    assert_eq!(
-      result,
-      Some("before SECRET middle SECRET after".to_string())
-    );
+    assert_eq!(result, Some(b"before SECRET middle SECRET after".to_vec()));
   }
 
   #[test]
   fn test_replace_large_index() {
     let replacer =
       SecretsReplacer::new("A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,I:9,J:10");
-    let result = replacer.replace("Value: ___D3N0_S3CR3T_10___");
-    assert_eq!(result, Some("Value: 10".to_string()));
+    let result = replacer.replace(b"Value: ___D3N0_S3CR3T_10___");
+    assert_eq!(result, Some(b"Value: 10".to_vec()));
   }
 
   #[test]
   fn test_replace_mixed_valid_invalid() {
     let replacer = SecretsReplacer::new("KEY:secret");
-    let input = "___D3N0_S3CR3T_1___ valid, ___D3N0_S3CR3T_2___ invalid, ___D3N0_S3CR3T_1___ valid again";
+    let input = b"___D3N0_S3CR3T_1___ valid, ___D3N0_S3CR3T_2___ invalid, ___D3N0_S3CR3T_1___ valid again";
     let result = replacer.replace(input);
     // Only index 1 should be replaced
     assert_eq!(
       result,
       Some(
-        "secret valid, ___D3N0_S3CR3T_2___ invalid, secret valid again"
-          .to_string()
+        b"secret valid, ___D3N0_S3CR3T_2___ invalid, secret valid again"
+          .to_vec()
       )
     );
   }

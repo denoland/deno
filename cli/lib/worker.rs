@@ -27,6 +27,7 @@ use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
+use deno_runtime::deno_fetch::SecretsReplacer;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
@@ -375,6 +376,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   npm_process_state_provider: NpmProcessStateProviderRc,
   pkg_json_resolver: Arc<node_resolver::PackageJsonResolver<TSys>>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  secrets_replacer: Arc<SecretsReplacer>,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
@@ -546,6 +548,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     npm_process_state_provider: NpmProcessStateProviderRc,
     pkg_json_resolver: Arc<node_resolver::PackageJsonResolver<TSys>>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+    secrets_replacer: Arc<SecretsReplacer>,
     storage_key_resolver: StorageKeyResolver,
     sys: TSys,
     options: LibMainWorkerOptions,
@@ -568,6 +571,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         npm_process_state_provider,
         pkg_json_resolver,
         root_cert_store_provider,
+        secrets_replacer,
         shared_array_buffer_store: roots.shared_array_buffer_store,
         storage_key_resolver,
         sys,
@@ -652,6 +656,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
       fetch_dns_resolver: Default::default(),
+      secrets_replacer: shared.secrets_replacer.clone(),
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
         shared.compiled_wasm_module_store.clone(),
