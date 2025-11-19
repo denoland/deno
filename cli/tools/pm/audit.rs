@@ -588,8 +588,6 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
-    let start = std::time::Instant::now();
-
     let purl_results = futures::stream::iter(futures)
       .buffer_unordered(20)
       .collect::<Vec<_>>()

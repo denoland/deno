@@ -65,7 +65,6 @@ async fn socket_dev_handler(
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
 
-  eprintln!("path {:#?}", path);
   // Expected format: /purl/{percent_encoded_purl}
   // where purl is like: pkg:npm/package-name@version
   if !path.starts_with("/purl/") {
