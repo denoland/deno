@@ -104,19 +104,6 @@ impl SecretsReplacer {
   }
 }
 
-/// Sets environment variables with placeholder values based on the secrets manager string.
-fn set_env_placeholders(
-  sys: &impl sys_traits::EnvSetVar,
-  secrets_manager: &str,
-) {
-  for (index, entry) in secrets_manager.split(',').enumerate() {
-    if let Some((key, _value)) = entry.split_once(':') {
-      let placeholder = format!("___D3N0_S3CR3T_{}___", index + 1);
-      sys.env_set_var(key, placeholder);
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use sys_traits::EnvSetVar;
@@ -127,59 +114,115 @@ mod tests {
 
   #[test]
   fn test_new_empty() {
-    let replacer = SecretsReplacer::new("");
+    let sys = InMemorySys::default();
+    let replacer = SecretsReplacer::new(&sys, &[]);
     assert!(replacer.secrets.is_empty());
   }
 
   #[test]
   fn test_new_single_secret() {
-    let replacer = SecretsReplacer::new("API_KEY:secret123");
+    let sys = InMemorySys::default();
+    sys.env_set_var("API_KEY", "secret123");
+    let replacer = SecretsReplacer::new(&sys, &["API_KEY".to_string()]);
     assert_eq!(replacer.secrets.len(), 1);
     assert_eq!(replacer.secrets.get(&1), Some(&"secret123".to_string()));
+    assert_eq!(
+      sys.env_var("API_KEY").ok(),
+      Some("___D3N0_S3CR3T_1___".to_string())
+    );
   }
 
   #[test]
   fn test_new_multiple_secrets() {
-    let replacer =
-      SecretsReplacer::new("API_KEY:secret123,DB_PASS:pass456,TOKEN:token789");
+    let sys = InMemorySys::default();
+    sys.env_set_var("API_KEY", "secret123");
+    sys.env_set_var("DB_PASS", "pass456");
+    sys.env_set_var("TOKEN", "token789");
+    let replacer = SecretsReplacer::new(
+      &sys,
+      &[
+        "API_KEY".to_string(),
+        "DB_PASS".to_string(),
+        "TOKEN".to_string(),
+      ],
+    );
     assert_eq!(replacer.secrets.len(), 3);
     assert_eq!(replacer.secrets.get(&1), Some(&"secret123".to_string()));
     assert_eq!(replacer.secrets.get(&2), Some(&"pass456".to_string()));
     assert_eq!(replacer.secrets.get(&3), Some(&"token789".to_string()));
+    assert_eq!(
+      sys.env_var("API_KEY").ok(),
+      Some("___D3N0_S3CR3T_1___".to_string())
+    );
+    assert_eq!(
+      sys.env_var("DB_PASS").ok(),
+      Some("___D3N0_S3CR3T_2___".to_string())
+    );
+    assert_eq!(
+      sys.env_var("TOKEN").ok(),
+      Some("___D3N0_S3CR3T_3___".to_string())
+    );
   }
 
   #[test]
-  fn test_new_malformed_entries() {
-    let replacer = SecretsReplacer::new("GOOD:value1,NOCOLON,ALSO_GOOD:value2");
+  fn test_new_missing_env_vars() {
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY1", "value1");
+    // KEY2 is not set
+    sys.env_set_var("KEY3", "value3");
+    let replacer = SecretsReplacer::new(
+      &sys,
+      &["KEY1".to_string(), "KEY2".to_string(), "KEY3".to_string()],
+    );
+    // Only KEY1 and KEY3 should be stored (KEY2 is skipped)
     assert_eq!(replacer.secrets.len(), 2);
     assert_eq!(replacer.secrets.get(&1), Some(&"value1".to_string()));
-    assert_eq!(replacer.secrets.get(&3), Some(&"value2".to_string()));
+    assert_eq!(replacer.secrets.get(&3), Some(&"value3".to_string()));
+    // KEY1 and KEY3 should have placeholders, KEY2 should be unchanged
+    assert_eq!(
+      sys.env_var("KEY1").ok(),
+      Some("___D3N0_S3CR3T_1___".to_string())
+    );
+    assert!(sys.env_var("KEY2").is_err());
+    assert_eq!(
+      sys.env_var("KEY3").ok(),
+      Some("___D3N0_S3CR3T_3___".to_string())
+    );
   }
 
   #[test]
   fn test_replace_no_secrets() {
-    let replacer = SecretsReplacer::new("");
+    let sys = InMemorySys::default();
+    let replacer = SecretsReplacer::new(&sys, &[]);
     let result = replacer.replace(b"Some text with ___D3N0_S3CR3T_1___");
     assert_eq!(result, None);
   }
 
   #[test]
   fn test_replace_no_placeholders() {
-    let replacer = SecretsReplacer::new("API_KEY:secret123");
+    let sys = InMemorySys::default();
+    sys.env_set_var("API_KEY", "secret123");
+    let replacer = SecretsReplacer::new(&sys, &["API_KEY".to_string()]);
     let result = replacer.replace(b"Some text without placeholders");
     assert_eq!(result, None);
   }
 
   #[test]
   fn test_replace_single_placeholder() {
-    let replacer = SecretsReplacer::new("API_KEY:my_secret_key");
+    let sys = InMemorySys::default();
+    sys.env_set_var("API_KEY", "my_secret_key");
+    let replacer = SecretsReplacer::new(&sys, &["API_KEY".to_string()]);
     let result = replacer.replace(b"Bearer ___D3N0_S3CR3T_1___");
     assert_eq!(result, Some(b"Bearer my_secret_key".to_vec()));
   }
 
   #[test]
   fn test_replace_multiple_placeholders() {
-    let replacer = SecretsReplacer::new("KEY1:secret1,KEY2:secret2");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY1", "secret1");
+    sys.env_set_var("KEY2", "secret2");
+    let replacer =
+      SecretsReplacer::new(&sys, &["KEY1".to_string(), "KEY2".to_string()]);
     let result = replacer
       .replace(b"First: ___D3N0_S3CR3T_1___ Second: ___D3N0_S3CR3T_2___");
     assert_eq!(result, Some(b"First: secret1 Second: secret2".to_vec()));
@@ -187,7 +230,9 @@ mod tests {
 
   #[test]
   fn test_replace_same_placeholder_multiple_times() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     let result =
       replacer.replace(b"___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_1___ again");
     assert_eq!(result, Some(b"secret and secret again".to_vec()));
@@ -195,14 +240,18 @@ mod tests {
 
   #[test]
   fn test_replace_nonexistent_index() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     let result = replacer.replace(b"___D3N0_S3CR3T_99___");
     assert_eq!(result, None);
   }
 
   #[test]
   fn test_replace_invalid_placeholder_format() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     // Missing suffix
     let result = replacer.replace(b"___D3N0_S3CR3T_1");
     assert_eq!(result, None);
@@ -216,7 +265,9 @@ mod tests {
 
   #[test]
   fn test_replace_partial_matches() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     // Text that contains the prefix but not a valid placeholder
     let result =
       replacer.replace(b"___D3N0_S3CR3T_1___ and ___D3N0_S3CR3T_invalid");
@@ -225,7 +276,9 @@ mod tests {
 
   #[test]
   fn test_replace_in_json() {
-    let replacer = SecretsReplacer::new("API_KEY:sk-1234567890");
+    let sys = InMemorySys::default();
+    sys.env_set_var("API_KEY", "sk-1234567890");
+    let replacer = SecretsReplacer::new(&sys, &["API_KEY".to_string()]);
     let json = br#"{"api_key":"___D3N0_S3CR3T_1___","endpoint":"https://api.example.com"}"#;
     let result = replacer.replace(json);
     assert_eq!(
@@ -239,7 +292,9 @@ mod tests {
 
   #[test]
   fn test_replace_at_boundaries() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     // At start
     let result = replacer.replace(b"___D3N0_S3CR3T_1___ end");
     assert_eq!(result, Some(b"secret end".to_vec()));
@@ -253,59 +308,18 @@ mod tests {
 
   #[test]
   fn test_replace_with_special_characters() {
-    let replacer = SecretsReplacer::new("KEY:p@ss$w0rd!#%");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "p@ss$w0rd!#%");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     let result = replacer.replace(b"Password: ___D3N0_S3CR3T_1___");
     assert_eq!(result, Some(b"Password: p@ss$w0rd!#%".to_vec()));
   }
 
   #[test]
-  fn test_set_env_placeholders() {
-    let sys = InMemorySys::default();
-    set_env_placeholders(&sys, "KEY1:value1,KEY2:value2");
-    assert_eq!(
-      sys.env_var("KEY1").ok(),
-      Some("___D3N0_S3CR3T_1___".to_string())
-    );
-    assert_eq!(
-      sys.env_var("KEY2").ok(),
-      Some("___D3N0_S3CR3T_2___".to_string())
-    );
-  }
-
-  #[test]
-  fn test_from_env() {
-    let sys = InMemorySys::default();
-    sys
-      .env_set_var("DENO_SECRETS_MANAGER", "API_KEY:secret123,DB_PASS:pass456");
-
-    let replacer = SecretsReplacer::from_env(&sys);
-
-    // Check that placeholders were set
-    assert_eq!(
-      sys.env_var("API_KEY").ok(),
-      Some("___D3N0_S3CR3T_1___".to_string())
-    );
-    assert_eq!(
-      sys.env_var("DB_PASS").ok(),
-      Some("___D3N0_S3CR3T_2___".to_string())
-    );
-
-    // Check that secrets can be replaced
-    let result = replacer.replace(b"Using ___D3N0_S3CR3T_1___");
-    assert_eq!(result, Some(b"Using secret123".to_vec()));
-  }
-
-  #[test]
-  fn test_from_env_empty() {
-    let sys = InMemorySys::default();
-    // Don't set DENO_SECRETS_MANAGER
-    let replacer = SecretsReplacer::from_env(&sys);
-    assert!(replacer.secrets.is_empty());
-  }
-
-  #[test]
   fn test_replace_preserves_surrounding_text() {
-    let replacer = SecretsReplacer::new("KEY:SECRET");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "SECRET");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     let input = b"before ___D3N0_S3CR3T_1___ middle ___D3N0_S3CR3T_1___ after";
     let result = replacer.replace(input);
     assert_eq!(result, Some(b"before SECRET middle SECRET after".to_vec()));
@@ -313,15 +327,23 @@ mod tests {
 
   #[test]
   fn test_replace_large_index() {
-    let replacer =
-      SecretsReplacer::new("A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,I:9,J:10");
+    let sys = InMemorySys::default();
+    let keys: Vec<String> = (b'A'..=b'J')
+      .map(|c| format!("KEY_{}", c as char))
+      .collect();
+    for (i, key) in keys.iter().enumerate() {
+      sys.env_set_var(key, &format!("{}", i + 1));
+    }
+    let replacer = SecretsReplacer::new(&sys, &keys);
     let result = replacer.replace(b"Value: ___D3N0_S3CR3T_10___");
     assert_eq!(result, Some(b"Value: 10".to_vec()));
   }
 
   #[test]
   fn test_replace_mixed_valid_invalid() {
-    let replacer = SecretsReplacer::new("KEY:secret");
+    let sys = InMemorySys::default();
+    sys.env_set_var("KEY", "secret");
+    let replacer = SecretsReplacer::new(&sys, &["KEY".to_string()]);
     let input = b"___D3N0_S3CR3T_1___ valid, ___D3N0_S3CR3T_2___ invalid, ___D3N0_S3CR3T_1___ valid again";
     let result = replacer.replace(input);
     // Only index 1 should be replaced
