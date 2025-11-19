@@ -723,7 +723,10 @@ fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
   Allow(&'a TAllowDesc),
-  Deny(&'a TAllowDesc::DenyDesc, /* ordering */ u8),
+  Deny {
+    desc: &'a TAllowDesc::DenyDesc,
+    order: u8,
+  },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -752,17 +755,20 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
           AllowOrDenyDescRef::Allow(other_desc) => {
             self_desc.cmp_allow(other_desc)
           }
-          AllowOrDenyDescRef::Deny(other_desc, _) => {
-            match self_desc.cmp_deny(other_desc) {
-              Ordering::Equal => {
-                self.kind_precedence().cmp(&other.kind_precedence())
-              }
-              ord => ord,
+          AllowOrDenyDescRef::Deny {
+            desc: other_desc, ..
+          } => match self_desc.cmp_deny(other_desc) {
+            Ordering::Equal => {
+              self.kind_precedence().cmp(&other.kind_precedence())
             }
-          }
+            ord => ord,
+          },
         }
       }
-      AllowOrDenyDescRef::Deny(self_desc, self_precedence) => {
+      AllowOrDenyDescRef::Deny {
+        desc: self_desc,
+        order: self_order,
+      } => {
         match other.allow_or_deny_desc() {
           AllowOrDenyDescRef::Allow(other_desc) => {
             match other_desc.cmp_deny(self_desc) {
@@ -774,12 +780,13 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
               Ordering::Greater => Ordering::Less,
             }
           }
-          AllowOrDenyDescRef::Deny(other_desc, other_precedence) => {
-            match self_desc.cmp_deny(other_desc) {
-              Ordering::Equal => self_precedence.cmp(&other_precedence),
-              ordering => ordering,
-            }
-          }
+          AllowOrDenyDescRef::Deny {
+            desc: other_desc,
+            order: other_order,
+          } => match self_desc.cmp_deny(other_desc) {
+            Ordering::Equal => self_order.cmp(&other_order),
+            ordering => ordering,
+          },
         }
       }
     }
@@ -791,13 +798,13 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDesc<TAllowDesc> {
     match self {
       UnaryPermissionDesc::Granted(desc) => AllowOrDenyDescRef::Allow(desc),
       UnaryPermissionDesc::FlagDenied(desc) => {
-        AllowOrDenyDescRef::Deny(desc, 0)
+        AllowOrDenyDescRef::Deny { desc, order: 0 }
       }
       UnaryPermissionDesc::PromptDenied(desc) => {
-        AllowOrDenyDescRef::Deny(desc, 1)
+        AllowOrDenyDescRef::Deny { desc, order: 1 }
       }
       UnaryPermissionDesc::FlagIgnored(desc) => {
-        AllowOrDenyDescRef::Deny(desc, 2)
+        AllowOrDenyDescRef::Deny { desc, order: 2 }
       }
     }
   }
