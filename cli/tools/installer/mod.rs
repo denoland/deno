@@ -826,6 +826,15 @@ async fn install_global(
     factory.npm_version_resolver()?.clone(),
   ));
 
+  if matches!(flags.config_flag, ConfigFlag::Discover)
+    && cli_options.workspace().deno_jsons().next().is_some()
+  {
+    log::warn!(
+      "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
+      crate::colors::yellow("Warning")
+    );
+  }
+
   for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
     let entry_text = module_url;
     if !cli_options.initial_cwd().join(entry_text).exists() {
@@ -885,15 +894,6 @@ async fn install_global(
         },
       )
       .await?;
-
-    if matches!(flags.config_flag, ConfigFlag::Discover)
-      && cli_options.workspace().deno_jsons().next().is_some()
-    {
-      log::warn!(
-        "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
-        crate::colors::yellow("Warning")
-      );
-    }
 
     let bin_name_resolver = factory.bin_name_resolver()?;
     // create the install shim
