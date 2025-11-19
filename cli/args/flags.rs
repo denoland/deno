@@ -2552,7 +2552,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(
         Arg::new("args")
           .num_args(0..)
-          .help("Arguments to provide for the Deno.args")
+          .help("Arguments to provide for Deno.args (must be preceded by `--`)")
           .action(ArgAction::Append)
           .value_name("ARGS")
           .last(true)
