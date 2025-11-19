@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno.ns" />
-/// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webstorage" />
+/// <reference path="./lib.deno.ns.d.ts" />
+/// <reference path="./lib.deno.shared_globals.d.ts" />
+/// <reference path="./lib.deno_webstorage.d.ts" />
 /// <reference lib="esnext" />
-/// <reference lib="deno.cache" />
+/// <reference path="./lib.deno_cache.d.ts" />
 
 /**
  * Defines the mapping between event names and their corresponding event types
@@ -50,11 +50,11 @@ interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
   onrejectionhandled:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
   close: () => void;
   readonly closed: boolean;
   alert: (message?: string) => void;
@@ -108,7 +108,7 @@ interface Window extends EventTarget {
  */
 declare var Window: {
   readonly prototype: Window;
-  new (): never;
+  new(): never;
 };
 
 /**
@@ -374,7 +374,7 @@ interface Navigator {
  */
 declare var Navigator: {
   readonly prototype: Navigator;
-  new (): never;
+  new(): never;
 };
 
 /**
@@ -587,7 +587,7 @@ interface Location {
  */
 declare var Location: {
   readonly prototype: Location;
-  new (): never;
+  new(): never;
 };
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.

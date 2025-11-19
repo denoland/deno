@@ -4,6 +4,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference path="./lib.deno.window.d.ts" />
 
 /** @category Platform */
 interface DOMException extends Error {
@@ -41,7 +42,7 @@ interface DOMException extends Error {
 /** @category Platform */
 declare var DOMException: {
   readonly prototype: DOMException;
-  new (message?: string, name?: string): DOMException;
+  new(message?: string, name?: string): DOMException;
   readonly INDEX_SIZE_ERR: 1;
   readonly DOMSTRING_SIZE_ERR: 2;
   readonly HIERARCHY_REQUEST_ERR: 3;
@@ -150,7 +151,7 @@ interface Event {
  */
 declare var Event: {
   readonly prototype: Event;
-  new (type: string, eventInitDict?: EventInit): Event;
+  new(type: string, eventInitDict?: EventInit): Event;
   readonly NONE: 0;
   readonly CAPTURING_PHASE: 1;
   readonly AT_TARGET: 2;
@@ -213,7 +214,7 @@ interface EventTarget {
  */
 declare var EventTarget: {
   readonly prototype: EventTarget;
-  new (): EventTarget;
+  new(): EventTarget;
 };
 
 /** @category Events */
@@ -375,7 +376,7 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
  */
 declare var ProgressEvent: {
   readonly prototype: ProgressEvent;
-  new (type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
+  new(type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
 };
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
@@ -433,7 +434,7 @@ interface TextDecoder extends TextDecoderCommon {
 /** @category Encoding */
 declare var TextDecoder: {
   readonly prototype: TextDecoder;
-  new (label?: string, options?: TextDecoderOptions): TextDecoder;
+  new(label?: string, options?: TextDecoderOptions): TextDecoder;
 };
 
 /** @category Encoding */
@@ -480,7 +481,7 @@ interface TextEncoder extends TextEncoderCommon {
 /** @category Encoding */
 declare var TextEncoder: {
   readonly prototype: TextEncoder;
-  new (): TextEncoder;
+  new(): TextEncoder;
 };
 
 /** @category Encoding */
@@ -498,7 +499,7 @@ interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
 /** @category Encoding */
 declare var TextDecoderStream: {
   readonly prototype: TextDecoderStream;
-  new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
+  new(label?: string, options?: TextDecoderOptions): TextDecoderStream;
 };
 
 /** @category Encoding */
@@ -510,7 +511,7 @@ interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
 /** @category Encoding */
 declare var TextEncoderStream: {
   readonly prototype: TextEncoderStream;
-  new (): TextEncoderStream;
+  new(): TextEncoderStream;
 };
 
 /** A controller object that allows you to abort one or more DOM requests as and
@@ -533,7 +534,7 @@ interface AbortController {
  */
 declare var AbortController: {
   readonly prototype: AbortController;
-  new (): AbortController;
+  new(): AbortController;
 };
 
 /** @category Platform */
@@ -581,7 +582,7 @@ interface AbortSignal extends EventTarget {
 /** @category Platform */
 declare var AbortSignal: {
   readonly prototype: AbortSignal;
-  new (): never;
+  new(): never;
   abort(reason?: any): AbortSignal;
   any(signals: AbortSignal[]): AbortSignal;
   timeout(milliseconds: number): AbortSignal;
@@ -610,13 +611,13 @@ interface FileReader extends EventTarget {
   onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onloadstart:
-    | ((this: FileReader, ev: ProgressEvent<FileReader>) => any)
-    | null;
+  | ((this: FileReader, ev: ProgressEvent<FileReader>) => any)
+  | null;
   onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   readonly readyState:
-    | typeof FileReader.EMPTY
-    | typeof FileReader.LOADING
-    | typeof FileReader.DONE;
+  | typeof FileReader.EMPTY
+  | typeof FileReader.LOADING
+  | typeof FileReader.DONE;
   readonly result: string | ArrayBuffer | null;
   abort(): void;
   readAsArrayBuffer(blob: Blob): void;
@@ -652,7 +653,7 @@ interface FileReader extends EventTarget {
 /** @category File */
 declare var FileReader: {
   readonly prototype: FileReader;
-  new (): FileReader;
+  new(): FileReader;
   readonly EMPTY: 0;
   readonly LOADING: 1;
   readonly DONE: 2;
@@ -696,7 +697,7 @@ interface Blob {
  */
 declare var Blob: {
   readonly prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
+  new(blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
 };
 
 /** @category File */
@@ -722,7 +723,7 @@ interface File extends Blob {
  */
 declare var File: {
   readonly prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+  new(fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
 };
 
 /** @category Streams */
@@ -788,7 +789,7 @@ interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
 /** @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
-  new (
+  new(
     stream: ReadableStream<Uint8Array<ArrayBuffer>>,
   ): ReadableStreamBYOBReader;
 };
@@ -803,7 +804,7 @@ interface ReadableStreamBYOBRequest {
 /** @category Streams */
 declare var ReadableStreamBYOBRequest: {
   readonly prototype: ReadableStreamBYOBRequest;
-  new (): never;
+  new(): never;
 };
 
 /** @category Streams */
@@ -872,7 +873,7 @@ interface ReadableStreamDefaultController<R = any> {
 /** @category Streams */
 declare var ReadableStreamDefaultController: {
   readonly prototype: ReadableStreamDefaultController;
-  new (): never;
+  new(): never;
 };
 
 /** @category Streams */
@@ -887,7 +888,7 @@ interface ReadableByteStreamController {
 /** @category Streams */
 declare var ReadableByteStreamController: {
   readonly prototype: ReadableByteStreamController;
-  new (): never;
+  new(): never;
 };
 
 /** @category Streams */
@@ -922,7 +923,7 @@ interface CountQueuingStrategy extends QueuingStrategy {
 /** @category Streams */
 declare var CountQueuingStrategy: {
   readonly prototype: CountQueuingStrategy;
-  new (init: QueuingStrategyInit): CountQueuingStrategy;
+  new(init: QueuingStrategyInit): CountQueuingStrategy;
 };
 
 /** @category Streams */
@@ -934,7 +935,7 @@ interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
 /** @category Streams */
 declare var ByteLengthQueuingStrategy: {
   readonly prototype: ByteLengthQueuingStrategy;
-  new (init: QueuingStrategyInit): ByteLengthQueuingStrategy;
+  new(init: QueuingStrategyInit): ByteLengthQueuingStrategy;
 };
 
 /** @category Streams */
@@ -972,7 +973,7 @@ interface ReadableStream<R = any> {
 /** @category Streams */
 declare var ReadableStream: {
   readonly prototype: ReadableStream;
-  new (
+  new(
     underlyingSource: UnderlyingByteSource,
     strategy?: { highWaterMark?: number },
   ): ReadableStream<Uint8Array<ArrayBuffer>>;
@@ -1068,7 +1069,7 @@ interface WritableStreamDefaultController {
 /** @category Streams */
 declare var WritableStreamDefaultController: {
   readonly prototype: WritableStreamDefaultController;
-  new (): never;
+  new(): never;
 };
 
 /** This Streams API interface is the object returned by
@@ -1121,7 +1122,7 @@ interface TransformStreamDefaultController<O = any> {
 /** @category Streams */
 declare var TransformStreamDefaultController: {
   readonly prototype: TransformStreamDefaultController;
-  new (): never;
+  new(): never;
 };
 
 /** @category Streams */
@@ -1240,7 +1241,7 @@ interface MessageChannel {
  */
 declare var MessageChannel: {
   readonly prototype: MessageChannel;
-  new (): MessageChannel;
+  new(): MessageChannel;
 };
 
 /** @category Messaging */
@@ -1307,7 +1308,7 @@ interface MessagePort extends EventTarget {
  */
 declare var MessagePort: {
   readonly prototype: MessagePort;
-  new (): never;
+  new(): never;
 };
 
 /**
@@ -1383,7 +1384,7 @@ declare var CompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new (format: CompressionFormat): CompressionStream;
+  new(format: CompressionFormat): CompressionStream;
 };
 
 /**
@@ -1430,7 +1431,7 @@ declare var DecompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new (format: CompressionFormat): DecompressionStream;
+  new(format: CompressionFormat): DecompressionStream;
 };
 
 /** Dispatch an uncaught exception. Similar to a synchronous version of:
@@ -1473,8 +1474,8 @@ interface ImageData {
 /** @category Platform */
 declare var ImageData: {
   readonly prototype: ImageData;
-  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
-  new (
+  new(sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new(
     data: Uint8ClampedArray<ArrayBuffer>,
     sw: number,
     sh?: number,
@@ -1551,7 +1552,7 @@ interface WebTransport {
 /** @category Platform */
 declare var WebTransport: {
   prototype: WebTransport;
-  new (url: string | URL, options?: WebTransportOptions): WebTransport;
+  new(url: string | URL, options?: WebTransportOptions): WebTransport;
 };
 
 /**
@@ -1568,7 +1569,7 @@ interface WebTransportBidirectionalStream {
 /** @category Platform */
 declare var WebTransportBidirectionalStream: {
   prototype: WebTransportBidirectionalStream;
-  new (): WebTransportBidirectionalStream;
+  new(): WebTransportBidirectionalStream;
 };
 
 /**
@@ -1595,7 +1596,7 @@ interface WebTransportDatagramDuplexStream {
 /** @category Platform */
 declare var WebTransportDatagramDuplexStream: {
   prototype: WebTransportDatagramDuplexStream;
-  new (): WebTransportDatagramDuplexStream;
+  new(): WebTransportDatagramDuplexStream;
 };
 
 /**
@@ -1616,7 +1617,7 @@ interface WebTransportSendStream extends WritableStream<Uint8Array> {
 /** @category Platform */
 declare var WebTransportSendStream: {
   prototype: WebTransportSendStream;
-  new (): WebTransportSendStream;
+  new(): WebTransportSendStream;
 };
 
 /** @category Platform */
@@ -1638,7 +1639,7 @@ interface WebTransportWriter extends WritableStreamDefaultWriter<Uint8Array> {
 /** @category Platform */
 declare var WebTransportWriter: {
   prototype: WebTransportWriter;
-  new (): WebTransportWriter;
+  new(): WebTransportWriter;
 };
 
 /**
@@ -1653,7 +1654,7 @@ interface WebTransportReceiveStream extends ReadableStream<Uint8Array> {
 /** @category Platform */
 declare var WebTransportReceiveStream: {
   prototype: WebTransportReceiveStream;
-  new (): WebTransportReceiveStream;
+  new(): WebTransportReceiveStream;
 };
 
 /** @category Platform */
@@ -1674,7 +1675,7 @@ interface WebTransportSendGroup {
 /** @category Platform */
 declare var WebTransportSendGroup: {
   prototype: WebTransportSendGroup;
-  new (): WebTransportSendGroup;
+  new(): WebTransportSendGroup;
 };
 
 /**
@@ -1691,7 +1692,7 @@ interface WebTransportError extends DOMException {
 /** @category Platform */
 declare var WebTransportError: {
   prototype: WebTransportError;
-  new (message?: string, options?: WebTransportErrorOptions): WebTransportError;
+  new(message?: string, options?: WebTransportErrorOptions): WebTransportError;
 };
 
 /** @category Platform */
