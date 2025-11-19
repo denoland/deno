@@ -975,6 +975,7 @@
 "parallel/test-sqlite-database-sync-dispose.js" = {}
 "parallel/test-sqlite-named-parameters.js" = {}
 "parallel/test-sqlite-session.js" = {}
+"parallel/test-sqlite-statement-sync-columns.js" = {}
 "parallel/test-sqlite-transactions.js" = {}
 "parallel/test-sqlite-typed-array-and-data-view.js" = {}
 "parallel/test-stdin-hang.js" = {}
