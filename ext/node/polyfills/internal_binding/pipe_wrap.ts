@@ -24,6 +24,9 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -65,7 +68,7 @@ export class Pipe extends ConnectionWrap {
   override reading = false;
   ipc: boolean;
 
-  // REF: https://github.com/nodejs/node/blob/master/deps/uv/src/win/pipe.c#L48
+  // REF: https://github.com/nodejs/node/blob/main/deps/uv/src/win/pipe.c#L48
   #pendingInstances = 4;
 
   #address?: string;
@@ -77,7 +80,10 @@ export class Pipe extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
 
-  constructor(type: number, conn?: Deno.UnixConn | StreamBase) {
+  constructor(
+    type: number,
+    conn?: Deno.UnixConn | Deno.Pipe.Pipe | StreamBase,
+  ) {
     let provider: providerType;
     let ipc: boolean;
 
@@ -146,8 +152,30 @@ export class Pipe extends ConnectionWrap {
    */
   connect(req: PipeConnectWrap, address: string) {
     if (isWindows) {
-      // REF: https://github.com/denoland/deno/issues/10244
-      notImplemented("Pipe.prototype.connect - Windows");
+      Deno.pipe.connect({
+        path: address,
+        kind: "windows",
+      }).then((pipe: Deno.Pipe.Pipe) => {
+        this[kStreamBaseField] = pipe;
+        this.#address = req.address;
+
+        try {
+          this.afterConnect(req, 0);
+        } catch {
+          // swallow callback errors.
+        }
+      }, (e) => {
+        const code = codeMap.get(e.code ?? "UNKNOWN") ??
+          codeMap.get("UNKNOWN")!;
+
+        try {
+          this.afterConnect(req, code);
+        } catch {
+          // swallow callback errors.
+        }
+      });
+
+      return 0;
     }
 
     const connectOptions: Deno.UnixConnectOptions = {
@@ -190,14 +218,54 @@ export class Pipe extends ConnectionWrap {
    * @return An error status code.
    */
   listen(backlog: number): number {
-    if (isWindows) {
-      // REF: https://github.com/denoland/deno/issues/10244
-      notImplemented("Pipe.prototype.listen - Windows");
-    }
-
     this.#backlog = isWindows
       ? this.#pendingInstances
       : ceilPowOf2(backlog + 1);
+
+    if (isWindows) {
+      let listener;
+      try {
+        listener = PromisePrototypeThen(
+          Deno.pipe.open({
+            path: this.#address!,
+            kind: "windows",
+            pipeMode: "byte",
+          }),
+          () => {
+            this.#listener = listener;
+          },
+          (e) => {
+            if (e instanceof Deno.errors.NotCapable) {
+              throw e;
+            }
+
+            const code = codeMap.get(e.code ?? "UNKNOWN") ??
+              codeMap.get("UNKNOWN")!;
+
+            try {
+              this.afterConnect(req, code);
+            } catch {
+              // swallow callback errors.
+            }
+          },
+        );
+      } catch (e) {
+        if (e instanceof Deno.errors.NotCapable) {
+          throw e;
+        }
+
+        const code = codeMap.get(e.code ?? "UNKNOWN") ??
+          codeMap.get("UNKNOWN")!;
+
+        try {
+          this.afterConnect(req, code);
+        } catch {
+          // swallow callback errors.
+        }
+      }
+
+      return 0;
+    }
 
     const listenOptions = {
       path: this.#address!,
@@ -307,6 +375,10 @@ export class Pipe extends ConnectionWrap {
   /** Accept new connections. */
   async #accept(): Promise<void> {
     if (this.#closed) {
+      return;
+    }
+
+    if (isWindows) {
       return;
     }
 
