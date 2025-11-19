@@ -4182,7 +4182,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
     .arg(min_dep_age_arg())
-    .arg(secrets_arg())
+    .arg(secret_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4778,10 +4778,10 @@ fn min_dep_age_arg() -> Arg {
     .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
 
-fn secrets_arg() -> Arg {
-  Arg::new("secrets")
-    .long("secrets")
-    .value_name("secret")
+fn secret_arg() -> Arg {
+  Arg::new("secret")
+    .long("secret")
+    .value_name("ENV_VAR")
     .action(ArgAction::Append)
     // TODO(THIS PR): this
     .help("TODO")
