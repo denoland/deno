@@ -11,6 +11,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
   StringPrototypeToUpperCase,
+  StringPrototypeSlice
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
