@@ -45,3 +45,20 @@ Deno.test("[node/assert] error message from strictEqual should be the same as As
     { message },
   );
 });
+
+Deno.test("[node/assert] deepStrictEqual throws for different Number objects", () => {
+  // Test case from issue #31172
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new Number(1), new Number(2));
+    },
+    assert.AssertionError,
+  );
+});
+
+Deno.test("[node/assert] deepStrictEqual passes for equal Number objects", () => {
+  // Equal Number objects should pass
+  assert.doesNotThrow(() => {
+    assert.deepStrictEqual(new Number(1), new Number(1));
+  });
+});
