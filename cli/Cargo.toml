@@ -93,6 +93,7 @@ deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_typescript_go_client_rust.workspace = true
+deno_web.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }

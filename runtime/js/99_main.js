@@ -67,7 +67,7 @@ import {
 } from "ext:deno_web/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_web/00_url.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
+import * as fetch from "ext:deno_web/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {
   denoNs,

@@ -10,8 +10,6 @@ use bytes::Bytes;
 use deno_core::OpState;
 use deno_core::futures::Stream;
 use deno_error::JsErrorBox;
-use deno_fetch::CreateHttpClientOptions;
-use deno_fetch::create_http_client;
 use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -77,8 +75,8 @@ impl denokv_remote::RemotePermissions for PermissionChecker {
 }
 
 #[derive(Clone)]
-pub struct FetchClient(deno_fetch::Client);
-pub struct FetchResponse(http::Response<deno_fetch::ResBody>);
+pub struct FetchClient(deno_web::fetch::Client);
+pub struct FetchResponse(http::Response<deno_web::fetch::ResBody>);
 
 impl RemoteTransport for FetchClient {
   type Response = FetchResponse;
@@ -88,7 +86,7 @@ impl RemoteTransport for FetchClient {
     headers: http::HeaderMap,
     body: Bytes,
   ) -> Result<(Url, http::StatusCode, Self::Response), JsErrorBox> {
-    let body = deno_fetch::ReqBody::full(body);
+    let body = deno_web::fetch::ReqBody::full(body);
     let mut req = http::Request::new(body);
     *req.method_mut() = http::Method::POST;
     *req.uri_mut() =
@@ -172,9 +170,9 @@ impl DatabaseHandler for RemoteDbHandler {
     };
 
     let options = &self.http_options;
-    let client = create_http_client(
+    let client = deno_web::fetch::create_http_client(
       &options.user_agent,
-      CreateHttpClientOptions {
+      deno_web::fetch::CreateHttpClientOptions {
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
         proxy: options.proxy.clone(),

@@ -3,7 +3,6 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch;
 use serde::de::DeserializeOwned;
 
 use crate::http_util;
@@ -89,7 +88,7 @@ impl std::fmt::Debug for ApiError {
 impl std::error::Error for ApiError {}
 
 pub async fn parse_response<T: DeserializeOwned>(
-  response: http::Response<deno_fetch::ResBody>,
+  response: http::Response<deno_web::fetch::ResBody>,
 ) -> Result<T, ApiError> {
   let status = response.status();
   let x_deno_ray = response
@@ -138,7 +137,7 @@ pub async fn get_package(
   registry_api_url: &Url,
   scope: &str,
   package: &str,
-) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
+) -> Result<http::Response<deno_web::fetch::ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
   let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)

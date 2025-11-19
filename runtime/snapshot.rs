@@ -29,7 +29,6 @@ pub fn create_runtime_snapshot(
     deno_web::deno_web::lazy_init::<deno_web::InMemoryBroadcastChannel>(),
     deno_webgpu::deno_webgpu::lazy_init(),
     deno_canvas::deno_canvas::lazy_init(),
-    deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),

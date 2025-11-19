@@ -13,7 +13,6 @@ members = [
   "ext/canvas",
   "ext/cron",
   "ext/crypto",
-  "ext/fetch",
   "ext/ffi",
   "ext/fs",
   "ext/http",
@@ -91,7 +90,6 @@ deno_cache = { version = "0.153.0", path = "./ext/cache" }
 deno_canvas = { version = "0.90.0", path = "./ext/canvas" }
 deno_cron = { version = "0.101.0", path = "./ext/cron" }
 deno_crypto = { version = "0.235.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.245.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.208.0", path = "./ext/ffi" }
 deno_fs = { version = "0.131.0", path = "./ext/fs" }
 deno_http = { version = "0.219.0", path = "./ext/http" }
@@ -441,8 +439,6 @@ opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
 [profile.release.package.deno_crypto]
-opt-level = 3
-[profile.release.package.deno_fetch]
 opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3

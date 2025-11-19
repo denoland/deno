@@ -69,8 +69,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
-import { headersEntries } from "ext:deno_fetch/20_headers.js";
-import { Response } from "ext:deno_fetch/23_response.js";
+import { headersEntries } from "ext:deno_web/20_headers.js";
+import { Response } from "ext:deno_web/23_response.js";
 import {
   builtinTracer,
   ContextManager,

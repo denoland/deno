@@ -47,8 +47,8 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { extractBody, InnerBody } from "ext:deno_fetch/22_body.js";
-import { processUrlList, toInnerRequest } from "ext:deno_fetch/23_request.js";
+import { extractBody, InnerBody } from "ext:deno_web/22_body.js";
+import { processUrlList, toInnerRequest } from "ext:deno_web/23_request.js";
 import {
   abortedNetworkError,
   fromInnerResponse,
@@ -56,7 +56,7 @@ import {
   nullBodyStatus,
   redirectStatus,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
+} from "ext:deno_web/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,

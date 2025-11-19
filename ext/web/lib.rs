@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+pub mod fetch;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -110,6 +111,11 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_unsubscribe<BC>,
     broadcast_channel::op_broadcast_send<BC>,
     broadcast_channel::op_broadcast_recv<BC>,
+    fetch::op_fetch,
+    fetch::op_fetch_send,
+    fetch::op_utf8_to_byte_string,
+    fetch::op_fetch_custom_client,
+    fetch::op_fetch_promise_is_settled,
   ],
   esm = [
     "00_infra.js",
@@ -133,13 +139,22 @@ deno_core::extension!(deno_web,
     "00_url.js",
     "01_urlpattern.js",
     "01_console.js",
-    "01_broadcast_channel.js"
+    "01_broadcast_channel.js",
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js",
+    "27_eventsource.js"
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
     bc: BC,
+    fetch_options: fetch::Options,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -148,6 +163,7 @@ deno_core::extension!(deno_web,
     }
     state.put(StartTime::default());
     state.put(options.bc);
+    state.put::<fetch::Options>(options.fetch_options);
   }
 );
 

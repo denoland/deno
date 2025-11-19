@@ -71,8 +71,8 @@ import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} from "ext:deno_web/20_headers.js";
+import { HttpClientPrototype } from "ext:deno_web/22_http_client.js";
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",

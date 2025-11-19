@@ -9,7 +9,7 @@ import {
 } from "ext:core/ops";
 
 import * as timers from "ext:deno_web/02_timers.js";
-import * as httpClient from "ext:deno_fetch/22_http_client.js";
+import * as httpClient from "ext:deno_web/22_http_client.js";
 import * as console from "ext:deno_web/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";

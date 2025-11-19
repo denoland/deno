@@ -31,6 +31,7 @@ pub mod ops;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
+pub use deno_web;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;

@@ -47,7 +47,7 @@ import {
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "ext:deno_fetch/21_formdata.js";
+} from "ext:deno_web/21_formdata.js";
 import * as mimesniff from "ext:deno_web/01_mimesniff.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
