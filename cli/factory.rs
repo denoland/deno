@@ -1078,11 +1078,11 @@ impl CliFactory {
       create_npm_process_state_provider(npm_resolver),
       pkg_json_resolver.clone(),
       self.root_cert_store_provider().clone(),
-      cli_options.resolve_storage_key_resolver(),
       Arc::new(SecretsReplacer::new(
         &self.sys(),
         cli_options.secret_env_var_names(),
       )),
+      cli_options.resolve_storage_key_resolver(),
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
