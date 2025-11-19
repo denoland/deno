@@ -388,16 +388,14 @@ async function listTopLevelFiles() {
   const files = await gitLsFiles(ROOT_PATH, []);
   return [
     ...new Set(
-      files.map((f) => f.replace(ROOT_PATH + "/", "")).filter((file) =>
-        !file.includes("/")
-      ),
+      files.map((f) => f.replace(ROOT_PATH.replace(/\/$/, "") + "/", ""))
+        .filter((file) => !file.includes("/")),
     ),
   ].sort();
 }
 
 async function ensureNoNewTopLevelFiles() {
   const currentFiles = await listTopLevelFiles();
-  console.log(currentFiles);
 
   const allowedFiles = [
     ".dlint.json",
