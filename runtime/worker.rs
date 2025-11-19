@@ -530,41 +530,34 @@ impl MainWorker {
 
     js_runtime
       .lazy_init_extensions(vec![
-        deno_web::deno_web::args::<
-          PermissionsContainer,
-          InMemoryBroadcastChannel,
-        >(
+        deno_web::deno_web::args::<InMemoryBroadcastChannel>(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
           services.broadcast_channel.clone(),
         ),
-        deno_fetch::deno_fetch::args::<PermissionsContainer>(
-          deno_fetch::Options {
-            user_agent: options.bootstrap.user_agent.clone(),
-            root_cert_store_provider: services.root_cert_store_provider.clone(),
-            unsafely_ignore_certificate_errors: options
-              .unsafely_ignore_certificate_errors
-              .clone(),
-            file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-            resolver: services.fetch_dns_resolver,
-            ..Default::default()
-          },
-        ),
+        deno_fetch::deno_fetch::args(deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store_provider: services.root_cert_store_provider.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          resolver: services.fetch_dns_resolver,
+          ..Default::default()
+        }),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
+        deno_websocket::deno_websocket::args(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
         deno_crypto::deno_crypto::args(options.seed),
-        deno_ffi::deno_ffi::args::<PermissionsContainer>(
-          services.deno_rt_native_addon_loader.clone(),
-        ),
-        deno_net::deno_net::args::<PermissionsContainer>(
+        deno_ffi::deno_ffi::args(services.deno_rt_native_addon_loader.clone()),
+        deno_net::deno_net::args(
           services.root_cert_store_provider.clone(),
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         deno_kv::deno_kv::args(
-          MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+          MultiBackendDbHandler::remote_or_sqlite(
             options.origin_storage_dir.clone(),
             options.seed,
             deno_kv::remote::HttpOptions {
@@ -581,7 +574,7 @@ impl MainWorker {
           ),
           deno_kv::KvConfig::builder().build(),
         ),
-        deno_napi::deno_napi::args::<PermissionsContainer>(
+        deno_napi::deno_napi::args(
           services.deno_rt_native_addon_loader.clone(),
         ),
         deno_http::deno_http::args(deno_http::Options {
@@ -589,11 +582,10 @@ impl MainWorker {
           ..Default::default()
         }),
         deno_io::deno_io::args(Some(options.stdio)),
-        deno_fs::deno_fs::args::<PermissionsContainer>(services.fs.clone()),
+        deno_fs::deno_fs::args(services.fs.clone()),
         deno_os::deno_os::args(Some(exit_code.clone())),
         deno_process::deno_process::args(services.npm_process_state_provider),
         deno_node::deno_node::args::<
-          PermissionsContainer,
           TInNpmPackageChecker,
           TNpmPackageFolderResolver,
           TExtNodeSys,
@@ -1051,30 +1043,26 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::lazy_init::<
-      PermissionsContainer,
-      InMemoryBroadcastChannel,
-    >(),
+    deno_web::deno_web::lazy_init::<InMemoryBroadcastChannel>(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
+    deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
-    deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
+    deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
-    deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
-    deno_net::deno_net::lazy_init::<PermissionsContainer>(),
+    deno_ffi::deno_ffi::lazy_init(),
+    deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
     deno_cron::deno_cron::init(LocalCronHandler::new()),
-    deno_napi::deno_napi::lazy_init::<PermissionsContainer>(),
+    deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
-    deno_fs::deno_fs::lazy_init::<PermissionsContainer>(),
+    deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
     deno_node::deno_node::lazy_init::<
-      PermissionsContainer,
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
       TExtNodeSys,
