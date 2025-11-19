@@ -572,8 +572,6 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
-    eprintln!("purls {:#?}", purls.len());
-
     let futures = purls
       .into_iter()
       .map(|purl| {
@@ -591,18 +589,11 @@ mod socket_dev {
       .collect::<Vec<_>>();
 
     let start = std::time::Instant::now();
-    eprintln!("starting socket requests");
 
     let purl_results = futures::stream::iter(futures)
       .buffer_unordered(20)
       .collect::<Vec<_>>()
       .await;
-
-    eprintln!(
-      "socket requests took {:?}",
-      std::time::Instant::now() - start
-    );
-
     let mut purl_responses = purl_results
       .into_iter()
       .filter_map(|result| match result {
@@ -620,13 +611,163 @@ mod socket_dev {
       .collect::<Vec<_>>();
     purl_responses.sort_by_cached_key(|r| r.name.to_string());
 
-    let stdout = &mut std::io::stdout();
-
-    for response in purl_responses {
-      _ = writeln!(stdout, "{:?}", response);
-    }
+    print_firewall_report(&purl_responses);
 
     Ok(())
+  }
+
+  fn print_firewall_report(responses: &[FirewallResponse]) {
+    let stdout = &mut std::io::stdout();
+
+    // Separator
+    _ = writeln!(stdout);
+    _ = writeln!(stdout, "{}", colors::bold("Socket.dev firewall report"));
+    _ = writeln!(stdout);
+
+    // Count total alerts by severity
+    let mut total_critical = 0;
+    let mut total_high = 0;
+    let mut total_medium = 0;
+    let mut total_low = 0;
+    let mut packages_with_issues = 0;
+
+    for response in responses {
+      if response.alerts.is_empty() && response.score.is_none() {
+        continue;
+      }
+
+      packages_with_issues += 1;
+
+      _ = writeln!(stdout, "╭ pkg:npm/{}@{}", response.name, response.version);
+
+      // Print scores if available
+      if let Some(score) = &response.score {
+        _ = writeln!(
+          stdout,
+          "│ {:<20} {:>3}",
+          colors::gray("Supply Chain Risk:"),
+          format_score(score.supply_chain)
+        );
+        _ = writeln!(
+          stdout,
+          "│ {:<20} {:>3}",
+          colors::gray("Maintenance:"),
+          format_score(score.maintenance)
+        );
+        _ = writeln!(
+          stdout,
+          "│ {:<20} {:>3}",
+          colors::gray("Quality:"),
+          format_score(score.quality)
+        );
+        _ = writeln!(
+          stdout,
+          "│ {:<20} {:>3}",
+          colors::gray("Vulnerabilities:"),
+          format_score(score.vulnerability)
+        );
+        _ = writeln!(
+          stdout,
+          "│ {:<20} {:>3}",
+          colors::gray("License:"),
+          format_score(score.license)
+        );
+      }
+
+      // Count alerts by severity
+      let mut critical_count = 0;
+      let mut medium_count = 0;
+      let mut low_count = 0;
+
+      for alert in &response.alerts {
+        match alert.severity.as_str() {
+          "critical" => {
+            total_critical += 1;
+            critical_count += 1;
+          }
+          "high" => {
+            total_high += 1;
+            critical_count += 1;
+          }
+          "medium" => {
+            total_medium += 1;
+            medium_count += 1;
+          }
+          "low" => {
+            total_low += 1;
+            low_count += 1;
+          }
+          _ => {}
+        }
+      }
+
+      if !response.alerts.is_empty() {
+        let alerts_str = response
+          .alerts
+          .iter()
+          .map(|alert| {
+            let severity_bracket = match alert.severity.as_str() {
+              "critical" => colors::red("critical").to_string(),
+              "high" => colors::red("high").to_string(),
+              "medium" => colors::yellow("medium").to_string(),
+              "low" => "low".to_string(),
+              _ => alert.severity.clone(),
+            };
+            format!("[{}] {}", severity_bracket, alert.r#type)
+          })
+          .collect::<Vec<_>>()
+          .join(", ");
+
+        let label = format!(
+          "Alerts ({}/{}/{}):",
+          critical_count, medium_count, low_count
+        );
+        _ = writeln!(stdout, "╰ {:<20} {}", colors::gray(&label), alerts_str);
+      } else {
+        _ = writeln!(stdout, "╰");
+      }
+      _ = writeln!(stdout);
+    }
+
+    let total_alerts = total_critical + total_high + total_medium + total_low;
+
+    if total_alerts == 0 && packages_with_issues == 0 {
+      _ = writeln!(stdout, "No security alerts found from Socket.dev");
+      return;
+    }
+
+    if total_alerts > 0 {
+      _ = writeln!(
+        stdout,
+        "Found {} alerts across {} packages",
+        colors::red(total_alerts),
+        colors::bold(packages_with_issues)
+      );
+      _ = writeln!(
+        stdout,
+        "Severity: {} {}, {} {}, {} {}, {} {}",
+        colors::bold(total_low),
+        colors::bold("low"),
+        colors::yellow(total_medium),
+        colors::yellow("medium"),
+        colors::red(total_high),
+        colors::red("high"),
+        colors::red(total_critical),
+        colors::red("critical"),
+      );
+    }
+  }
+
+  fn format_score(score: f64) -> String {
+    let percentage = (score * 100.0) as i32;
+    let colored = if percentage >= 80 {
+      colors::green(percentage)
+    } else if percentage >= 60 {
+      colors::yellow(percentage)
+    } else {
+      colors::red(percentage)
+    };
+    format!("{}", colored)
   }
 
   #[derive(Debug, Deserialize)]

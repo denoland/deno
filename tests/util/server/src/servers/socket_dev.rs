@@ -129,7 +129,9 @@ async fn socket_dev_handler(
       "supplyChain": 1.0,
       "vulnerability": 1.0
     },
-    "alerts": []
+    "alerts": [
+      { "type": "malware", "action": "error", "severity": "critical", "category": "supplyChainRisk" }
+    ]
   });
 
   let response_body = response_json.to_string();

@@ -37,7 +37,9 @@ async function testSocketDevServer() {
 
   for (const testCase of testCases) {
     const url = testCase.url ||
-      `http://localhost:${SOCKET_DEV_PORT}/purl/${encodeURIComponent(testCase.purl)}`;
+      `http://localhost:${SOCKET_DEV_PORT}/purl/${
+        encodeURIComponent(testCase.purl)
+      }`;
 
     try {
       const response = await fetch(url);
@@ -55,10 +57,14 @@ async function testSocketDevServer() {
             const expectedVersion = parts[parts.length - 1];
 
             if (data.name !== expectedName) {
-              console.log(`  ⚠️  Expected name ${expectedName}, got ${data.name}`);
+              console.log(
+                `  ⚠️  Expected name ${expectedName}, got ${data.name}`,
+              );
             }
             if (data.version !== expectedVersion) {
-              console.log(`  ⚠️  Expected version ${expectedVersion}, got ${data.version}`);
+              console.log(
+                `  ⚠️  Expected version ${expectedVersion}, got ${data.version}`,
+              );
             }
           }
         } else {
