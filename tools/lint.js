@@ -386,7 +386,13 @@ async function ensureNoUnusedOutFiles() {
 
 async function listTopLevelFiles() {
   const files = await gitLsFiles(ROOT_PATH, []);
-  return [...new Set(files.map((f) => f.replace(ROOT_PATH + "/", "")).filter((file) => !file.includes("/")))].sort();
+  return [
+    ...new Set(
+      files.map((f) => f.replace(ROOT_PATH + "/", "")).filter((file) =>
+        !file.includes("/")
+      ),
+    ),
+  ].sort();
 }
 
 async function ensureNoNewTopLevelFiles() {
