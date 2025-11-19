@@ -723,7 +723,7 @@ fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
   Allow(&'a TAllowDesc),
-  Deny(&'a TAllowDesc::DenyDesc, /* precedence */ u8),
+  Deny(&'a TAllowDesc::DenyDesc, /* ordering */ u8),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

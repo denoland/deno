@@ -1546,7 +1546,7 @@ fn flags_to_permissions_options(
     }
   }
 
-  fn handle_deny(
+  fn handle_deny_or_ignore(
     value: Option<&Vec<String>>,
     config: Option<&PermissionConfigValue>,
     parse_config_value: &impl Fn(&str) -> String,
@@ -1616,12 +1616,12 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.env.allow.as_ref()),
       &identity,
     ),
-    deny_env: handle_deny(
+    deny_env: handle_deny_or_ignore(
       flags.deny_env.as_ref(),
       config.and_then(|c| c.permissions.env.deny.as_ref()),
       &identity,
     ),
-    ignore_env: handle_deny(
+    ignore_env: handle_deny_or_ignore(
       flags.ignore_env.as_ref(),
       config.and_then(|c| c.permissions.env.ignore.as_ref()),
       &identity,
@@ -1633,7 +1633,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.net.allow.as_ref()),
       &identity,
     ),
-    deny_net: handle_deny(
+    deny_net: handle_deny_or_ignore(
       flags.deny_net.as_ref(),
       config.and_then(|c| c.permissions.net.deny.as_ref()),
       &identity,
@@ -1645,7 +1645,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.ffi.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_ffi: handle_deny(
+    deny_ffi: handle_deny_or_ignore(
       flags.deny_ffi.as_ref(),
       config.and_then(|c| c.permissions.ffi.deny.as_ref()),
       &make_fs_config_value_absolute,
@@ -1657,7 +1657,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.read.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_read: handle_deny(
+    deny_read: handle_deny_or_ignore(
       flags.deny_read.as_ref(),
       config.and_then(|c| c.permissions.read.deny.as_ref()),
       &make_fs_config_value_absolute,
@@ -1669,7 +1669,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.run.allow.as_ref()),
       &make_run_config_value_absolute,
     ),
-    deny_run: handle_deny(
+    deny_run: handle_deny_or_ignore(
       flags.deny_run.as_ref(),
       config.and_then(|c| c.permissions.run.deny.as_ref()),
       &make_run_config_value_absolute,
@@ -1681,7 +1681,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.sys.allow.as_ref()),
       &identity,
     ),
-    deny_sys: handle_deny(
+    deny_sys: handle_deny_or_ignore(
       flags.deny_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.deny.as_ref()),
       &identity,
@@ -1693,7 +1693,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.write.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_write: handle_deny(
+    deny_write: handle_deny_or_ignore(
       flags.deny_write.as_ref(),
       config.and_then(|c| c.permissions.write.deny.as_ref()),
       &make_fs_config_value_absolute,
@@ -1705,7 +1705,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.import.allow.as_ref()),
       &identity,
     ),
-    deny_import: handle_deny(
+    deny_import: handle_deny_or_ignore(
       flags.deny_import.as_ref(),
       config.and_then(|c| c.permissions.import.deny.as_ref()),
       &identity,
