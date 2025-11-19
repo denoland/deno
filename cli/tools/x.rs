@@ -254,7 +254,11 @@ pub async fn run(
       let npm_resolver = factory.npm_resolver().await?;
       let node_resolver = factory.node_resolver().await?;
       let bins = resolve_local_bins(&node_resolver, &npm_resolver)?;
-      println!("Available commands:");
+      if bins.is_empty() {
+        println!("No local commands found");
+        return Ok(0);
+      }
+      println!("Available (local) commands:");
       for command in bins.keys() {
         println!("  {}", command);
       }
