@@ -50,7 +50,7 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
-function gitLsFiles(baseDir, patterns) {
+export function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
