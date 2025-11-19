@@ -17,7 +17,11 @@ const {
   Symbol,
   SymbolToPrimitive,
 } = primordials;
-
+import {
+  op_immediate_count,
+  op_immediate_ref_count,
+  op_immediate_set_has_outstanding,
+} from "ext:core/ops";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   validateFunction,
@@ -39,7 +43,7 @@ export { kTimerId } from "ext:deno_web/02_timers.js";
 export const TIMEOUT_MAX = 2 ** 31 - 1;
 
 export const kTimeout = Symbol("timeout");
-const kRefed = Symbol("refed");
+export const kRefed = Symbol("refed");
 const createTimer = Symbol("createTimer");
 
 /**
@@ -213,7 +217,7 @@ class ImmediateList {
 }
 
 // Create a single linked list instance only once at startup
-const immediateQueue = new ImmediateList();
+export const immediateQueue = new ImmediateList();
 // If an uncaught exception was thrown during execution of immediateQueue,
 // this queue will store all remaining Immediates that need to run upon
 // resolution of all error handling (if process is still alive).
@@ -224,14 +228,14 @@ export function runImmediates() {
     ? outstandingQueue
     : immediateQueue;
   let immediate = queue.head;
+  console.log("runImmediates called");
   // console.log("running immediates", immediate);
   // Clear the linked list early in case new `setImmediate()`
   // calls occur while immediate callbacks are executed
   if (queue !== outstandingQueue) {
     console.log("using regular queue");
     queue.head = queue.tail = null;
-    // TODO:
-    // immediateInfo[kHasOutstanding] = 1;
+    op_immediate_set_has_outstanding(true);
   } else {
     console.log("using outstanding queue");
   }
@@ -254,15 +258,11 @@ export function runImmediates() {
       continue;
     }
 
-    // TODO(RaisinTen): Destroy and unref the Immediate after _onImmediate()
-    // gets executed, just like how Timeouts work.
     immediate._destroyed = true;
 
-    // TODO:
-    // immediateInfo[kCount]--;
+    op_immediate_count(false);
     if (immediate[kRefed]) {
-      // TODO:
-      // immediateInfo[kRefCount]--;
+      op_immediate_ref_count(false);
     }
     immediate[kRefed] = null;
 
@@ -308,12 +308,7 @@ export function runImmediates() {
     outstandingQueue.head = null;
   }
 
-  // console.log("has run immediate, does have next?", immediate);
-  if (!queue.head) {
-    core.setHasImmediateScheduled(false);
-  }
-  // TODO:
-  // immediateInfo[kHasOutstanding] = 0;
+  op_immediate_set_has_outstanding(false);
 }
 
 export class Immediate {
@@ -341,22 +336,15 @@ export class Immediate {
     // initAsyncResource(this, "Immediate");
 
     this.ref();
-    // TODO:
-    // immediateInfo[kCount]++;
+    op_immediate_count(true);
 
     immediateQueue.append(this);
-    core.setHasImmediateScheduled(true);
   }
 
   ref() {
     if (this[kRefed] === false) {
       this[kRefed] = true;
-
-      // TODO:
-      // if (immediateInfo[kRefCount]++ === 0) {
-      //   // We need to use the binding as the receiver for fast API calls.
-      //   binding.toggleImmediateRef(true);
-      // }
+      op_immediate_ref_count(true);
     }
     return this;
   }
@@ -364,11 +352,7 @@ export class Immediate {
   unref() {
     if (this[kRefed] === true) {
       this[kRefed] = false;
-      // TODO:
-      // if (--immediateInfo[kRefCount] === 0) {
-      //   // We need to use the binding as the receiver for fast API calls.
-      //   binding.toggleImmediateRef(false);
-      // }
+      op_immediate_ref_count(false);
     }
     return this;
   }
