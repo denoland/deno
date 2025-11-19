@@ -882,7 +882,6 @@
       "items": {
         "type": "string",
         "examples": [
-          "broadcast-channel",
           "bare-node-builtins",
           "byonm",
           "cron",
