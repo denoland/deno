@@ -34,9 +34,9 @@ where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
-  let npm_registry_addr = SocketAddr::from(([127, 0, 0, 1], port));
+  let socket_dev_addr = SocketAddr::from(([127, 0, 0, 1], port));
   vec![
-    run_socket_dev_server_for_addr(npm_registry_addr, error_msg, handler)
+    run_socket_dev_server_for_addr(socket_dev_addr, error_msg, handler)
       .boxed_local(),
   ]
 }
