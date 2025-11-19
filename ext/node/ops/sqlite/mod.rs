@@ -123,6 +123,10 @@ pub enum SqliteError {
   #[error(transparent)]
   #[property("code" = self.code())]
   Validation(#[from] validators::Error),
+  #[class(generic)]
+  #[error("statement has been finalized")]
+  #[property("code" = self.code())]
+  StatementFinalized,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -181,7 +185,8 @@ impl SqliteError {
       | Self::DuplicateNamedParameter(..)
       | Self::AlreadyClosed
       | Self::InUse
-      | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
+      | Self::AlreadyOpen
+      | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,
