@@ -8,9 +8,10 @@ import {
   fromFileUrl,
   join,
   resolve,
+  SEPARATOR,
   toFileUrl,
 } from "@std/path";
-export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
+export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";

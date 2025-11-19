@@ -12,6 +12,7 @@ import {
   join,
   parseJSONC,
   ROOT_PATH,
+  SEPARATOR,
   walk,
 } from "./util.js";
 import { assertEquals } from "@std/assert";
@@ -388,8 +389,13 @@ async function listTopLevelFiles() {
   const files = await gitLsFiles(ROOT_PATH, []);
   return [
     ...new Set(
-      files.map((f) => f.replace(ROOT_PATH.replace(/\/$/, "") + "/", ""))
-        .filter((file) => !file.includes("/")),
+      files.map((f) =>
+        f.replace(
+          ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") + SEPARATOR,
+          "",
+        )
+      )
+        .filter((file) => !file.includes(SEPARATOR)),
     ),
   ].sort();
 }
