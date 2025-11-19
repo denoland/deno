@@ -81,6 +81,28 @@ fn standalone_args() {
       "--output",
       &exe.to_string_lossy(),
       "./compile/args.ts",
+      "--",
+      "a",
+      "b",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .args("foo --bar --unstable")
+    .run()
+    .assert_exit_code(0)
+    .assert_matches_text("a\nb\nfoo\n--bar\n--unstable\n");
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "./compile/args.ts",
+      "--output",
+      &exe.to_string_lossy(),
+      "--",
       "a",
       "b",
     ])
