@@ -496,7 +496,7 @@ interface ErrorEvent extends Event {
 /** @category Events */
 declare var ErrorEvent: {
   readonly prototype: ErrorEvent;
-  new(type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
+  new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
 };
 
 /** @category Events */
@@ -514,7 +514,7 @@ interface PromiseRejectionEvent extends Event {
 /** @category Events */
 declare var PromiseRejectionEvent: {
   readonly prototype: PromiseRejectionEvent;
-  new(
+  new (
     type: string,
     eventInitDict?: PromiseRejectionEventInit,
   ): PromiseRejectionEvent;
@@ -723,7 +723,7 @@ declare var Worker: {
    * // };
    * ```
    */
-  new(specifier: string | URL, options?: WorkerOptions): Worker;
+  new (specifier: string | URL, options?: WorkerOptions): Worker;
 };
 
 /** @category Performance */
@@ -777,7 +777,7 @@ interface Performance extends EventTarget {
 /** @category Performance */
 declare var Performance: {
   readonly prototype: Performance;
-  new(): never;
+  new (): never;
 };
 
 /** @category Performance */
@@ -832,7 +832,7 @@ interface PerformanceEntry {
  */
 declare var PerformanceEntry: {
   readonly prototype: PerformanceEntry;
-  new(): never;
+  new (): never;
 };
 
 /** `PerformanceMark` is an abstract interface for `PerformanceEntry` objects
@@ -856,7 +856,7 @@ interface PerformanceMark extends PerformanceEntry {
  */
 declare var PerformanceMark: {
   readonly prototype: PerformanceMark;
-  new(name: string, options?: PerformanceMarkOptions): PerformanceMark;
+  new (name: string, options?: PerformanceMarkOptions): PerformanceMark;
 };
 
 /** `PerformanceMeasure` is an abstract interface for `PerformanceEntry` objects
@@ -880,7 +880,7 @@ interface PerformanceMeasure extends PerformanceEntry {
  */
 declare var PerformanceMeasure: {
   readonly prototype: PerformanceMeasure;
-  new(): never;
+  new (): never;
 };
 
 /** @category Events */

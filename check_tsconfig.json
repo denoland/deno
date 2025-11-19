@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+    "types": [],
+    "skipLibCheck": false,
+    "noEmit": true
+  },
+  "files": [
+    "./check_ns.ts"
+  ]
+}

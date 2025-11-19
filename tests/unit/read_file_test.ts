@@ -1,4 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
+/// <reference path="../../cli/tsc/dts/lib.dom.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno.ns.d.ts" />
+
 import {
   assert,
   assertEquals,
@@ -161,7 +164,11 @@ Deno.test(
     try {
       await Deno.readFile("definitely-not-found.json");
     } catch (e) {
-      assertEquals((e as { code: string }).code, "ENOENT");
+      if (e instanceof Deno.errors.NotFound) {
+        assertEquals(e.code, "ENOENT");
+      } else {
+        throw e;
+      }
     }
   },
 );
@@ -172,7 +179,11 @@ Deno.test(
     try {
       await Deno.readFile("tests/testdata/assets/");
     } catch (e) {
-      assertEquals((e as { code: string }).code, "EISDIR");
+      if (e instanceof Deno.errors.IsADirectory) {
+        assertEquals(e.code, "EISDIR");
+      } else {
+        throw e;
+      }
     }
   },
 );

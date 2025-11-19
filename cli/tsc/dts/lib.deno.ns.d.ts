@@ -9,7 +9,6 @@
 /// <reference path="./lib.deno.shared_globals.d.ts" />
 /// <reference path="./lib.deno_websocket.d.ts" />
 
-
 /** Deno provides extra properties on `import.meta`. These are included here
  * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`.
@@ -277,7 +276,7 @@ declare namespace Deno {
      * operation being performed.
      *
      * @category Errors */
-    export class InvalidData extends Error { }
+    export class InvalidData extends Error {}
     /**
      * Raised when the underlying operating system reports that an I/O operation
      * has timed out (`ETIMEDOUT`).
@@ -308,7 +307,7 @@ declare namespace Deno {
      * being written.
      *
      * @category Errors */
-    export class WriteZero extends Error { }
+    export class WriteZero extends Error {}
     /**
      * Raised when attempting to read bytes from a resource, but the EOF was
      * unexpectedly encountered.
@@ -322,13 +321,13 @@ declare namespace Deno {
      * could not be performed.
      *
      * @category Errors */
-    export class BadResource extends Error { }
+    export class BadResource extends Error {}
     /**
      * Raised in situations where when attempting to load a dynamic import,
      * too many redirects were encountered.
      *
      * @category Errors */
-    export class Http extends Error { }
+    export class Http extends Error {}
     /**
      * Raised when the underlying IO resource is not available because it is
      * being awaited on in another block of code.
@@ -342,7 +341,7 @@ declare namespace Deno {
      * is not currently supported.
      *
      * @category Errors */
-    export class NotSupported extends Error { }
+    export class NotSupported extends Error {}
     /**
      * Raised when too many symbolic links were encountered when resolving the
      * filename.
@@ -383,9 +382,9 @@ declare namespace Deno {
      * error.
      *
      * @category Errors */
-    export class NotCapable extends Error { }
+    export class NotCapable extends Error {}
 
-    export { }; // only export exports
+    export {}; // only export exports
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -3583,13 +3582,13 @@ declare namespace Deno {
   export interface FsEvent {
     /** The kind/type of the file system event. */
     kind:
-    | "any"
-    | "access"
-    | "create"
-    | "modify"
-    | "rename"
-    | "remove"
-    | "other";
+      | "any"
+      | "access"
+      | "create"
+      | "modify"
+      | "rename"
+      | "remove"
+      | "other";
     /** An array of paths that are associated with the file system event. */
     paths: string[];
     /** Any additional flags associated with the event. */
@@ -4205,20 +4204,20 @@ declare namespace Deno {
     name: "sys";
     /** The specific information to scope the permission to. */
     kind?:
-    | "loadavg"
-    | "hostname"
-    | "systemMemoryInfo"
-    | "networkInterfaces"
-    | "osRelease"
-    | "osUptime"
-    | "uid"
-    | "gid"
-    | "username"
-    | "cpus"
-    | "homedir"
-    | "statfs"
-    | "getPriority"
-    | "setPriority";
+      | "loadavg"
+      | "hostname"
+      | "systemMemoryInfo"
+      | "networkInterfaces"
+      | "osRelease"
+      | "osUptime"
+      | "uid"
+      | "gid"
+      | "username"
+      | "cpus"
+      | "homedir"
+      | "statfs"
+      | "getPriority"
+      | "setPriority";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -4518,15 +4517,15 @@ declare namespace Deno {
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
     os:
-    | "darwin"
-    | "linux"
-    | "android"
-    | "windows"
-    | "freebsd"
-    | "netbsd"
-    | "aix"
-    | "solaris"
-    | "illumos";
+      | "darwin"
+      | "linux"
+      | "android"
+      | "windows"
+      | "freebsd"
+      | "netbsd"
+      | "aix"
+      | "solaris"
+      | "illumos";
     standalone: boolean;
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
@@ -5789,20 +5788,20 @@ declare namespace Deno {
   export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-    : T extends NativeI8Enum<infer U> ? U
-    : T extends NativeU16Enum<infer U> ? U
-    : T extends NativeI16Enum<infer U> ? U
-    : T extends NativeU32Enum<infer U> ? U
-    : T extends NativeI32Enum<infer U> ? U
-    : number
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-    ? T extends NativeTypedPointer<infer U> ? U | null
-    : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeFunctionType
-    ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-    : PointerValue
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
     : T extends NativeBufferType ? BufferSource | null
     : never;
 
@@ -5814,20 +5813,20 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-    : T extends NativeI8Enum<infer U> ? U
-    : T extends NativeU16Enum<infer U> ? U
-    : T extends NativeI16Enum<infer U> ? U
-    : T extends NativeU32Enum<infer U> ? U
-    : T extends NativeI32Enum<infer U> ? U
-    : number
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-    ? T extends NativeTypedPointer<infer U> ? U | null
-    : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeFunctionType
-    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-    : PointerValue
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
     : T extends NativeBufferType ? BufferSource | null
     : T extends NativeVoidType ? void
     : never;
@@ -5839,11 +5838,11 @@ declare namespace Deno {
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [T[number][]] extends [T] ? ToNativeType<T[number]>[]
-    : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
-    : T extends readonly [...NativeType[]] ? {
-      [K in keyof T]: ToNativeType<T[K]>;
-    }
-    : never;
+      : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
+      : never;
 
   /** Type conversion for foreign symbol return types and unsafe callback
    * parameters.
@@ -5853,21 +5852,21 @@ declare namespace Deno {
   export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-    : T extends NativeI8Enum<infer U> ? U
-    : T extends NativeU16Enum<infer U> ? U
-    : T extends NativeI16Enum<infer U> ? U
-    : T extends NativeU32Enum<infer U> ? U
-    : T extends NativeI32Enum<infer U> ? U
-    : number
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-    ? T extends NativeTypedPointer<infer U> ? U | null
-    : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
-    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-    : PointerValue
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
     : never;
 
   /** Type conversion for foreign symbol return types.
@@ -5878,21 +5877,21 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-    : T extends NativeI8Enum<infer U> ? U
-    : T extends NativeU16Enum<infer U> ? U
-    : T extends NativeI16Enum<infer U> ? U
-    : T extends NativeU32Enum<infer U> ? U
-    : T extends NativeI32Enum<infer U> ? U
-    : number
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-    ? T extends NativeTypedPointer<infer U> ? U | null
-    : PointerValue
+      ? T extends NativeTypedPointer<infer U> ? U | null
+      : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
-    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-    : PointerValue
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
     : T extends NativeVoidType ? void
     : never;
 
@@ -5901,12 +5900,12 @@ declare namespace Deno {
   export type FromNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [T[number][]] extends [T] ? FromNativeType<T[number]>[]
-    : [readonly T[number][]] extends [T]
-    ? readonly FromNativeType<T[number]>[]
-    : T extends readonly [...NativeType[]] ? {
-      [K in keyof T]: FromNativeType<T[K]>;
-    }
-    : never;
+      : [readonly T[number][]] extends [T]
+        ? readonly FromNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
+      : never;
 
   /** The interface for a foreign function as defined by its parameter and result
    * types.
@@ -5964,16 +5963,16 @@ declare namespace Deno {
    */
   export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
-    : T extends ForeignStatic ? FromNativeType<T["type"]>
-    : never;
+      : T extends ForeignStatic ? FromNativeType<T["type"]>
+      : never;
 
   /**  @category FFI
    */
   export type FromForeignFunction<T extends ForeignFunction> =
     T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
-    : (
-      ...args: ToNativeParameterTypes<T["parameters"]>
-    ) => StaticForeignSymbolReturnType<T>;
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
 
   /** @category FFI
    */
@@ -5994,8 +5993,8 @@ declare namespace Deno {
   export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
     {
       [K in keyof T]: T[K]["optional"] extends true
-      ? StaticForeignSymbol<T[K]> | null
-      : StaticForeignSymbol<T[K]>;
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
     };
 
   /** A non-null pointer, represented as an object
@@ -6193,7 +6192,7 @@ declare namespace Deno {
    */
   export class UnsafeCallback<
     const Definition extends UnsafeCallbackDefinition =
-    UnsafeCallbackDefinition,
+      UnsafeCallbackDefinition,
   > {
     constructor(
       definition: Definition,
@@ -6571,8 +6570,8 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     export const meterProvider: any;
 
-    export { }; // only export exports
+    export {}; // only export exports
   }
 
-  export { }; // only export exports
+  export {}; // only export exports
 }
