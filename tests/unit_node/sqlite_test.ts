@@ -257,6 +257,44 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   db.close();
 });
 
+Deno.test("[node/sqlite] StatementSync unknown named parameters should throw", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE foo (id INTEGER PRIMARY KEY, variable1 TEXT NOT NULL, variable2 INT NOT NULL)",
+  );
+
+  const stmt = db.prepare(
+    "INSERT INTO foo (variable1, variable2) VALUES (:variable1, :variable2) RETURNING id",
+  );
+
+  assertThrows(() =>
+    stmt.run(
+      { variable1: "bar", variable2: 1, variable3: "baz" },
+    )
+  );
+
+  db.close();
+});
+
+// https://github.com/denoland/deno/issues/31196
+Deno.test("[node/sqlite] StatementSync unknown named parameters can be ignored", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE foo (id INTEGER PRIMARY KEY, variable1 TEXT NOT NULL, variable2 INT NOT NULL)",
+  );
+
+  const stmt = db.prepare(
+    "INSERT INTO foo (variable1, variable2) VALUES (:variable1, :variable2) RETURNING id",
+  );
+  stmt.setAllowUnknownNamedParameters(true);
+
+  const result = stmt.run({ variable1: "bar", variable2: 1, variable3: "baz" });
+
+  assertEquals(result, { lastInsertRowid: 1, changes: 1 });
+
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const db = new DatabaseSync(":memory:");
   const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
@@ -399,4 +437,27 @@ Deno.test("[node/sqlite] Database backup", async () => {
 
   Deno.removeSync(`${tempDir}/original.db`);
   Deno.removeSync(`${tempDir}/backup.db`);
+});
+
+Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+  const errMessage = "statement has been finalized";
+
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (value INTEGER)");
+  const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  stmt.run(1, 2);
+  db.close();
+
+  assertThrows(() => stmt.all(), Error, errMessage);
+  assertThrows(() => stmt.expandedSQL, Error, errMessage);
+  assertThrows(() => stmt.get(), Error, errMessage);
+  assertThrows(() => stmt.iterate(), Error, errMessage);
+  assertThrows(() => stmt.setAllowBareNamedParameters(true), Error, errMessage);
+  assertThrows(
+    () => stmt.setAllowUnknownNamedParameters(true),
+    Error,
+    errMessage,
+  );
+  assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
+  assertThrows(() => stmt.sourceSQL, Error, errMessage);
 });

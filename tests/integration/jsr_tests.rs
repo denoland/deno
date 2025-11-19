@@ -96,7 +96,7 @@ fn fast_check_cache() {
     .args("check --all main.ts")
     .run()
     .assert_matches_text(
-      "Check file:///[WILDCARD]main.ts
+      "Check main.ts
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~

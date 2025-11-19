@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 79;
+const cacheVersion = 80;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -299,9 +299,16 @@ function withCondition(
   step: Record<string, unknown>,
   condition: string,
 ): Record<string, unknown> {
+  function maybeParens(condition: string) {
+    if (condition.includes("&&") || condition.includes("||")) {
+      return `(${condition})`;
+    } else {
+      return condition;
+    }
+  }
   return {
     ...step,
-    if: "if" in step ? `${condition} && (${step.if})` : condition,
+    if: "if" in step ? `${maybeParens(condition)} && (${step.if})` : condition,
   };
 }
 
@@ -1181,6 +1188,12 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 30,
+      defaults: {
+        run: {
+          shell: "bash",
+        },
+      },
       strategy: {
         matrix: {
           include: [{

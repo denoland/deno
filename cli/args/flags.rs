@@ -38,6 +38,7 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
@@ -50,6 +51,8 @@ use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -757,6 +760,7 @@ pub struct InternalFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
+  pub initial_cwd: Option<PathBuf>,
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
   pub argv: Vec<String>,
@@ -810,6 +814,7 @@ pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
+  pub ignore_env: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
@@ -832,6 +837,7 @@ impl PermissionFlags {
     self.allow_all
       || self.allow_env.is_some()
       || self.deny_env.is_some()
+      || self.ignore_env.is_some()
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
@@ -965,6 +971,17 @@ impl Flags {
       }
       Some(env_denylist) => {
         let s = format!("--deny-env={}", env_denylist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.ignore_env {
+      Some(env_ignorelist) if env_ignorelist.is_empty() => {
+        args.push("--ignore-env".to_string());
+      }
+      Some(env_ignorelist) => {
+        let s = format!("--ignore-env={}", env_ignorelist.join(","));
         args.push(s);
       }
       _ => {}
@@ -1298,45 +1315,173 @@ impl Flags {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = cstr!(
-  r#"<y>Environment variables:</>
+#[derive(Serialize)]
+struct EnvVar {
+  name: &'static str,
+  description: &'static str,
+  example: Option<&'static str>,
+}
+
+static ENV_VARS: &[EnvVar] = &[
+  EnvVar {
+    name: "DENO_AUTH_TOKENS",
+    description: "A semi-colon separated list of bearer tokens and hostnames\nto use when fetching remote modules from private repositories",
+    example: Some(r#"(e.g. "abcde12345@deno.land;54321edcba@github.com")"#),
+  },
+  EnvVar {
+    name: "DENO_CACHE_DB_MODE",
+    description: "Controls whether Web cache should use disk based or in-memory database.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_CERT",
+    description: "Load certificate authorities from PEM encoded file.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_COMPAT",
+    description: "Enable Node.js compatibility mode - extensionless imports, built-in\nNode.js modules, CommonJS detection and more.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_DIR",
+    description: "Set the cache directory",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_INSTALL_ROOT",
+    description: "Set deno install's output directory",
+    example: Some("(defaults to $HOME/.deno/bin)"),
+  },
+  EnvVar {
+    name: "DENO_KV_DB_MODE",
+    description: "Controls whether Deno.openKv() API should use disk based or in-memory\ndatabase.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_EMIT_CACHE_MODE",
+    description: "Control if the transpiled sources should be cached.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_PACKAGE_JSON",
+    description: "Disables auto-resolution of package.json.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_UPDATE_CHECK",
+    description: "Set to disable checking if a newer Deno version is available",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_SERVE_ADDRESS",
+    description: "Override address for Deno.serve",
+    example: Some(
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+    ),
+  },
+  EnvVar {
+    name: "DENO_AUTO_SERVE",
+    description: "If the entrypoint contains export default { fetch }, `deno run`\nbehaves like `deno serve`.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_TLS_CA_STORE",
+    description: cstr!(
+      "Comma-separated list of order dependent certificate stores.\nPossible values: \"system\", \"mozilla\" <p(245)>(defaults to \"mozilla\")</>"
+    ),
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_TRACE_PERMISSIONS",
+    description: "Environmental variable to enable stack traces in permission prompts.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_USE_CGROUPS",
+    description: "Use cgroups to determine V8 memory limit.",
+    example: None,
+  },
+  EnvVar {
+    name: "FORCE_COLOR",
+    description: "Set force color output even if stdout isn't a tty.",
+    example: None,
+  },
+  EnvVar {
+    name: "HTTP_PROXY",
+    description: "Proxy address for HTTP requests.",
+    example: Some("(module downloads, fetch)"),
+  },
+  EnvVar {
+    name: "HTTPS_PROXY",
+    description: "Proxy address for HTTPS requests.",
+    example: Some("(module downloads, fetch)"),
+  },
+  EnvVar {
+    name: "NO_COLOR",
+    description: "Set to disable color.",
+    example: None,
+  },
+  EnvVar {
+    name: "NO_PROXY",
+    description: "Comma-separated list of hosts which do not use a proxy.",
+    example: Some("(module downloads, fetch)"),
+  },
+  EnvVar {
+    name: "NPM_CONFIG_REGISTRY",
+    description: "URL to use for the npm registry.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_TRUST_PROXY_HEADERS",
+    description: "If specified, removes X-deno-client-address header when serving HTTP.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_USR2_MEMORY_TRIM",
+    description: "If specified, listen for SIGUSR2 signal to try and free memory (Linux only).",
+    example: None,
+  },
+];
+
+static ENV_VARIABLES_HELP: LazyLock<String> = LazyLock::new(|| {
+  let mut out = cstr!(
+    r#"<y>Environment variables:</>
 <y>Docs:</> <c>https://docs.deno.com/go/env-vars</>
 
-  <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
-                         to use when fetching remote modules from private repositories
-                          <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
-  <g>DENO_CACHE_DB_MODE</>     Controls whether Web cache should use disk based or in-memory database.
-  <g>DENO_CERT</>              Load certificate authorities from PEM encoded file
-  <g>DENO_COMPAT</>            Enable Node.js compatibility mode - extensionless imports, built-in
-                               Node.js modules, CommonJS detection and more.
-  <g>DENO_DIR</>               Set the cache directory
-  <g>DENO_INSTALL_ROOT</>      Set deno install's output directory
-                          <p(245)>(defaults to $HOME/.deno/bin)</>
-  <g>DENO_KV_DB_MODE</>        Controls whether Deno.openKv() API should use disk based or in-memory
-                         database.
-  <g>DENO_EMIT_CACHE_MODE</>   Control if the transpiled sources should be cached.
-  <g>DENO_NO_PACKAGE_JSON</>   Disables auto-resolution of package.json
-  <g>DENO_NO_UPDATE_CHECK</>   Set to disable checking if a newer Deno version is available
-  <g>DENO_SERVE_ADDRESS</>     Override address for Deno.serve
-                         Example: "tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678"
-  <g>DENO_AUTO_SERVE</>        If the entrypoint contains export default { fetch }, `deno run`
-                               behaves like `deno serve`.
-  <g>DENO_TLS_CA_STORE</>      Comma-separated list of order dependent certificate stores.
-                         Possible values: "system", "mozilla" <p(245)>(defaults to "mozilla")</>
-  <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
-  <g>DENO_USE_CGROUPS</>       Use cgroups to determine V8 memory limit
-  <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
-  <g>HTTP_PROXY</>             Proxy address for HTTP requests
-                          <p(245)>(module downloads, fetch)</>
-  <g>HTTPS_PROXY</>            Proxy address for HTTPS requests
-                          <p(245)>(module downloads, fetch)</>
-  <g>NO_COLOR</>               Set to disable color
-  <g>NO_PROXY</>               Comma-separated list of hosts which do not use a proxy
-                          <p(245)>(module downloads, fetch)</>
-  <g>NPM_CONFIG_REGISTRY</>    URL to use for the npm registry.
-  <g>DENO_TRUST_PROXY_HEADERS</>  If specified, removes X-deno-client-address header when serving HTTP.
-  <g>DENO_USR2_MEMORY_TRIM</>  If specified, listen for SIGUSR2 signal to try and free memory (Linux only)."#
-);
+"#
+  )
+  .to_string();
+
+  let longest = ENV_VARS.iter().map(|var| var.name.len()).max().unwrap() + 1;
+
+  out.push_str(
+    &ENV_VARS
+      .iter()
+      .map(|var| {
+        let mut output = color_print::cformat!(
+          "  <g>{}</>{}{}",
+          var.name,
+          " ".repeat(longest - var.name.len()),
+          var
+            .description
+            .replace("\n", &format!("\n  {}", " ".repeat(longest)))
+        );
+        if let Some(example) = var.example {
+          output.push_str(&color_print::cformat!(
+            "\n  {}<p(245)>{}</>",
+            " ".repeat(longest + 1),
+            example
+          ));
+        }
+        output
+      })
+      .collect::<Vec<_>>()
+      .join("\n"),
+  );
+
+  out
+});
 
 static DENO_HELP: &str = cstr!(
   "Deno: <g>A modern JavaScript and TypeScript runtime</>
@@ -1392,8 +1537,15 @@ static DENO_HELP: &str = cstr!(
 <y>Discord:</> https://discord.gg/deno
 ");
 
-/// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+  flags_from_vec_with_initial_cwd(args, None)
+}
+
+/// Main entry point for parsing deno's command line flags.
+pub fn flags_from_vec_with_initial_cwd(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches =
     app
@@ -1420,7 +1572,10 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         _ => e,
       })?;
 
-  let mut flags = Flags::default();
+  let mut flags = Flags {
+    initial_cwd,
+    ..Default::default()
+  };
 
   // to pass all flags, even help and
   if matches.subcommand_matches("deploy").is_some() {
@@ -1484,6 +1639,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
 
     help_parse(&mut flags, subcommand);
+
     return Ok(flags);
   }
 
@@ -1838,7 +1994,7 @@ pub fn clap_root() -> Command {
       cmd.subcommand(help)
     })
     .help_template(DENO_HELP)
-    .after_help(ENV_VARIABLES_HELP)
+    .after_help(&*ENV_VARIABLES_HELP)
     .next_line_help(false)
 }
 
@@ -1909,7 +2065,7 @@ fn audit_subcommand() -> Command {
     cstr!(
       "Audit currently installed dependencies.
   <p(245)>deno audit</>
-      
+
 Show only high and critical severity vulnerabilities
   <p(245)>deno audit --level=high</>
 
@@ -2403,8 +2559,16 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(env_file_arg())
       .arg(
         script_arg()
-          .required_unless_present("help")
-          .trailing_var_arg(true),
+          .num_args(0..=1)
+          .required_unless_present("help"),
+      )
+      .arg(
+        Arg::new("args")
+          .num_args(0..)
+          .help("Arguments to provide for Deno.args (must be preceded by `--`)")
+          .action(ArgAction::Append)
+          .value_name("ARGS")
+          .last(true)
       )
   })
 }
@@ -4020,6 +4184,30 @@ fn compile_args_without_check_args(app: Command) -> Command {
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
+  let make_deny_ignore_env_arg = |arg: Arg| {
+    let mut arg = arg
+      .num_args(0..)
+      .use_value_delimiter(true)
+      .require_equals(true)
+      .value_name("VARIABLE_NAME")
+      .long_help("false")
+      .value_parser(|key: &str| {
+        if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+          return Err(format!("invalid key \"{key}\""));
+        }
+
+        Ok(if cfg!(windows) {
+          key.to_uppercase()
+        } else {
+          key.to_string()
+        })
+      })
+      .hide(true);
+    if let Some(requires) = requires {
+      arg = arg.requires(requires)
+    }
+    arg
+  };
   app
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
@@ -4224,33 +4412,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
-    .arg(
-      {
-        let mut arg = Arg::new("deny-env")
-          .long("deny-env")
-          .num_args(0..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .value_name("VARIABLE_NAME")
-          .long_help("false")
-          .value_parser(|key: &str| {
-            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-              return Err(format!("invalid key \"{key}\""));
-            }
-
-            Ok(if cfg!(windows) {
-              key.to_uppercase()
-            } else {
-              key.to_string()
-            })
-          })
-          .hide(true);
-        if let Some(requires) = requires {
-          arg = arg.requires(requires)
-        }
-        arg
-      }
-    )
+    .arg(make_deny_ignore_env_arg(Arg::new("deny-env").long("deny-env")))
+    .arg(make_deny_ignore_env_arg(Arg::new("ignore-env").long("ignore-env")))
     .arg(
       {
         let mut arg = Arg::new("allow-sys")
@@ -5102,6 +5265,25 @@ fn allow_scripts_arg_parse(
     flags.allow_scripts = PackagesAllowedScripts::Some(
       parts
         .flat_map(flat_escape_split_commas)
+        .map(|result| {
+          let value = result?;
+          let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+            clap::Error::raw(clap::error::ErrorKind::InvalidValue, e)
+          })?;
+          if dep.kind != PackageKind::Npm {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Only npm package constraints are supported: {}", value),
+            ));
+          }
+          if dep.req.version_req.tag().is_some() {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Tags are not supported in --allow-scripts: {}", value),
+            ));
+          }
+          Ok(dep.req)
+        })
         .collect::<Result<_, _>>()?,
     );
   }
@@ -5346,9 +5528,11 @@ fn compile_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false, true)?;
 
-  let mut script = matches.remove_many::<String>("script_arg").unwrap();
-  let source_file = script.next().unwrap();
-  let args = script.collect();
+  let source_file = matches.remove_one::<String>("script_arg").unwrap();
+  let args = matches
+    .remove_many::<String>("args")
+    .unwrap_or_default()
+    .collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
@@ -5819,13 +6003,22 @@ fn json_reference_parse(
       })
       .collect::<Vec<_>>();
 
-    json!({
+    let mut out = json!({
       "name": name,
       "about": about,
       "args": args,
       "subcommands": subcommands,
       "usage": usage,
-    })
+    });
+
+    if top_level {
+      out
+        .as_object_mut()
+        .unwrap()
+        .insert("env".to_string(), serde_json::to_value(ENV_VARS).unwrap());
+    }
+
+    out
   }
 
   flags.subcommand = DenoSubcommand::JSONReference(JSONReferenceFlags {
@@ -6453,6 +6646,11 @@ fn permission_args_parse(
     debug!("env denylist: {:#?}", &flags.permissions.deny_env);
   }
 
+  if let Some(env_wl) = matches.remove_many::<String>("ignore-env") {
+    flags.permissions.ignore_env = Some(env_wl.collect());
+    debug!("env ignorelist: {:#?}", &flags.permissions.ignore_env);
+  }
+
   if let Some(run_wl) = matches.remove_many::<String>("allow-run") {
     flags.permissions.allow_run = Some(run_wl.collect());
     debug!("run allowlist: {:#?}", &flags.permissions.allow_run);
@@ -6889,6 +7087,7 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+  use deno_semver::package::PackageReq;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -9037,6 +9236,26 @@ mod tests {
   }
 
   #[test]
+  fn ignore_env_ignorelist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--ignore-env=HOME", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_env: Some(svec!["HOME"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_env_allowlist_multiple() {
     let r = flags_from_vec(svec![
       "deno",
@@ -9072,6 +9291,30 @@ mod tests {
         )),
         permissions: PermissionFlags {
           deny_env: Some(svec!["HOME", "PATH"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_env_ignorelist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--ignore-env=HOME,PATH",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_env: Some(svec!["HOME", "PATH"]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -11365,7 +11608,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "--", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -12516,13 +12759,26 @@ mod tests {
       (None, Ok(PackagesAllowedScripts::None)),
       (
         Some("--allow-scripts=npm:foo"),
-        Ok(PackagesAllowedScripts::Some(svec!["npm:foo"])),
+        Ok(PackagesAllowedScripts::Some(vec![
+          PackageReq::from_str("foo").unwrap(),
+        ])),
       ),
       (
-        Some("--allow-scripts=npm:foo,npm:bar"),
-        Ok(PackagesAllowedScripts::Some(svec!["npm:foo", "npm:bar"])),
+        Some("--allow-scripts=npm:foo,npm:bar@2"),
+        Ok(PackagesAllowedScripts::Some(vec![
+          PackageReq::from_str("foo").unwrap(),
+          PackageReq::from_str("bar@2").unwrap(),
+        ])),
       ),
       (Some("--allow-scripts=foo"), Err("Invalid package")),
+      (
+        Some("--allow-scripts=npm:foo@next"),
+        Err("Tags are not supported in --allow-scripts: npm:foo@next"),
+      ),
+      (
+        Some("--allow-scripts=jsr:@foo/bar"),
+        Err("An 'npm:' specifier is required"),
+      ),
     ];
     for (flag, value) in cases {
       let mut args = svec!["deno", "cache"];

@@ -52,9 +52,9 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
-use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
@@ -147,12 +147,11 @@ impl Default for Options {
 
 deno_core::extension!(deno_fetch,
   deps = [ deno_webidl, deno_web ],
-  parameters = [FP: FetchPermissions],
   ops = [
-    op_fetch<FP>,
+    op_fetch,
     op_fetch_send,
     op_utf8_to_byte_string,
-    op_fetch_custom_client<FP>,
+    op_fetch_custom_client,
     op_fetch_promise_is_settled,
   ],
   esm = [
@@ -405,91 +404,12 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
-pub trait FetchPermissions {
-  fn check_net(
-    &mut self,
-    host: &str,
-    port: u16,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn check_net_vsock(
-    &mut self,
-    cid: u32,
-    port: u32,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl FetchPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net(
-    &mut self,
-    host: &str,
-    port: u16,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net(
-      self,
-      &(host, Some(port)),
-      api_name,
-    )
-  }
-
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-
-  #[inline(always)]
-  fn check_open<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    open_access: OpenAccessKind,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_open(
-      self,
-      path,
-      open_access,
-      Some(api_name),
-    )
-  }
-
-  #[inline(always)]
-  fn check_net_vsock(
-    &mut self,
-    cid: u32,
-    port: u32,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_vsock(
-      self, cid, port, api_name,
-    )
-  }
-}
-
 #[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::result_large_err)]
-pub fn op_fetch<FP>(
+pub fn op_fetch(
   state: &mut OpState,
   #[serde] method: ByteString,
   #[string] url: String,
@@ -498,10 +418,7 @@ pub fn op_fetch<FP>(
   has_body: bool,
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
-) -> Result<FetchReturn, FetchError>
-where
-  FP: FetchPermissions + 'static,
-{
+) -> Result<FetchReturn, FetchError> {
   let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)
@@ -534,7 +451,7 @@ where
       (request_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
-      let permissions = state.borrow_mut::<FP>();
+      let permissions = state.borrow_mut::<PermissionsContainer>();
       permissions.check_net_url(&url, "fetch()")?;
 
       let maybe_authority = extract_authority(&mut url);
@@ -923,23 +840,21 @@ fn default_true() -> bool {
 #[op2(stack_trace)]
 #[smi]
 #[allow(clippy::result_large_err)]
-pub fn op_fetch_custom_client<FP>(
+pub fn op_fetch_custom_client(
   state: &mut OpState,
   #[serde] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
-) -> Result<ResourceId, FetchError>
-where
-  FP: FetchPermissions + 'static,
-{
+) -> Result<ResourceId, FetchError> {
   if let Some(proxy) = &mut args.proxy {
-    let permissions = state.borrow_mut::<FP>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
       Proxy::Tcp { hostname, port } => {
-        permissions.check_net(hostname, *port, "Deno.createHttpClient()")?;
+        permissions
+          .check_net(&(hostname, Some(*port)), "Deno.createHttpClient()")?;
       }
       Proxy::Unix {
         path: original_path,
@@ -949,7 +864,7 @@ where
           .check_open(
             Cow::Borrowed(path),
             OpenAccessKind::ReadWriteNoFollow,
-            "Deno.createHttpClient()",
+            Some("Deno.createHttpClient()"),
           )?
           .into_path();
         if path != resolved_path {
@@ -957,7 +872,7 @@ where
         }
       }
       Proxy::Vsock { cid, port } => {
-        let permissions = state.borrow_mut::<FP>();
+        let permissions = state.borrow_mut::<PermissionsContainer>();
         permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
       }
     }
