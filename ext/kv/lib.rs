@@ -35,7 +35,6 @@ use deno_core::serde_v8::BigInt;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
-pub use deno_web;
 use denokv_proto::AtomicWrite;
 use denokv_proto::Check;
 use denokv_proto::Consistency;
