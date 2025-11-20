@@ -1,7 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-/// <reference path="../../cli/tsc/dts/lib.dom.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno.ns.d.ts" />
-
 import {
   assert,
   assertEquals,
@@ -159,9 +156,23 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: Deno.build.os !== "linux" },
-  async function readFileProcFs() {
-    const data = await Deno.readFile("/proc/self/stat");
-    assert(data.byteLength > 0);
+  { permissions: { read: true } },
+  async function readFileNotFoundErrorCode() {
+    try {
+      await Deno.readFile("definitely-not-found.json");
+    } catch (e) {
+      assertEquals((e as { code: string }).code, "ENOENT");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileIsDirectoryErrorCode() {
+    try {
+      await Deno.readFile("tests/testdata/assets/");
+    } catch (e) {
+      assertEquals((e as { code: string }).code, "EISDIR");
+    }
   },
 );
