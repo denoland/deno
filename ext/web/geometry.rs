@@ -35,40 +35,12 @@ use nalgebra::UnitVector3;
 use nalgebra::Vector3;
 use nalgebra::Vector4;
 
-deno_core::extension!(
-  deno_geometry,
-  deps = [deno_webidl, deno_web, deno_console],
-  ops = [
-    op_geometry_get_enable_window_features,
-    op_geometry_matrix_set_matrix_value,
-    op_geometry_matrix_to_buffer,
-    op_geometry_matrix_to_string,
-  ],
-  objects = [
-    DOMPointReadOnly,
-    DOMPoint,
-    DOMRectReadOnly,
-    DOMRect,
-    DOMQuad,
-    DOMMatrixReadOnly,
-    DOMMatrix,
-  ],
-  esm = ["00_init.js"],
-  lazy_loaded_esm = ["01_geometry.js"],
-  options = {
-    enable_window_features: bool,
-  },
-  state = |state, options| {
-    state.put(State::new(options.enable_window_features));
-  },
-);
-
-struct State {
+pub(crate) struct State {
   enable_window_features: bool,
 }
 
 impl State {
-  fn new(enable_window_features: bool) -> Self {
+  pub(crate) fn new(enable_window_features: bool) -> Self {
     Self {
       enable_window_features,
     }
@@ -76,7 +48,7 @@ impl State {
 }
 
 #[op2(fast)]
-fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
+pub fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
   state.enable_window_features
 }

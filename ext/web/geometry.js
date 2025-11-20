@@ -23,8 +23,8 @@ const {
   SymbolFor,
 } = primordials;
 
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 
 const DOMPointPrototype = DOMPoint.prototype;
 const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;

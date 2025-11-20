@@ -41,11 +41,11 @@ import {
   setTimeout as nodeSetTimeout,
 } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-import { loadGeometry } from "ext:deno_geometry/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

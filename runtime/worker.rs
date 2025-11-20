@@ -533,9 +533,9 @@ impl MainWorker {
         deno_web::deno_web::args::<InMemoryBroadcastChannel>(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
-        deno_geometry::deno_geometry::args(true),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -1046,7 +1046,6 @@ fn common_extensions<
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init::<InMemoryBroadcastChannel>(),
     deno_webgpu::deno_webgpu::init(),
-    deno_geometry::deno_geometry::lazy_init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),

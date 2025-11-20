@@ -2221,17 +2221,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_geometry"
-version = "0.1.0"
-dependencies = [
- "deno_core",
- "deno_error",
- "lightningcss",
- "nalgebra",
- "thiserror 2.0.12",
-]
-
-[[package]]
 name = "deno_graph"
 version = "0.103.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2896,7 +2885,6 @@ dependencies = [
  "deno_fetch",
  "deno_ffi",
  "deno_fs",
- "deno_geometry",
  "deno_http",
  "deno_io",
  "deno_kv",
@@ -3162,6 +3150,8 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures",
+ "lightningcss",
+ "nalgebra",
  "serde",
  "thiserror 2.0.12",
  "tokio",
