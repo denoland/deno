@@ -110,6 +110,7 @@ util::unit_test_factory!(
     webgpu_test,
     websocket_test,
     webstorage_test,
+    worker_dynamic_permissions_test,
     worker_permissions_test,
     worker_test,
     write_file_test,
@@ -156,7 +157,10 @@ fn js_unit_test(test: String) {
     deno = deno.arg("--unstable-kv");
   }
 
-  if test == "worker_permissions_test" || test == "worker_test" {
+  if test == "worker_permissions_test"
+    || test == "worker_dynamic_permissions_test"
+    || test == "worker_test"
+  {
     deno = deno.arg("--unstable-worker-options");
   }
 
