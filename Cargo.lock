@@ -1700,6 +1700,7 @@ dependencies = [
  "serde_repr",
  "sha2",
  "shell-escape",
+ "shlex",
  "spki",
  "sqlformat",
  "strsim",

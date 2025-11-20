@@ -26,6 +26,8 @@ use clap::error::ErrorKind;
 use clap::value_parser;
 use clap_complete::CompletionCandidate;
 use clap_complete::engine::SubcommandCandidates;
+use clap_complete::env::EnvCompleter;
+use clap_complete::env::Shells;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
@@ -6344,6 +6346,70 @@ pub fn handle_shell_completion() -> Result<(), AnyError> {
   handle_shell_completion_with_args(std::env::args_os())
 }
 
+struct ZshCompleterUnsorted;
+
+// dynamic completion implementation for zsh that retains the order we give completions to zsh
+impl EnvCompleter for ZshCompleterUnsorted {
+  fn name(&self) -> &'static str {
+    "zsh"
+  }
+
+  fn is(&self, name: &str) -> bool {
+    name == "zsh"
+  }
+
+  fn write_registration(
+    &self,
+    var: &str,
+    name: &str,
+    bin: &str,
+    completer: &str,
+    buf: &mut dyn std::io::Write,
+  ) -> Result<(), std::io::Error> {
+    // copy pasted from clap_complete::env::Zsh::write_registration and modified the script slightly
+    let escaped_name = name.replace('-', "_");
+    let bin = shlex::try_quote(bin).unwrap_or(std::borrow::Cow::Borrowed(bin));
+    let completer = shlex::try_quote(completer)
+      .unwrap_or(std::borrow::Cow::Borrowed(completer));
+
+    let script = r#"#compdef BIN
+function _clap_dynamic_completer_NAME() {
+  local _CLAP_COMPLETE_INDEX=$(expr $CURRENT - 1)
+  local _CLAP_IFS=$'\n'
+
+  local completions=("${(@f)$( \
+      _CLAP_IFS="$_CLAP_IFS" \
+      _CLAP_COMPLETE_INDEX="$_CLAP_COMPLETE_INDEX" \
+      VAR="zsh" \
+      COMPLETER -- "${words[@]}" 2>/dev/null \
+  )}")
+
+  if [[ -n $completions ]]; then
+      _describe -V 'values' completions -o nosort
+  fi
+}
+
+compdef _clap_dynamic_completer_NAME BIN"#
+      .replace("NAME", &escaped_name)
+      .replace("COMPLETER", &completer)
+      .replace("BIN", &bin)
+      .replace("VAR", var);
+
+    writeln!(buf, "{script}")?;
+    Ok(())
+  }
+
+  fn write_complete(
+    &self,
+    cmd: &mut clap::Command,
+    args: Vec<OsString>,
+    current_dir: Option<&std::path::Path>,
+    buf: &mut dyn std::io::Write,
+  ) -> Result<(), std::io::Error> {
+    clap_complete::env::Zsh.write_complete(cmd, args, current_dir, buf)
+  }
+}
+
 fn handle_shell_completion_with_args(
   args: impl IntoIterator<Item = OsString>,
 ) -> Result<(), AnyError> {
@@ -6351,6 +6417,13 @@ fn handle_shell_completion_with_args(
   let app = clap_root();
 
   let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
+    .shells(Shells(&[
+      &clap_complete::env::Bash,
+      &clap_complete::env::Elvish,
+      &clap_complete::env::Fish,
+      &clap_complete::env::Powershell,
+      &ZshCompleterUnsorted,
+    ]))
     .try_complete(args, Some(&std::env::current_dir()?))?;
 
   // we should only run this function when we're doing completions
