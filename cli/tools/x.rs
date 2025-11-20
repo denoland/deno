@@ -1,5 +1,6 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::collections::BTreeMap;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -208,7 +209,9 @@ fn write_shim(
   out_dir: &Path,
   shim_name: DenoXShimName,
 ) -> Result<(), AnyError> {
-  if cfg!(unix) {
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
     let out_path = out_dir.join(shim_name.name());
     if let DenoXShimName::Other(_) = shim_name {
       std::fs::write(
@@ -234,7 +237,10 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
         },
       }
     }
-  } else {
+  }
+
+  #[cfg(windows)]
+  {
     let out_path = out_dir.join(format!("{}.cmd", shim_name.name()));
     std::fs::write(
       out_path,
