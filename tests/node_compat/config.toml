@@ -426,6 +426,7 @@
 "parallel/test-file-read-noexist.js" = {}
 "parallel/test-file-validate-mode-flag.js" = {}
 "parallel/test-file-write-stream5.js" = {}
+"parallel/test-filehandle-close.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
 "parallel/test-fs-chmod-mask.js" = {}
@@ -442,6 +443,7 @@
 "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
+"parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
 # TODO(bartlomieju): crashes constantly on CI, disabling for now
 # "parallel/test-fs-glob.mjs" = {}
@@ -971,7 +973,13 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-data-types.js" = {}
+"parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-named-parameters.js" = {}
+"parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-statement-sync-columns.js" = {}
+"parallel/test-sqlite-transactions.js" = {}
+"parallel/test-sqlite-typed-array-and-data-view.js" = {}
 "parallel/test-stdin-hang.js" = {}
 "parallel/test-stdin-pause-resume-sync.js" = {}
 "parallel/test-stdin-pause-resume.js" = {}

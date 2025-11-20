@@ -35,7 +35,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "broadcast-channel",
     help_text: "Enable unstable `BroadcastChannel` API",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,

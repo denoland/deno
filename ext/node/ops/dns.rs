@@ -14,6 +14,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use socket2::SockAddr;
@@ -61,18 +62,15 @@ static WINSOCKET_INIT: OnceLock<i32> = OnceLock::new();
 
 #[op2(async, stack_trace)]
 #[cppgc]
-pub async fn op_node_getaddrinfo<P>(
+pub async fn op_node_getaddrinfo(
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
   port: Option<u16>,
-) -> Result<NetPermToken, DnsError>
-where
-  P: crate::NodePermissions + 'static,
-{
+) -> Result<NetPermToken, DnsError> {
   {
     let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<P>();
-    permissions.check_net((hostname.as_str(), port), "node:dns.lookup()")?;
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    permissions.check_net(&(hostname.as_str(), port), "node:dns.lookup()")?;
   }
 
   let mut resolver = GaiResolver::new();
@@ -93,19 +91,16 @@ where
 
 #[op2(async, stack_trace)]
 #[serde]
-pub async fn op_node_getnameinfo<P>(
+pub async fn op_node_getnameinfo(
   state: Rc<RefCell<OpState>>,
   #[string] ip: String,
   #[smi] port: u16,
-) -> Result<(String, String), DnsError>
-where
-  P: crate::NodePermissions + 'static,
-{
+) -> Result<(String, String), DnsError> {
   {
     let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<P>();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
     permissions
-      .check_net((ip.as_str(), Some(port)), "node:dns.lookupService()")?;
+      .check_net(&(ip.as_str(), Some(port)), "node:dns.lookupService()")?;
   }
 
   let ip_addr: IpAddr = ip.parse()?;
