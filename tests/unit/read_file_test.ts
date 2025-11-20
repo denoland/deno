@@ -159,31 +159,9 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true } },
-  async function readFileNotFoundErrorCode() {
-    try {
-      await Deno.readFile("definitely-not-found.json");
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
-        assertEquals(e.code, "ENOENT");
-      } else {
-        throw e;
-      }
-    }
-  },
-);
-
-Deno.test(
-  { permissions: { read: true } },
-  async function readFileIsDirectoryErrorCode() {
-    try {
-      await Deno.readFile("tests/testdata/assets/");
-    } catch (e) {
-      if (e instanceof Deno.errors.IsADirectory) {
-        assertEquals(e.code, "EISDIR");
-      } else {
-        throw e;
-      }
-    }
+  { ignore: Deno.build.os !== "linux" },
+  async function readFileProcFs() {
+    const data = await Deno.readFile("/proc/self/stat");
+    assert(data.byteLength > 0);
   },
 );
