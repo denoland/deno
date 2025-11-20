@@ -8,9 +8,10 @@ import {
   fromFileUrl,
   join,
   resolve,
+  SEPARATOR,
   toFileUrl,
 } from "@std/path";
-export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
+export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
@@ -50,7 +51,7 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
-function gitLsFiles(baseDir, patterns) {
+export function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
