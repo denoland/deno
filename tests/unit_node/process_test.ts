@@ -1211,7 +1211,7 @@ Deno.test({
   name: "process.sourceMapsEnabled",
   fn() {
     // @ts-ignore: not available in the types yet.
-    assertEquals(process.sourceMapsEnabled, true); // noop
+    assertEquals(process.sourceMapsEnabled, true);
   },
 });
 
