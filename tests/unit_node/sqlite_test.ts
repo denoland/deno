@@ -438,3 +438,26 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/original.db`);
   Deno.removeSync(`${tempDir}/backup.db`);
 });
+
+Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+  const errMessage = "statement has been finalized";
+
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (value INTEGER)");
+  const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  stmt.run(1, 2);
+  db.close();
+
+  assertThrows(() => stmt.all(), Error, errMessage);
+  assertThrows(() => stmt.expandedSQL, Error, errMessage);
+  assertThrows(() => stmt.get(), Error, errMessage);
+  assertThrows(() => stmt.iterate(), Error, errMessage);
+  assertThrows(() => stmt.setAllowBareNamedParameters(true), Error, errMessage);
+  assertThrows(
+    () => stmt.setAllowUnknownNamedParameters(true),
+    Error,
+    errMessage,
+  );
+  assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
+  assertThrows(() => stmt.sourceSQL, Error, errMessage);
+});

@@ -30,6 +30,7 @@ use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use super::session::SessionOptions;
+use super::statement::InnerStatementPtr;
 use super::statement::check_error_code2;
 use super::validators;
 
@@ -230,7 +231,7 @@ impl<'a> ApplyChangesetOptions<'a> {
 
 pub struct DatabaseSync {
   pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
-  statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
+  statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   options: DatabaseSyncOptions,
   location: String,
 }
@@ -491,12 +492,16 @@ impl DatabaseSync {
 
     // Finalize all prepared statements
     for stmt in self.statements.borrow_mut().drain(..) {
-      if !stmt.is_null() {
-        // SAFETY: `stmt` is a valid statement handle.
-        unsafe {
-          libsqlite3_sys::sqlite3_finalize(stmt);
+      match stmt.get() {
+        None => continue,
+        Some(ptr) => {
+          // SAFETY: `ptr` is a valid statement handle.
+          unsafe {
+            libsqlite3_sys::sqlite3_finalize(ptr);
+          };
+          stmt.set(None);
         }
-      }
+      };
     }
 
     let _ = self.conn.borrow_mut().take();
@@ -561,10 +566,11 @@ impl DatabaseSync {
       return Err(SqliteError::PrepareFailed);
     }
 
-    self.statements.borrow_mut().push(raw_stmt);
+    let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
+    self.statements.borrow_mut().push(stmt_cell.clone());
 
     Ok(StatementSync {
-      inner: raw_stmt,
+      inner: stmt_cell,
       db: Rc::downgrade(&self.conn),
       statements: Rc::clone(&self.statements),
       use_big_ints: Cell::new(false),

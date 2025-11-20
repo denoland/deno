@@ -71,6 +71,7 @@ util::unit_test_factory!(
     crypto_timing_safe_equal_test = crypto / crypto_timing_safe_equal_test,
     events_test,
     dgram_test,
+    dns_test,
     domain_test,
     fs_test,
     fetch_test,

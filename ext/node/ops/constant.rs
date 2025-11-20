@@ -118,6 +118,22 @@ pub const UV_FS_COPYFILE_EXCL: i32 = 1;
 pub const UV_FS_COPYFILE_FICLONE: i32 = 2;
 pub const UV_FS_COPYFILE_FICLONE_FORCE: i32 = 4;
 
+// https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/uv/include/uv/errno.h#L35-L48
+pub const UV_EAI_ADDRFAMILY: i32 = -3000;
+pub const UV_EAI_AGAIN: i32 = -3001;
+pub const UV_EAI_BADFLAGS: i32 = -3002;
+pub const UV_EAI_CANCELED: i32 = -3003;
+pub const UV_EAI_FAIL: i32 = -3004;
+pub const UV_EAI_FAMILY: i32 = -3005;
+pub const UV_EAI_MEMORY: i32 = -3006;
+pub const UV_EAI_NODATA: i32 = -3007;
+pub const UV_EAI_NONAME: i32 = -3008;
+pub const UV_EAI_OVERFLOW: i32 = -3009;
+pub const UV_EAI_SERVICE: i32 = -3010;
+pub const UV_EAI_SOCKTYPE: i32 = -3011;
+pub const UV_EAI_BADHINTS: i32 = -3013;
+pub const UV_EAI_PROTOCOL: i32 = -3014;
+
 #[cfg(unix)]
 /// https://github.com/nodejs/node/blob/9d2368f64329bf194c4e82b349e76fdad879d32a/deps/uv/include/uv/unix.h#L506
 pub const UV_FS_O_FILEMAP: i32 = 0;
