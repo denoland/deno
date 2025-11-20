@@ -8,9 +8,11 @@ import {
   dirname,
   getPrebuilt,
   getSources,
+  gitLsFiles,
   join,
   parseJSONC,
   ROOT_PATH,
+  SEPARATOR,
   walk,
 } from "./util.js";
 import { assertEquals } from "@std/assert";
@@ -37,6 +39,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
+  promises.push(ensureNoNewTopLevelFiles());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -379,5 +382,52 @@ async function ensureNoUnusedOutFiles() {
       console.error(`Unreferenced .out file: ${file}`);
     }
     throw new Error(`${notFoundPaths.length} unreferenced .out files`);
+  }
+}
+
+async function listTopLevelFiles() {
+  const files = await gitLsFiles(ROOT_PATH, []);
+  return [
+    ...new Set(
+      files.map((f) =>
+        f.replace(
+          ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") + SEPARATOR,
+          "",
+        )
+      )
+        .filter((file) => !file.includes(SEPARATOR)),
+    ),
+  ].sort();
+}
+
+async function ensureNoNewTopLevelFiles() {
+  const currentFiles = await listTopLevelFiles();
+
+  const allowedFiles = [
+    ".dlint.json",
+    ".dprint.json",
+    ".editorconfig",
+    ".gitattributes",
+    ".gitignore",
+    ".gitmodules",
+    ".rustfmt.toml",
+    "CLAUDE.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE.md",
+    "README.md",
+    "Releases.md",
+    "import_map.json",
+    "rust-toolchain.toml",
+  ].sort();
+
+  const newFiles = currentFiles.filter((file) => !allowedFiles.includes(file));
+  if (newFiles.length > 0) {
+    throw new Error(
+      `New top-level files detected: ${newFiles.join(", ")}. ` +
+        `Only the following top-level files are allowed: ${
+          allowedFiles.join(", ")
+        }`,
+    );
   }
 }
