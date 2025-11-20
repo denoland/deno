@@ -15,6 +15,7 @@ use deno_runtime::deno_permissions::PathQueryDescriptor;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use node_resolver::BinValue;
 
 use crate::args::DenoXShimName;
 use crate::args::Flags;
@@ -26,7 +27,6 @@ use crate::npm::CliNpmResolver;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
-use node_resolver::BinValue;
 
 fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
@@ -102,9 +102,26 @@ async fn maybe_run_local_npm_bin(
   let permissions = factory.root_permissions_container()?;
 
   let bins = resolve_local_bins(&node_resolver, &npm_resolver)?;
-  let Some(bin_value) = bins.get(command) else {
+  let command = if command.starts_with("@") && command.contains("/") {
+    command.split("/").last().unwrap()
+  } else {
+    command
+  };
+  let bin_value = if let Some(bin_value) = bins.get(command) {
+    bin_value
+  } else if let Some(bin_value) = {
+    let command = if command.starts_with("@") && command.contains("/") {
+      command.split("/").last().unwrap()
+    } else {
+      command
+    };
+    bins.get(command)
+  } {
+    bin_value
+  } else {
     return Ok(None);
   };
+
   match bin_value {
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
@@ -150,6 +167,7 @@ fn create_package_temp_dir(
   prefix: Option<&str>,
   package_req: &PackageReq,
   reload: bool,
+  deno_dir: &PathBuf,
 ) -> Result<XTempDir, AnyError> {
   let mut package_req_folder = String::from(prefix.unwrap_or(""));
   package_req_folder.push_str(
@@ -159,9 +177,7 @@ fn create_package_temp_dir(
       .replace(">", "gt")
       .replace("<", "lt"),
   );
-  let temp_dir = std::env::temp_dir()
-    .join("deno_x_cache")
-    .join(package_req_folder);
+  let temp_dir = deno_dir.join("deno_x_cache").join(package_req_folder);
   if temp_dir.exists() {
     if reload || !temp_dir.join("deno.lock").exists() {
       std::fs::remove_dir_all(&temp_dir)?;
@@ -327,6 +343,7 @@ pub async fn run(
         &flags,
         reload,
         command_flags.yes,
+        &factory.deno_dir()?.root,
       )
       .await?;
       let mut new_new_flags = (*new_flags).clone();
@@ -372,6 +389,7 @@ pub async fn run(
         &flags,
         reload,
         command_flags.yes,
+        &factory.deno_dir()?.root,
       )
       .await?;
 
@@ -397,6 +415,7 @@ async fn autoinstall_package(
   old_flags: &Flags,
   reload: bool,
   yes: bool,
+  deno_dir: &PathBuf,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
   fn make_new_flags(old_flags: &Flags, temp_dir: &PathBuf) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
@@ -413,8 +432,12 @@ async fn autoinstall_package(
     let new_flags = Arc::new(new_flags);
     new_flags
   }
-  let temp_dir =
-    create_package_temp_dir(Some(req_ref.prefix()), req_ref.req(), reload)?;
+  let temp_dir = create_package_temp_dir(
+    Some(req_ref.prefix()),
+    req_ref.req(),
+    reload,
+    deno_dir,
+  )?;
 
   let new_flags = make_new_flags(old_flags, &temp_dir.path());
   let new_factory = CliFactory::from_flags(new_flags.clone());
