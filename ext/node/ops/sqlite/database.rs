@@ -576,7 +576,7 @@ impl DatabaseSync {
       use_big_ints: Cell::new(false),
       allow_bare_named_params: Cell::new(true),
       allow_unknown_named_params: Cell::new(false),
-      is_iter_finished: false,
+      is_iter_finished: Cell::new(false),
     })
   }
 
