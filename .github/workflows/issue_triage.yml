@@ -15,6 +15,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER')
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
       id-token: write
     steps:
