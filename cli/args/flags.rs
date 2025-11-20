@@ -806,7 +806,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
-  pub secret: Vec<String>,
+  pub secret_env: Vec<String>,
   pub tunnel: bool,
 }
 
@@ -4182,7 +4182,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
     .arg(min_dep_age_arg())
-    .arg(secret_arg())
+    .arg(secret_env_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4778,10 +4778,10 @@ fn min_dep_age_arg() -> Arg {
     .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
 
-fn secret_arg() -> Arg {
-  Arg::new("secret")
-    .long("secret")
-    .value_name("ENV_VAR")
+fn secret_env_arg() -> Arg {
+  Arg::new("secret-env")
+    .long("secret-env")
+    .value_name("ENV_VAR_NAME")
     .action(ArgAction::Append)
     // TODO(THIS PR): this
     .help("TODO")
@@ -6545,7 +6545,7 @@ fn compile_args_without_check_parse(
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
-  secret_arg_parse(flags, matches);
+  secret_env_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6828,9 +6828,9 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn secret_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if let Some(secret) = matches.remove_many::<String>("secret") {
-    flags.secret = secret.collect();
+fn secret_env_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(value) = matches.remove_many::<String>("secret-env") {
+    flags.secret_env = value.collect();
   }
 }
 

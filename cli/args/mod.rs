@@ -651,7 +651,7 @@ impl CliOptions {
   }
 
   pub fn secret_env_var_names(&self) -> &[String] {
-    &self.flags.secret
+    &self.flags.secret_env
   }
 
   fn resolve_main_module_with_resolver_if_bare(
