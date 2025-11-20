@@ -337,7 +337,7 @@ export class Immediate {
 
     this.ref();
     op_immediate_count(true);
-
+    console.log("appending immediate, has head", !!immediateQueue.head);
     immediateQueue.append(this);
   }
 
