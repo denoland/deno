@@ -724,9 +724,8 @@ class FsFile {
   }
 
   [SymbolDispose]() {
-    if (core.tryClose(this.#rid)) {
-      this.#closed = true;
-    }
+    core.tryClose(this.#rid);
+    this.#closed = true;
   }
 }
 
