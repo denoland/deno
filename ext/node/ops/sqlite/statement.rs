@@ -678,7 +678,6 @@ impl StatementSync {
     self.reset()?;
 
     self.bind_params(scope, params)?;
-    self.is_iter_finished.set(false);
 
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         args: v8::FunctionCallbackArguments,
@@ -787,6 +786,8 @@ impl StatementSync {
       names,
       values,
     );
+
+    self.is_iter_finished.set(false);
 
     Ok(iterator)
   }
