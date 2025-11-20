@@ -1469,7 +1469,7 @@ pub fn config_to_deno_graph_workspace_member(
 
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
-    "--stack-size=1024".to_string(),
+    "--stack-size=2048".to_string(),
     "--js-explicit-resource-management".to_string(),
     // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
     // and its settings.
