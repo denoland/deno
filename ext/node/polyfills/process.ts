@@ -757,7 +757,13 @@ process.setSourceMapsEnabled = (_val: boolean) => {
 };
 
 // Source maps are always enabled in Deno.
-process.sourceMapsEnabled = true;
+Object.defineProperty(process, "sourceMapsEnabled", {
+  get() {
+    return true; // Source maps are always enabled in Deno.
+  },
+  enumerable: true,
+  configurable: true,
+});
 
 /**
  * Returns the current high-resolution real time in a [seconds, nanoseconds]
