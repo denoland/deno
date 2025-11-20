@@ -77,6 +77,20 @@ impl AllowDenyPermissionConfig {
   }
 }
 
+#[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq, Hash)]
+#[serde(default, deny_unknown_fields)]
+pub struct AllowDenyIgnorePermissionConfig {
+  pub allow: Option<PermissionConfigValue>,
+  pub deny: Option<PermissionConfigValue>,
+  pub ignore: Option<PermissionConfigValue>,
+}
+
+impl AllowDenyIgnorePermissionConfig {
+  pub fn is_none(&self) -> bool {
+    self.allow.is_none() && self.deny.is_none() && self.ignore.is_none()
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum AllowDenyPermissionConfigValue {
@@ -111,6 +125,45 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
   })
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum AllowDenyIgnorePermissionConfigValue {
+  Boolean(bool),
+  AllowList(Vec<String>),
+  Object(AllowDenyIgnorePermissionConfig),
+}
+
+fn deserialize_allow_deny_ignore<'de, D: serde::Deserializer<'de>>(
+  de: D,
+) -> Result<AllowDenyIgnorePermissionConfig, D::Error> {
+  AllowDenyIgnorePermissionConfigValue::deserialize(de).map(|value| match value
+  {
+    AllowDenyIgnorePermissionConfigValue::Boolean(b) => {
+      AllowDenyIgnorePermissionConfig {
+        allow: Some(if b {
+          PermissionConfigValue::All
+        } else {
+          PermissionConfigValue::None
+        }),
+        deny: None,
+        ignore: None,
+      }
+    }
+    AllowDenyIgnorePermissionConfigValue::AllowList(allow) => {
+      AllowDenyIgnorePermissionConfig {
+        allow: Some(if allow.is_empty() {
+          PermissionConfigValue::None
+        } else {
+          PermissionConfigValue::Some(allow)
+        }),
+        deny: None,
+        ignore: None,
+      }
+    }
+    AllowDenyIgnorePermissionConfigValue::Object(obj) => obj,
+  })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Hash)]
 #[serde(untagged)]
 pub enum PermissionNameOrObject {
@@ -135,8 +188,8 @@ pub struct PermissionsObject {
   pub write: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub import: AllowDenyPermissionConfig,
-  #[serde(default, deserialize_with = "deserialize_allow_deny")]
-  pub env: AllowDenyPermissionConfig,
+  #[serde(default, deserialize_with = "deserialize_allow_deny_ignore")]
+  pub env: AllowDenyIgnorePermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub net: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
@@ -252,9 +305,10 @@ mod test {
           allow: Some(PermissionConfigValue::All),
           deny: None,
         },
-        env: AllowDenyPermissionConfig {
+        env: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: None,
+          ignore: None,
         },
         net: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::All),
@@ -301,9 +355,10 @@ mod test {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: None,
         },
-        env: AllowDenyPermissionConfig {
+        env: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: None,
+          ignore: None,
         },
         net: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),

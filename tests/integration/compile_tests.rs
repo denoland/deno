@@ -81,6 +81,7 @@ fn standalone_args() {
       "--output",
       &exe.to_string_lossy(),
       "./compile/args.ts",
+      "--",
       "a",
       "b",
     ])

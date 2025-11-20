@@ -26,7 +26,7 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init::<deno_web::InMemoryBroadcastChannel>(
+    deno_web::deno_web::init(
       Default::default(),
       None,
       Default::default(),
