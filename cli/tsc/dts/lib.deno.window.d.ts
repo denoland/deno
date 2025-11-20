@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
-/// <reference path="./lib.deno.ns.d.ts" />
-/// <reference path="./lib.deno.shared_globals.d.ts" />
-/// <reference path="./lib.deno_webstorage.d.ts" />
+/// <reference lib="deno.ns" />
+/// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
-/// <reference path="./lib.deno_cache.d.ts" />
+/// <reference lib="deno.cache" />
 
 /**
  * Defines the mapping between event names and their corresponding event types

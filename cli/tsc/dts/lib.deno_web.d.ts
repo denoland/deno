@@ -4,7 +4,6 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
-/// <reference path="./lib.deno.window.d.ts" />
 
 /** @category Platform */
 interface DOMException extends Error {

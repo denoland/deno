@@ -5,16 +5,16 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
-/// <reference path="./lib.deno_console.d.ts" />
-/// <reference path="./lib.deno_url.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
-/// <reference path="./lib.deno_webgpu.d.ts" />
-/// <reference path="./lib.deno_canvas.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
-/// <reference path="./lib.deno_websocket.d.ts" />
-/// <reference path="./lib.deno_crypto.d.ts" />
-/// <reference path="./lib.deno.ns.d.ts" />
-/// <reference path="./lib.deno_broadcast_channel.d.ts" />
+/// <reference lib="deno.console" />
+/// <reference lib="deno.url" />
+/// <reference lib="deno.web" />
+/// <reference lib="deno.webgpu" />
+/// <reference lib="deno.canvas" />
+/// <reference lib="deno.fetch" />
+/// <reference lib="deno.websocket" />
+/// <reference lib="deno.crypto" />
+/// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
