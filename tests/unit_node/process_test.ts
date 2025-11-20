@@ -1207,6 +1207,14 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "process.sourceMapsEnabled",
+  fn() {
+    // @ts-ignore: not available in the types yet.
+    assertEquals(process.sourceMapsEnabled, true);
+  },
+});
+
 // Regression test for https://github.com/denoland/deno/issues/23761
 Deno.test({
   name: "process.uptime without this",
