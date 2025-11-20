@@ -168,6 +168,7 @@ rustyline-derive.workspace = true
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
+shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
