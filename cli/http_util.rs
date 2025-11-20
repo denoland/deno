@@ -16,9 +16,9 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_web::fetch::CreateHttpClientOptions;
-use deno_web::fetch::ResBody;
-use deno_web::fetch::create_http_client;
+use deno_runtime::deno_web::fetch::CreateHttpClientOptions;
+use deno_runtime::deno_web::fetch::ResBody;
+use deno_runtime::deno_web::fetch::create_http_client;
 use http::HeaderMap;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
@@ -32,7 +32,7 @@ use crate::util::progress_bar::UpdateGuard;
 #[derive(Debug, Error)]
 pub enum SendError {
   #[error(transparent)]
-  Send(#[from] deno_web::fetch::ClientSendError),
+  Send(#[from] deno_runtime::deno_web::fetch::ClientSendError),
   #[error(transparent)]
   InvalidUri(#[from] http::uri::InvalidUri),
 }
@@ -43,7 +43,8 @@ pub struct HttpClientProvider {
   // it's not safe to share a reqwest::Client across tokio runtimes,
   // so we store these Clients keyed by thread id
   // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  clients_by_thread_id: Mutex<HashMap<ThreadId, deno_web::fetch::Client>>,
+  clients_by_thread_id:
+    Mutex<HashMap<ThreadId, deno_runtime::deno_web::fetch::Client>>,
 }
 
 impl std::fmt::Debug for HttpClientProvider {
@@ -110,7 +111,7 @@ pub struct DownloadError(pub Box<DownloadErrorKind>);
 pub enum DownloadErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  Fetch(deno_web::fetch::ClientSendError),
+  Fetch(deno_runtime::deno_web::fetch::ClientSendError),
   #[class(inherit)]
   #[error(transparent)]
   UrlParse(#[from] deno_core::url::ParseError),
@@ -177,7 +178,7 @@ impl HttpClientResponse {
 
 #[derive(Debug)]
 pub struct HttpClient {
-  client: deno_web::fetch::Client,
+  client: deno_runtime::deno_web::fetch::Client,
   // don't allow sending this across threads because then
   // it might be shared accidentally across tokio runtimes
   // which will cause issues
@@ -188,7 +189,7 @@ pub struct HttpClient {
 impl HttpClient {
   // DO NOT make this public. You should always be creating one of these from
   // the HttpClientProvider
-  fn new(client: deno_web::fetch::Client) -> Self {
+  fn new(client: deno_runtime::deno_web::fetch::Client) -> Self {
     Self {
       client,
       _unsend_marker: deno_core::unsync::UnsendMarker::default(),
@@ -196,7 +197,7 @@ impl HttpClient {
   }
 
   pub fn get(&self, url: Url) -> Result<RequestBuilder, http::Error> {
-    let body = deno_web::fetch::ReqBody::empty();
+    let body = deno_runtime::deno_web::fetch::ReqBody::empty();
     let mut req = http::Request::new(body);
     *req.uri_mut() = url.as_str().parse()?;
     Ok(RequestBuilder {
@@ -208,7 +209,7 @@ impl HttpClient {
   pub fn post(
     &self,
     url: Url,
-    body: deno_web::fetch::ReqBody,
+    body: deno_runtime::deno_web::fetch::ReqBody,
   ) -> Result<RequestBuilder, http::Error> {
     let mut req = http::Request::new(body);
     *req.method_mut() = http::Method::POST;
@@ -228,7 +229,7 @@ impl HttpClient {
     S: serde::Serialize,
   {
     let json = deno_core::serde_json::to_vec(ser)?;
-    let body = deno_web::fetch::ReqBody::full(json.into());
+    let body = deno_runtime::deno_web::fetch::ReqBody::full(json.into());
     let builder = self.post(url, body)?;
     Ok(builder.header(
       http::header::CONTENT_TYPE,
@@ -241,7 +242,7 @@ impl HttpClient {
     url: &Url,
     headers: HeaderMap,
   ) -> Result<http::Response<ResBody>, SendError> {
-    let body = deno_web::fetch::ReqBody::empty();
+    let body = deno_runtime::deno_web::fetch::ReqBody::empty();
     let mut request = http::Request::new(body);
     *request.uri_mut() = http::Uri::try_from(url.as_str())?;
     *request.headers_mut() = headers;
@@ -327,8 +328,10 @@ impl HttpClient {
     &self,
     mut url: Url,
     headers: &HeaderMap<HeaderValue>,
-  ) -> Result<(http::Response<deno_web::fetch::ResBody>, Url), DownloadError>
-  {
+  ) -> Result<
+    (http::Response<deno_runtime::deno_web::fetch::ResBody>, Url),
+    DownloadError,
+  > {
     let mut req = self.get(url.clone())?.build();
     *req.headers_mut() = headers.clone();
     let mut response = self
@@ -372,7 +375,7 @@ impl HttpClient {
 }
 
 pub async fn get_response_body_with_progress(
-  response: http::Response<deno_web::fetch::ResBody>,
+  response: http::Response<deno_runtime::deno_web::fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
 ) -> Result<(HeaderMap, Vec<u8>), JsErrorBox> {
   use http_body::Body as _;
@@ -440,8 +443,8 @@ where
 }
 
 pub struct RequestBuilder {
-  client: deno_web::fetch::Client,
-  req: http::Request<deno_web::fetch::ReqBody>,
+  client: deno_runtime::deno_web::fetch::Client,
+  req: http::Request<deno_runtime::deno_web::fetch::ReqBody>,
 }
 
 impl RequestBuilder {
@@ -452,11 +455,12 @@ impl RequestBuilder {
 
   pub async fn send(
     self,
-  ) -> Result<http::Response<deno_web::fetch::ResBody>, AnyError> {
+  ) -> Result<http::Response<deno_runtime::deno_web::fetch::ResBody>, AnyError>
+  {
     self.client.send(self.req).await.map_err(Into::into)
   }
 
-  pub fn build(self) -> http::Request<deno_web::fetch::ReqBody> {
+  pub fn build(self) -> http::Request<deno_runtime::deno_web::fetch::ReqBody> {
     self.req
   }
 }

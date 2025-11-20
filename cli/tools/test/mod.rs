@@ -832,7 +832,7 @@ pub fn worker_prepare_for_test(worker: &mut MainWorker) {
     .js_runtime
     .op_state()
     .borrow_mut()
-    .try_take::<deno_web::fetch::Client>();
+    .try_take::<deno_runtime::deno_web::fetch::Client>();
 }
 
 /// Yields to tokio to allow async work to process, and then polls

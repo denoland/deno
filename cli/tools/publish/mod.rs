@@ -922,7 +922,8 @@ async fn publish_package(
     package.config
   );
 
-  let body = deno_web::fetch::ReqBody::full(package.tarball.bytes.clone());
+  let body =
+    deno_runtime::deno_web::fetch::ReqBody::full(package.tarball.bytes.clone());
   let response = http_client
     .post(url.parse()?, body)?
     .header(
