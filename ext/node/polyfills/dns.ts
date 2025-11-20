@@ -30,6 +30,7 @@ import {
   validateFunction,
   validateNumber,
   validateOneOf,
+  validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
@@ -80,6 +81,8 @@ import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_ARGS,
+  handleDnsError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   AI_ADDRCONFIG as ADDRCONFIG,
@@ -89,9 +92,13 @@ import {
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectDefineProperty } = primordials;
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -302,6 +309,60 @@ export function lookup(
 
 Object.defineProperty(lookup, customPromisifyArgs, {
   value: ["address", "family"],
+  enumerable: false,
+});
+
+function onlookupservice(
+  this: GetNameInfoReqWrap,
+  err: Error | null,
+  hostname?: string,
+  service?: string,
+) {
+  if (err) {
+    return this.callback!(handleDnsError(err, "getnameinfo", this.address));
+  }
+
+  this.callback!(err, hostname, service);
+}
+
+export function lookupService(
+  address: string,
+  port: number,
+  callback: (
+    err: ErrnoException | null,
+    hostname?: string,
+    service?: string,
+  ) => void,
+): GetNameInfoReqWrap {
+  if (arguments.length !== 3) {
+    throw new ERR_MISSING_ARGS("address", "port", "callback");
+  }
+
+  if (isIP(address) === 0) {
+    throw new ERR_INVALID_ARG_VALUE("address", address);
+  }
+
+  port = validatePort(port);
+
+  validateFunction(callback, "callback");
+
+  const req = new GetNameInfoReqWrap();
+  req.callback = callback;
+  req.address = address;
+  req.port = port;
+  req.oncomplete = onlookupservice;
+
+  const errCode = cares.getnameinfo(req, address, port);
+  if (errCode) {
+    throw dnsException(errCode, "getnameinfo", address);
+  }
+
+  return req;
+}
+
+ObjectDefineProperty(lookupService, customPromisifyArgs, {
+  __proto__: null,
+  value: ["hostname", "service"],
   enumerable: false,
 });
 
@@ -986,6 +1047,7 @@ export default {
   ALL,
   V4MAPPED,
   lookup,
+  lookupService,
   getServers,
   resolveAny,
   resolve4,

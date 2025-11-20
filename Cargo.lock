@@ -2528,6 +2528,7 @@ dependencies = [
  "sha3",
  "signature",
  "sm3",
+ "socket2 0.5.5",
  "spki",
  "sys_traits",
  "thiserror 2.0.12",
