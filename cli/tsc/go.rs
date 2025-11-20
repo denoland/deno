@@ -182,6 +182,11 @@ fn maybe_rewrite_message(message: String, code: u64) -> String {
     format!(
       "Property '{name}' does not exist on type 'typeof Deno'. 'Deno.{name}' is an unstable API. If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.unstable\" />",
     )
+  } else if code == 2684 && message.contains("'this' parameter") {
+    format!(
+      "{}\n\nNote: The 'this' parameter is used to type the 'this' context, not the function return type. If you're trying to type a React/Preact component, use:\n  const Component: FC<Props> = (props) => {{ ... }}\nor:\n  function Component(props: Props): JSX.Element {{ ... }}",
+      message
+    )
   } else {
     message
   }
