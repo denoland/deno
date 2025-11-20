@@ -201,6 +201,8 @@ pub struct SpawnArgs {
   windows_raw_arguments: bool,
   ipc: Option<i32>,
 
+  serialization: Option<ChildIpcSerialization>,
+
   #[serde(flatten)]
   stdio: ChildStdio,
 
@@ -209,6 +211,26 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChildIpcSerialization {
+  Json,
+  Advanced,
+}
+
+impl std::fmt::Display for ChildIpcSerialization {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "{}",
+      match self {
+        ChildIpcSerialization::Json => "json",
+        ChildIpcSerialization::Advanced => "advanced",
+      }
+    )
+  }
 }
 
 #[cfg(unix)]
@@ -483,6 +505,13 @@ fn create_command(
       )?);
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
       ipc_rid = Some(pipe_rid);
     }
 

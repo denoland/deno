@@ -219,6 +219,270 @@ pub enum IpcJsonStreamError {
   SimdJson(#[source] simd_json::Error),
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum IpcAdvancedStreamError {
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[source] std::io::Error),
+}
+
+pub struct IpcAdvancedStream {
+  pipe: BiPipeRead,
+  buffer: Vec<u8>,
+  read_buffer: ReadBuffer,
+}
+
+struct MessageLengthBuffer {
+  buffer: [u8; 4],
+  pos: u8,
+  value: u32,
+}
+
+impl MessageLengthBuffer {
+  fn new() -> Self {
+    Self {
+      buffer: [0; 4],
+      pos: 0,
+      value: 0,
+    }
+  }
+
+  fn get_mut(&mut self) -> &mut [u8] {
+    &mut self.buffer
+  }
+
+  fn message_len(&mut self) -> Option<usize> {
+    if self.pos == 4 {
+      self.value = u32::from_be_bytes(self.buffer);
+      self.pos = 5;
+      Some(self.value as usize)
+    } else if self.pos == 5 {
+      Some(self.value as usize)
+    } else {
+      None
+    }
+  }
+
+  fn update_pos_by(&mut self, num: usize) {
+    self.pos = (self.pos + num as u8).min(4);
+  }
+
+  fn available_mut(&mut self) -> &mut [u8] {
+    &mut self.buffer[self.pos as usize..4]
+  }
+
+  fn is_full(&self) -> bool {
+    self.pos >= 4
+  }
+
+  fn reset(&mut self) {
+    self.pos = 0;
+  }
+}
+
+pin_project! {
+  #[must_use = "futures do nothing unless you `.await` or poll them"]
+  struct ReadMsgBytesInner<'a, R: ?Sized> {
+    length_buffer: &'a mut MessageLengthBuffer,
+    reader: &'a mut R,
+    buf: &'a mut Vec<u8>,
+    out_buf: &'a mut Vec<u8>,
+    // The number of bytes appended to buf. This can be less than buf.len() if
+    // the buffer was not empty when the operation was started.
+    read: usize,
+    read_buffer: &'a mut ReadBuffer,
+  }
+}
+
+fn read_msg_bytes_inner<'a, R: AsyncRead + ?Sized + Unpin>(
+  reader: &'a mut R,
+  length_buffer: &'a mut MessageLengthBuffer,
+  buf: &'a mut Vec<u8>,
+  out_buf: &'a mut Vec<u8>,
+  read: usize,
+  read_buffer: &'a mut ReadBuffer,
+) -> ReadMsgBytesInner<'a, R> {
+  ReadMsgBytesInner {
+    length_buffer,
+    reader,
+    buf,
+    out_buf,
+    read,
+    read_buffer,
+  }
+}
+
+impl IpcAdvancedStream {
+  fn new(pipe: BiPipeRead) -> Self {
+    Self {
+      pipe,
+      buffer: Vec::with_capacity(INITIAL_CAPACITY),
+      read_buffer: ReadBuffer::new(),
+    }
+  }
+
+  pub async fn read_msg_bytes(
+    &mut self,
+  ) -> Result<Option<Vec<u8>>, IpcAdvancedStreamError> {
+    let mut length_buffer = MessageLengthBuffer::new();
+    let mut out_buf = Vec::with_capacity(32);
+    let mut nread = read_msg_bytes_inner(
+      &mut self.pipe,
+      &mut length_buffer,
+      &mut self.buffer,
+      &mut out_buf,
+      0,
+      &mut self.read_buffer,
+    )
+    .await
+    .map_err(IpcAdvancedStreamError::Io)?;
+    if nread == 0 {
+      return Ok(None);
+    }
+    Ok(Some(std::mem::take(&mut out_buf)))
+  }
+}
+
+impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgBytesInner<'_, R> {
+  type Output = io::Result<usize>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let mut me = self.project();
+    read_advanced_msg_bytes_internal(
+      Pin::new(*me.reader),
+      cx,
+      me.length_buffer,
+      me.buf,
+      me.read_buffer,
+      me.out_buf,
+      &mut me.read,
+    )
+  }
+}
+
+pub struct IpcAdvancedStreamResource {
+  pub read_half: AsyncRefCell<IpcAdvancedStream>,
+  pub write_half: AsyncRefCell<BiPipeWrite>,
+  pub cancel: Rc<CancelHandle>,
+  pub queued_bytes: AtomicUsize,
+  pub ref_tracker: IpcRefTracker,
+}
+
+impl IpcAdvancedStreamResource {
+  pub fn new(
+    stream: i64,
+    ref_tracker: IpcRefTracker,
+  ) -> Result<Self, std::io::Error> {
+    let (read_half, write_half) = BiPipe::from_raw(stream as _)?.split();
+    Ok(Self {
+      read_half: AsyncRefCell::new(IpcAdvancedStream::new(read_half)),
+      write_half: AsyncRefCell::new(write_half),
+      cancel: Default::default(),
+      queued_bytes: Default::default(),
+      ref_tracker,
+    })
+  }
+
+  /// writes serialized message to the IPC pipe. the first 4 bytes must be the length of the following message.
+  pub async fn write_msg_bytes(
+    self: Rc<Self>,
+    msg: &[u8],
+  ) -> Result<(), io::Error> {
+    log::debug!("writing for advanced IPC: {:?}", msg);
+    let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
+    write_half.write_all(msg).await?;
+    log::debug!("advanced IPC written: {:?}", msg);
+    Ok(())
+  }
+}
+
+impl deno_core::Resource for IpcAdvancedStreamResource {
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+fn read_advanced_msg_bytes_internal<'a, R: AsyncRead + ?Sized>(
+  mut reader: Pin<&mut R>,
+  cx: &mut Context<'_>,
+  length_buffer: &mut MessageLengthBuffer,
+  _buf: &mut Vec<u8>,
+  read_buffer: &mut ReadBuffer,
+  out_buffer: &mut Vec<u8>,
+  read: &mut usize,
+) -> Poll<io::Result<usize>> {
+  loop {
+    log::debug!("reading for advanced IPC");
+    if read_buffer.needs_fill() {
+      log::debug!("advanced IPC needs fill");
+      let mut read_buf = ReadBuf::new(read_buffer.get_mut());
+      match reader.as_mut().poll_read(cx, &mut read_buf) {
+        Poll::Ready(Ok(())) => {
+          log::debug!("advanced IPC read: {:?}", read_buf.filled().len());
+        }
+        Poll::Ready(Err(e)) => {
+          log::debug!("advanced IPC read error: {:?}", e);
+          return Poll::Ready(Err(e));
+        }
+        Poll::Pending => {
+          log::debug!("advanced IPC read pending");
+          return Poll::Pending;
+        }
+      }
+      log::debug!("advanced IPC read: {:?}", read_buf.filled().len());
+      read_buffer.cap = read_buf.filled().len();
+      read_buffer.pos = 0;
+    }
+    let available = read_buffer.available_mut();
+    log::debug!("advanced IPC available: {:?}", available);
+    let msg_len = length_buffer.message_len();
+    log::debug!("advanced IPC msg_len: {:?}", msg_len);
+    let (done, used) = if let Some(msg_len) = msg_len {
+      if out_buffer.len() >= msg_len {
+        (true, 0)
+      } else if available.is_empty() {
+        if *read == 0 {
+          return Poll::Ready(Ok(0));
+        } else {
+          return Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ipc stream closed while reading message",
+          )));
+        }
+      } else {
+        let remaining = msg_len - out_buffer.len();
+        out_buffer.reserve(remaining);
+        let to_copy = available.len().min(remaining);
+        out_buffer.extend_from_slice(&available[..to_copy]);
+        (out_buffer.len() == msg_len, to_copy)
+      }
+    } else {
+      if available.is_empty() {
+        if *read == 0 {
+          return Poll::Ready(Ok(0));
+        } else {
+          return Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ipc stream closed before message length",
+          )));
+        }
+      }
+      let len_avail = length_buffer.available_mut();
+      let to_copy = available.len().min(len_avail.len());
+      len_avail[..to_copy].copy_from_slice(&available[..to_copy]);
+      length_buffer.update_pos_by(to_copy);
+      (false, to_copy)
+    };
+
+    read_buffer.consume(used);
+    *read += used;
+
+    if done {
+      return Poll::Ready(Ok(mem::replace(read, 0)));
+    }
+  }
+}
+
 // JSON serialization stream over IPC pipe.
 //
 // `\n` is used as a delimiter between messages.
@@ -304,7 +568,7 @@ where
   }
 }
 
-fn read_msg_internal<R: AsyncRead + ?Sized>(
+fn read_json_msg_internal<R: AsyncRead + ?Sized>(
   mut reader: Pin<&mut R>,
   cx: &mut Context<'_>,
   buf: &mut Vec<u8>,
@@ -354,7 +618,7 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let me = self.project();
-    read_msg_internal(
+    read_json_msg_internal(
       Pin::new(*me.reader),
       cx,
       me.buf,

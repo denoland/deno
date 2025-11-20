@@ -2059,6 +2059,17 @@ Or multiple dependencies at once:
   })
 }
 
+// fn approve_scripts_subcommand() -> Command {
+//   command(
+//     "approve-scripts",
+//     cstr!("Approve running npm lifecycle scripts for a package"),
+//     UnstableArgsConfig::None,
+//   )
+//   .defer(|cmd| {
+
+//   })
+// }
+
 fn audit_subcommand() -> Command {
   command(
     "audit",

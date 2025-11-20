@@ -48,6 +48,7 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
@@ -586,16 +587,29 @@ impl CliOptions {
     )
   }
 
-  pub fn node_ipc_fd(&self) -> Option<i64> {
+  pub fn node_ipc_init(&self) -> Option<(i64, ChildIpcSerialization)> {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
+    let maybe_node_channel_serialization =
+      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+        .ok()
+        .map(|s| {
+          s.parse::<ChildIpcSerialization>()
+            .inspect_err(|e| {
+              log::warn!("Invalid node IPC serialization type: {}", e)
+            })
+            .ok()
+        })
+        .flatten()
+        .unwrap_or_else(|| ChildIpcSerialization::Json);
     if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variable.
-
+      // Remove so that child processes don't inherit this environment variables.
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD")
-      };
-      node_channel_fd.parse::<i64>().ok()
+        std::env::remove_var("NODE_CHANNEL_FD");
+        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+      }
+      let node_channel_fd = node_channel_fd.parse::<i64>().ok()?;
+      Some((node_channel_fd, maybe_node_channel_serialization))
     } else {
       None
     }
@@ -1469,7 +1483,7 @@ pub fn config_to_deno_graph_workspace_member(
 
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
-    "--stack-size=1024".to_string(),
+    "--stack-size=2048".to_string(),
     "--js-explicit-resource-management".to_string(),
     // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
     // and its settings.

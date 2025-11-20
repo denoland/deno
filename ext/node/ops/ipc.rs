@@ -2,7 +2,27 @@
 
 pub use impl_::*;
 
-pub struct ChildPipeFd(pub i64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ChildIpcSerialization {
+  Json,
+  Advanced,
+}
+
+impl std::str::FromStr for ChildIpcSerialization {
+  type Err = deno_core::anyhow::Error;
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      "json" => Ok(ChildIpcSerialization::Json),
+      "advanced" => Ok(ChildIpcSerialization::Advanced),
+      _ => Err(deno_core::anyhow::anyhow!(
+        "Invalid serialization type: {}",
+        s
+      )),
+    }
+  }
+}
+
+pub struct ChildPipeFd(pub i64, pub ChildIpcSerialization);
 
 mod impl_ {
   use std::cell::RefCell;
@@ -20,12 +40,19 @@ mod impl_ {
   use deno_core::serde::Serializer;
   use deno_core::serde_json;
   use deno_core::v8;
+  use deno_core::v8::ValueDeserializerHelper;
+  use deno_core::v8::ValueSerializerHelper;
   use deno_error::JsErrorBox;
   pub use deno_process::ipc::INITIAL_CAPACITY;
+  use deno_process::ipc::IpcAdvancedStreamError;
+  use deno_process::ipc::IpcAdvancedStreamResource;
   use deno_process::ipc::IpcJsonStreamError;
   pub use deno_process::ipc::IpcJsonStreamResource;
   pub use deno_process::ipc::IpcRefTracker;
   use serde::Serialize;
+
+  use crate::ChildPipeFd;
+  use crate::ops::ipc::ChildIpcSerialization;
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b, 'c>(
@@ -152,16 +179,24 @@ mod impl_ {
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
   ) -> Result<Option<ResourceId>, io::Error> {
-    let fd = match state.try_borrow_mut::<crate::ChildPipeFd>() {
-      Some(child_pipe_fd) => child_pipe_fd.0,
+    let (fd, serialization) = match state.try_borrow_mut::<crate::ChildPipeFd>()
+    {
+      Some(ChildPipeFd(fd, serialization)) => (*fd, *serialization),
       None => return Ok(None),
     };
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
-    Ok(Some(
-      state
-        .resource_table
-        .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
-    ))
+    match serialization {
+      ChildIpcSerialization::Json => Ok(Some(
+        state
+          .resource_table
+          .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
+      )),
+      ChildIpcSerialization::Advanced => Ok(Some(
+        state
+          .resource_table
+          .add(IpcAdvancedStreamResource::new(fd, ref_tracker)?),
+      )),
+    }
   }
 
   #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -169,6 +204,9 @@ mod impl_ {
     #[class(inherit)]
     #[error(transparent)]
     Resource(#[from] deno_core::error::ResourceError),
+    #[class(inherit)]
+    #[error(transparent)]
+    IpcAdvancedStream(#[from] IpcAdvancedStreamError),
     #[class(inherit)]
     #[error(transparent)]
     IpcJsonStream(#[from] IpcJsonStreamError),
@@ -181,7 +219,7 @@ mod impl_ {
   }
 
   #[op2(async)]
-  pub fn op_node_ipc_write<'a>(
+  pub fn op_node_ipc_write_json<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
@@ -226,6 +264,374 @@ mod impl_ {
     })
   }
 
+  pub struct AdvancedSerializerDelegate {
+    constants: AdvancedIpcConstants,
+  }
+
+  impl AdvancedSerializerDelegate {
+    fn new(constants: AdvancedIpcConstants) -> Self {
+      Self { constants }
+    }
+  }
+
+  const ARRAY_BUFFER_VIEW_TAG: u32 = 0;
+  const NOT_ARRAY_BUFFER_VIEW_TAG: u32 = 1;
+
+  fn ab_view_to_index<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    view: v8::Local<'s, v8::ArrayBufferView>,
+    constants: &AdvancedIpcConstants,
+  ) -> Option<u32> {
+    if view.is_int8_array() {
+      Some(0)
+    } else if view.is_uint8_array() {
+      let constructor = view
+        .get(
+          scope,
+          v8::Local::new(scope, &constants.constructor_key).into(),
+        )
+        .unwrap();
+      let buffer_constructor = v8::Local::<v8::Value>::from(v8::Local::new(
+        scope,
+        &constants.buffer_constructor,
+      ));
+      if constructor == buffer_constructor {
+        Some(10)
+      } else {
+        Some(1)
+      }
+    } else if view.is_uint8_clamped_array() {
+      Some(2)
+    } else if view.is_int16_array() {
+      Some(3)
+    } else if view.is_uint16_array() {
+      Some(4)
+    } else if view.is_int32_array() {
+      Some(5)
+    } else if view.is_uint32_array() {
+      Some(6)
+    } else if view.is_float32_array() {
+      Some(7)
+    } else if view.is_float64_array() {
+      Some(8)
+    } else if view.is_data_view() {
+      Some(9)
+    } else if view.is_big_int64_array() {
+      Some(11)
+    } else if view.is_big_uint64_array() {
+      Some(12)
+    }
+    // else if view.is_float16_array() {
+    //   13
+    // }
+    else {
+      None
+    }
+  }
+
+  impl v8::ValueSerializerImpl for AdvancedSerializerDelegate {
+    fn throw_data_clone_error<'s>(
+      &self,
+      scope: &mut v8::PinScope<'s, '_>,
+      message: v8::Local<'s, v8::String>,
+    ) {
+      let error = v8::Exception::type_error(scope, message);
+      scope.throw_exception(error);
+    }
+
+    fn has_custom_host_object(&self, _isolate: &v8::Isolate) -> bool {
+      false
+    }
+
+    fn write_host_object<'s>(
+      &self,
+      scope: &mut v8::PinScope<'s, '_>,
+      object: v8::Local<'s, v8::Object>,
+      value_serializer: &dyn v8::ValueSerializerHelper,
+    ) -> Option<bool> {
+      if object.is_array_buffer_view() {
+        let ab_view = object.cast::<v8::ArrayBufferView>();
+        value_serializer.write_uint32(ARRAY_BUFFER_VIEW_TAG);
+        let Some(index) = ab_view_to_index(scope, ab_view, &self.constants)
+        else {
+          scope.throw_exception(v8::Exception::type_error(
+            scope,
+            v8::String::new_from_utf8(
+              scope,
+              format!("Unserializable host object: {}", object.type_repr())
+                .as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap(),
+          ));
+          return None;
+        };
+        value_serializer.write_uint32(index);
+        value_serializer.write_uint32(ab_view.byte_length() as u32);
+        let mut storage = [0u8; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+        let slice = ab_view.get_contents(&mut storage);
+        value_serializer.write_raw_bytes(slice);
+        Some(true)
+      } else {
+        value_serializer.write_uint32(NOT_ARRAY_BUFFER_VIEW_TAG);
+        value_serializer
+          .write_value(scope.get_current_context(), object.into());
+        Some(true)
+      }
+    }
+
+    fn get_shared_array_buffer_id<'s>(
+      &self,
+      _scope: &mut v8::PinScope<'s, '_>,
+      _shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
+    ) -> Option<u32> {
+      None
+    }
+  }
+
+  #[derive(Clone)]
+  struct AdvancedIpcConstants {
+    buffer_constructor: v8::Global<v8::Function>,
+    constructor_key: v8::Global<v8::String>,
+  }
+
+  #[op2(fast)]
+  pub fn op_node_ipc_buffer_constructor(
+    scope: &mut v8::PinScope<'_, '_>,
+    state: &mut OpState,
+    buffer_constructor: v8::Local<'_, v8::Function>,
+  ) {
+    if state.has::<AdvancedIpcConstants>() {
+      return;
+    }
+    let constants = AdvancedIpcConstants {
+      buffer_constructor: v8::Global::new(scope, buffer_constructor),
+      constructor_key: v8::Global::new(
+        scope,
+        v8::String::new_from_utf8(
+          scope,
+          b"constructor",
+          v8::NewStringType::Internalized,
+        )
+        .unwrap(),
+      ),
+    };
+    state.put(constants);
+  }
+
+  #[op2(async)]
+  pub fn op_node_ipc_write_advanced<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    state: Rc<RefCell<OpState>>,
+    #[smi] rid: ResourceId,
+    value: v8::Local<'a, v8::Value>,
+    // using an array as an "out parameter".
+    // index 0 is a boolean indicating whether the queue is under the limit.
+    //
+    // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
+    // supported by `op2` currently.
+    queue_ok: v8::Local<'a, v8::Array>,
+  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
+    let constants = state.borrow().borrow::<AdvancedIpcConstants>().clone();
+    let serializer = AdvancedSerializer::new(scope, constants);
+    let serialized = serializer.serialize(scope, value)?;
+
+    if let Ok(bad) = state
+      .borrow()
+      .resource_table
+      .get::<IpcJsonStreamResource>(rid)
+    {
+      panic!("wrong resource type for advanced IPC");
+    }
+
+    let stream = state
+      .borrow()
+      .resource_table
+      .get::<IpcAdvancedStreamResource>(rid)?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      // sending messages too fast
+      let Ok(v) = false.to_v8(scope);
+      queue_ok.set_index(scope, 0, v);
+    }
+    Ok(async move {
+      let cancel = stream.cancel.clone();
+      let result = stream
+        .clone()
+        .write_msg_bytes(&serialized)
+        .or_cancel(cancel)
+        .await;
+      // adjust count even on error
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      result??;
+      Ok(())
+    })
+  }
+
+  struct AdvancedSerializer {
+    inner: v8::ValueSerializer<'static>,
+  }
+
+  impl AdvancedSerializer {
+    fn new(
+      scope: &mut v8::PinScope<'_, '_>,
+      constants: AdvancedIpcConstants,
+    ) -> Self {
+      let inner = v8::ValueSerializer::new(
+        scope,
+        Box::new(AdvancedSerializerDelegate::new(constants)),
+      );
+      inner.set_treat_array_buffer_views_as_host_objects(true);
+      Self { inner }
+    }
+
+    fn serialize<'s, 'i>(
+      &self,
+      scope: &mut v8::PinScope<'s, 'i>,
+      value: v8::Local<'s, v8::Value>,
+    ) -> Result<Vec<u8>, IpcError> {
+      self.inner.write_raw_bytes(&[0, 0, 0, 0]);
+      self.inner.write_header();
+      let context = scope.get_current_context();
+      self.inner.write_value(context, value);
+      let mut ser = self.inner.release();
+      let length = ser.len() - 4;
+      ser[0] = ((length >> 24) & 0xFF) as u8;
+      ser[1] = ((length >> 16) & 0xFF) as u8;
+      ser[2] = ((length >> 8) & 0xFF) as u8;
+      ser[3] = (length & 0xFF) as u8;
+      Ok(ser)
+    }
+  }
+
+  struct AdvancedIpcDeserializer {
+    inner: v8::ValueDeserializer<'static>,
+  }
+
+  struct AdvancedIpcDeserializerDelegate;
+
+  impl v8::ValueDeserializerImpl for AdvancedIpcDeserializerDelegate {
+    fn read_host_object<'s>(
+      &self,
+      scope: &mut v8::PinScope<'s, '_>,
+      _value_deserializer: &dyn ValueDeserializerHelper,
+    ) -> Option<v8::Local<'s, v8::Object>> {
+      let throw_error = |message: &str| {
+        scope.throw_exception(v8::Exception::type_error(
+          scope,
+          v8::String::new_from_utf8(
+            scope,
+            message.as_bytes(),
+            v8::NewStringType::Normal,
+          )
+          .unwrap(),
+        ));
+        None
+      };
+      let mut tag = 0;
+      if !_value_deserializer.read_uint32(&mut tag) {
+        return throw_error("Failed to read tag");
+      }
+      match tag {
+        ARRAY_BUFFER_VIEW_TAG => {
+          let mut index = 0;
+          if !_value_deserializer.read_uint32(&mut index) {}
+        }
+        NOT_ARRAY_BUFFER_VIEW_TAG => {
+          let value =
+            _value_deserializer.read_value(scope.get_current_context());
+          return Some(value.unwrap_or_else(|| v8::null(scope).into()).cast());
+        }
+        _ => {
+          scope.throw_exception(v8::Exception::type_error(
+            scope,
+            v8::String::new_from_utf8(
+              scope,
+              format!("Invalid tag: {}", tag).as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap(),
+          ));
+          return None;
+        }
+      }
+
+      None
+    }
+  }
+
+  impl AdvancedIpcDeserializer {
+    fn new(scope: &mut v8::PinScope<'_, '_>, msg_bytes: Vec<u8>) -> Self {
+      let inner = v8::ValueDeserializer::new(
+        scope,
+        Box::new(AdvancedIpcDeserializerDelegate),
+        &msg_bytes,
+      );
+      Self { inner }
+    }
+  }
+
+  struct AdvancedIpcReadResult {
+    msg_bytes: Option<Vec<u8>>,
+  }
+
+  fn make_stop_sentinel<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Value> {
+    let obj = v8::Object::new(scope);
+    obj.set(
+      scope,
+      v8::String::new_from_utf8(scope, b"cmd", v8::NewStringType::Internalized)
+        .unwrap()
+        .into(),
+      v8::String::new_from_utf8(
+        scope,
+        b"NODE_CLOSE",
+        v8::NewStringType::Internalized,
+      )
+      .unwrap()
+      .into(),
+    );
+    obj.into()
+  }
+
+  impl<'a> deno_core::ToV8<'a> for AdvancedIpcReadResult {
+    type Error = IpcError;
+    fn to_v8(
+      self,
+      scope: &mut v8::PinScope<'a, '_>,
+    ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+      let Some(msg_bytes) = self.msg_bytes else {
+        return Ok(make_stop_sentinel(scope));
+      };
+      let deser = AdvancedIpcDeserializer::new(scope, msg_bytes);
+      let context = scope.get_current_context();
+      deser.inner.read_header(context);
+      let value = deser.inner.read_value(context);
+      Ok(value.unwrap_or_else(|| v8::null(scope).into()))
+    }
+  }
+
+  #[op2(async)]
+  #[to_v8]
+  pub async fn op_node_ipc_read_advanced(
+    state: Rc<RefCell<OpState>>,
+    #[smi] rid: ResourceId,
+  ) -> Result<AdvancedIpcReadResult, IpcError> {
+    let stream = state
+      .borrow()
+      .resource_table
+      .get::<IpcAdvancedStreamResource>(rid)?;
+    let cancel = stream.cancel.clone();
+    let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
+    let msg_bytes = stream.read_msg_bytes().or_cancel(cancel).await??;
+    Ok(AdvancedIpcReadResult { msg_bytes })
+  }
+
   /// Value signaling that the other end ipc channel has closed.
   ///
   /// Node reserves objects of this form (`{ "cmd": "NODE_<something>"`)
@@ -238,7 +644,7 @@ mod impl_ {
 
   #[op2(async)]
   #[serde]
-  pub async fn op_node_ipc_read(
+  pub async fn op_node_ipc_read_json(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
   ) -> Result<serde_json::Value, IpcError> {
@@ -258,21 +664,45 @@ mod impl_ {
   }
 
   #[op2(fast)]
-  pub fn op_node_ipc_ref(state: &mut OpState, #[smi] rid: ResourceId) {
-    let stream = state
-      .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      .expect("Invalid resource ID");
-    stream.ref_tracker.ref_();
+  pub fn op_node_ipc_ref(
+    state: &mut OpState,
+    #[smi] rid: ResourceId,
+    serialization_json: bool,
+  ) {
+    if serialization_json {
+      let stream = state
+        .resource_table
+        .get::<IpcJsonStreamResource>(rid)
+        .expect("Invalid resource ID");
+      stream.ref_tracker.ref_();
+    } else {
+      let stream = state
+        .resource_table
+        .get::<IpcAdvancedStreamResource>(rid)
+        .expect("Invalid resource ID");
+      stream.ref_tracker.ref_();
+    }
   }
 
   #[op2(fast)]
-  pub fn op_node_ipc_unref(state: &mut OpState, #[smi] rid: ResourceId) {
-    let stream = state
-      .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      .expect("Invalid resource ID");
-    stream.ref_tracker.unref();
+  pub fn op_node_ipc_unref(
+    state: &mut OpState,
+    #[smi] rid: ResourceId,
+    serialization_json: bool,
+  ) {
+    if serialization_json {
+      let stream = state
+        .resource_table
+        .get::<IpcJsonStreamResource>(rid)
+        .expect("Invalid resource ID");
+      stream.ref_tracker.unref();
+    } else {
+      let stream = state
+        .resource_table
+        .get::<IpcAdvancedStreamResource>(rid)
+        .expect("Invalid resource ID");
+      stream.ref_tracker.unref();
+    }
   }
 
   #[cfg(test)]
