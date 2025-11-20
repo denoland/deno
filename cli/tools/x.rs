@@ -68,7 +68,7 @@ async fn run_js_file(
     crate::tools::run::set_npm_user_agent();
   }
 
-  crate::tools::run::maybe_npm_install(&factory).await?;
+  crate::tools::run::maybe_npm_install(factory).await?;
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
@@ -101,7 +101,7 @@ async fn maybe_run_local_npm_bin(
 ) -> Result<Option<i32>, AnyError> {
   let permissions = factory.root_permissions_container()?;
 
-  let bins = resolve_local_bins(&node_resolver, &npm_resolver)?;
+  let bins = resolve_local_bins(node_resolver, npm_resolver)?;
   let command = if command.starts_with("@") && command.contains("/") {
     command.split("/").last().unwrap()
   } else {
@@ -126,7 +126,7 @@ async fn maybe_run_local_npm_bin(
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
       let unconfigured_runtime = unconfigured_runtime.take();
-      return run_js_file(&factory, roots, unconfigured_runtime, &path, true)
+      return run_js_file(factory, roots, unconfigured_runtime, &path, true)
         .await
         .map(Some);
     }
@@ -145,7 +145,7 @@ async fn maybe_run_local_npm_bin(
         .spawn()
         .context("Failed to spawn command")?;
       let status = child.wait()?;
-      return Ok(Some(status.code().unwrap_or(1)));
+      Ok(Some(status.code().unwrap_or(1)))
     }
   }
 }
@@ -167,7 +167,7 @@ fn create_package_temp_dir(
   prefix: Option<&str>,
   package_req: &PackageReq,
   reload: bool,
-  deno_dir: &PathBuf,
+  deno_dir: &Path,
 ) -> Result<XTempDir, AnyError> {
   let mut package_req_folder = String::from(prefix.unwrap_or(""));
   package_req_folder.push_str(
@@ -186,7 +186,7 @@ fn create_package_temp_dir(
         .canonicalize()
         .ok()
         .map(deno_path_util::strip_unc_prefix);
-      let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+      let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
       return Ok(XTempDir::Existing(temp_dir));
     }
   }
@@ -200,7 +200,7 @@ fn create_package_temp_dir(
     .canonicalize()
     .ok()
     .map(deno_path_util::strip_unc_prefix);
-  let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+  let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
   Ok(XTempDir::New(temp_dir))
 }
 
@@ -238,13 +238,12 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
     let out_path = out_dir.join(format!("{}.cmd", shim_name.name()));
     std::fs::write(
       out_path,
-      format!(
-        r##"@echo off
+      r##"@echo off
 ./deno.exe x %*
 exit /b %ERRORLEVEL%
-"##,
-      )
-      .as_bytes(),
+"##
+        .to_string()
+        .as_bytes(),
     )?;
   }
 
@@ -261,7 +260,7 @@ pub async fn run(
     XFlagsKind::InstallAlias(shim_name) => {
       let exe = std::env::current_exe()?;
       let out_dir = exe.parent().unwrap();
-      write_shim(&out_dir, shim_name)?;
+      write_shim(out_dir, shim_name)?;
       return Ok(0);
     }
     XFlagsKind::Command(command) => command,
@@ -269,14 +268,14 @@ pub async fn run(
       let factory = CliFactory::from_flags(flags.clone());
       let npm_resolver = factory.npm_resolver().await?;
       let node_resolver = factory.node_resolver().await?;
-      let bins = resolve_local_bins(&node_resolver, &npm_resolver)?;
+      let bins = resolve_local_bins(node_resolver, npm_resolver)?;
       if bins.is_empty() {
-        println!("No local commands found");
+        log::info!("No local commands found");
         return Ok(0);
       }
-      println!("Available (local) commands:");
+      log::info!("Available (local) commands:");
       for command in bins.keys() {
-        println!("  {}", command);
+        log::info!("  {}", command);
       }
       return Ok(0);
     }
@@ -289,8 +288,8 @@ pub async fn run(
     &flags,
     roots.clone(),
     &mut unconfigured_runtime,
-    &node_resolver,
-    &npm_resolver,
+    node_resolver,
+    npm_resolver,
     &command_flags.command,
   )
   .await?;
@@ -369,10 +368,10 @@ pub async fn run(
       )
       .await?;
       if let Some(exit_code) = res {
-        return Ok(exit_code);
+        Ok(exit_code)
       } else {
-        let bins = resolve_local_bins(&new_node_resolver, &new_npm_resolver)?;
-        return Err(anyhow::anyhow!(
+        let bins = resolve_local_bins(new_node_resolver, new_npm_resolver)?;
+        Err(anyhow::anyhow!(
           "Unable to choose binary for {}\n  Available bins:\n{}",
           command_flags.command,
           bins
@@ -380,7 +379,7 @@ pub async fn run(
             .map(|k| format!("    {}", k))
             .collect::<Vec<_>>()
             .join("\n")
-        ));
+        ))
       }
     }
     ReqRefOrUrl::Jsr(jsr_package_req_reference) => {
@@ -415,9 +414,9 @@ async fn autoinstall_package(
   old_flags: &Flags,
   reload: bool,
   yes: bool,
-  deno_dir: &PathBuf,
+  deno_dir: &Path,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
-  fn make_new_flags(old_flags: &Flags, temp_dir: &PathBuf) -> Arc<Flags> {
+  fn make_new_flags(old_flags: &Flags, temp_dir: &Path) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
     new_flags.node_modules_dir =
       Some(deno_config::deno_json::NodeModulesDirMode::Auto);
@@ -429,8 +428,8 @@ async fn autoinstall_package(
     new_flags.allow_scripts = PackagesAllowedScripts::All;
 
     log::debug!("new_flags: {:?}", new_flags);
-    let new_flags = Arc::new(new_flags);
-    new_flags
+
+    Arc::new(new_flags)
   }
   let temp_dir = create_package_temp_dir(
     Some(req_ref.prefix()),
@@ -439,7 +438,7 @@ async fn autoinstall_package(
     deno_dir,
   )?;
 
-  let new_flags = make_new_flags(old_flags, &temp_dir.path());
+  let new_flags = make_new_flags(old_flags, temp_dir.path());
   let new_factory = CliFactory::from_flags(new_flags.clone());
 
   match temp_dir {

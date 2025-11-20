@@ -806,15 +806,12 @@ impl<
           let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
           let mut buf_read = BufReader::new(file);
           let mut line = String::new();
-          if let Ok(len) = buf_read.read_line(&mut line) {
-            if len > 0 {
-              if let Some(path) = resolve_execution_path_from_npx_shim(
-                Cow::Borrowed(&path),
-                &line,
-              ) {
-                return Some((command, BinValue::JsFile(path)));
-              }
-            }
+          if let Ok(len) = buf_read.read_line(&mut line)
+            && len > 0
+            && let Some(path) =
+              resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), &line)
+          {
+            return Some((command, BinValue::JsFile(path)));
           }
 
           Some((command, BinValue::Executable(path.to_path_buf())))
@@ -869,19 +866,17 @@ impl<
     let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
     let mut buf_read = BufReader::new(file);
     let mut line = String::new();
-    if let Ok(len) = buf_read.read_line(&mut line) {
-      if len > 0 {
-        if let Some(path) =
-          resolve_execution_path_from_npx_shim(path.clone(), &line)
-        {
-          log::debug!(
-            "Resolved npx command '{}' to '{}'.",
-            command_name,
-            path.display()
-          );
-          return Some((command_name, BinValue::JsFile(path)));
-        }
-      }
+    if let Ok(len) = buf_read.read_line(&mut line)
+      && len > 0
+      && let Some(path) =
+        resolve_execution_path_from_npx_shim(path.clone(), &line)
+    {
+      log::debug!(
+        "Resolved npx command '{}' to '{}'.",
+        command_name,
+        path.display()
+      );
+      return Some((command_name, BinValue::JsFile(path)));
     }
     Some((command_name, BinValue::Executable(path.to_path_buf())))
   }
