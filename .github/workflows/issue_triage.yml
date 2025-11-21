@@ -111,6 +111,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          claude \
-            --allowedTools "Bash(gh issue:*),Bash(gh search:*)" \
-            "$(cat /tmp/prompt.txt)"
+          claude --print "$(cat /tmp/prompt.txt)" \
+            --allowedTools "Bash(gh issue:*),Bash(gh search:*)"
