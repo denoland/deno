@@ -26,6 +26,28 @@ jobs:
         shell: bash
         run: npm install -g @anthropic-ai/claude-code
 
+      - name: Install GitHub MCP Server
+        shell: bash
+        run: npm install -g @modelcontextprotocol/server-github
+
+      - name: Configure Claude Code MCP
+        shell: bash
+        run: |
+          mkdir -p .claude
+          cat > .claude/settings.json << 'MCPEOF'
+          {
+            "mcpServers": {
+              "github": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github"],
+                "env": {
+                  "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+                }
+              }
+            }
+          }
+          MCPEOF
+
       - name: Create prompt file
         shell: bash
         run: |
@@ -42,7 +64,7 @@ jobs:
           Note: The PR branch is already checked out in the current working directory.
 
           Use `gh pr comment` for top-level feedback.
-          Use `mcp__github_inline_comment__create_inline_comment` to highlight specific code issues.
+          Use `mcp__github__add_comment_to_pending_review` to add inline comments on specific lines of code.
           Only post GitHub comments - don't submit review text as messages.
           EOF
 
@@ -53,4 +75,4 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           claude --print "$(cat /tmp/prompt.txt)" \
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github__add_comment_to_pending_review,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

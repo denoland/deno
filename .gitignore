@@ -45,3 +45,4 @@ Untitled*.ipynb
 /.ms-playwright
 
 **/.claude/settings.local.json
+**/.claude/settings.json
