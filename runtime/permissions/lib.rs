@@ -3704,7 +3704,7 @@ pub enum PermissionCheckError {
 }
 
 fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
-  #[cfg(unix)]
+  #[cfg(not(windows))]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(libc::ENOENT)
   }
