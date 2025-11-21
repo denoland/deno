@@ -5,12 +5,12 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod geometry;
 mod message_port;
 mod stream_resource;
 mod timers;
 mod url;
 mod urlpattern;
-mod geometry;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
