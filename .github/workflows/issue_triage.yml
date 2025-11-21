@@ -19,55 +19,84 @@ jobs:
       issues: write
       id-token: write
     steps:
-      - uses: anthropics/claude-code-action@v1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          mode: auto
-          github_token: ${{ secrets.DENOBOT_PAT }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            ISSUE NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }}
+          node-version: '20'
 
-            ${{ github.event_name == 'workflow_dispatch' && 'This workflow was manually triggered to triage an existing issue. First, fetch the issue details using: `gh issue view [ISSUE_NUMBER] --repo denoland/deno --json number,title,body,author`' || format('TITLE: {0}
-            BODY: {1}
-            AUTHOR: {2}', github.event.issue.title, github.event.issue.body, github.event.issue.user.login) }}
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
 
-            This is a new issue from an external contributor. Please analyze it and:
+      - name: Setup GitHub CLI
+        run: |
+          gh --version || (curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y)
 
-            1. **Categorize the issue type**: Determine if it's a:
-               - Bug report
-               - Feature request/suggestion
-               - Node.js compatibility problem
-               - Question
-               - Documentation issue
-               - Performance issue
-               - Other
+      - name: Create prompt file
+        run: |
+          cat << 'EOF' > /tmp/prompt.txt
+          REPO: ${{ github.repository }}
+          ISSUE NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }}
 
-            2. **Assess completeness**: Check if the issue contains:
-               - Clear description of the problem/request
-               - Steps to reproduce (for bugs)
-               - Expected vs actual behavior (for bugs)
-               - Deno version and platform info (when relevant)
-               - Minimal reproducible example (for bugs)
+          ${{ github.event_name == 'workflow_dispatch' && 'This workflow was manually triggered to triage an existing issue. First, fetch the issue details using: `gh issue view [ISSUE_NUMBER] --repo denoland/deno --json number,title,body,author`' || format('TITLE: {0}
+          BODY: {1}
+          AUTHOR: {2}', github.event.issue.title, github.event.issue.body, github.event.issue.user.login) }}
 
-            3. **Check for duplicates**: Search existing issues to see if this has been reported before:
-               `gh search issues --repo denoland/deno [relevant keywords]`
+          This is a new issue from an external contributor. Please analyze it and:
 
-            4. **Suggest appropriate labels** based on:
-               - Type: bug, feat, suggestion, question, docs
-               - Platform: windows (if Windows-specific)
-               - Node.js compatibility bug
-               - Priority/Status: needs info, good first issue (for simple, well-defined bugs), etc.
-               - Other: performance/perf, benchmarks, build, breaking change, tls, design limitation, etc.
+          1. **Categorize the issue type**: Determine if it's a:
+             - Bug report
+             - Feature request/suggestion
+             - Node.js compatibility problem
+             - Question
+             - Documentation issue
+             - Performance issue
+             - Other
 
-            5. **Add labels** using: `gh issue edit ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }} --add-label "label1,label2,label3"`, make sure to add "ai:triage" label.
+          2. **Assess completeness**: Check if the issue contains:
+             - Clear description of the problem/request
+             - Steps to reproduce (for bugs)
+             - Expected vs actual behavior (for bugs)
+             - Deno version and platform info (when relevant)
+             - Minimal reproducible example (for bugs)
 
-            6. **If the issue needs more information**, also add a comment requesting specific details needed for triage and the "needs info" label.
+          3. **Check for duplicates**: Search existing issues to see if this has been reported before:
+             `gh search issues --repo denoland/deno [relevant keywords]`
 
-            7. **If you find a likely duplicate**, post a comment mentioning the original issue(s) and add the "duplicate" label.
+          4. **Suggest appropriate labels** based on:
+             - Type: bug, feat, suggestion, question, docs
+             - Platform: windows (if Windows-specific)
+             - Node.js compatibility bug
+             - Priority/Status: needs info, good first issue (for simple, well-defined bugs), etc.
+             - Other: performance/perf, benchmarks, build, breaking change, tls, design limitation, etc.
 
-            Be thorough but efficient. Focus on accurate categorization to help maintainers prioritize their work. Make sure that your
-            comments includes this banner at the very end: "_This response was generated by AI and may contain mistakes If you didn't find it useful, please add a "thumbs down" reaction._"
+          5. **Post your triage analysis as a comment** on the issue using:
+             `gh issue comment ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }} --repo denoland/deno --body "Your analysis here"`
+             Include your categorization, assessment of completeness, any duplicates found, and suggested labels.
 
-          claude_args: |
-            --allowedTools "Bash(gh issue:*),Bash(gh search:*)"
+          6. **Add labels** using: `gh issue edit ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }} --repo denoland/deno --add-label "label1,label2,label3"`, make sure to add "ai:triage" label.
+
+          7. **If the issue needs more information**, mention it in your comment and add the "needs info" label.
+
+          8. **If you find a likely duplicate**, mention the original issue(s) in your comment and add the "duplicate" label.
+
+          Be thorough but efficient. Focus on accurate categorization to help maintainers prioritize their work. Make sure that your
+          comment includes this banner at the very end: "_This response was generated by AI and may contain mistakes. If you didn't find it useful, please add a "thumbs down" reaction._"
+          EOF
+
+      - name: Run Claude Code Triage
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GH_TOKEN: ${{ secrets.DENOBOT_PAT }}
+        run: |
+          claude-code \
+            --mode auto \
+            --allowedTools "Bash(gh issue:*),Bash(gh search:*)" \
+            --prompt "$(cat /tmp/prompt.txt)"
