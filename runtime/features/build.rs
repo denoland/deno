@@ -53,7 +53,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
     show_in_help: {},
     id: {},
     kind: {},
-    config_file_option: "{}",
   }},
 "#,
       feature.name,
@@ -61,11 +60,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
       feature.help_text,
       feature.show_in_help,
       id,
-      feature_kind,
-      match feature.config_option {
-        data::ConfigFileOption::SameAsFlagName => feature.name,
-        data::ConfigFileOption::Renamed(alias) => alias,
-      }
+      feature_kind
     );
 
     if matches!(feature.kind, structs::UnstableFeatureKind::Runtime) {
