@@ -1,0 +1,3 @@
+error: Uncaught (in promise) Error: Test error with trailing content
+    at throwError (file:///[WILDCARD]test.ts:4:1)
+    at file:///[WILDCARD]test.ts:6:1
