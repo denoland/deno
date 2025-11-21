@@ -1667,7 +1667,7 @@ fn flags_to_permissions_options(
     ignore_read: handle_deny_or_ignore(
       flags.ignore_read.as_ref(),
       config.and_then(|c| c.permissions.read.ignore.as_ref()),
-      &identity,
+      &make_fs_config_value_absolute,
     ),
     allow_run: handle_allow(
       flags.allow_all,
