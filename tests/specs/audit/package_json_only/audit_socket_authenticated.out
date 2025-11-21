@@ -24,7 +24,7 @@ Socket.dev firewall report
 
 ╭ pkg:npm/@denotest/using-vuln@1.0.0
 │ Supply Chain Risk:   100
-│ Maintenance:          77
+│ Maintenance:          78
 │ Quality:              94
 │ Vulnerabilities:     100
 │ License:             100
@@ -32,7 +32,7 @@ Socket.dev firewall report
 
 ╭ pkg:npm/@denotest/with-vuln1@1.0.0
 │ Supply Chain Risk:   100
-│ Maintenance:          77
+│ Maintenance:          78
 │ Quality:              94
 │ Vulnerabilities:     100
 │ License:             100
@@ -40,7 +40,7 @@ Socket.dev firewall report
 
 ╭ pkg:npm/@denotest/with-vuln2@1.5.0
 │ Supply Chain Risk:   100
-│ Maintenance:          77
+│ Maintenance:          78
 │ Quality:              94
 │ Vulnerabilities:     100
 │ License:             100

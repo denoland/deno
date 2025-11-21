@@ -191,8 +191,8 @@ async fn handle_authenticated_request(
       "version": version,
       "score": {
         "license": 1.0,
-        "maintenance": 0.77,
-        "overall": 0.77,
+        "maintenance": 0.78,
+        "overall": 0.78,
         "quality": 0.94,
         "supplyChain": 1.0,
         "vulnerability": 1.0
