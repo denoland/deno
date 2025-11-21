@@ -658,23 +658,6 @@ pub fn print_install_report(
     if npm_download > 0 {
       log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
     }
-  } else if !rep.stats.resolved_npm.is_empty()
-    || !rep.stats.resolved_jsr.is_empty()
-  {
-    // this may occur when installing with `--lockfile-only`
-    let total_resolved =
-      rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len();
-    log::info!(
-      "{} {} {} {} {}",
-      deno_terminal::colors::gray("Resolved"),
-      total_resolved,
-      deno_terminal::colors::gray(format!(
-        "package{}",
-        if total_resolved > 1 { "s" } else { "" },
-      )),
-      deno_terminal::colors::gray("in"),
-      human_elapsed(elapsed.as_millis())
-    );
   }
 
   let CategorizedInstalledDeps {
