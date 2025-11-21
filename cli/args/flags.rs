@@ -5186,7 +5186,7 @@ impl CommandExt for Command {
     let mut cmd = self.arg(
       Arg::new("unstable")
       .long("unstable")
-      .help(cstr!("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
+      .help(cstr!("The `--unstable` flag has been removed. Use granular `--unstable-*` flags instead
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
       .action(ArgAction::SetTrue)
       .hide(matches!(cfg, UnstableArgsConfig::None))
@@ -7009,11 +7009,6 @@ fn unstable_args_parse(
   matches: &mut ArgMatches,
   cfg: UnstableArgsConfig,
 ) {
-  // TODO(bartlomieju): remove in Deno 2.5
-  if matches.get_flag("unstable") {
-    flags.unstable_config.legacy_flag_enabled = true;
-  }
-
   // TODO(bartlomieju): this should be factored out since these are configured via UNSTABLE_FEATURES
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");

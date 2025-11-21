@@ -7,7 +7,7 @@ Deno uses a custom test runner for Web Platform Tests. It can be found at
 
 > If you are on Windows, or your system does not support hashbangs, prefix all
 > `./tests/wpt/wpt.ts` commands with
-> `deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run`.
+> `deno run --allow-write --allow-read --allow-net --allow-env --allow-run`.
 
 Before attempting to run WPT tests for the first time, please run the WPT setup.
 You must also run this command every time the `./test_util/wpt` submodule is
