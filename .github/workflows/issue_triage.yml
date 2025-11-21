@@ -38,14 +38,30 @@ jobs:
           && sudo apt install gh -y)
 
       - name: Create prompt file
+        env:
+          ISSUE_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           cat << 'EOF' > /tmp/prompt.txt
           REPO: ${{ github.repository }}
-          ISSUE NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.issue_number || github.event.issue.number }}
+          ISSUE NUMBER: ${ISSUE_NUMBER}
 
-          ${{ github.event_name == 'workflow_dispatch' && 'This workflow was manually triggered to triage an existing issue. First, fetch the issue details using: `gh issue view [ISSUE_NUMBER] --repo denoland/deno --json number,title,body,author`' || format('TITLE: {0}
-          BODY: {1}
-          AUTHOR: {2}', github.event.issue.title, github.event.issue.body, github.event.issue.user.login) }}
+          EOF
+
+          if [ "$IS_MANUAL" = "true" ]; then
+            cat << 'EOF' >> /tmp/prompt.txt
+          This workflow was manually triggered to triage an existing issue. First, fetch the issue details using: `gh issue view [ISSUE_NUMBER] --repo denoland/deno --json number,title,body,author`
+          EOF
+          else
+            echo "TITLE: ${ISSUE_TITLE}" >> /tmp/prompt.txt
+            echo "BODY: ${ISSUE_BODY}" >> /tmp/prompt.txt
+            echo "AUTHOR: ${ISSUE_AUTHOR}" >> /tmp/prompt.txt
+          fi
+
+          cat << 'EOF' >> /tmp/prompt.txt
 
           This is a new issue from an external contributor. Please analyze it and:
 
@@ -95,7 +111,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          claude-code \
-            --mode auto \
+          claude \
             --allowedTools "Bash(gh issue:*),Bash(gh search:*)" \
-            --prompt "$(cat /tmp/prompt.txt)"
+            "$(cat /tmp/prompt.txt)"
