@@ -20,12 +20,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install Claude Code
+        shell: bash
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Create prompt file
+        shell: bash
         run: |
           cat > /tmp/prompt.txt << 'EOF'
           REPO: ${{ github.repository }}
@@ -45,6 +47,7 @@ jobs:
           EOF
 
       - name: Run Claude Code Review
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
