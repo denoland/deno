@@ -3704,7 +3704,15 @@ pub enum PermissionCheckError {
 }
 
 fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
-  #[cfg(not(windows))]
+  #[cfg(target_arch = "wasm32")]
+  fn not_found() -> std::io::Error {
+    std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "No such file or directory (os error 2)",
+    )
+  }
+
+  #[cfg(all(not(windows), not(target_arch = "wasm32")))]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(libc::ENOENT)
   }
