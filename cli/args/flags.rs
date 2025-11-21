@@ -3321,7 +3321,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 5] {
+fn update_and_outdated_args() -> [Arg; 6] {
   [
     Arg::new("filters")
       .num_args(0..)
