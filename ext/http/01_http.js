@@ -31,18 +31,18 @@ const {
   Uint8Array,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
+import { InnerBody } from "ext:deno_web/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
+} from "ext:deno_web/23_response.js";
 import {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} from "ext:deno_web/23_request.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,

@@ -6,9 +6,9 @@ use deno_core::OpState;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
-use deno_fetch::FetchError;
-use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
+use deno_web::fetch::FetchError;
+use deno_web::fetch::data_url::DataUrl;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use serde::Deserialize;
@@ -95,8 +95,8 @@ pub fn op_worker_sync_fetch(
 
   // it's not safe to share a client across tokio runtimes, so create a fresh one
   // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  let options = state.borrow::<deno_fetch::Options>().clone();
-  let client = deno_fetch::create_client_from_options(&options)
+  let options = state.borrow::<deno_web::fetch::Options>().clone();
+  let client = deno_web::fetch::create_client_from_options(&options)
     .map_err(FetchError::ClientCreate)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
@@ -129,7 +129,8 @@ pub fn op_worker_sync_fetch(
 
             let (body, mime_type, res_url) = match script_url.scheme() {
               "http" | "https" => {
-                let mut req = http::Request::new(deno_fetch::ReqBody::empty());
+                let mut req =
+                  http::Request::new(deno_web::fetch::ReqBody::empty());
                 *req.uri_mut() = script_url.as_str().parse()?;
 
                 let resp =

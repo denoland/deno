@@ -18,9 +18,9 @@ use http::StatusCode;
 use http_body_util::BodyExt;
 use tokio_util::io::ReaderStream;
 
-use crate::CancelHandle;
-use crate::CancelableResponseFuture;
-use crate::FetchHandler;
+use crate::fetch::CancelHandle;
+use crate::fetch::CancelableResponseFuture;
+use crate::fetch::FetchHandler;
 
 /// An implementation which tries to read file URLs from the file system via
 /// tokio::fs.
