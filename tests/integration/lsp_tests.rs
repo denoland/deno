@@ -15984,6 +15984,7 @@ fn lsp_npm_global_cache_hover() {
   let npm_cache_file_path = context
     .deno_dir()
     .path()
+    .canonicalize()
     .join("npm/localhost_4260/chalk/5.0.1/source/index.d.ts");
   assert_eq!(
     res,
@@ -16019,7 +16020,7 @@ fn lsp_npm_global_cache_hover() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Types**: file&#8203;{}\n", context.deno_dir().path().join("npm/localhost_4260/chalk/5.0.1/source/vendor/supports-color/index.d.ts").url_file().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Types**: file&#8203;{}\n", context.deno_dir().path().canonicalize().join("npm/localhost_4260/chalk/5.0.1/source/vendor/supports-color/index.d.ts").url_file().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 2, "character": 43 },
