@@ -37,6 +37,7 @@ pub use self::bin_name_resolver::BinNameResolver;
 use crate::args::AddFlags;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
 use crate::args::InstallFlagsLocal;
@@ -206,10 +207,10 @@ impl deno_graph::source::Reporter for InstallReporter {
 impl deno_npm::resolution::Reporter for InstallReporter {
   fn on_resolved(
     &self,
-    _package_req: &deno_semver::package::PackageReq,
+    package_req: &deno_semver::package::PackageReq,
     _nv: &deno_semver::package::PackageNv,
   ) {
-    self.stats.resolved_npm.insert(_package_req.to_string());
+    self.stats.resolved_npm.insert(package_req.to_string());
   }
 }
 
@@ -427,14 +428,14 @@ fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
 
 pub(crate) async fn install_from_entrypoints(
   flags: Arc<Flags>,
-  entrypoints: &[String],
+  entrypoints_flags: InstallEntrypointsFlags,
 ) -> Result<(), AnyError> {
   let started = std::time::Instant::now();
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
   let specifiers = main_graph_container.collect_specifiers(
-    entrypoints,
+    &entrypoints_flags.entrypoints,
     CollectSpecifiersOptions {
       include_ignored_specified: true,
     },
@@ -471,7 +472,7 @@ async fn install_local(
       super::pm::add(flags, add_flags, super::pm::AddCommandName::Install).await
     }
     InstallFlagsLocal::Entrypoints(entrypoints) => {
-      install_from_entrypoints(flags, &entrypoints).await
+      install_from_entrypoints(flags, entrypoints).await
     }
     InstallFlagsLocal::TopLevel(top_level_flags) => {
       install_top_level(flags, top_level_flags).await
@@ -587,6 +588,10 @@ pub fn print_install_report(
   workspace: &WorkspaceResolver<CliSys>,
   npm_resolver: &CliNpmResolver,
 ) {
+  fn human_elapsed(elapsed: u128) -> String {
+    display::human_elapsed_with_ms_limit(elapsed, 3_000)
+  }
+
   let rep = install_reporter;
 
   if !rep.stats.intialized_npm.is_empty()
@@ -603,7 +608,7 @@ pub fn print_install_report(
         if total_installed > 1 { "s" } else { "" },
       )),
       deno_terminal::colors::gray("in"),
-      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
+      human_elapsed(elapsed.as_millis())
     );
 
     let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
@@ -653,6 +658,23 @@ pub fn print_install_report(
     if npm_download > 0 {
       log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
     }
+  } else if !rep.stats.resolved_npm.is_empty()
+    || !rep.stats.resolved_jsr.is_empty()
+  {
+    // this may occur when installing with `--lockfile-only`
+    let total_resolved =
+      rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len();
+    log::info!(
+      "{} {} {} {} {}",
+      deno_terminal::colors::gray("Resolved"),
+      total_resolved,
+      deno_terminal::colors::gray(format!(
+        "package{}",
+        if total_resolved > 1 { "s" } else { "" },
+      )),
+      deno_terminal::colors::gray("in"),
+      human_elapsed(elapsed.as_millis())
+    );
   }
 
   let CategorizedInstalledDeps {

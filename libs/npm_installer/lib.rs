@@ -462,4 +462,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     Ok(false)
   }
+
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
+  pub async fn install_resolution_if_pending(&self) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self
+      .npm_resolution_installer
+      .install_if_pending()
+      .await
+      .map_err(JsErrorBox::from_err)?;
+    Ok(())
+  }
 }

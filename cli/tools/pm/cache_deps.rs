@@ -222,12 +222,7 @@ pub async fn cache_top_level_deps(
   if options.lockfile_only {
     // do a resolution install if the npm snapshot is in a
     // pending state due to a config file change
-    factory
-      .npm_installer_factory()?
-      .npm_resolution_installer()
-      .await?
-      .install_if_pending()
-      .await?;
+    npm_installer.install_resolution_if_pending().await?;
   } else {
     npm_installer.cache_packages(PackageCaching::All).await?;
   }

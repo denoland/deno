@@ -319,11 +319,17 @@ pub enum InstallFlags {
 pub enum InstallFlagsLocal {
   Add(AddFlags),
   TopLevel(InstallTopLevelFlags),
-  Entrypoints(Vec<String>),
+  Entrypoints(InstallEntrypointsFlags),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallTopLevelFlags {
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallEntrypointsFlags {
+  pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
 }
 
@@ -1250,22 +1256,24 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(files))) => {
-        Some(vec![
-          files
-            .iter()
-            .filter_map(|file| {
-              resolve_single_folder_path(file, current_dir, |mut p| {
-                if p.is_dir() {
-                  return Some(p);
-                }
-                if p.pop() { Some(p) } else { None }
-              })
+      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
+        InstallEntrypointsFlags {
+          entrypoints: files, ..
+        },
+      ))) => Some(vec![
+        files
+          .iter()
+          .filter_map(|file| {
+            resolve_single_folder_path(file, current_dir, |mut p| {
+              if p.is_dir() {
+                return Some(p);
+              }
+              if p.pop() { Some(p) } else { None }
             })
-            .next()
-            .unwrap_or_else(|| current_dir.to_path_buf()),
-        ])
-      }
+          })
+          .next()
+          .unwrap_or_else(|| current_dir.to_path_buf()),
+      ]),
       _ => Some(vec![current_dir.to_path_buf()]),
     }
   }
@@ -5969,7 +5977,10 @@ fn install_parse(
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::Entrypoints(entrypoints.collect()),
+      InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+        entrypoints: entrypoints.collect(),
+        lockfile_only,
+      }),
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")

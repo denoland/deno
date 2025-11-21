@@ -116,7 +116,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     self.registry_info_provider.package_info(package_name).await
   }
 
-  /// Run a resolution install if the npm snapshot is in a pending state due to a config file change.
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
   pub async fn install_if_pending(&self) -> Result<(), NpmResolutionError> {
     self.add_package_reqs_inner(&[]).await.1
   }
