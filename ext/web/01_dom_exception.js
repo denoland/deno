@@ -9,21 +9,19 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
-  Error,
   ErrorPrototype,
   ObjectDefineProperty,
-  ObjectCreate,
   ObjectEntries,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  ReflectConstruct,
   Symbol,
   SymbolFor,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "./01_console.js";
+import { DOMException } from "ext:core/ops";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -57,108 +55,38 @@ const TIMEOUT_ERR = 23;
 const INVALID_NODE_TYPE_ERR = 24;
 const DATA_CLONE_ERR = 25;
 
-// Defined in WebIDL 2.8.1.
-// https://webidl.spec.whatwg.org/#dfn-error-names-table
-/** @type {Record<string, number>} */
-// the prototype should be null, to prevent user code from looking
-// up Object.prototype properties, such as "toString"
-const nameToCodeMapping = ObjectCreate(null, {
-  IndexSizeError: { value: INDEX_SIZE_ERR },
-  HierarchyRequestError: { value: HIERARCHY_REQUEST_ERR },
-  WrongDocumentError: { value: WRONG_DOCUMENT_ERR },
-  InvalidCharacterError: { value: INVALID_CHARACTER_ERR },
-  NoModificationAllowedError: { value: NO_MODIFICATION_ALLOWED_ERR },
-  NotFoundError: { value: NOT_FOUND_ERR },
-  NotSupportedError: { value: NOT_SUPPORTED_ERR },
-  InUseAttributeError: { value: INUSE_ATTRIBUTE_ERR },
-  InvalidStateError: { value: INVALID_STATE_ERR },
-  SyntaxError: { value: SYNTAX_ERR },
-  InvalidModificationError: { value: INVALID_MODIFICATION_ERR },
-  NamespaceError: { value: NAMESPACE_ERR },
-  InvalidAccessError: { value: INVALID_ACCESS_ERR },
-  TypeMismatchError: { value: TYPE_MISMATCH_ERR },
-  SecurityError: { value: SECURITY_ERR },
-  NetworkError: { value: NETWORK_ERR },
-  AbortError: { value: ABORT_ERR },
-  URLMismatchError: { value: URL_MISMATCH_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
-  TimeoutError: { value: TIMEOUT_ERR },
-  InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
-  DataCloneError: { value: DATA_CLONE_ERR },
-});
-
-// Defined in WebIDL 4.3.
-// https://webidl.spec.whatwg.org/#idl-DOMException
-class DOMException {
-  [_message];
-  [_name];
-  [_code];
-
-  // https://webidl.spec.whatwg.org/#dom-domexception-domexception
-  constructor(message = "", name = "Error") {
-    message = webidl.converters.DOMString(
-      message,
-      "Failed to construct 'DOMException'",
-      "Argument 1",
-    );
-    name = webidl.converters.DOMString(
-      name,
-      "Failed to construct 'DOMException'",
-      "Argument 2",
-    );
-    const code = nameToCodeMapping[name] ?? 0;
-
-    // execute Error constructor to have stack property and [[ErrorData]] internal slot
-    const error = ReflectConstruct(Error, [], new.target);
-    error[_message] = message;
-    error[_name] = name;
-    error[_code] = code;
-    error[webidl.brand] = webidl.brand;
-
-    return error;
-  }
-
-  get message() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_message];
-  }
-
-  get name() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_name];
-  }
-
-  get code() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_code];
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    if (ObjectHasOwn(this, "stack")) {
-      const stack = this.stack;
-      if (typeof stack === "string") {
-        return stack;
-      }
-    }
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
 webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
+
+ObjectDefineProperty(
+  DOMExceptionPrototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      if (ObjectHasOwn(this, "stack")) {
+        const stack = this.stack;
+        if (typeof stack === "string") {
+          return stack;
+        }
+      }
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
 
 const entries = ObjectEntries({
   INDEX_SIZE_ERR,
