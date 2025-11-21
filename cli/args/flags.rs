@@ -3346,6 +3346,7 @@ fn update_and_outdated_args() -> [Arg; 5] {
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
     min_dep_age_arg(),
+    lockfile_only_arg(),
   ]
 }
 
@@ -3439,7 +3440,6 @@ Specific version requirements to update to can be specified:
           .action(ArgAction::SetTrue)
           .help("Update dependency versions"),
       )
-      .arg(lockfile_only_arg().requires("update"))
   })
 }
 
