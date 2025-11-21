@@ -9,6 +9,11 @@
       "args": "audit",
       "output": "audit.out",
       "exitCode": 1
+    },
+    {
+      "args": "audit --socket",
+      "output": "audit_socket.out",
+      "exitCode": 1
     }
   ]
 }

@@ -41,7 +41,6 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
-pub use crate::broadcast_channel::BroadcastChannel;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
@@ -54,14 +53,12 @@ use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
 pub use crate::timers::StartTime;
-pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
-  parameters = [P: TimersPermission, BC: BroadcastChannel],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -87,8 +84,8 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
-    op_now<P>,
-    op_time_origin<P>,
+    op_now,
+    op_time_origin,
     op_defer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
@@ -107,10 +104,10 @@ deno_core::extension!(deno_web,
     urlpattern::op_urlpattern_parse,
     urlpattern::op_urlpattern_process_match_input,
     console::op_preview_entries,
-    broadcast_channel::op_broadcast_subscribe<BC>,
-    broadcast_channel::op_broadcast_unsubscribe<BC>,
-    broadcast_channel::op_broadcast_send<BC>,
-    broadcast_channel::op_broadcast_recv<BC>,
+    broadcast_channel::op_broadcast_subscribe,
+    broadcast_channel::op_broadcast_unsubscribe,
+    broadcast_channel::op_broadcast_send,
+    broadcast_channel::op_broadcast_recv,
   ],
   esm = [
     "00_infra.js",
@@ -140,7 +137,7 @@ deno_core::extension!(deno_web,
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
-    bc: BC,
+    bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
     state.put(options.blob_store);

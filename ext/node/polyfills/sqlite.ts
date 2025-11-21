@@ -9,8 +9,9 @@ import {
 import { Buffer } from "node:buffer";
 
 const {
-  ObjectDefineProperty,
+  ObjectDefineProperties,
   SymbolFor,
+  SymbolDispose,
 } = primordials;
 
 interface BackupOptions {
@@ -103,11 +104,26 @@ export const constants = {
 };
 
 const sqliteTypeSymbol = SymbolFor("sqlite-type");
-ObjectDefineProperty(DatabaseSync.prototype, sqliteTypeSymbol, {
-  __proto__: null,
-  value: "node:sqlite",
-  enumerable: false,
-  configurable: true,
+ObjectDefineProperties(DatabaseSync.prototype, {
+  [sqliteTypeSymbol]: {
+    __proto__: null,
+    value: "node:sqlite",
+    enumerable: false,
+    configurable: true,
+  },
+  [SymbolDispose]: {
+    __proto__: null,
+    value: function () {
+      try {
+        this.close();
+      } catch {
+        // Ignore errors.
+      }
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  },
 });
 
 export { backup, DatabaseSync, StatementSync };
