@@ -40,6 +40,7 @@ use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
 use crate::args::InstallFlagsLocal;
+use crate::args::InstallTopLevelFlags;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
@@ -472,10 +473,8 @@ async fn install_local(
     InstallFlagsLocal::Entrypoints(entrypoints) => {
       install_from_entrypoints(flags, &entrypoints).await
     }
-    InstallFlagsLocal::TopLevel => {
-      let start = std::time::Instant::now();
-      let factory = CliFactory::from_flags(flags);
-      install_top_level(&factory, start).await
+    InstallFlagsLocal::TopLevel(top_level_flags) => {
+      install_top_level(flags, top_level_flags).await
     }
   }
 }
@@ -717,9 +716,11 @@ pub fn print_install_report(
 }
 
 async fn install_top_level(
-  factory: &CliFactory,
-  started: std::time::Instant,
+  flags: Arc<Flags>,
+  top_level_flags: InstallTopLevelFlags,
 ) -> Result<(), AnyError> {
+  let start_instant = std::time::Instant::now();
+  let factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
   factory
     .npm_installer()
@@ -729,7 +730,14 @@ async fn install_top_level(
   npm_installer.ensure_no_pkg_json_dep_errors()?;
 
   // the actual work
-  crate::tools::pm::cache_top_level_deps(factory, None).await?;
+  crate::tools::pm::cache_top_level_deps(
+    &factory,
+    None,
+    crate::tools::pm::CacheTopLevelDepsOptions {
+      lockfile_only: top_level_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
@@ -740,7 +748,7 @@ async fn install_top_level(
   let npm_resolver = factory.npm_resolver().await?;
   print_install_report(
     &factory.sys(),
-    started.elapsed(),
+    start_instant.elapsed(),
     &install_reporter,
     workspace,
     npm_resolver,
