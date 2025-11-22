@@ -37,6 +37,7 @@ percent-encoding.workspace = true
 rustls-webpki.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
@@ -52,3 +53,4 @@ tokio-vsock.workspace = true
 [dev-dependencies]
 fast-socks5.workspace = true
 rustls.workspace = true
+sys_traits = { features = ["memory"], workspace = true }

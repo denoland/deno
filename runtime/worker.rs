@@ -36,6 +36,7 @@ use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
+use deno_fetch::SecretsReplacer;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -197,6 +198,7 @@ pub struct WorkerServiceOptions<
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  pub secrets_replacer: Arc<SecretsReplacer>,
   pub fetch_dns_resolver: deno_fetch::dns::Resolver,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -538,6 +540,7 @@ impl MainWorker {
         deno_fetch::deno_fetch::args(deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: services.root_cert_store_provider.clone(),
+          secrets_replacer: services.secrets_replacer.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),

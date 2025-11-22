@@ -70,6 +70,7 @@ use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::code_cache::CodeCache;
+use deno_runtime::deno_fetch::SecretsReplacer;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -1045,6 +1046,8 @@ pub async fn run(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
+    // TODO(dsherret): support secrets in deno compile
+    Arc::new(SecretsReplacer::default()),
     StorageKeyResolver::empty(),
     sys.clone(),
     lib_main_worker_options,
