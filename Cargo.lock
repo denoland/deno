@@ -2474,6 +2474,7 @@ dependencies = [
  "k256",
  "libc",
  "libz-sys",
+ "log",
  "md-5",
  "md4",
  "nix 0.27.1",
