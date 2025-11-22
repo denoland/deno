@@ -142,6 +142,10 @@ pub enum PublishDiagnostic {
   MissingLicense {
     config_specifier: Url,
   },
+  ConflictingPublishConfig {
+    primary_specifier: Url,
+    specifiers: Vec<Url>,
+  },
 }
 
 impl PublishDiagnostic {
@@ -193,6 +197,7 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError { .. } => DiagnosticLevel::Error,
       MissingLicense { .. } => DiagnosticLevel::Error,
       UnstableRawImport { .. } => DiagnosticLevel::Error,
+      ConflictingPublishConfig { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -214,6 +219,9 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError { .. } => Cow::Borrowed("syntax-error"),
       MissingLicense { .. } => Cow::Borrowed("missing-license"),
       UnstableRawImport { .. } => Cow::Borrowed("unstable-raw-import"),
+      ConflictingPublishConfig { .. } => {
+        Cow::Borrowed("conflicting-publish-config")
+      }
     }
   }
 
@@ -255,6 +263,14 @@ impl Diagnostic for PublishDiagnostic {
       UnstableRawImport { .. } => {
         Cow::Borrowed("raw imports have not been stabilized")
       }
+      ConflictingPublishConfig { specifiers, .. } => Cow::Owned(format!(
+        "Publish configuration is defined in multiple files: {}.",
+        specifiers
+          .iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<_>>()
+          .join(", ")
+      )),
     }
   }
 
@@ -327,6 +343,11 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError(diagnostic) => diagnostic.location(),
       MissingLicense { config_specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(config_specifier),
+      },
+      ConflictingPublishConfig {
+        primary_specifier, ..
+      } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(primary_specifier),
       },
     }
   }
@@ -402,6 +423,7 @@ impl Diagnostic for PublishDiagnostic {
       }
       SyntaxError(diagnostic) => diagnostic.snippet(),
       MissingLicense { .. } => None,
+      ConflictingPublishConfig { .. } => None,
     }
   }
 
@@ -448,6 +470,9 @@ impl Diagnostic for PublishDiagnostic {
       UnstableRawImport { .. } => Some(Cow::Borrowed(
         "for the time being, embed the data directly into a JavaScript file (ex. as encoded base64 text)",
       )),
+      ConflictingPublishConfig { .. } => Some(Cow::Borrowed(
+        "Remove the conflicting configuration so that only one file defines the package metadata",
+      )),
     }
   }
 
@@ -486,7 +511,8 @@ impl Diagnostic for PublishDiagnostic {
       | MissingConstraint { .. }
       | BannedTripleSlashDirectives { .. }
       | MissingLicense { .. }
-      | UnstableRawImport { .. } => None,
+      | UnstableRawImport { .. }
+      | ConflictingPublishConfig { .. } => None,
     }
   }
 
@@ -541,6 +567,7 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError(diagnostic) => diagnostic.info(),
       MissingLicense { .. } => Cow::Borrowed(&[]),
       UnstableRawImport { .. } => Cow::Borrowed(&[]),
+      ConflictingPublishConfig { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -580,6 +607,9 @@ impl Diagnostic for PublishDiagnostic {
       UnstableRawImport { .. } => Some(Cow::Borrowed(
         "https://github.com/denoland/deno/issues/29904",
       )),
+      ConflictingPublishConfig { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/docs/package-configuration"))
+      }
     }
   }
 }
