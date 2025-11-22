@@ -584,6 +584,7 @@ class FsFile {
 
   #readable;
   #writable;
+  #closed = false;
 
   constructor(rid, symbol) {
     ObjectDefineProperty(this, internalRidSymbol, {
@@ -650,6 +651,11 @@ class FsFile {
 
   close() {
     core.close(this.#rid);
+    this.#closed = true;
+  }
+
+  isClosed() {
+    return this.#closed;
   }
 
   get readable() {
@@ -719,6 +725,7 @@ class FsFile {
 
   [SymbolDispose]() {
     core.tryClose(this.#rid);
+    this.#closed = true;
   }
 }
 

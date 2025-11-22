@@ -702,6 +702,49 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { read: true } },
+  async function fsFileIsClosed() {
+    const file = await Deno.open("tests/testdata/assets/hello.txt");
+    assertEquals(file.isClosed(), false);
+    file.close();
+    assertEquals(file.isClosed(), true);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  function fsFileIsClosedSync() {
+    const file = Deno.openSync("tests/testdata/assets/hello.txt");
+    assertEquals(file.isClosed(), false);
+    file.close();
+    assertEquals(file.isClosed(), true);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function fsFileIsClosedWithUsing() {
+    let file2: Deno.FsFile;
+    {
+      using file = await Deno.open("tests/testdata/assets/hello.txt");
+      file2 = file;
+      assertEquals(file.isClosed(), false);
+    }
+    assertEquals(file2.isClosed(), true);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function fsFileIsClosedAfterManualCloseInUsing() {
+    using file = await Deno.open("tests/testdata/assets/hello.txt");
+    assertEquals(file.isClosed(), false);
+    file.close();
+    assertEquals(file.isClosed(), true);
+  },
+);
+
+Deno.test(
   { permissions: { read: true, write: true } },
   function fsFileDatasyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
