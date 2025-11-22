@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "default": {
+      "read": {
+        "ignore": true
+      }
+    }
+  }
+}
