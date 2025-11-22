@@ -100,6 +100,7 @@ node_resolver = { workspace = true, features = ["graph", "sync"] }
 anstream.workspace = true
 async-trait.workspace = true
 aws-lc-rs.workspace = true
+backtrace-on-stack-overflow = "0.3.0"
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
@@ -192,7 +193,6 @@ walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
-backtrace-on-stack-overflow = "0.3.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
