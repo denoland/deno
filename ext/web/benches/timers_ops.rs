@@ -26,7 +26,12 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init(Default::default(), None, Default::default()),
+    deno_web::deno_web::init(
+      Default::default(),
+      None,
+      Default::default(),
+      Default::default(),
+    ),
     bench_setup::init(),
   ]
 }
