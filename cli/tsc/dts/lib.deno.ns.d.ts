@@ -144,6 +144,19 @@ interface PerformanceMeasureOptions {
 
 /** The global namespace where Deno specific, non-standard APIs are located. */
 declare namespace Deno {
+  /**
+   * Base interface for OS-level system errors that may include an error code.
+   *
+   * Many Deno errors wrap underlying operating system errors and include
+   * the OS error code (e.g., "ENOENT", "EACCES") in the `code` property.
+   *
+   * @category Errors
+   */
+  export interface DenoSystemError extends Error {
+    /** The OS error code, if available (e.g., "ENOENT", "EACCES"). */
+    code?: string;
+  }
+
   /** A set of error constructors that are raised by Deno APIs.
    *
    * Can be used to provide more specific handling of failures within code
@@ -171,7 +184,9 @@ declare namespace Deno {
      * was not found.
      *
      * @category Errors */
-    export class NotFound extends Error {}
+    export class NotFound extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
@@ -182,43 +197,57 @@ declare namespace Deno {
      * the {@link NotCapable} error.
      *
      * @category Errors */
-    export class PermissionDenied extends Error {}
+    export class PermissionDenied extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports that a connection to
      * a resource is refused.
      *
      * @category Errors */
-    export class ConnectionRefused extends Error {}
+    export class ConnectionRefused extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports that a connection has
      * been reset. With network servers, it can be a _normal_ occurrence where a
      * client will abort a connection instead of properly shutting it down.
      *
      * @category Errors */
-    export class ConnectionReset extends Error {}
+    export class ConnectionReset extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports an `ECONNABORTED`
      * error.
      *
      * @category Errors */
-    export class ConnectionAborted extends Error {}
+    export class ConnectionAborted extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports an `ENOTCONN` error.
      *
      * @category Errors */
-    export class NotConnected extends Error {}
+    export class NotConnected extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when attempting to open a server listener on an address and port
      * that already has a listener.
      *
      * @category Errors */
-    export class AddrInUse extends Error {}
+    export class AddrInUse extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports an `EADDRNOTAVAIL`
      * error.
      *
      * @category Errors */
-    export class AddrNotAvailable extends Error {}
+    export class AddrNotAvailable extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when trying to write to a resource and a broken pipe error occurs.
      * This can happen when trying to write directly to `stdout` or `stderr`
@@ -226,13 +255,17 @@ declare namespace Deno {
      * external to the Deno runtime.
      *
      * @category Errors */
-    export class BrokenPipe extends Error {}
+    export class BrokenPipe extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when trying to create a resource, like a file, that already
      * exits.
      *
      * @category Errors */
-    export class AlreadyExists extends Error {}
+    export class AlreadyExists extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when an operation returns data that is invalid for the
      * operation being performed.
@@ -244,20 +277,26 @@ declare namespace Deno {
      * has timed out (`ETIMEDOUT`).
      *
      * @category Errors */
-    export class TimedOut extends Error {}
+    export class TimedOut extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system reports an `EINTR` error. In
      * many cases, this underlying IO error will be handled internally within
      * Deno, or result in an {@link BadResource} error instead.
      *
      * @category Errors */
-    export class Interrupted extends Error {}
+    export class Interrupted extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying operating system would need to block to
      * complete but an asynchronous (non-blocking) API is used.
      *
      * @category Errors */
-    export class WouldBlock extends Error {}
+    export class WouldBlock extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when expecting to write to a IO buffer resulted in zero bytes
      * being written.
@@ -269,7 +308,9 @@ declare namespace Deno {
      * unexpectedly encountered.
      *
      * @category Errors */
-    export class UnexpectedEof extends Error {}
+    export class UnexpectedEof extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * The underlying IO resource is invalid or closed, and so the operation
      * could not be performed.
@@ -287,7 +328,9 @@ declare namespace Deno {
      * being awaited on in another block of code.
      *
      * @category Errors */
-    export class Busy extends Error {}
+    export class Busy extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when the underlying Deno API is asked to perform a function that
      * is not currently supported.
@@ -299,24 +342,32 @@ declare namespace Deno {
      * filename.
      *
      * @category Errors */
-    export class FilesystemLoop extends Error {}
+    export class FilesystemLoop extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when trying to open, create or write to a directory.
      *
      * @category Errors */
-    export class IsADirectory extends Error {}
+    export class IsADirectory extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when performing a socket operation but the remote host is
      * not reachable.
      *
      * @category Errors */
-    export class NetworkUnreachable extends Error {}
+    export class NetworkUnreachable extends Error implements DenoSystemError {
+      code?: string;
+    }
     /**
      * Raised when trying to perform an operation on a path that is not a
      * directory, when directory is required.
      *
      * @category Errors */
-    export class NotADirectory extends Error {}
+    export class NotADirectory extends Error implements DenoSystemError {
+      code?: string;
+    }
 
     /**
      * Raised when trying to perform an operation while the relevant Deno
