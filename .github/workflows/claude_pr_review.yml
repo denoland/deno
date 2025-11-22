@@ -1,0 +1,78 @@
+name: Claude Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Claude Code
+        shell: bash
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install GitHub MCP Server
+        shell: bash
+        run: npm install -g @modelcontextprotocol/server-github
+
+      - name: Configure Claude Code MCP
+        shell: bash
+        run: |
+          mkdir -p .claude
+          cat > .claude/settings.json << 'MCPEOF'
+          {
+            "mcpServers": {
+              "github": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github"],
+                "env": {
+                  "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+                }
+              }
+            }
+          }
+          MCPEOF
+
+      - name: Create prompt file
+        shell: bash
+        run: |
+          cat > /tmp/prompt.txt << 'EOF'
+          REPO: ${{ github.repository }}
+          PR NUMBER: ${{ github.event.pull_request.number }}
+
+          Please review this pull request with a focus on:
+          - Code quality and best practices
+          - Potential bugs or issues
+          - Security implications
+          - Performance considerations
+
+          Note: The PR branch is already checked out in the current working directory.
+
+          Use `gh pr comment` for top-level feedback.
+          Use `mcp__github__add_comment_to_pending_review` to add inline comments on specific lines of code.
+          Only post GitHub comments - don't submit review text as messages.
+          EOF
+
+      - name: Run Claude Code Review
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude --print "$(cat /tmp/prompt.txt)" \
+            --allowedTools "mcp__github__add_comment_to_pending_review,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
