@@ -262,10 +262,10 @@ The TypeScript tests can be run using:
 
 ```shell
 # Run all unit/tests:
-target/debug/deno test -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit
+target/debug/deno test -A --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit
 
 # Run a specific test:
-target/debug/deno test -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit/os_test.ts
+target/debug/deno test -A --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit/os_test.ts
 ```
 
 ### Working with Multiple Crates
