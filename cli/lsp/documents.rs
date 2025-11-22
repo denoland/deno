@@ -1033,6 +1033,8 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
@@ -1044,9 +1046,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
-  #[allow(clippy::type_complexity)]
-  assigned_scopes:
-    Arc<DashMap<Arc<Uri>, (Option<Arc<Url>>, CompilerOptionsKey)>>,
+  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
 }
 
 impl DocumentModules {
