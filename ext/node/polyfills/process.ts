@@ -756,6 +756,15 @@ process.setSourceMapsEnabled = (_val: boolean) => {
   // TODO(@satyarohith): support disabling source maps if needed.
 };
 
+// Source maps are always enabled in Deno.
+Object.defineProperty(process, "sourceMapsEnabled", {
+  get() {
+    return true; // Source maps are always enabled in Deno.
+  },
+  enumerable: true,
+  configurable: true,
+});
+
 /**
  * Returns the current high-resolution real time in a [seconds, nanoseconds]
  * tuple.
@@ -1015,18 +1024,6 @@ function synchronizeListeners() {
   }
 }
 
-// Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule?.startsWith("file:")) {
-      return pathFromURL(new URL(Deno.mainModule));
-    } else {
-      return join(Deno.cwd(), "$deno$node.mjs");
-    }
-  },
-});
-
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
@@ -1040,6 +1037,10 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
+    argv[0] = argv0;
+    argv[1] = Deno.mainModule?.startsWith("file:")
+      ? pathFromURL(new URL(Deno.mainModule))
+      : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter
     for (let i = 0; i < args.length; i++) {
       argv[i + 2] = args[i];
