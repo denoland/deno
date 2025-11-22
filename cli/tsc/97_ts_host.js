@@ -7,6 +7,7 @@
 /** @type {DenoCore} */
 const core = globalThis.Deno.core;
 const ops = core.ops;
+import { ts } from "ext:deno_cli_tsc/00_typescript.js";
 
 let logDebug = false;
 let logSource = "JS";

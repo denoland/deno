@@ -100,17 +100,28 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
   performanceStart();
 
   config = normalizeConfig(config);
+  
+  const tracePath = Deno.cwd();
+  
+  Object.assign(config, { generateTrace: tracePath });
+  if (config.compilerOptions) {
+    Object.assign(config.compilerOptions, { generateTrace: tracePath });
+  } else {
+    // config.compilerOptions = { generateTrace: tracePath };
+  }
+  
 
-  debug(">>> exec start", { rootNames });
-  debug(config);
-
+  console.log(">>> exec start", { rootNames });
+  console.log(config);
+  
   const { options, errors: configFileParsingDiagnostics } = ts
-    .convertCompilerOptionsFromJson(config, "");
+  .convertCompilerOptionsFromJson(config, "");
   // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
   // which is not allowed to be passed in JSON, we need it to allow special
   // URLs which Deno supports. So we need to either ignore the diagnostic, or
   // inject it ourselves.
-  Object.assign(options, { allowNonTsExtensions: true });
+  Object.assign(options, { allowNonTsExtensions: true, generateTrace: tracePath });
+  ts.enableStatisticsAndTracing(ts.sys, options, false);
   const program = ts.createIncrementalProgram({
     rootNames,
     options,
@@ -180,6 +191,8 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     ambientModules: checker.getAmbientModules().map((symbol) => symbol.name),
     stats: performanceEnd(),
   });
+  
+  ts.reportStatistics(ts.sys, program, null);
   debug("<<< exec stop");
 }
 
