@@ -596,10 +596,6 @@ pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
-  unsafe {
-    backtrace_on_stack_overflow::enable();
-  }
-
   setup_panic_hook();
 
   init_logging(None, None);

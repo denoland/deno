@@ -545,6 +545,8 @@ mod impl_ {
           };
 
           let array_buffer = v8::ArrayBuffer::new(scope, byte_length as usize);
+          // SAFETY: array_buffer is valid as v8 is keeping it alive, and is byte_length bytes
+          // buf is also byte_length bytes long
           unsafe {
             std::ptr::copy(
               buf.as_ptr(),
@@ -651,7 +653,7 @@ mod impl_ {
             // .into(),
             _ => return None,
           };
-          return Some(value);
+          Some(value)
 
           /* const ctor = arrayBufferViewIndexToType(typeIndex);
           const byteLength = this.readUint32();
@@ -673,7 +675,7 @@ mod impl_ {
         }
         NOT_ARRAY_BUFFER_VIEW_TAG => {
           let value = deser.read_value(scope.get_current_context());
-          return Some(value.unwrap_or_else(|| v8::null(scope).into()).cast());
+          Some(value.unwrap_or_else(|| v8::null(scope).into()).cast())
         }
         _ => {
           scope.throw_exception(v8::Exception::type_error(
@@ -685,7 +687,7 @@ mod impl_ {
             )
             .unwrap(),
           ));
-          return None;
+          None
         }
       }
     }

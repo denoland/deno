@@ -592,15 +592,14 @@ impl CliOptions {
     let maybe_node_channel_serialization =
       std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
         .ok()
-        .map(|s| {
+        .and_then(|s| {
           s.parse::<ChildIpcSerialization>()
             .inspect_err(|e| {
               log::warn!("Invalid node IPC serialization type: {}", e)
             })
             .ok()
         })
-        .flatten()
-        .unwrap_or_else(|| ChildIpcSerialization::Json);
+        .unwrap_or(ChildIpcSerialization::Json);
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variables.
       #[allow(clippy::undocumented_unsafe_blocks)]

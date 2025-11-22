@@ -408,7 +408,7 @@ impl deno_core::Resource for IpcAdvancedStreamResource {
   }
 }
 
-fn read_advanced_msg_bytes_internal<'a, R: AsyncRead + ?Sized>(
+fn read_advanced_msg_bytes_internal<R: AsyncRead + ?Sized>(
   mut reader: Pin<&mut R>,
   cx: &mut Context<'_>,
   length_buffer: &mut MessageLengthBuffer,

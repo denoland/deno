@@ -1416,8 +1416,8 @@ function internalCmdName(msg: InternalMessage): string {
 
 let hasSetBufferConstructor = false;
 
-// deno-lint-ignore no-explicit-any
 export function setupChannel(
+  // deno-lint-ignore no-explicit-any
   target: any,
   ipc: number,
   serialization: "json" | "advanced",
