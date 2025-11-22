@@ -116,25 +116,42 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     self.registry_info_provider.package_info(package_name).await
   }
 
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
+  pub async fn install_if_pending(&self) -> Result<(), NpmResolutionError> {
+    self.add_package_reqs_inner(&[]).await.1
+  }
+
   pub async fn add_package_reqs(
     &self,
     package_reqs: &[PackageReq],
   ) -> AddPkgReqsResult {
+    let (results, dependencies_result) =
+      self.add_package_reqs_inner(package_reqs).await;
+    AddPkgReqsResult {
+      results,
+      dependencies_result: dependencies_result.map_err(JsErrorBox::from_err),
+    }
+  }
+
+  async fn add_package_reqs_inner(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> (
+    Vec<Result<PackageNv, NpmResolutionError>>,
+    Result<(), NpmResolutionError>,
+  ) {
     // only allow one thread in here at a time
     let _snapshot_lock = self.update_queue.acquire().await;
     let result = self.add_package_reqs_to_snapshot(package_reqs).await;
 
-    AddPkgReqsResult {
-      results: result.results,
-      dependencies_result: match result.dep_graph_result {
-        Ok(snapshot) => {
-          self.resolution.mark_not_pending();
-          self.resolution.set_snapshot(snapshot);
-          Ok(())
-        }
-        Err(err) => Err(JsErrorBox::from_err(err)),
-      },
-    }
+    (
+      result.results,
+      result.dep_graph_result.map(|snapshot| {
+        self.resolution.mark_not_pending();
+        self.resolution.set_snapshot(snapshot);
+      }),
+    )
   }
 
   async fn add_package_reqs_to_snapshot(

@@ -966,6 +966,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_lockfile.clone(),
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
+        None,
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
@@ -976,12 +977,13 @@ impl<'a> ResolverFactory<'a> {
         &pb,
         sys.clone(),
         tarball_cache.clone(),
-        maybe_lockfile,
-        maybe_node_modules_path.clone(),
-        Arc::new(LifecycleScriptsConfig::default()),
-        NpmSystemInfo::default(),
-        link_packages,
-        None,
+        deno_npm_installer::NpmInstallerOptions {
+          maybe_lockfile,
+          maybe_node_modules_path: maybe_node_modules_path.clone(),
+          lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
+          system_info: NpmSystemInfo::default(),
+          workspace_link_packages: link_packages,
+        },
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
