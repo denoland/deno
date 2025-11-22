@@ -1625,6 +1625,28 @@ mod tests {
   }
 
   #[test]
+  fn test_maybe_jsr_package_config_non_strict_missing_fields_returns_none() {
+    let temp_dir = tempdir().unwrap();
+    let dir_path = temp_dir.path();
+    fs::write(
+      dir_path.join("jsr.json"),
+      r#"{
+  "version": "1.0.0"
+}"#,
+    )
+    .unwrap();
+    let workspace_dir =
+      WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
+        root_dir: new_rc(url_from_directory_path(dir_path).unwrap()),
+        use_vendor_dir: VendorEnablement::Disable,
+      });
+    let result =
+      maybe_jsr_package_config(&CliSys::default(), &workspace_dir, false)
+        .unwrap();
+    assert!(result.is_none());
+  }
+
+  #[test]
   fn test_conflicting_publish_config_diagnostic_lists_specifiers() {
     let deno_specifier = Url::parse("file:///example/deno.json").unwrap();
     let jsr_specifier = Url::parse("file:///example/jsr.json").unwrap();
