@@ -1,0 +1,5 @@
+error: Unable to choose binary for @denotest/bin
+  Available bins:
+    cli-cjs
+    cli-esm
+    cli-no-ext

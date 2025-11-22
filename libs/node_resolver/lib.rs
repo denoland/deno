@@ -27,6 +27,7 @@ pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use path::UrlOrPath;
 pub use path::UrlOrPathRef;
+pub use resolution::BinValue;
 pub use resolution::IMPORT_CONDITIONS;
 pub use resolution::NodeConditionOptions;
 pub use resolution::NodeResolution;
