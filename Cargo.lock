@@ -2770,9 +2770,9 @@ dependencies = [
  "deno_semver",
  "deno_terminal 0.2.3",
  "deno_unsync",
- "dissimilar",
  "futures",
  "http 1.1.0",
+ "imara-diff",
  "import_map",
  "indexmap 2.9.0",
  "jsonc-parser",
@@ -5314,6 +5314,16 @@ dependencies = [
  "png",
  "zune-core",
  "zune-jpeg",
+]
+
+[[package]]
+name = "imara-diff"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f01d462f766df78ab820dd06f5eb700233c51f0f4c2e846520eaf4ba6aa5c5c"
+dependencies = [
+ "hashbrown 0.15.5",
+ "memchr",
 ]
 
 [[package]]
