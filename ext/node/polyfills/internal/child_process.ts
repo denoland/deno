@@ -252,8 +252,9 @@ export class ChildProcess extends EventEmitter {
       signal,
       windowsVerbatimArguments = false,
       detached,
-      serialization = "json",
     } = options || {};
+
+    const serialization = options?.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
@@ -1351,7 +1352,6 @@ class Control extends EventEmitter {
     super();
     this.#channel = channel;
     this.#serialization = serialization;
-    console.log("init with serialization", serialization);
   }
 
   #ref() {

@@ -175,27 +175,30 @@ mod impl_ {
 
   // Open IPC pipe from bootstrap options.
   #[op2]
-  #[smi]
+  #[to_v8]
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
-  ) -> Result<Option<ResourceId>, io::Error> {
+  ) -> Result<Option<(ResourceId, u8)>, io::Error> {
     let (fd, serialization) = match state.try_borrow_mut::<crate::ChildPipeFd>()
     {
       Some(ChildPipeFd(fd, serialization)) => (*fd, *serialization),
       None => return Ok(None),
     };
+    log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     match serialization {
-      ChildIpcSerialization::Json => Ok(Some(
+      ChildIpcSerialization::Json => Ok(Some((
         state
           .resource_table
           .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
-      )),
-      ChildIpcSerialization::Advanced => Ok(Some(
+        0,
+      ))),
+      ChildIpcSerialization::Advanced => Ok(Some((
         state
           .resource_table
           .add(IpcAdvancedStreamResource::new(fd, ref_tracker)?),
-      )),
+        1,
+      ))),
     }
   }
 
@@ -436,14 +439,6 @@ mod impl_ {
     let serializer = AdvancedSerializer::new(scope, constants);
     let serialized = serializer.serialize(scope, value)?;
 
-    if let Ok(bad) = state
-      .borrow()
-      .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-    {
-      panic!("wrong resource type for advanced IPC");
-    }
-
     let stream = state
       .borrow()
       .resource_table
@@ -518,8 +513,9 @@ mod impl_ {
     fn read_host_object<'s>(
       &self,
       scope: &mut v8::PinScope<'s, '_>,
-      _value_deserializer: &dyn ValueDeserializerHelper,
+      deser: &dyn ValueDeserializerHelper,
     ) -> Option<v8::Local<'s, v8::Object>> {
+      log::debug!("AdvancedIpcDeserializerDelegate::read_host_object");
       let throw_error = |message: &str| {
         scope.throw_exception(v8::Exception::type_error(
           scope,
@@ -533,17 +529,150 @@ mod impl_ {
         None
       };
       let mut tag = 0;
-      if !_value_deserializer.read_uint32(&mut tag) {
+      if !deser.read_uint32(&mut tag) {
         return throw_error("Failed to read tag");
       }
       match tag {
         ARRAY_BUFFER_VIEW_TAG => {
           let mut index = 0;
-          if !_value_deserializer.read_uint32(&mut index) {}
+          if !deser.read_uint32(&mut index) {
+            return throw_error("Failed to read array buffer view type tag");
+          }
+          let mut byte_length = 0;
+          deser.read_uint32(&mut byte_length);
+          let Some(buf) = deser.read_raw_bytes(byte_length as usize) else {
+            return throw_error("failed to read bytes for typed array");
+          };
+
+          let array_buffer = v8::ArrayBuffer::new(scope, byte_length as usize);
+          unsafe {
+            std::ptr::copy(
+              buf.as_ptr(),
+              array_buffer.data().unwrap().as_ptr().cast::<u8>(),
+              byte_length as usize,
+            );
+          }
+
+          let value = match index {
+            0 => {
+              v8::Int8Array::new(scope, array_buffer, 0, byte_length as usize)
+                .unwrap()
+                .into()
+            }
+            1 | 10 => {
+              v8::Uint8Array::new(scope, array_buffer, 0, byte_length as usize)
+                .unwrap()
+                .into()
+            }
+            2 => v8::Uint8ClampedArray::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize,
+            )
+            .unwrap()
+            .into(),
+            3 => v8::Int16Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 2,
+            )
+            .unwrap()
+            .into(),
+            4 => v8::Uint16Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 2,
+            )
+            .unwrap()
+            .into(),
+            5 => v8::Int32Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 4,
+            )
+            .unwrap()
+            .into(),
+            6 => v8::Uint32Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 4,
+            )
+            .unwrap()
+            .into(),
+            7 => v8::Float32Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 4,
+            )
+            .unwrap()
+            .into(),
+            8 => v8::Float64Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 8,
+            )
+            .unwrap()
+            .into(),
+            9 => {
+              v8::DataView::new(scope, array_buffer, 0, byte_length as usize)
+                .into()
+            }
+            11 => v8::BigInt64Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 8,
+            )
+            .unwrap()
+            .into(),
+            12 => v8::BigUint64Array::new(
+              scope,
+              array_buffer,
+              0,
+              byte_length as usize / 8,
+            )
+            .unwrap()
+            .into(),
+            // TODO(nathanwhit): blocked on v8 upgrade
+            // 13 => v8::Float16Array::new(
+            //   scope,
+            //   array_buffer,
+            //   0,
+            //   byte_length as usize / 2,
+            // )
+            // .unwrap()
+            // .into(),
+            _ => return None,
+          };
+          return Some(value);
+
+          /* const ctor = arrayBufferViewIndexToType(typeIndex);
+          const byteLength = this.readUint32();
+          const byteOffset = this._readRawBytes(byteLength);
+          const BYTES_PER_ELEMENT = ctor.BYTES_PER_ELEMENT || 1;
+
+          const offset = this.buffer.byteOffset + byteOffset;
+          if (offset % BYTES_PER_ELEMENT === 0) {
+            return new ctor(this.buffer.buffer,
+                            offset,
+                            byteLength / BYTES_PER_ELEMENT);
+          }
+          // Copy to an aligned buffer first.
+          const buffer_copy = Buffer.allocUnsafe(byteLength);
+          buffer_copy.set(new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + byteOffset, byteLength));
+          return new ctor(buffer_copy.buffer,
+                          buffer_copy.byteOffset,
+                          byteLength / BYTES_PER_ELEMENT); */
         }
         NOT_ARRAY_BUFFER_VIEW_TAG => {
-          let value =
-            _value_deserializer.read_value(scope.get_current_context());
+          let value = deser.read_value(scope.get_current_context());
           return Some(value.unwrap_or_else(|| v8::null(scope).into()).cast());
         }
         _ => {
@@ -559,17 +688,15 @@ mod impl_ {
           return None;
         }
       }
-
-      None
     }
   }
 
   impl AdvancedIpcDeserializer {
-    fn new(scope: &mut v8::PinScope<'_, '_>, msg_bytes: Vec<u8>) -> Self {
+    fn new(scope: &mut v8::PinScope<'_, '_>, msg_bytes: &[u8]) -> Self {
       let inner = v8::ValueDeserializer::new(
         scope,
         Box::new(AdvancedIpcDeserializerDelegate),
-        &msg_bytes,
+        msg_bytes,
       );
       Self { inner }
     }
@@ -605,13 +732,16 @@ mod impl_ {
       self,
       scope: &mut v8::PinScope<'a, '_>,
     ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+      log::debug!("AdvancedIpcReadResult::to_v8");
       let Some(msg_bytes) = self.msg_bytes else {
         return Ok(make_stop_sentinel(scope));
       };
-      let deser = AdvancedIpcDeserializer::new(scope, msg_bytes);
+      log::debug!("AdvancedIpcReadResult::to_v8 msg_bytes: {:?}", msg_bytes);
+      let deser = AdvancedIpcDeserializer::new(scope, &msg_bytes);
       let context = scope.get_current_context();
       deser.inner.read_header(context);
       let value = deser.inner.read_value(context);
+      log::debug!("AdvancedIpcReadResult::to_v8 value: {:?}", value);
       Ok(value.unwrap_or_else(|| v8::null(scope).into()))
     }
   }
@@ -627,8 +757,12 @@ mod impl_ {
       .resource_table
       .get::<IpcAdvancedStreamResource>(rid)?;
     let cancel = stream.cancel.clone();
+    log::debug!("rc reffing");
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
+    log::debug!("op_node_ipc_read_advanced reading bytes");
     let msg_bytes = stream.read_msg_bytes().or_cancel(cancel).await??;
+    log::debug!("op_node_ipc_read_advanced done reading bytes");
+
     Ok(AdvancedIpcReadResult { msg_bytes })
   }
 

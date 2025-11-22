@@ -50,6 +50,7 @@ use serde::Serialize;
 use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
+use ipc::IpcAdvancedStreamResource;
 use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
@@ -499,10 +500,21 @@ fn create_command(
       fds_to_dup.push((ipc_fd2, ipc));
       fds_to_close.push(ipc_fd2);
       /* One end returned to parent process (this) */
-      let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-        ipc_fd1 as _,
-        IpcRefTracker::new(state.external_ops_tracker.clone()),
-      )?);
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
+
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", ipc));
       command.env(

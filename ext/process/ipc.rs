@@ -156,8 +156,10 @@ impl IpcJsonStreamResource {
     self: Rc<Self>,
     msg: &[u8],
   ) -> Result<(), io::Error> {
+    log::debug!("json ipc write: {msg:?}");
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
+    log::debug!("json ipc written: {msg:?}");
     Ok(())
   }
 }
@@ -336,6 +338,7 @@ impl IpcAdvancedStream {
     )
     .await
     .map_err(IpcAdvancedStreamError::Io)?;
+    log::debug!("advanced IPC read: {:?}", nread);
     if nread == 0 {
       return Ok(None);
     }
@@ -347,16 +350,19 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgBytesInner<'_, R> {
   type Output = io::Result<usize>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    log::debug!("advanced IPC read poll");
     let mut me = self.project();
-    read_advanced_msg_bytes_internal(
-      Pin::new(*me.reader),
+    let res = read_advanced_msg_bytes_internal(
+      Pin::new(me.reader),
       cx,
       me.length_buffer,
       me.buf,
       me.read_buffer,
       me.out_buf,
-      &mut me.read,
-    )
+      me.read,
+    );
+    log::debug!("advanced IPC read poll result: {:?}", res);
+    res
   }
 }
 
@@ -477,7 +483,7 @@ fn read_advanced_msg_bytes_internal<'a, R: AsyncRead + ?Sized>(
     read_buffer.consume(used);
     *read += used;
 
-    if done {
+    if done || *read == 0 {
       return Poll::Ready(Ok(mem::replace(read, 0)));
     }
   }
@@ -580,8 +586,21 @@ fn read_json_msg_internal<R: AsyncRead + ?Sized>(
     let (done, used) = {
       // effectively a tiny `poll_fill_buf`, but allows us to get a mutable reference to the buffer.
       if read_buffer.needs_fill() {
+        log::debug!("json ipc needs fill");
         let mut read_buf = ReadBuf::new(read_buffer.get_mut());
-        ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
+        match reader.as_mut().poll_read(cx, &mut read_buf) {
+          Poll::Ready(Ok(())) => {
+            log::debug!("json ipc read");
+          }
+          Poll::Ready(Err(e)) => {
+            log::debug!("json ipc read error: {e}");
+            return Poll::Ready(Err(e));
+          }
+          Poll::Pending => {
+            log::debug!("json ipc read pending");
+            return Poll::Pending;
+          }
+        }
         read_buffer.cap = read_buf.filled().len();
         read_buffer.pos = 0;
       }
