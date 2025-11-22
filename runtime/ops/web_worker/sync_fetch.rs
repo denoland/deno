@@ -93,10 +93,7 @@ pub fn op_worker_sync_fetch(
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WorkerThreadType::Classic);
 
-  // it's not safe to share a client across tokio runtimes, so create a fresh one
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  let options = state.borrow::<deno_fetch::Options>().clone();
-  let client = deno_fetch::create_client_from_options(&options)
+  let client = deno_fetch::get_or_create_client_from_state(state)
     .map_err(FetchError::ClientCreate)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
