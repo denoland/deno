@@ -571,10 +571,7 @@ impl DatabaseSync {
         std::ptr::null_mut(),
       )
     };
-
-    if r != libsqlite3_sys::SQLITE_OK {
-      return Err(SqliteError::PrepareFailed);
-    }
+    check_error_code(r, raw_handle)?;
 
     let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
     self.statements.borrow_mut().push(stmt_cell.clone());
@@ -735,8 +732,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    // SAFETY: lifetime of the connection is guaranteed by reference
-    // counting.
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let raw_handle = unsafe { db.handle() };
     let name_cstring = CString::new(name)?;
 
@@ -762,7 +758,7 @@ impl DatabaseSync {
 
     // SAFETY: all parameters are correct and the callbacks have the
     // correct signature. The v8 handles will be valid until the function
-    // is destroyed.
+    // is destroyed via `custom_function_destroy`.
     let result = unsafe {
       libsqlite3_sys::sqlite3_create_function_v2(
         raw_handle,
@@ -776,10 +772,7 @@ impl DatabaseSync {
         Some(custom_function_destroy),
       )
     };
-
-    if result != libsqlite3_sys::SQLITE_OK {
-      check_error_code(result, raw_handle)?;
-    }
+    check_error_code(result, raw_handle)?;
 
     Ok(())
   }
@@ -1323,13 +1316,15 @@ fn sqlite_result_error_empty(ctx: *mut libsqlite3_sys::sqlite3_context) {
 fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   if let Some(msg) = v8::String::new(scope, message) {
     let error = v8::Exception::range_error(scope, msg);
-    v8_static_strings!(CODE = "code", ERR_OUT_OF_RANGE = "ERR_OUT_OF_RANGE",);
+
+    v8_static_strings!(CODE = "code", ERR_OUT_OF_RANGE = "ERR_OUT_OF_RANGE");
     let code_key = CODE.v8_string(scope).unwrap();
     let code_value = ERR_OUT_OF_RANGE.v8_string(scope).unwrap();
     let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
     error_obj
       .set(scope, code_key.into(), code_value.into())
       .unwrap();
+
     scope.throw_exception(error);
   }
 }
