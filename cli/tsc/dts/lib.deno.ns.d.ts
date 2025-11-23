@@ -2,7 +2,12 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
-/// <reference lib="deno.net" />
+/// <reference path="./lib.deno_net.d.ts" />
+/// <reference path="./lib.deno_url.d.ts" />
+/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="./lib.deno_websocket.d.ts" />
+/// <reference path="./lib.deno.shared_globals.d.ts" />
 
 /** Deno provides extra properties on `import.meta`. These are included here
  * to ensure that these are still available when using the Deno namespace in
@@ -167,11 +172,19 @@ declare namespace Deno {
    */
   export namespace errors {
     /**
+     * A common interface for Deno system errors.
+     *
+     * @category Errors
+     */
+    export interface DenoSystemError extends Error {
+      code?: string;
+    }
+    /**
      * Raised when the underlying operating system indicates that the file
      * was not found.
      *
      * @category Errors */
-    export class NotFound extends Error {}
+    export class NotFound extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
@@ -182,43 +195,43 @@ declare namespace Deno {
      * the {@link NotCapable} error.
      *
      * @category Errors */
-    export class PermissionDenied extends Error {}
+    export class PermissionDenied extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports that a connection to
      * a resource is refused.
      *
      * @category Errors */
-    export class ConnectionRefused extends Error {}
+    export class ConnectionRefused extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports that a connection has
      * been reset. With network servers, it can be a _normal_ occurrence where a
      * client will abort a connection instead of properly shutting it down.
      *
      * @category Errors */
-    export class ConnectionReset extends Error {}
+    export class ConnectionReset extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports an `ECONNABORTED`
      * error.
      *
      * @category Errors */
-    export class ConnectionAborted extends Error {}
+    export class ConnectionAborted extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports an `ENOTCONN` error.
      *
      * @category Errors */
-    export class NotConnected extends Error {}
+    export class NotConnected extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when attempting to open a server listener on an address and port
      * that already has a listener.
      *
      * @category Errors */
-    export class AddrInUse extends Error {}
+    export class AddrInUse extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports an `EADDRNOTAVAIL`
      * error.
      *
      * @category Errors */
-    export class AddrNotAvailable extends Error {}
+    export class AddrNotAvailable extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when trying to write to a resource and a broken pipe error occurs.
      * This can happen when trying to write directly to `stdout` or `stderr`
@@ -226,97 +239,97 @@ declare namespace Deno {
      * external to the Deno runtime.
      *
      * @category Errors */
-    export class BrokenPipe extends Error {}
+    export class BrokenPipe extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when trying to create a resource, like a file, that already
      * exits.
      *
      * @category Errors */
-    export class AlreadyExists extends Error {}
+    export class AlreadyExists extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when an operation returns data that is invalid for the
      * operation being performed.
      *
      * @category Errors */
-    export class InvalidData extends Error {}
+    export class InvalidData extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports that an I/O operation
      * has timed out (`ETIMEDOUT`).
      *
      * @category Errors */
-    export class TimedOut extends Error {}
+    export class TimedOut extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system reports an `EINTR` error. In
      * many cases, this underlying IO error will be handled internally within
      * Deno, or result in an {@link BadResource} error instead.
      *
      * @category Errors */
-    export class Interrupted extends Error {}
+    export class Interrupted extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying operating system would need to block to
      * complete but an asynchronous (non-blocking) API is used.
      *
      * @category Errors */
-    export class WouldBlock extends Error {}
+    export class WouldBlock extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when expecting to write to a IO buffer resulted in zero bytes
      * being written.
      *
      * @category Errors */
-    export class WriteZero extends Error {}
+    export class WriteZero extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when attempting to read bytes from a resource, but the EOF was
      * unexpectedly encountered.
      *
      * @category Errors */
-    export class UnexpectedEof extends Error {}
+    export class UnexpectedEof extends Error implements DenoSystemError { code?: string; }
     /**
      * The underlying IO resource is invalid or closed, and so the operation
      * could not be performed.
      *
      * @category Errors */
-    export class BadResource extends Error {}
+    export class BadResource extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised in situations where when attempting to load a dynamic import,
      * too many redirects were encountered.
      *
      * @category Errors */
-    export class Http extends Error {}
+    export class Http extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying IO resource is not available because it is
      * being awaited on in another block of code.
      *
      * @category Errors */
-    export class Busy extends Error {}
+    export class Busy extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when the underlying Deno API is asked to perform a function that
      * is not currently supported.
      *
      * @category Errors */
-    export class NotSupported extends Error {}
+    export class NotSupported extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when too many symbolic links were encountered when resolving the
      * filename.
      *
      * @category Errors */
-    export class FilesystemLoop extends Error {}
+    export class FilesystemLoop extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when trying to open, create or write to a directory.
      *
      * @category Errors */
-    export class IsADirectory extends Error {}
+    export class IsADirectory extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when performing a socket operation but the remote host is
      * not reachable.
      *
      * @category Errors */
-    export class NetworkUnreachable extends Error {}
+    export class NetworkUnreachable extends Error implements DenoSystemError { code?: string; }
     /**
      * Raised when trying to perform an operation on a path that is not a
      * directory, when directory is required.
      *
      * @category Errors */
-    export class NotADirectory extends Error {}
+    export class NotADirectory extends Error implements DenoSystemError { code?: string; }
 
     /**
      * Raised when trying to perform an operation while the relevant Deno
@@ -326,9 +339,9 @@ declare namespace Deno {
      * error.
      *
      * @category Errors */
-    export class NotCapable extends Error {}
+    export class NotCapable extends Error implements DenoSystemError { code?: string; }
 
-    export {}; // only export exports
+    export { }; // only export exports
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -3526,13 +3539,13 @@ declare namespace Deno {
   export interface FsEvent {
     /** The kind/type of the file system event. */
     kind:
-      | "any"
-      | "access"
-      | "create"
-      | "modify"
-      | "rename"
-      | "remove"
-      | "other";
+    | "any"
+    | "access"
+    | "create"
+    | "modify"
+    | "rename"
+    | "remove"
+    | "other";
     /** An array of paths that are associated with the file system event. */
     paths: string[];
     /** Any additional flags associated with the event. */
@@ -4148,20 +4161,20 @@ declare namespace Deno {
     name: "sys";
     /** The specific information to scope the permission to. */
     kind?:
-      | "loadavg"
-      | "hostname"
-      | "systemMemoryInfo"
-      | "networkInterfaces"
-      | "osRelease"
-      | "osUptime"
-      | "uid"
-      | "gid"
-      | "username"
-      | "cpus"
-      | "homedir"
-      | "statfs"
-      | "getPriority"
-      | "setPriority";
+    | "loadavg"
+    | "hostname"
+    | "systemMemoryInfo"
+    | "networkInterfaces"
+    | "osRelease"
+    | "osUptime"
+    | "uid"
+    | "gid"
+    | "username"
+    | "cpus"
+    | "homedir"
+    | "statfs"
+    | "getPriority"
+    | "setPriority";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -4461,15 +4474,15 @@ declare namespace Deno {
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
     os:
-      | "darwin"
-      | "linux"
-      | "android"
-      | "windows"
-      | "freebsd"
-      | "netbsd"
-      | "aix"
-      | "solaris"
-      | "illumos";
+    | "darwin"
+    | "linux"
+    | "android"
+    | "windows"
+    | "freebsd"
+    | "netbsd"
+    | "aix"
+    | "solaris"
+    | "illumos";
     standalone: boolean;
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
@@ -5732,20 +5745,20 @@ declare namespace Deno {
   export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
+    : T extends NativeI8Enum<infer U> ? U
+    : T extends NativeU16Enum<infer U> ? U
+    : T extends NativeI16Enum<infer U> ? U
+    : T extends NativeU32Enum<infer U> ? U
+    : T extends NativeI32Enum<infer U> ? U
+    : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
+    ? T extends NativeTypedPointer<infer U> ? U | null
+    : PointerValue
     : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-      : PointerValue
+    ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+    : PointerValue
     : T extends NativeBufferType ? BufferSource | null
     : never;
 
@@ -5757,20 +5770,20 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
+    : T extends NativeI8Enum<infer U> ? U
+    : T extends NativeU16Enum<infer U> ? U
+    : T extends NativeI16Enum<infer U> ? U
+    : T extends NativeU32Enum<infer U> ? U
+    : T extends NativeI32Enum<infer U> ? U
+    : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
+    ? T extends NativeTypedPointer<infer U> ? U | null
+    : PointerValue
     : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
+    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+    : PointerValue
     : T extends NativeBufferType ? BufferSource | null
     : T extends NativeVoidType ? void
     : never;
@@ -5782,11 +5795,11 @@ declare namespace Deno {
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [T[number][]] extends [T] ? ToNativeType<T[number]>[]
-      : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: ToNativeType<T[K]>;
-        }
-      : never;
+    : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
+    : T extends readonly [...NativeType[]] ? {
+      [K in keyof T]: ToNativeType<T[K]>;
+    }
+    : never;
 
   /** Type conversion for foreign symbol return types and unsafe callback
    * parameters.
@@ -5796,21 +5809,21 @@ declare namespace Deno {
   export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
+    : T extends NativeI8Enum<infer U> ? U
+    : T extends NativeU16Enum<infer U> ? U
+    : T extends NativeI16Enum<infer U> ? U
+    : T extends NativeU32Enum<infer U> ? U
+    : T extends NativeI32Enum<infer U> ? U
+    : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
+    ? T extends NativeTypedPointer<infer U> ? U | null
+    : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
+    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+    : PointerValue
     : never;
 
   /** Type conversion for foreign symbol return types.
@@ -5821,21 +5834,21 @@ declare namespace Deno {
     T extends NativeResultType = NativeResultType,
   > = T extends NativeStructType ? Uint8Array<ArrayBuffer>
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
+    : T extends NativeI8Enum<infer U> ? U
+    : T extends NativeU16Enum<infer U> ? U
+    : T extends NativeI16Enum<infer U> ? U
+    : T extends NativeU32Enum<infer U> ? U
+    : T extends NativeI32Enum<infer U> ? U
+    : number
     : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
+    ? T extends NativeTypedPointer<infer U> ? U | null
+    : PointerValue
     : T extends NativeBufferType ? PointerValue
     : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
+    ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+    : PointerValue
     : T extends NativeVoidType ? void
     : never;
 
@@ -5844,12 +5857,12 @@ declare namespace Deno {
   export type FromNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [T[number][]] extends [T] ? FromNativeType<T[number]>[]
-      : [readonly T[number][]] extends [T]
-        ? readonly FromNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: FromNativeType<T[K]>;
-        }
-      : never;
+    : [readonly T[number][]] extends [T]
+    ? readonly FromNativeType<T[number]>[]
+    : T extends readonly [...NativeType[]] ? {
+      [K in keyof T]: FromNativeType<T[K]>;
+    }
+    : never;
 
   /** The interface for a foreign function as defined by its parameter and result
    * types.
@@ -5907,16 +5920,16 @@ declare namespace Deno {
    */
   export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
-      : T extends ForeignStatic ? FromNativeType<T["type"]>
-      : never;
+    : T extends ForeignStatic ? FromNativeType<T["type"]>
+    : never;
 
   /**  @category FFI
    */
   export type FromForeignFunction<T extends ForeignFunction> =
     T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
-      : (
-        ...args: ToNativeParameterTypes<T["parameters"]>
-      ) => StaticForeignSymbolReturnType<T>;
+    : (
+      ...args: ToNativeParameterTypes<T["parameters"]>
+    ) => StaticForeignSymbolReturnType<T>;
 
   /** @category FFI
    */
@@ -5937,8 +5950,8 @@ declare namespace Deno {
   export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
     {
       [K in keyof T]: T[K]["optional"] extends true
-        ? StaticForeignSymbol<T[K]> | null
-        : StaticForeignSymbol<T[K]>;
+      ? StaticForeignSymbol<T[K]> | null
+      : StaticForeignSymbol<T[K]>;
     };
 
   /** A non-null pointer, represented as an object
@@ -6136,7 +6149,7 @@ declare namespace Deno {
    */
   export class UnsafeCallback<
     const Definition extends UnsafeCallbackDefinition =
-      UnsafeCallbackDefinition,
+    UnsafeCallbackDefinition,
   > {
     constructor(
       definition: Definition,
@@ -6514,8 +6527,8 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     export const meterProvider: any;
 
-    export {}; // only export exports
+    export { }; // only export exports
   }
 
-  export {}; // only export exports
+  export { }; // only export exports
 }
