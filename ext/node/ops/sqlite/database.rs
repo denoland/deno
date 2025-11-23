@@ -756,9 +756,10 @@ impl DatabaseSync {
       text_rep |= libsqlite3_sys::SQLITE_DIRECTONLY;
     }
 
-    // SAFETY: all parameters are correct and the callbacks have the
-    // correct signature. The v8 handles will be valid until the function
-    // is destroyed via `custom_function_destroy`.
+    // SAFETY: `raw_handle` is a valid database handle.
+    // `data_ptr` points to a valid memory location.
+    // The v8 handles that are held in `CustomFunctionData` will be
+    // dropped when the data is destroyed via `custom_function_destroy`.
     let result = unsafe {
       libsqlite3_sys::sqlite3_create_function_v2(
         raw_handle,
@@ -1067,12 +1068,12 @@ unsafe extern "C" fn custom_function_handler(
   argc: i32,
   argv: *mut *mut libsqlite3_sys::sqlite3_value,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
   unsafe {
     let data_ptr =
       libsqlite3_sys::sqlite3_user_data(ctx) as *mut CustomFunctionData;
     if data_ptr.is_null() {
-      sqlite_result_error_message(
+      sqlite_result_error(
         ctx,
         "Internal error: missing custom function context",
       );
@@ -1105,7 +1106,7 @@ unsafe extern "C" fn custom_function_handler(
         js_args.push(arg);
       } else {
         data.ignore_next_sqlite_error.set(true);
-        sqlite_result_error_empty(ctx);
+        sqlite_result_error(ctx, "");
         tc_scope.rethrow();
         return;
       }
@@ -1115,7 +1116,7 @@ unsafe extern "C" fn custom_function_handler(
     let result = function_local.call(tc_scope, recv, &js_args);
     if tc_scope.has_caught() {
       data.ignore_next_sqlite_error.set(true);
-      sqlite_result_error_empty(ctx);
+      sqlite_result_error(ctx, "");
       tc_scope.rethrow();
       return;
     }
@@ -1124,7 +1125,7 @@ unsafe extern "C" fn custom_function_handler(
       js_value_to_sqlite(tc_scope, ctx, value);
       if tc_scope.has_caught() {
         data.ignore_next_sqlite_error.set(true);
-        sqlite_result_error_empty(ctx);
+        sqlite_result_error(ctx, "");
         tc_scope.rethrow();
       }
     }
@@ -1132,12 +1133,9 @@ unsafe extern "C" fn custom_function_handler(
 }
 
 unsafe extern "C" fn custom_function_destroy(data: *mut c_void) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: `data` is a valid pointer to CustomFunctionData.
+  // The v8 handles are properly dropped here.
   unsafe {
-    if data.is_null() {
-      return;
-    }
-
     let data = Box::from_raw(data as *mut CustomFunctionData);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
@@ -1155,7 +1153,7 @@ fn sqlite_value_to_v8<'a>(
   value: *mut libsqlite3_sys::sqlite3_value,
   use_big_int_arguments: bool,
 ) -> Option<v8::Local<'a, v8::Value>> {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: `value` is a valid sqlite3_value pointer.
   unsafe {
     match libsqlite3_sys::sqlite3_value_type(value) {
       libsqlite3_sys::SQLITE_INTEGER => {
@@ -1221,7 +1219,7 @@ fn js_value_to_sqlite(
   ctx: *mut libsqlite3_sys::sqlite3_context,
   value: v8::Local<v8::Value>,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
   unsafe {
     if value.is_null_or_undefined() {
       libsqlite3_sys::sqlite3_result_null(ctx);
@@ -1268,7 +1266,7 @@ fn js_value_to_sqlite(
       let (int_value, lossless) = bigint.i64_value();
       if !lossless {
         throw_range_error(scope, "BigInt value is too large for SQLite");
-        sqlite_result_error_empty(ctx);
+        sqlite_result_error(ctx, "");
         return;
       }
       libsqlite3_sys::sqlite3_result_int64(ctx, int_value);
@@ -1276,55 +1274,46 @@ fn js_value_to_sqlite(
     }
 
     if value.is_promise() {
-      sqlite_result_error_message(
+      sqlite_result_error(
         ctx,
         "Asynchronous user-defined functions are not supported",
       );
       return;
     }
 
-    sqlite_result_error_message(
+    sqlite_result_error(
       ctx,
       "Returned JavaScript value cannot be converted to a SQLite value",
     );
   }
 }
 
-fn sqlite_result_error_message(
+fn sqlite_result_error(
   ctx: *mut libsqlite3_sys::sqlite3_context,
   message: &str,
 ) {
-  if let Ok(msg) = CString::new(message) {
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    unsafe {
-      libsqlite3_sys::sqlite3_result_error(
-        ctx,
-        msg.as_ptr(),
-        msg.as_bytes().len() as i32,
-      );
-    }
-  }
-}
-
-fn sqlite_result_error_empty(ctx: *mut libsqlite3_sys::sqlite3_context) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  let msg = CString::new(message).unwrap();
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
   unsafe {
-    libsqlite3_sys::sqlite3_result_error(ctx, c"".as_ptr(), 0);
+    libsqlite3_sys::sqlite3_result_error(
+      ctx,
+      msg.as_ptr(),
+      msg.as_bytes().len() as i32,
+    );
   }
 }
 
 fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
-  if let Some(msg) = v8::String::new(scope, message) {
-    let error = v8::Exception::range_error(scope, msg);
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::range_error(scope, msg);
 
-    v8_static_strings!(CODE = "code", ERR_OUT_OF_RANGE = "ERR_OUT_OF_RANGE");
-    let code_key = CODE.v8_string(scope).unwrap();
-    let code_value = ERR_OUT_OF_RANGE.v8_string(scope).unwrap();
-    let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
-    error_obj
-      .set(scope, code_key.into(), code_value.into())
-      .unwrap();
+  v8_static_strings!(CODE = "code", ERR_OUT_OF_RANGE = "ERR_OUT_OF_RANGE");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = ERR_OUT_OF_RANGE.v8_string(scope).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .set(scope, code_key.into(), code_value.into())
+    .unwrap();
 
-    scope.throw_exception(error);
-  }
+  scope.throw_exception(error);
 }
