@@ -2,12 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
-/// <reference path="./lib.deno_net.d.ts" />
-/// <reference path="./lib.deno_url.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
-/// <reference path="./lib.deno_websocket.d.ts" />
-/// <reference path="./lib.deno.shared_globals.d.ts" />
+/// <reference lib="deno.net" />
 
 /** Deno provides extra properties on `import.meta`. These are included here
  * to ensure that these are still available when using the Deno namespace in
