@@ -125,6 +125,7 @@ pub struct AuditFlags {
   pub prod: bool,
   pub optional: bool,
   pub ignore: Vec<String>,
+  pub socket: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -299,7 +300,7 @@ pub struct InfoFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallFlagsGlobal {
-  pub module_url: String,
+  pub module_urls: Vec<String>,
   pub args: Vec<String>,
   pub name: Option<String>,
   pub root: Option<String>,
@@ -2071,6 +2072,9 @@ fn audit_subcommand() -> Command {
 Show only high and critical severity vulnerabilities
   <p(245)>deno audit --level=high</>
 
+Check against socket.dev vulnerability database
+  <p(245)>deno audit --socket</>
+
 Don't error if the audit data can't be retrieved from the registry
   <p(245)>deno audit --ignore-registry-errors</>"
     ),
@@ -2096,6 +2100,12 @@ Don't error if the audit data can't be retrieved from the registry
         Arg::new("ignore-unfixable")
           .long("ignore-unfixable")
           .help("Ignore advisories that don't have any actions to resolve them")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("socket")
+          .long("socket")
+          .help("Check against socket.dev vulnerability database")
           .action(ArgAction::SetTrue)
       )
       .arg(
@@ -3183,6 +3193,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
+        .arg(script_arg().last(true))
         .arg(
           Arg::new("name")
             .long("name")
@@ -5302,6 +5313,7 @@ fn audit_parse(
     .unwrap_or_else(|| "low".to_string());
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
+  let socket = matches.get_flag("socket");
   let dev = true;
   let prod = true;
   let optional = true;
@@ -5315,6 +5327,7 @@ fn audit_parse(
     ignore_registry_errors,
     ignore_unfixable,
     ignore,
+    socket,
   });
   Ok(())
 }
@@ -5892,16 +5905,29 @@ fn install_parse(
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
     let name = matches.remove_one::<String>("name");
-    let mut cmd_values =
-      matches.remove_many::<String>("cmd").unwrap_or_default();
+    let module_urls = matches
+      .remove_many::<String>("cmd")
+      .map(|values| values.collect::<Vec<_>>())
+      .unwrap_or_default();
+    let args = matches
+      .remove_many::<String>("script_arg")
+      .map(|values| values.collect::<Vec<_>>())
+      .unwrap_or_default();
 
-    let module_url = cmd_values.next().unwrap();
-    let args = cmd_values.collect();
+    if module_urls.len() > 1 && name.is_some() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        format!(
+          "Cannot specify --name when providing multiple packages to install ({}).",
+          module_urls.join(", ")
+        ),
+      ));
+    }
 
     flags.subcommand =
       DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
         name,
-        module_url,
+        module_urls,
         args,
         root,
         force,
@@ -9919,7 +9945,8 @@ mod tests {
       "deno",
       "install",
       "-g",
-      "jsr:@std/http/file-server"
+      "jsr:@std/http/file-server",
+      "npm:chalk",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -9927,7 +9954,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: None,
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server", "npm:chalk"],
             args: vec![],
             root: None,
             force: false,
@@ -9949,7 +9976,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: None,
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server"],
             args: vec![],
             root: None,
             force: false,
@@ -9963,14 +9990,14 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "--", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: Some("file_server".to_string()),
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server"],
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
