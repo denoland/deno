@@ -421,7 +421,7 @@ Deno.test("[node/fs filehandle.readFile] Read from current position after partia
 
   // Read first 6 bytes ("hello ")
   const buf = Buffer.alloc(6);
-  const readResult = await fileHandle.read(buf, 0, 6, 0);
+  const readResult = await fileHandle.read(buf, 0, 6, null);
   assertEquals(readResult.bytesRead, 6);
   assertEquals(decoder.decode(buf), "hello ");
 

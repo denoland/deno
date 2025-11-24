@@ -8,7 +8,6 @@
 
 import { promises as fs } from "node:fs";
 import { Buffer } from "node:buffer";
-import * as path from "node:path";
 import { assert } from "@std/assert";
 import { assertEquals } from "@std/assert";
 
@@ -204,7 +203,7 @@ Deno.test({
 
       // Read first 5 bytes using read()
       const buffer = Buffer.alloc(5);
-      const { bytesRead } = await fileHandle.read(buffer, 0, 5, 0);
+      const { bytesRead } = await fileHandle.read(buffer, 0, 5, null);
       assertEquals(bytesRead, 5, "Should read 5 bytes");
       assertEquals(buffer.toString(), "ABCDE", "First 5 bytes should be ABCDE");
 

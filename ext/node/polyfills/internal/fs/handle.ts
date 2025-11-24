@@ -35,8 +35,7 @@ import {
 } from "node:fs/promises";
 import assert from "node:assert";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { readAll } from "ext:deno_io/12_io.js";
-import { FsFile } from "ext:deno_fs/30_fs.js";
+import { read } from "ext:deno_io/12_io.js";
 
 const {
   Error,
@@ -49,7 +48,9 @@ const {
   SafeArrayIterator,
   Symbol,
   SymbolAsyncDispose,
+  Uint8Array,
   Uint8ArrayPrototype,
+  ArrayPrototypePush,
 } = primordials;
 
 const kRefs = Symbol("kRefs");
@@ -292,28 +293,30 @@ async function readFileImpl(
   rid: number,
   opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
 ): Promise<string | Buffer> {
-  // Create a FsFile instance from the file descriptor
-  // Note: We use Symbol.for to access the internal FsFile constructor
-  // IMPORTANT: We must close this FsFile to prevent Op leaks
-  const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  const buffer = new Uint8Array(16 * 1024); // 16KB buffer
 
-  let data: Uint8Array;
-  try {
-    // Read all data from current position to EOF
-    data = await readAll(fsFile);
-  } finally {
-    // Close the FsFile to prevent Op leak
-    // Note: This doesn't close the underlying file descriptor (rid),
-    // it only releases the FsFile wrapper resource
-    try {
-      fsFile.close();
-    } catch {
-      // Ignore errors on close - the file descriptor is managed by FileHandle
-    }
+  while (true) {
+    const bytesRead = await read(rid, buffer);
+    if (bytesRead === null || bytesRead === 0) break;
+
+    const chunk = new Uint8Array(bytesRead);
+    chunk.set(buffer.subarray(0, bytesRead));
+    ArrayPrototypePush(chunks, chunk);
+    totalLength += bytesRead;
+  }
+
+  const data = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of new SafeArrayIterator(chunks)) {
+    data.set(chunk, offset);
+    offset += chunk.length;
   }
 
   // Convert to Buffer
-  const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  // deno-lint-ignore prefer-primordials
+  const bufferObj = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 
   // Handle encoding option
   let encoding: string | null | undefined;
@@ -328,11 +331,12 @@ async function readFileImpl(
 
   // If encoding is specified and not null, decode to string
   if (encoding && encoding !== "buffer") {
-    return buffer.toString(encoding);
+    // deno-lint-ignore prefer-primordials
+    return bufferObj.toString(encoding);
   }
 
   // Otherwise return Buffer
-  return buffer;
+  return bufferObj;
 }
 
 function readPromise(
