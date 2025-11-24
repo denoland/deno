@@ -311,6 +311,11 @@ pub async fn run(
     || command_flags.command.starts_with('~')
     || command_flags.command.starts_with('\\')
     || Path::new(&command_flags.command).extension().is_some();
+  if is_file_like && Path::new(&command_flags.command).is_file() {
+    return Err(anyhow::anyhow!(
+      "Use 'deno run' to run a file directly, 'deno x' is intended for running commands from packages."
+    ));
+  }
 
   let thing_to_run = if is_file_like {
     let url = deno_path_util::resolve_url_or_path(&command_flags.command, cwd)?;
