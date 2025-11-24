@@ -7,6 +7,7 @@ use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
@@ -182,7 +183,7 @@ pub fn op_node_get_own_non_index_properties<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
   #[smi] filter: u32,
-) -> v8::Local<'s, v8::Array> {
+) -> Result<v8::Local<'s, v8::Array>, JsErrorBox> {
   let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 << 0 != 0 {
     property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE;
@@ -210,5 +211,7 @@ pub fn op_node_get_own_non_index_properties<'s>(
         mode: v8::KeyCollectionMode::OwnOnly,
       },
     )
-    .unwrap()
+    .ok_or_else(|| {
+      JsErrorBox::type_error("Failed to get own non-index properties")
+    })
 }
