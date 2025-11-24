@@ -1888,6 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.369.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#6454b0b7e8f13a9acf9160c365c1a1dc0e20e7a7"
 dependencies = [
  "anyhow",
  "az",
@@ -2611,6 +2612,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.245.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#6454b0b7e8f13a9acf9160c365c1a1dc0e20e7a7"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8211,6 +8213,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.278.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#6454b0b7e8f13a9acf9160c365c1a1dc0e20e7a7"
 dependencies = [
  "deno_error",
  "num-bigint",
