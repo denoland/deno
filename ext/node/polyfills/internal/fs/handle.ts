@@ -294,10 +294,23 @@ async function readFileImpl(
 ): Promise<string | Buffer> {
   // Create a FsFile instance from the file descriptor
   // Note: We use Symbol.for to access the internal FsFile constructor
+  // IMPORTANT: We must close this FsFile to prevent Op leaks
   const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
-  // Read all data from current position to EOF
-  const data = await readAll(fsFile);
+  let data: Uint8Array;
+  try {
+    // Read all data from current position to EOF
+    data = await readAll(fsFile);
+  } finally {
+    // Close the FsFile to prevent Op leak
+    // Note: This doesn't close the underlying file descriptor (rid),
+    // it only releases the FsFile wrapper resource
+    try {
+      fsFile.close();
+    } catch {
+      // Ignore errors on close - the file descriptor is managed by FileHandle
+    }
+  }
 
   // Convert to Buffer
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
