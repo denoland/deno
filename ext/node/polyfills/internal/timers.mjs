@@ -282,7 +282,7 @@ export function runImmediates() {
       if (!argv) {
         immediate._onImmediate();
       } else {
-        immediate._onImmediate(...argv);
+        immediate._onImmediate(...new SafeArrayIterator(argv));
       }
     } finally {
       immediate._onImmediate = null;
