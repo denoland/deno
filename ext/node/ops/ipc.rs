@@ -396,6 +396,7 @@ mod impl_ {
   struct AdvancedIpcConstants {
     buffer_constructor: v8::Global<v8::Function>,
     constructor_key: v8::Global<v8::String>,
+    fast_buffer_prototype: v8::Global<v8::Object>,
   }
 
   #[op2(fast)]
@@ -403,6 +404,7 @@ mod impl_ {
     scope: &mut v8::PinScope<'_, '_>,
     state: &mut OpState,
     buffer_constructor: v8::Local<'_, v8::Function>,
+    fast_buffer_prototype: v8::Local<'_, v8::Object>,
   ) {
     if state.has::<AdvancedIpcConstants>() {
       return;
@@ -418,6 +420,7 @@ mod impl_ {
         )
         .unwrap(),
       ),
+      fast_buffer_prototype: v8::Global::new(scope, fast_buffer_prototype),
     };
     state.put(constants);
   }
@@ -507,7 +510,9 @@ mod impl_ {
     inner: v8::ValueDeserializer<'static>,
   }
 
-  struct AdvancedIpcDeserializerDelegate;
+  struct AdvancedIpcDeserializerDelegate {
+    constants: AdvancedIpcConstants,
+  }
 
   impl v8::ValueDeserializerImpl for AdvancedIpcDeserializerDelegate {
     fn read_host_object<'s>(
@@ -562,10 +567,24 @@ mod impl_ {
                 .unwrap()
                 .into()
             }
-            1 | 10 => {
+            1 => {
               v8::Uint8Array::new(scope, array_buffer, 0, byte_length as usize)
                 .unwrap()
                 .into()
+            }
+            10 => {
+              let obj: v8::Local<v8::Object> = v8::Uint8Array::new(
+                scope,
+                array_buffer,
+                0,
+                byte_length as usize,
+              )
+              .unwrap()
+              .into();
+              let fast_proto =
+                v8::Local::new(scope, &self.constants.fast_buffer_prototype);
+              obj.set_prototype(scope, fast_proto.into());
+              obj.into()
             }
             2 => v8::Uint8ClampedArray::new(
               scope,
@@ -669,10 +688,14 @@ mod impl_ {
   }
 
   impl AdvancedIpcDeserializer {
-    fn new(scope: &mut v8::PinScope<'_, '_>, msg_bytes: &[u8]) -> Self {
+    fn new(
+      scope: &mut v8::PinScope<'_, '_>,
+      constants: AdvancedIpcConstants,
+      msg_bytes: &[u8],
+    ) -> Self {
       let inner = v8::ValueDeserializer::new(
         scope,
-        Box::new(AdvancedIpcDeserializerDelegate),
+        Box::new(AdvancedIpcDeserializerDelegate { constants }),
         msg_bytes,
       );
       Self { inner }
@@ -681,6 +704,7 @@ mod impl_ {
 
   struct AdvancedIpcReadResult {
     msg_bytes: Option<Vec<u8>>,
+    constants: AdvancedIpcConstants,
   }
 
   fn make_stop_sentinel<'s>(
@@ -709,16 +733,14 @@ mod impl_ {
       self,
       scope: &mut v8::PinScope<'a, '_>,
     ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-      log::debug!("AdvancedIpcReadResult::to_v8");
       let Some(msg_bytes) = self.msg_bytes else {
         return Ok(make_stop_sentinel(scope));
       };
-      log::debug!("AdvancedIpcReadResult::to_v8 msg_bytes: {:?}", msg_bytes);
-      let deser = AdvancedIpcDeserializer::new(scope, &msg_bytes);
+      let deser =
+        AdvancedIpcDeserializer::new(scope, self.constants, &msg_bytes);
       let context = scope.get_current_context();
       deser.inner.read_header(context);
       let value = deser.inner.read_value(context);
-      log::debug!("AdvancedIpcReadResult::to_v8 value: {:?}", value);
       Ok(value.unwrap_or_else(|| v8::null(scope).into()))
     }
   }
@@ -734,13 +756,13 @@ mod impl_ {
       .resource_table
       .get::<IpcAdvancedStreamResource>(rid)?;
     let cancel = stream.cancel.clone();
-    log::debug!("rc reffing");
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
-    log::debug!("op_node_ipc_read_advanced reading bytes");
     let msg_bytes = stream.read_msg_bytes().or_cancel(cancel).await??;
-    log::debug!("op_node_ipc_read_advanced done reading bytes");
 
-    Ok(AdvancedIpcReadResult { msg_bytes })
+    Ok(AdvancedIpcReadResult {
+      msg_bytes,
+      constants: state.borrow().borrow::<AdvancedIpcConstants>().clone(),
+    })
   }
 
   /// Value signaling that the other end ipc channel has closed.

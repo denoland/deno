@@ -44,6 +44,7 @@ import {
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
+import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -1426,7 +1427,7 @@ export function setupChannel(
   target.channel = control;
 
   if (!hasSetBufferConstructor) {
-    op_node_ipc_buffer_constructor(Buffer);
+    op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
     hasSetBufferConstructor = true;
   }
 
