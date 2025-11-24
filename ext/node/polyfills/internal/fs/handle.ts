@@ -35,6 +35,8 @@ import {
 } from "node:fs/promises";
 import assert from "node:assert";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { readAll } from "ext:deno_io/12_io.js";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 const {
   Error,
@@ -121,7 +123,7 @@ export class FileHandle extends EventEmitter {
   readFile(
     opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {
-    return fsCall(promises.readFile, "readFile", this, opt);
+    return fsCall(readFileImpl, "readFile", this, opt);
   }
 
   write(
@@ -284,6 +286,40 @@ export class FileHandle extends EventEmitter {
 
     return fsCall(promises.writeFile, "writeFile", this, data, optsWithAppend);
   }
+}
+
+async function readFileImpl(
+  rid: number,
+  opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
+): Promise<string | Buffer> {
+  // Create a FsFile instance from the file descriptor
+  // Note: We use Symbol.for to access the internal FsFile constructor
+  const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+
+  // Read all data from current position to EOF
+  const data = await readAll(fsFile);
+
+  // Convert to Buffer
+  const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+
+  // Handle encoding option
+  let encoding: string | null | undefined;
+
+  if (typeof opt === "string") {
+    // If opt is a string, it's the encoding
+    encoding = opt;
+  } else if (opt && typeof opt === "object") {
+    // If opt is an object, extract the encoding property
+    encoding = opt.encoding;
+  }
+
+  // If encoding is specified and not null, decode to string
+  if (encoding && encoding !== "buffer") {
+    return buffer.toString(encoding);
+  }
+
+  // Otherwise return Buffer
+  return buffer;
 }
 
 function readPromise(

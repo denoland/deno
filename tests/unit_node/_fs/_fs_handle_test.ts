@@ -369,3 +369,91 @@ Deno.test(
     }
   },
 );
+
+Deno.test("[node/fs filehandle.readFile] Read file as Buffer (no encoding)", async function () {
+  const fileHandle = await fs.open(testData);
+  const data = await fileHandle.readFile();
+
+  assert(data instanceof Buffer);
+  assertEquals(decoder.decode(data as Uint8Array), "hello world");
+
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] Read file with utf8 encoding", async function () {
+  const fileHandle = await fs.open(testData);
+  const data = await fileHandle.readFile({ encoding: "utf8" });
+
+  assertEquals(typeof data, "string");
+  assertEquals(data, "hello world");
+
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] Read file with encoding as string", async function () {
+  const fileHandle = await fs.open(testData);
+  const data = await fileHandle.readFile("utf8");
+
+  assertEquals(typeof data, "string");
+  assertEquals(data, "hello world");
+
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] File handle remains open after readFile", async function () {
+  const fileHandle = await fs.open(testData);
+
+  // Read the file
+  const data = await fileHandle.readFile();
+  assert(data instanceof Buffer);
+
+  // File handle should still be usable
+  const stat = await fileHandle.stat();
+  assertEquals(stat.isFile(), true);
+  assertEquals(stat.size, "hello world".length);
+
+  // Should be able to close it
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] Read from current position after partial read", async function () {
+  const fileHandle = await fs.open(testData);
+
+  // Read first 6 bytes ("hello ")
+  const buf = Buffer.alloc(6);
+  const readResult = await fileHandle.read(buf, 0, 6, 0);
+  assertEquals(readResult.bytesRead, 6);
+  assertEquals(decoder.decode(buf), "hello ");
+
+  // readFile should read from position 6 onwards ("world")
+  const remaining = await fileHandle.readFile({ encoding: "utf8" });
+  assertEquals(remaining, "world");
+
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] Read with explicit null encoding returns Buffer", async function () {
+  const fileHandle = await fs.open(testData);
+  const data = await fileHandle.readFile({ encoding: null });
+
+  assert(data instanceof Buffer);
+  assertEquals(decoder.decode(data as Uint8Array), "hello world");
+
+  await fileHandle.close();
+});
+
+Deno.test("[node/fs filehandle.readFile] Read empty file", async function () {
+  const tempFile: string = await Deno.makeTempFile();
+
+  try {
+    const fileHandle = await fs.open(tempFile);
+
+    const data = await fileHandle.readFile();
+    assert(data instanceof Buffer);
+    assertEquals(data.length, 0);
+
+    await fileHandle.close();
+  } finally {
+    await Deno.remove(tempFile);
+  }
+});
