@@ -64,6 +64,7 @@ async fn run_js_file(
 ) -> Result<i32, AnyError> {
   let cli_options = factory.cli_options()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   if npm {
     crate::tools::run::set_npm_user_agent();
@@ -79,6 +80,7 @@ async fn run_js_file(
       deno_runtime::WorkerExecutionMode::Run,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await
