@@ -304,7 +304,6 @@ pub async fn run(
   }
 
   let cli_options = factory.cli_options()?;
-  let cwd = cli_options.initial_cwd();
 
   let is_file_like = command_flags.command.starts_with('.')
     || command_flags.command.starts_with('/')
@@ -313,34 +312,29 @@ pub async fn run(
     || Path::new(&command_flags.command).extension().is_some();
   if is_file_like && Path::new(&command_flags.command).is_file() {
     return Err(anyhow::anyhow!(
-      "Use 'deno run' to run a file directly, 'deno x' is intended for running commands from packages."
+      "Use 'deno run' to run a local file directly, 'deno x' is intended for running commands from packages."
     ));
   }
 
-  let thing_to_run = if is_file_like {
-    let url = deno_path_util::resolve_url_or_path(&command_flags.command, cwd)?;
-    ReqRefOrUrl::Url(url)
-  } else {
-    match deno_core::url::Url::parse(&command_flags.command) {
-      Ok(url) => {
-        if url.scheme() == "npm" {
-          let req_ref = NpmPackageReqReference::from_specifier(&url)?;
-          ReqRefOrUrl::Npm(req_ref)
-        } else if url.scheme() == "jsr" {
-          let req_ref = JsrPackageReqReference::from_specifier(&url)?;
-          ReqRefOrUrl::Jsr(req_ref)
-        } else {
-          ReqRefOrUrl::Url(url)
-        }
-      }
-      Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
-        let new_command = format!("npm:{}", command_flags.command);
-        let req_ref = NpmPackageReqReference::from_str(&new_command)?;
+  let thing_to_run = match deno_core::url::Url::parse(&command_flags.command) {
+    Ok(url) => {
+      if url.scheme() == "npm" {
+        let req_ref = NpmPackageReqReference::from_specifier(&url)?;
         ReqRefOrUrl::Npm(req_ref)
+      } else if url.scheme() == "jsr" {
+        let req_ref = JsrPackageReqReference::from_specifier(&url)?;
+        ReqRefOrUrl::Jsr(req_ref)
+      } else {
+        ReqRefOrUrl::Url(url)
       }
-      Err(e) => {
-        return Err(e.into());
-      }
+    }
+    Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
+      let new_command = format!("npm:{}", command_flags.command);
+      let req_ref = NpmPackageReqReference::from_str(&new_command)?;
+      ReqRefOrUrl::Npm(req_ref)
+    }
+    Err(e) => {
+      return Err(e.into());
     }
   };
 
