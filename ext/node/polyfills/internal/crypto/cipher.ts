@@ -223,7 +223,10 @@ export class Cipheriv extends Transform implements Cipher {
     this.#lazyInitDecoder(encoding);
 
     const buf = new FastBuffer(16);
-    if (this.#cache.cache.byteLength == 0) {
+    const hasNoBufferedData = this.#cache.cache.byteLength === 0;
+    const shouldPadEmptyBlock = this.#needsBlockCache && this.#autoPadding;
+
+    if (hasNoBufferedData && !shouldPadEmptyBlock) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
       return encoding === "buffer" ? Buffer.from([]) : "";
