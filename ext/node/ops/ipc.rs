@@ -515,7 +515,6 @@ mod impl_ {
       scope: &mut v8::PinScope<'s, '_>,
       deser: &dyn ValueDeserializerHelper,
     ) -> Option<v8::Local<'s, v8::Object>> {
-      log::debug!("AdvancedIpcDeserializerDelegate::read_host_object");
       let throw_error = |message: &str| {
         scope.throw_exception(v8::Exception::type_error(
           scope,
@@ -539,7 +538,9 @@ mod impl_ {
             return throw_error("Failed to read array buffer view type tag");
           }
           let mut byte_length = 0;
-          deser.read_uint32(&mut byte_length);
+          if !deser.read_uint32(&mut byte_length) {
+            return throw_error("Failed to read byte length");
+          }
           let Some(buf) = deser.read_raw_bytes(byte_length as usize) else {
             return throw_error("failed to read bytes for typed array");
           };
