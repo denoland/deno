@@ -219,6 +219,12 @@ mod impl_ {
     #[class(inherit)]
     #[error("failed to serialize json value: {0}")]
     SerdeJson(serde_json::Error),
+    #[class(type)]
+    #[error("Failed to read header")]
+    ReadHeaderFailed,
+    #[class(type)]
+    #[error("Failed to read value")]
+    ReadValueFailed,
   }
 
   #[op2(async)]
@@ -739,9 +745,14 @@ mod impl_ {
       let deser =
         AdvancedIpcDeserializer::new(scope, self.constants, &msg_bytes);
       let context = scope.get_current_context();
-      deser.inner.read_header(context);
-      let value = deser.inner.read_value(context);
-      Ok(value.unwrap_or_else(|| v8::null(scope).into()))
+      let header_success = deser.inner.read_header(context).unwrap_or(false);
+      if !header_success {
+        return Err(IpcError::ReadHeaderFailed);
+      }
+      let Some(value) = deser.inner.read_value(context) else {
+        return Err(IpcError::ReadValueFailed);
+      };
+      Ok(value)
     }
   }
 
