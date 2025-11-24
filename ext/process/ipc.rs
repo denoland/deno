@@ -418,31 +418,14 @@ fn read_advanced_msg_bytes_internal<R: AsyncRead + ?Sized>(
   read: &mut usize,
 ) -> Poll<io::Result<usize>> {
   loop {
-    log::debug!("reading for advanced IPC");
     if read_buffer.needs_fill() {
-      log::debug!("advanced IPC needs fill");
       let mut read_buf = ReadBuf::new(read_buffer.get_mut());
-      match reader.as_mut().poll_read(cx, &mut read_buf) {
-        Poll::Ready(Ok(())) => {
-          log::debug!("advanced IPC read: {:?}", read_buf.filled().len());
-        }
-        Poll::Ready(Err(e)) => {
-          log::debug!("advanced IPC read error: {:?}", e);
-          return Poll::Ready(Err(e));
-        }
-        Poll::Pending => {
-          log::debug!("advanced IPC read pending");
-          return Poll::Pending;
-        }
-      }
-      log::debug!("advanced IPC read: {:?}", read_buf.filled().len());
+      ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
       read_buffer.cap = read_buf.filled().len();
       read_buffer.pos = 0;
     }
     let available = read_buffer.available_mut();
-    log::debug!("advanced IPC available: {:?}", available);
     let msg_len = length_buffer.message_len();
-    log::debug!("advanced IPC msg_len: {:?}", msg_len);
     let (done, used) = if let Some(msg_len) = msg_len {
       if out_buffer.len() >= msg_len {
         (true, 0)
@@ -586,21 +569,8 @@ fn read_json_msg_internal<R: AsyncRead + ?Sized>(
     let (done, used) = {
       // effectively a tiny `poll_fill_buf`, but allows us to get a mutable reference to the buffer.
       if read_buffer.needs_fill() {
-        log::debug!("json ipc needs fill");
         let mut read_buf = ReadBuf::new(read_buffer.get_mut());
-        match reader.as_mut().poll_read(cx, &mut read_buf) {
-          Poll::Ready(Ok(())) => {
-            log::debug!("json ipc read");
-          }
-          Poll::Ready(Err(e)) => {
-            log::debug!("json ipc read error: {e}");
-            return Poll::Ready(Err(e));
-          }
-          Poll::Pending => {
-            log::debug!("json ipc read pending");
-            return Poll::Pending;
-          }
-        }
+        ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
         read_buffer.cap = read_buf.filled().len();
         read_buffer.pos = 0;
       }

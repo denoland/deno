@@ -654,24 +654,6 @@ mod impl_ {
             _ => return None,
           };
           Some(value)
-
-          /* const ctor = arrayBufferViewIndexToType(typeIndex);
-          const byteLength = this.readUint32();
-          const byteOffset = this._readRawBytes(byteLength);
-          const BYTES_PER_ELEMENT = ctor.BYTES_PER_ELEMENT || 1;
-
-          const offset = this.buffer.byteOffset + byteOffset;
-          if (offset % BYTES_PER_ELEMENT === 0) {
-            return new ctor(this.buffer.buffer,
-                            offset,
-                            byteLength / BYTES_PER_ELEMENT);
-          }
-          // Copy to an aligned buffer first.
-          const buffer_copy = Buffer.allocUnsafe(byteLength);
-          buffer_copy.set(new Uint8Array(this.buffer.buffer, this.buffer.byteOffset + byteOffset, byteLength));
-          return new ctor(buffer_copy.buffer,
-                          buffer_copy.byteOffset,
-                          byteLength / BYTES_PER_ELEMENT); */
         }
         NOT_ARRAY_BUFFER_VIEW_TAG => {
           let value = deser.read_value(scope.get_current_context());
