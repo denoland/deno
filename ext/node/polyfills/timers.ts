@@ -166,7 +166,7 @@ export function setImmediate(
 }
 
 export function clearImmediate(immediate: Immediate) {
-  if (!immediate._onImmediate || immediate._destroyed) {
+  if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
 

@@ -1195,7 +1195,7 @@
 "parallel/test-timers-clearImmediate-als.js" = {}
 "parallel/test-timers-clearImmediate.js" = {}
 # TODO(bartlomieju): need to rearrange code for this one
-"parallel/test-timers-immediate-promisified.js" = {}
+# "parallel/test-timers-immediate-promisified.js" = {}
 # TODO(bartlomieju): doesn't work correctly because of `node:domain`
 # error handling
 # "parallel/test-timers-immediate-queue-throw.js" = {}
