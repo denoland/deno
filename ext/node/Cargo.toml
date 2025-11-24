@@ -89,6 +89,7 @@ sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
+socket2.workspace = true
 spki.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true

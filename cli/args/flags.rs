@@ -26,6 +26,8 @@ use clap::error::ErrorKind;
 use clap::value_parser;
 use clap_complete::CompletionCandidate;
 use clap_complete::engine::SubcommandCandidates;
+use clap_complete::env::EnvCompleter;
+use clap_complete::env::Shells;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
@@ -123,6 +125,7 @@ pub struct AuditFlags {
   pub prod: bool,
   pub optional: bool,
   pub ignore: Vec<String>,
+  pub socket: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -297,7 +300,7 @@ pub struct InfoFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallFlagsGlobal {
-  pub module_url: String,
+  pub module_urls: Vec<String>,
   pub args: Vec<String>,
   pub name: Option<String>,
   pub root: Option<String>,
@@ -806,6 +809,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
+  pub require: Vec<String>,
   pub tunnel: bool,
 }
 
@@ -2069,6 +2073,9 @@ fn audit_subcommand() -> Command {
 Show only high and critical severity vulnerabilities
   <p(245)>deno audit --level=high</>
 
+Check against socket.dev vulnerability database
+  <p(245)>deno audit --socket</>
+
 Don't error if the audit data can't be retrieved from the registry
   <p(245)>deno audit --ignore-registry-errors</>"
     ),
@@ -2094,6 +2101,12 @@ Don't error if the audit data can't be retrieved from the registry
         Arg::new("ignore-unfixable")
           .long("ignore-unfixable")
           .help("Ignore advisories that don't have any actions to resolve them")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("socket")
+          .long("socket")
+          .help("Check against socket.dev vulnerability database")
           .action(ArgAction::SetTrue)
       )
       .arg(
@@ -3181,6 +3194,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
+        .arg(script_arg().last(true))
         .arg(
           Arg::new("name")
             .long("name")
@@ -4180,6 +4194,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(require_arg())
     .arg(min_dep_age_arg())
 }
 
@@ -4769,6 +4784,17 @@ fn preload_arg() -> Arg {
     .value_hint(ValueHint::FilePath)
 }
 
+fn require_arg() -> Arg {
+  Arg::new("require")
+    .long("require")
+    .value_name("FILE")
+    .action(ArgAction::Append)
+    .help(
+      "A list of CommonJS modules that will be executed before the main module",
+    )
+    .value_hint(ValueHint::FilePath)
+}
+
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
@@ -5300,6 +5326,7 @@ fn audit_parse(
     .unwrap_or_else(|| "low".to_string());
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
+  let socket = matches.get_flag("socket");
   let dev = true;
   let prod = true;
   let optional = true;
@@ -5313,6 +5340,7 @@ fn audit_parse(
     ignore_registry_errors,
     ignore_unfixable,
     ignore,
+    socket,
   });
   Ok(())
 }
@@ -5890,16 +5918,29 @@ fn install_parse(
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
     let name = matches.remove_one::<String>("name");
-    let mut cmd_values =
-      matches.remove_many::<String>("cmd").unwrap_or_default();
+    let module_urls = matches
+      .remove_many::<String>("cmd")
+      .map(|values| values.collect::<Vec<_>>())
+      .unwrap_or_default();
+    let args = matches
+      .remove_many::<String>("script_arg")
+      .map(|values| values.collect::<Vec<_>>())
+      .unwrap_or_default();
 
-    let module_url = cmd_values.next().unwrap();
-    let args = cmd_values.collect();
+    if module_urls.len() > 1 && name.is_some() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        format!(
+          "Cannot specify --name when providing multiple packages to install ({}).",
+          module_urls.join(", ")
+        ),
+      ));
+    }
 
     flags.subcommand =
       DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
         name,
-        module_url,
+        module_urls,
         args,
         root,
         force,
@@ -6344,6 +6385,70 @@ pub fn handle_shell_completion() -> Result<(), AnyError> {
   handle_shell_completion_with_args(std::env::args_os())
 }
 
+struct ZshCompleterUnsorted;
+
+// dynamic completion implementation for zsh that retains the order we give completions to zsh
+impl EnvCompleter for ZshCompleterUnsorted {
+  fn name(&self) -> &'static str {
+    "zsh"
+  }
+
+  fn is(&self, name: &str) -> bool {
+    name == "zsh"
+  }
+
+  fn write_registration(
+    &self,
+    var: &str,
+    name: &str,
+    bin: &str,
+    completer: &str,
+    buf: &mut dyn std::io::Write,
+  ) -> Result<(), std::io::Error> {
+    // copy pasted from clap_complete::env::Zsh::write_registration and modified the script slightly
+    let escaped_name = name.replace('-', "_");
+    let bin = shlex::try_quote(bin).unwrap_or(std::borrow::Cow::Borrowed(bin));
+    let completer = shlex::try_quote(completer)
+      .unwrap_or(std::borrow::Cow::Borrowed(completer));
+
+    let script = r#"#compdef BIN
+function _clap_dynamic_completer_NAME() {
+  local _CLAP_COMPLETE_INDEX=$(expr $CURRENT - 1)
+  local _CLAP_IFS=$'\n'
+
+  local completions=("${(@f)$( \
+      _CLAP_IFS="$_CLAP_IFS" \
+      _CLAP_COMPLETE_INDEX="$_CLAP_COMPLETE_INDEX" \
+      VAR="zsh" \
+      COMPLETER -- "${words[@]}" 2>/dev/null \
+  )}")
+
+  if [[ -n $completions ]]; then
+      _describe -V 'values' completions -o nosort
+  fi
+}
+
+compdef _clap_dynamic_completer_NAME BIN"#
+      .replace("NAME", &escaped_name)
+      .replace("COMPLETER", &completer)
+      .replace("BIN", &bin)
+      .replace("VAR", var);
+
+    writeln!(buf, "{script}")?;
+    Ok(())
+  }
+
+  fn write_complete(
+    &self,
+    cmd: &mut clap::Command,
+    args: Vec<OsString>,
+    current_dir: Option<&std::path::Path>,
+    buf: &mut dyn std::io::Write,
+  ) -> Result<(), std::io::Error> {
+    clap_complete::env::Zsh.write_complete(cmd, args, current_dir, buf)
+  }
+}
+
 fn handle_shell_completion_with_args(
   args: impl IntoIterator<Item = OsString>,
 ) -> Result<(), AnyError> {
@@ -6351,6 +6456,13 @@ fn handle_shell_completion_with_args(
   let app = clap_root();
 
   let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
+    .shells(Shells(&[
+      &clap_complete::env::Bash,
+      &clap_complete::env::Elvish,
+      &clap_complete::env::Fish,
+      &clap_complete::env::Powershell,
+      &ZshCompleterUnsorted,
+    ]))
     .try_complete(args, Some(&std::env::current_dir()?))?;
 
   // we should only run this function when we're doing completions
@@ -6533,6 +6645,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  require_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -6813,6 +6926,12 @@ fn reload_arg_parse(
 fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(preload) = matches.remove_many::<String>("preload") {
     flags.preload = preload.collect();
+  }
+}
+
+fn require_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(require) = matches.remove_many::<String>("require") {
+    flags.require = require.collect();
   }
 }
 
@@ -9846,7 +9965,8 @@ mod tests {
       "deno",
       "install",
       "-g",
-      "jsr:@std/http/file-server"
+      "jsr:@std/http/file-server",
+      "npm:chalk",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -9854,7 +9974,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: None,
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server", "npm:chalk"],
             args: vec![],
             root: None,
             force: false,
@@ -9876,7 +9996,7 @@ mod tests {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: None,
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server"],
             args: vec![],
             root: None,
             force: false,
@@ -9890,14 +10010,14 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--global", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "jsr:@std/http/file-server", "--", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags::Global(
           InstallFlagsGlobal {
             name: Some("file_server".to_string()),
-            module_url: "jsr:@std/http/file-server".to_string(),
+            module_urls: svec!["jsr:@std/http/file-server"],
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
@@ -13530,6 +13650,53 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           no_prompt: true,
           ..Default::default()
         },
+        ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn require_flag_test() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--require",
+      "require.js",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        require: svec!["require.js"],
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--require",
+      "r1.js",
+      "--require",
+      "./r2.js",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        require: svec!["r1.js", "./r2.js"],
+        code_cache_enabled: true,
         ..Default::default()
       }
     );

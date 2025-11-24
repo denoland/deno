@@ -74,7 +74,7 @@ pub struct StatementSync {
   pub allow_bare_named_params: Cell<bool>,
   pub allow_unknown_named_params: Cell<bool>,
 
-  pub is_iter_finished: bool,
+  pub is_iter_finished: Cell<bool>,
 }
 
 impl Drop for StatementSync {
@@ -692,7 +692,7 @@ impl StatementSync {
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
-      if statement.is_iter_finished {
+      if statement.is_iter_finished.get() {
         let values = &[
           v8::Boolean::new(scope, true).into(),
           v8::undefined(scope).into(),
@@ -706,7 +706,7 @@ impl StatementSync {
 
       let Ok(Some(row)) = statement.read_row(scope) else {
         let _ = statement.reset();
-        statement.is_iter_finished = true;
+        statement.is_iter_finished.set(true);
 
         let values = &[
           v8::Boolean::new(scope, true).into(),
@@ -734,7 +734,7 @@ impl StatementSync {
       // SAFETY: `context` is a valid pointer to a StatementSync instance
       let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
 
-      statement.is_iter_finished = true;
+      statement.is_iter_finished.set(true);
       let _ = statement.reset();
 
       let names = &[
@@ -786,6 +786,8 @@ impl StatementSync {
       names,
       values,
     );
+
+    self.is_iter_finished.set(false);
 
     Ok(iterator)
   }

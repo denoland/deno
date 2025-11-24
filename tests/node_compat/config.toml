@@ -334,6 +334,8 @@
 "parallel/test-diagnostics-channel-udp.js" = {}
 "parallel/test-disable-sigusr1.js" = {}
 "parallel/test-dns-default-order-ipv4.js" = {}
+"parallel/test-dns-lookupService.js" = {}
+"parallel/test-dns-lookupService-promises.js" = {}
 "parallel/test-dns-multi-channel.js" = {}
 "parallel/test-dns-promises-exists.js" = {}
 "parallel/test-dns-resolvens-typeerror.js" = {}
