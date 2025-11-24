@@ -616,7 +616,7 @@ fn create_command(
 
       handles_to_close.push(hd2);
 
-      ipc_rid = pipe_rid;
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
