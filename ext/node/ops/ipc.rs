@@ -584,7 +584,7 @@ mod impl_ {
               let fast_proto =
                 v8::Local::new(scope, &self.constants.fast_buffer_prototype);
               obj.set_prototype(scope, fast_proto.into());
-              obj.into()
+              obj
             }
             2 => v8::Uint8ClampedArray::new(
               scope,
