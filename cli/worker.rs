@@ -328,12 +328,14 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -347,6 +349,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
@@ -354,6 +357,7 @@ impl CliMainWorkerFactory {
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -368,6 +372,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -427,6 +432,7 @@ impl CliMainWorkerFactory {
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       custom_extensions,
       stdio,
