@@ -146,7 +146,6 @@ function innerDeepEqual(
       return false;
     }
   } else if (isArrayBufferView(val1)) {
-    console.log("isArrayBufferView", val1, val2);
     if (
       isTypedArray(val1) &&
       isTypedArray(val2) &&
