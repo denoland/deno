@@ -249,9 +249,7 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
       r##"@echo off
 ./deno.exe x %*
 exit /b %ERRORLEVEL%
-"##
-        .to_string()
-        .as_bytes(),
+"##,
     )?;
   }
 
