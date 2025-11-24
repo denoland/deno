@@ -642,7 +642,7 @@ mod impl_ {
             )
             .unwrap()
             .into(),
-            // TODO(nathanwhit): blocked on v8 upgrade
+            // TODO(nathanwhit): blocked on rusty_v8 / deno_core upgrade
             // 13 => v8::Float16Array::new(
             //   scope,
             //   array_buffer,
@@ -660,15 +660,7 @@ mod impl_ {
           Some(value.unwrap_or_else(|| v8::null(scope).into()).cast())
         }
         _ => {
-          scope.throw_exception(v8::Exception::type_error(
-            scope,
-            v8::String::new_from_utf8(
-              scope,
-              format!("Invalid tag: {}", tag).as_bytes(),
-              v8::NewStringType::Normal,
-            )
-            .unwrap(),
-          ));
+          throw_error(&format!("Invalid tag: {}", tag));
           None
         }
       }

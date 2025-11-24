@@ -230,7 +230,6 @@ pub enum IpcAdvancedStreamError {
 
 pub struct IpcAdvancedStream {
   pipe: BiPipeRead,
-  buffer: Vec<u8>,
   read_buffer: ReadBuffer,
 }
 
@@ -287,7 +286,6 @@ pin_project! {
   struct ReadMsgBytesInner<'a, R: ?Sized> {
     length_buffer: &'a mut MessageLengthBuffer,
     reader: &'a mut R,
-    buf: &'a mut Vec<u8>,
     out_buf: &'a mut Vec<u8>,
     // The number of bytes appended to buf. This can be less than buf.len() if
     // the buffer was not empty when the operation was started.
@@ -299,7 +297,6 @@ pin_project! {
 fn read_msg_bytes_inner<'a, R: AsyncRead + ?Sized + Unpin>(
   reader: &'a mut R,
   length_buffer: &'a mut MessageLengthBuffer,
-  buf: &'a mut Vec<u8>,
   out_buf: &'a mut Vec<u8>,
   read: usize,
   read_buffer: &'a mut ReadBuffer,
@@ -307,7 +304,6 @@ fn read_msg_bytes_inner<'a, R: AsyncRead + ?Sized + Unpin>(
   ReadMsgBytesInner {
     length_buffer,
     reader,
-    buf,
     out_buf,
     read,
     read_buffer,
@@ -318,7 +314,6 @@ impl IpcAdvancedStream {
   fn new(pipe: BiPipeRead) -> Self {
     Self {
       pipe,
-      buffer: Vec::with_capacity(INITIAL_CAPACITY),
       read_buffer: ReadBuffer::new(),
     }
   }
@@ -331,14 +326,12 @@ impl IpcAdvancedStream {
     let mut nread = read_msg_bytes_inner(
       &mut self.pipe,
       &mut length_buffer,
-      &mut self.buffer,
       &mut out_buf,
       0,
       &mut self.read_buffer,
     )
     .await
     .map_err(IpcAdvancedStreamError::Io)?;
-    log::debug!("advanced IPC read: {:?}", nread);
     if nread == 0 {
       return Ok(None);
     }
@@ -350,19 +343,15 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgBytesInner<'_, R> {
   type Output = io::Result<usize>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    log::debug!("advanced IPC read poll");
     let mut me = self.project();
-    let res = read_advanced_msg_bytes_internal(
+    read_advanced_msg_bytes_internal(
       Pin::new(me.reader),
       cx,
       me.length_buffer,
-      me.buf,
       me.read_buffer,
       me.out_buf,
       me.read,
-    );
-    log::debug!("advanced IPC read poll result: {:?}", res);
-    res
+    )
   }
 }
 
@@ -394,10 +383,8 @@ impl IpcAdvancedStreamResource {
     self: Rc<Self>,
     msg: &[u8],
   ) -> Result<(), io::Error> {
-    log::debug!("writing for advanced IPC: {:?}", msg);
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
-    log::debug!("advanced IPC written: {:?}", msg);
     Ok(())
   }
 }
@@ -412,7 +399,6 @@ fn read_advanced_msg_bytes_internal<R: AsyncRead + ?Sized>(
   mut reader: Pin<&mut R>,
   cx: &mut Context<'_>,
   length_buffer: &mut MessageLengthBuffer,
-  _buf: &mut Vec<u8>,
   read_buffer: &mut ReadBuffer,
   out_buffer: &mut Vec<u8>,
   read: &mut usize,
