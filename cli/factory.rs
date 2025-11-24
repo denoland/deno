@@ -1134,7 +1134,7 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      node_ipc_init: cli_options.node_ipc_init(),
+      node_ipc_init: cli_options.node_ipc_init()?,
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: cli_options.otel_config(),

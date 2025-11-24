@@ -587,19 +587,17 @@ impl CliOptions {
     )
   }
 
-  pub fn node_ipc_init(&self) -> Option<(i64, ChildIpcSerialization)> {
+  pub fn node_ipc_init(
+    &self,
+  ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    let maybe_node_channel_serialization =
+    let maybe_node_channel_serialization = if let Ok(serialization) =
       std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-        .ok()
-        .and_then(|s| {
-          s.parse::<ChildIpcSerialization>()
-            .inspect_err(|e| {
-              log::warn!("Invalid node IPC serialization type: {}", e)
-            })
-            .ok()
-        })
-        .unwrap_or(ChildIpcSerialization::Json);
+    {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
+    } else {
+      None
+    };
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variables.
       #[allow(clippy::undocumented_unsafe_blocks)]
@@ -607,10 +605,13 @@ impl CliOptions {
         std::env::remove_var("NODE_CHANNEL_FD");
         std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
       }
-      let node_channel_fd = node_channel_fd.parse::<i64>().ok()?;
-      Some((node_channel_fd, maybe_node_channel_serialization))
+      let node_channel_fd = node_channel_fd.parse::<i64>()?;
+      Ok(Some((
+        node_channel_fd,
+        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
+      )))
     } else {
-      None
+      Ok(None)
     }
   }
 
