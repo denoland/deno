@@ -850,6 +850,7 @@
         "examples": [
           "broadcast-channel",
           "bare-node-builtins",
+          "bundle",
           "byonm",
           "cron",
           "detect-cjs",
