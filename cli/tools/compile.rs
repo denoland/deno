@@ -440,6 +440,10 @@ fn get_module_roots_and_include_paths(
     module_roots.push(preload_module);
   }
 
+  for require_module in cli_options.require_modules()? {
+    module_roots.push(require_module);
+  }
+
   Ok((module_roots, include_paths))
 }
 

@@ -2,7 +2,6 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference lib="deno.broadcast_channel" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 

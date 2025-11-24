@@ -71,6 +71,7 @@ util::unit_test_factory!(
     crypto_timing_safe_equal_test = crypto / crypto_timing_safe_equal_test,
     events_test,
     dgram_test,
+    dns_test,
     domain_test,
     fs_test,
     fetch_test,
@@ -116,7 +117,6 @@ fn node_unit_test(test: String) {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable-broadcast-channel")
     .arg("--unstable-net")
     .arg("-A");
 

@@ -61,6 +61,7 @@ pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
       WorkerExecutionMode::Deploy,
       specifier,
       vec![],
+      vec![],
       PermissionsContainer::allow_all(
         factory.permission_desc_parser()?.clone(),
       ),
