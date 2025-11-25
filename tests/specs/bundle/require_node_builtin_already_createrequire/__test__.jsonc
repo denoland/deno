@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "steps": [
     {
       "args": "bundle main.cjs -o out.js",
