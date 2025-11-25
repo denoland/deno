@@ -160,6 +160,8 @@ async fn create_plugin_runner_inner(
       main_module.clone(),
       // `deno lint` doesn't support preloading modules
       vec![],
+      // `deno lint` doesn't support require modules
+      vec![],
       permissions,
       vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),
