@@ -77,6 +77,7 @@ import {
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { QuotaExceededError } from "ext:deno_web/02_quota_exceeded_error.js";
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
@@ -350,7 +351,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionQuotaExceededError",
   function DOMExceptionQuotaExceededError(msg) {
-    return new DOMException(msg, "QuotaExceededError");
+    return new QuotaExceededError(msg);
   },
 );
 core.registerErrorBuilder(
