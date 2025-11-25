@@ -156,10 +156,8 @@ impl IpcJsonStreamResource {
     self: Rc<Self>,
     msg: &[u8],
   ) -> Result<(), io::Error> {
-    log::debug!("json ipc write: {msg:?}");
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
-    log::debug!("json ipc written: {msg:?}");
     Ok(())
   }
 }

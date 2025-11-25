@@ -297,12 +297,12 @@ mod impl_ {
       let constructor = view
         .get(
           scope,
-          v8::Local::new(scope, &constants.constructor_key).into(),
+          v8::Local::new(scope, &constants.inner.constructor_key).into(),
         )
         .unwrap();
       let buffer_constructor = v8::Local::<v8::Value>::from(v8::Local::new(
         scope,
-        &constants.buffer_constructor,
+        &constants.inner.buffer_constructor,
       ));
       if constructor == buffer_constructor {
         Some(10)
@@ -400,6 +400,9 @@ mod impl_ {
 
   #[derive(Clone)]
   struct AdvancedIpcConstants {
+    inner: Rc<AdvancedIpcConstantsInner>,
+  }
+  struct AdvancedIpcConstantsInner {
     buffer_constructor: v8::Global<v8::Function>,
     constructor_key: v8::Global<v8::String>,
     fast_buffer_prototype: v8::Global<v8::Object>,
@@ -416,17 +419,19 @@ mod impl_ {
       return;
     }
     let constants = AdvancedIpcConstants {
-      buffer_constructor: v8::Global::new(scope, buffer_constructor),
-      constructor_key: v8::Global::new(
-        scope,
-        v8::String::new_from_utf8(
+      inner: Rc::new(AdvancedIpcConstantsInner {
+        buffer_constructor: v8::Global::new(scope, buffer_constructor),
+        constructor_key: v8::Global::new(
           scope,
-          b"constructor",
-          v8::NewStringType::Internalized,
-        )
-        .unwrap(),
-      ),
-      fast_buffer_prototype: v8::Global::new(scope, fast_buffer_prototype),
+          v8::String::new_from_utf8(
+            scope,
+            b"constructor",
+            v8::NewStringType::Internalized,
+          )
+          .unwrap(),
+        ),
+        fast_buffer_prototype: v8::Global::new(scope, fast_buffer_prototype),
+      }),
     };
     state.put(constants);
   }
@@ -584,11 +589,12 @@ mod impl_ {
                 array_buffer,
                 0,
                 byte_length as usize,
-              )
-              .unwrap()
+              )?
               .into();
-              let fast_proto =
-                v8::Local::new(scope, &self.constants.fast_buffer_prototype);
+              let fast_proto = v8::Local::new(
+                scope,
+                &self.constants.inner.fast_buffer_prototype,
+              );
               obj.set_prototype(scope, fast_proto.into());
               obj
             }
@@ -597,40 +603,35 @@ mod impl_ {
               array_buffer,
               0,
               byte_length as usize,
-            )
-            .unwrap()
+            )?
             .into(),
             3 => v8::Int16Array::new(
               scope,
               array_buffer,
               0,
               byte_length as usize / 2,
-            )
-            .unwrap()
+            )?
             .into(),
             4 => v8::Uint16Array::new(
               scope,
               array_buffer,
               0,
               byte_length as usize / 2,
-            )
-            .unwrap()
+            )?
             .into(),
             5 => v8::Int32Array::new(
               scope,
               array_buffer,
               0,
               byte_length as usize / 4,
-            )
-            .unwrap()
+            )?
             .into(),
             6 => v8::Uint32Array::new(
               scope,
               array_buffer,
               0,
               byte_length as usize / 4,
-            )
-            .unwrap()
+            )?
             .into(),
             7 => v8::Float32Array::new(
               scope,
@@ -645,8 +646,7 @@ mod impl_ {
               array_buffer,
               0,
               byte_length as usize / 8,
-            )
-            .unwrap()
+            )?
             .into(),
             9 => {
               v8::DataView::new(scope, array_buffer, 0, byte_length as usize)
@@ -657,16 +657,14 @@ mod impl_ {
               array_buffer,
               0,
               byte_length as usize / 8,
-            )
-            .unwrap()
+            )?
             .into(),
             12 => v8::BigUint64Array::new(
               scope,
               array_buffer,
               0,
               byte_length as usize / 8,
-            )
-            .unwrap()
+            )?
             .into(),
             // TODO(nathanwhit): blocked on rusty_v8 / deno_core upgrade
             // 13 => v8::Float16Array::new(
