@@ -260,28 +260,12 @@ function createImageBitmap(
         mimeType = 2;
       } else if (mimeTypeString === "image/gif") {
         mimeType = 3;
-        // NOTE: Temporarily not supported due to build size concerns
-        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-        return PromiseReject(
-          new DOMException(
-            "The MIME type of source image is not supported currently",
-            "InvalidStateError",
-          ),
-        );
       } else if (mimeTypeString === "image/bmp") {
         mimeType = 4;
       } else if (mimeTypeString === "image/x-icon") {
         mimeType = 5;
       } else if (mimeTypeString === "image/webp") {
         mimeType = 6;
-        // NOTE: Temporarily not supported due to build size concerns
-        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-        return PromiseReject(
-          new DOMException(
-            "The MIME type of source image is not supported currently",
-            "InvalidStateError",
-          ),
-        );
       } else {
         return PromiseReject(
           new DOMException(
