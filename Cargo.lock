@@ -559,7 +559,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -579,7 +579,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1888,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.369.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#59761d28b5985eee1e0dae318bc5288b05bcce81"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#ad40ca4ab9f81531c38c7828f1693f781c4a4fc2"
 dependencies = [
  "anyhow",
  "az",
@@ -2612,7 +2612,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.245.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#59761d28b5985eee1e0dae318bc5288b05bcce81"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#ad40ca4ab9f81531c38c7828f1693f781c4a4fc2"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -7170,8 +7170,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.5.0",
- "itertools 0.13.0",
+ "heck 0.4.1",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -7191,7 +7191,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8213,7 +8213,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.278.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#59761d28b5985eee1e0dae318bc5288b05bcce81"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=set_immediate#ad40ca4ab9f81531c38c7828f1693f781c4a4fc2"
 dependencies = [
  "deno_error",
  "num-bigint",
