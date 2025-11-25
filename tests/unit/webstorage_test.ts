@@ -14,31 +14,31 @@ Deno.test({ permissions: "none" }, function webStoragesReassignable() {
 
 Deno.test(function webstorageSizeLimit() {
   localStorage.clear();
-  assertThrows(
+  let err = assertThrows(
     () => {
       localStorage.setItem("k", "v".repeat(15 * 1024 * 1024));
     },
-    Error,
-    "Exceeded maximum storage size",
+    DOMException,
   );
+  assertEquals(err.name, "QuotaExceededError");
   assertEquals(localStorage.getItem("k"), null);
-  assertThrows(
+  err = assertThrows(
     () => {
       localStorage.setItem("k".repeat(15 * 1024 * 1024), "v");
     },
-    Error,
-    "Exceeded maximum storage size",
+    DOMException,
   );
-  assertThrows(
+  assertEquals(err.name, "QuotaExceededError");
+  err = assertThrows(
     () => {
       localStorage.setItem(
         "k".repeat(5 * 1024 * 1024),
         "v".repeat(5 * 1024 * 1024),
       );
     },
-    Error,
-    "Exceeded maximum storage size",
+    DOMException,
   );
+  assertEquals(err.name, "QuotaExceededError");
 });
 
 Deno.test(function webstorageProxy() {

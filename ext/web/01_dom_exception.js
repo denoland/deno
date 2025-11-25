@@ -52,6 +52,7 @@ const SECURITY_ERR = 18;
 const NETWORK_ERR = 19;
 const ABORT_ERR = 20;
 const URL_MISMATCH_ERR = 21;
+const QUOTA_EXCEEDED_ERR = 22;
 const TIMEOUT_ERR = 23;
 const INVALID_NODE_TYPE_ERR = 24;
 const DATA_CLONE_ERR = 25;
@@ -83,6 +84,7 @@ const nameToCodeMapping = ObjectCreate(null, {
   TimeoutError: { value: TIMEOUT_ERR },
   InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
   DataCloneError: { value: DATA_CLONE_ERR },
+  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
 });
 
 // Defined in WebIDL 4.3.
@@ -180,6 +182,7 @@ const entries = ObjectEntries({
   NETWORK_ERR,
   ABORT_ERR,
   URL_MISMATCH_ERR,
+  QUOTA_EXCEEDED_ERR,
   TIMEOUT_ERR,
   INVALID_NODE_TYPE_ERR,
   DATA_CLONE_ERR,
