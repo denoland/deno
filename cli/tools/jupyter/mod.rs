@@ -102,6 +102,8 @@ pub async fn kernel(
       main_module.clone(),
       // `deno jupyter` doesn't support preloading modules
       vec![],
+      // `deno jupyter` doesn't support require modules
+      vec![],
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
