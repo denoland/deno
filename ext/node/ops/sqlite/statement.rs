@@ -69,6 +69,7 @@ pub struct StatementSync {
   pub inner: InnerStatementPtr,
   pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
+  pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
@@ -427,6 +428,10 @@ impl StatementSync {
 
   fn check_error_code(&self, r: i32) -> Result<(), SqliteError> {
     if r != ffi::SQLITE_OK {
+      if self.ignore_next_sqlite_error.get() {
+        self.ignore_next_sqlite_error.set(false);
+        return Ok(());
+      }
       let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
       let db = db_rc.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
@@ -583,6 +588,7 @@ impl StatementSync {
   //
   // The prepared statement does not return any results, this method returns undefined.
   // Optionally, parameters can be bound to the prepared statement.
+  #[reentrant]
   fn get<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,

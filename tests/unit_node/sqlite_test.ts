@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
+import * as nodeAssert from "node:assert";
 
 const tempDir = Deno.makeTempDirSync();
 
@@ -479,4 +480,15 @@ Deno.test("[node/sqlite] StatementSync iterate should not reuse previous state",
 
   db.exec("DELETE FROM numbers");
   assertEquals(Array.from(stmt.iterate()), []);
+});
+
+Deno.test("[node/sqlite] detailed SQLite errors", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => db.prepare("SELECT * FROM noop"), {
+    message: "no such table: noop",
+    code: "ERR_SQLITE_ERROR",
+    errcode: 1,
+    errstr: "SQL logic error",
+  });
 });
