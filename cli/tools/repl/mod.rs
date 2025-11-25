@@ -186,6 +186,8 @@ pub async fn run(
       main_module.clone(),
       // `deno repl` doesn't support preloading modules
       vec![],
+      // `deno repl` doesn't support require modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
