@@ -250,7 +250,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.gif`)],
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -260,7 +259,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.webp`)],
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -322,7 +320,6 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
         `${prefix}/1x1-3f-lossless-animated-semi-transparent.webp`,
       ),
     ]);
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -336,7 +333,6 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-3f-animated.gif`),
     ]);
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
