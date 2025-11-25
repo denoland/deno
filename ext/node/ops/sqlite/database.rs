@@ -621,16 +621,15 @@ impl DatabaseSync {
       (Some(args.get(1)), args.get(2))
     };
 
-    if !function_value.is_function() {
+    let Ok(function) = v8::Local::<v8::Function>::try_from(function_value)
+    else {
       return Err(
         validators::Error::InvalidArgType(
           "The \"function\" argument must be a function.",
         )
         .into(),
       );
-    }
-
-    let function: v8::Local<v8::Function> = function_value.try_into().unwrap();
+    };
 
     let mut use_big_int_arguments = false;
     let mut varargs = false;
