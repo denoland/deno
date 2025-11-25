@@ -809,6 +809,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
+  pub require: Vec<String>,
   pub tunnel: bool,
 }
 
@@ -4193,6 +4194,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(require_arg())
     .arg(min_dep_age_arg())
 }
 
@@ -4779,6 +4781,17 @@ fn preload_arg() -> Arg {
     .value_name("FILE")
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
+    .value_hint(ValueHint::FilePath)
+}
+
+fn require_arg() -> Arg {
+  Arg::new("require")
+    .long("require")
+    .value_name("FILE")
+    .action(ArgAction::Append)
+    .help(
+      "A list of CommonJS modules that will be executed before the main module",
+    )
     .value_hint(ValueHint::FilePath)
 }
 
@@ -6632,6 +6645,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  require_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -6912,6 +6926,12 @@ fn reload_arg_parse(
 fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(preload) = matches.remove_many::<String>("preload") {
     flags.preload = preload.collect();
+  }
+}
+
+fn require_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(require) = matches.remove_many::<String>("require") {
+    flags.require = require.collect();
   }
 }
 
@@ -13630,6 +13650,53 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           no_prompt: true,
           ..Default::default()
         },
+        ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn require_flag_test() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--require",
+      "require.js",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        require: svec!["require.js"],
+        code_cache_enabled: true,
+        ..Default::default()
+      }
+    );
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--require",
+      "r1.js",
+      "--require",
+      "./r2.js",
+      "main.ts"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "main.ts".into(),
+          ..Default::default()
+        }),
+        require: svec!["r1.js", "./r2.js"],
+        code_cache_enabled: true,
         ..Default::default()
       }
     );

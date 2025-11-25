@@ -64,6 +64,12 @@ async fn socket_dev_handler(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
+  let method = req.method();
+
+  // Handle authenticated mode: POST /v0/purl
+  if method == hyper::Method::POST {
+    return handle_authenticated_request(req).await;
+  }
 
   // Expected format: /purl/{percent_encoded_purl}
   // where purl is like: pkg:npm/package-name@version
@@ -134,6 +140,74 @@ async fn socket_dev_handler(
   });
 
   let response_body = response_json.to_string();
+  Ok(
+    Response::builder()
+      .status(StatusCode::OK)
+      .header("Content-Type", "application/json")
+      .body(string_body(&response_body))?,
+  )
+}
+
+async fn handle_authenticated_request(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  use http_body_util::BodyExt;
+
+  // Read the request body
+  let body_bytes = req.collect().await?.to_bytes();
+  let body_str = String::from_utf8(body_bytes.to_vec())?;
+
+  // Parse the JSON body
+  let body_json: serde_json::Value = serde_json::from_str(&body_str)?;
+  let components = body_json["components"]
+    .as_array()
+    .ok_or_else(|| anyhow::anyhow!("Missing components array"))?;
+
+  // Build newline-delimited JSON response
+  let mut responses = Vec::new();
+
+  for component in components {
+    let purl = component["purl"]
+      .as_str()
+      .ok_or_else(|| anyhow::anyhow!("Missing purl field"))?;
+
+    // Parse the purl format: pkg:npm/package-name@version
+    if !purl.starts_with("pkg:npm/") {
+      continue;
+    }
+
+    let package_part = &purl[8..]; // Skip "pkg:npm/"
+    let parts: Vec<&str> = package_part.rsplitn(2, '@').collect();
+    if parts.len() != 2 {
+      continue;
+    }
+
+    let version = parts[0];
+    let name = parts[1];
+
+    let response_json = json!({
+      "id": "81646",
+      "name": name,
+      "version": version,
+      "score": {
+        "license": 1.0,
+        "maintenance": 0.78,
+        "overall": 0.78,
+        "quality": 0.94,
+        "supplyChain": 1.0,
+        "vulnerability": 1.0
+      },
+      "alerts": [
+        { "type": "malware", "action": "error", "severity": "critical", "category": "supplyChainRisk" }
+      ]
+    });
+
+    responses.push(response_json.to_string());
+  }
+
+  // Join with newlines for newline-delimited JSON
+  let response_body = responses.join("\n");
+
   Ok(
     Response::builder()
       .status(StatusCode::OK)
