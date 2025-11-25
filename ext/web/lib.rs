@@ -112,6 +112,7 @@ deno_core::extension!(deno_web,
   esm = [
     "00_infra.js",
     "01_dom_exception.js",
+    "02_quota_exceeded_error.js",
     
     "01_mimesniff.js",
     "02_event.js",

@@ -84,7 +84,6 @@ const nameToCodeMapping = ObjectCreate(null, {
   TimeoutError: { value: TIMEOUT_ERR },
   InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
   DataCloneError: { value: DATA_CLONE_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
 });
 
 // Defined in WebIDL 4.3.
@@ -182,7 +181,6 @@ const entries = ObjectEntries({
   NETWORK_ERR,
   ABORT_ERR,
   URL_MISMATCH_ERR,
-  QUOTA_EXCEEDED_ERR,
   TIMEOUT_ERR,
   INVALID_NODE_TYPE_ERR,
   DATA_CLONE_ERR,

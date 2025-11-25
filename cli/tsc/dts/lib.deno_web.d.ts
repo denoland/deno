@@ -32,7 +32,6 @@ interface DOMException extends Error {
   readonly NETWORK_ERR: 19;
   readonly ABORT_ERR: 20;
   readonly URL_MISMATCH_ERR: 21;
-  readonly QUOTA_EXCEEDED_ERR: 22;
   readonly TIMEOUT_ERR: 23;
   readonly INVALID_NODE_TYPE_ERR: 24;
   readonly DATA_CLONE_ERR: 25;
@@ -63,11 +62,12 @@ declare var DOMException: {
   readonly NETWORK_ERR: 19;
   readonly ABORT_ERR: 20;
   readonly URL_MISMATCH_ERR: 21;
-  readonly QUOTA_EXCEEDED_ERR: 22;
   readonly TIMEOUT_ERR: 23;
   readonly INVALID_NODE_TYPE_ERR: 24;
   readonly DATA_CLONE_ERR: 25;
 };
+
+declare class QuotaExceededError extends DOMException {}
 
 /** @category Events */
 interface EventInit {

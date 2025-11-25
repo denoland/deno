@@ -23,7 +23,7 @@ pub enum WebStorageError {
   #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
-  #[class("DOMExceptionQuotaExceededError")]
+  #[class("QuotaExceededError")]
   #[error("Exceeded maximum storage size")]
   StorageExceeded,
 }
