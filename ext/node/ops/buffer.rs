@@ -121,6 +121,80 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
   ascii_bytes
 }
 
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare(
+  #[buffer] buf1: &[u8],
+  #[buffer] buf2: &[u8],
+) -> i32 {
+  let compare_length = std::cmp::min(buf1.len(), buf2.len());
+
+  match buf1[..compare_length].cmp(&buf2[..compare_length]) {
+    std::cmp::Ordering::Less => -1,
+    std::cmp::Ordering::Equal => {
+      if buf1.len() > buf2.len() {
+        1
+      } else if buf1.len() < buf2.len() {
+        -1
+      } else {
+        0
+      }
+    }
+    std::cmp::Ordering::Greater => 1,
+  }
+}
+
+fn compare_impl(buf1: &[u8], buf2: &[u8]) -> i32 {
+  let compare_length = std::cmp::min(buf1.len(), buf2.len());
+  match buf1[..compare_length].cmp(&buf2[..compare_length]) {
+    std::cmp::Ordering::Less => -1,
+    std::cmp::Ordering::Equal => {
+      if buf1.len() > buf2.len() {
+        1
+      } else if buf1.len() < buf2.len() {
+        -1
+      } else {
+        0
+      }
+    }
+    std::cmp::Ordering::Greater => 1,
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare_offset(
+  #[buffer] source: &[u8],
+  #[buffer] target: &[u8],
+  #[smi] source_start: usize,
+  #[smi] target_start: usize,
+  #[smi] source_end: usize,
+  #[smi] target_end: usize,
+) -> Result<i32, JsErrorBox> {
+  if source_start > source.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "sourceStart".to_string(),
+    )));
+  }
+  if target_start > target.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "targetStart".to_string(),
+    )));
+  }
+
+  if source_start > source_end {
+    panic!("source_start > source_end");
+  }
+  if target_start > target_end {
+    panic!("target_start > target_end");
+  }
+
+  Ok(compare_impl(
+    &source[source_start..source_end],
+    &target[target_start..target_end],
+  ))
+}
+
 #[op2]
 pub fn op_node_decode_utf8<'a>(
   scope: &mut v8::PinScope<'a, '_>,
@@ -170,6 +244,10 @@ enum BufferError {
   #[class(range)]
   #[property("code" = "ERR_OUT_OF_RANGE")]
   OutOfRange,
+  #[error("The value of \"{0}\" is out of range.")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRangeNamed(String),
 }
 
 #[inline(always)]
