@@ -176,7 +176,7 @@ function showFlaggedDeprecation() {
   bufferWarningAlreadyEmitted = true;
 }
 
-class FastBuffer extends Uint8Array {
+export class FastBuffer extends Uint8Array {
   constructor(bufferOrLength, byteOffset, length) {
     super(bufferOrLength, byteOffset, length);
   }
