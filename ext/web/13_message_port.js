@@ -304,6 +304,16 @@ class MessagePort extends EventTarget {
     super.addEventListener(...new SafeArrayIterator(args));
   }
 
+  ref() {
+    webidl.assertBranded(this, MessagePortPrototype);
+    this[refMessagePort](true);
+  }
+
+  unref() {
+    webidl.assertBranded(this, MessagePortPrototype);
+    this[refMessagePort](false);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({

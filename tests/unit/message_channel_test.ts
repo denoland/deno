@@ -16,8 +16,11 @@ Deno.test("messagechannel", async () => {
     assertEquals(e.ports.length, 1);
     assert(e.ports[0] instanceof MessagePort);
     e.ports[0].close();
+    mc.port2.unref();
     resolve();
   };
+
+  mc.port2.ref();
 
   mc.port1.postMessage("hello", [mc2.port1]);
   mc.port1.close();
@@ -42,8 +45,11 @@ Deno.test("messagechannel clone port", async () => {
     assert(e.ports[0] instanceof MessagePort);
     assertEquals(e.ports[0], port);
     e.ports[0].close();
+    mc.port2.unref();
     resolve();
   };
+
+  mc.port2.ref();
 
   mc.port1.postMessage({ port: mc2.port1 }, [mc2.port1]);
   mc.port1.close();

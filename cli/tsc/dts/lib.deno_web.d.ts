@@ -1273,6 +1273,14 @@ interface MessagePort extends EventTarget {
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   /**
+   * Make the port block the Deno process from exiting.
+   */
+  ref(): void;
+  /**
+   * Make the port not block the Deno process from exiting.
+   */
+  unref(): void;
+  /**
    * Begins dispatching messages received on the port. This is implicitly called
    * when assigning a value to `this.onmessage`.
    */
