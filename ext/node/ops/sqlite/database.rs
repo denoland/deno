@@ -461,6 +461,16 @@ fn set_db_config(
   }
 }
 
+/// Opens a SQLite database connection with appropriate permission checks.
+///
+/// Performs file-system permission checks via `state`, configures ATTACH
+/// restrictions when the caller lacks full permissions for the path, and
+/// enables or disables extension loading based on `allow_extension`.
+///
+/// When `allow_extension` is `true`, only the C API for extension loading is
+/// enabled (the SQL `load_extension()` function remains disabled). No FFI
+/// permission check is performed here; the check is deferred to `load_extension`
+/// where the specific extension path can be validated against scoped permissions.
 fn open_db(
   state: &mut OpState,
   location: &str,
@@ -482,15 +492,13 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if options.allow_extension {
-      perms.check_ffi_all()?;
-    } else {
-      assert!(set_db_config(
-        &conn,
-        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-        false
-      ));
-    }
+    // Enable or disable C API extension loading (SQL function always disabled)
+    // Permission check deferred to loadExtension() where the specific path is validated
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      options.allow_extension
+    ));
 
     return Ok(conn);
   }
@@ -520,15 +528,13 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if options.allow_extension {
-      perms.check_ffi_all()?;
-    } else {
-      assert!(set_db_config(
-        &conn,
-        SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-        false
-      ));
-    }
+    // Enable or disable C API extension loading (SQL function always disabled)
+    // Permission check deferred to loadExtension() where the specific path is validated
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      options.allow_extension
+    ));
 
     return Ok(conn);
   }
@@ -536,15 +542,13 @@ fn open_db(
   let conn = rusqlite::Connection::open(location)?;
   conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
-  if options.allow_extension {
-    perms.check_ffi_all()?;
-  } else {
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
-      false
-    ));
-  }
+  // Enable or disable C API extension loading (SQL function always disabled)
+  // Permission check deferred to loadExtension() where the specific path is validated
+  assert!(set_db_config(
+    &conn,
+    SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+    options.allow_extension
+  ));
 
   if disable_attach {
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
@@ -1084,10 +1088,11 @@ impl DatabaseSync {
     }
   }
 
-  // Loads a SQLite extension.
+  // Loads a SQLite extension from the specified path.
   //
-  // This is a wrapper around `sqlite3_load_extension`. It requires FFI permission
-  // to be granted and allowExtension must be set to true when opening the database.
+  // This is a wrapper around `sqlite3_load_extension`. It requires:
+  // - `allowExtension: true` when opening the database (which requires partial FFI permission)
+  // - FFI permission covering the extension path (e.g., `--allow-ffi=/path/to/extension.so`)
   fn load_extension(
     &self,
     state: &mut OpState,
@@ -1106,7 +1111,9 @@ impl DatabaseSync {
       ));
     }
 
-    state.borrow::<PermissionsContainer>().check_ffi_all()?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_ffi_partial_with_path(Cow::Borrowed(Path::new(path)))?;
 
     // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let raw_handle = unsafe { db.handle() };
@@ -1147,13 +1154,8 @@ impl DatabaseSync {
       res
     };
 
-    if result == libsqlite3_sys::SQLITE_OK {
-      Ok(())
-    } else {
-      Err(SqliteError::LoadExensionFailed(
-        "Unknown error loading SQLite extension".to_string(),
-      ))
-    }
+    debug_assert_eq!(result, libsqlite3_sys::SQLITE_OK);
+    Ok(())
   }
 
   // Creates and attaches a session to the database.
