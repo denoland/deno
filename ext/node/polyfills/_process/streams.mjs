@@ -281,5 +281,15 @@ export const initStdin = (warmup = false) => {
     },
   });
 
+  // In Node.js, stdin doesn't keep the process alive by default.
+  // We need to unref the underlying handle/resource so pending read operations
+  // don't prevent the process from exiting.
+  // https://nodejs.org/api/net.html#socketunref
+  if (stdin._handle && stdin._handle.unref) {
+    stdin._handle.unref();
+  } else if (stdin.unref) {
+    stdin.unref();
+  }
+
   return stdin;
 };
