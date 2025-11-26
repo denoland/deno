@@ -329,11 +329,9 @@ mod impl_ {
       Some(11)
     } else if view.is_big_uint64_array() {
       Some(12)
-    }
-    // else if view.is_float16_array() {
-    //   13
-    // }
-    else {
+    } else if view.is_float16_array() {
+      Some(13)
+    } else {
       None
     }
   }
@@ -666,15 +664,16 @@ mod impl_ {
               byte_length as usize / 8,
             )?
             .into(),
-            // TODO(nathanwhit): blocked on rusty_v8 / deno_core upgrade
-            // 13 => v8::Float16Array::new(
-            //   scope,
-            //   array_buffer,
-            //   0,
-            //   byte_length as usize / 2,
-            // )
-            // .unwrap()
-            // .into(),
+            // TODO(nathanwhit): this should just be `into()`, but I forgot to impl it in rusty_v8.
+            // the underlying impl is just a transmute though.
+            13 => unsafe {
+              std::mem::transmute(v8::Float16Array::new(
+                scope,
+                array_buffer,
+                0,
+                byte_length as usize / 2,
+              )?)
+            },
             _ => return None,
           };
           Some(value)
