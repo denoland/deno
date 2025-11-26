@@ -369,6 +369,8 @@ fn get_module_roots_and_include_paths(
       | MediaType::Wasm => true,
       MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,

@@ -60,16 +60,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.50.3", features = ["transpiling"] }
+deno_ast = { version = "=0.51.0", features = ["transpiling"] }
 deno_core = { version = "0.370.0" }
 
-deno_cache_dir = "=0.25.0"
+deno_cache_dir = "=0.26.3"
 deno_doc = "=0.186.0"
 deno_error = "=0.7.0"
 deno_graph = { version = "=0.103.1", default-features = false }
-deno_lint = "=0.80.0"
+deno_lint = "=0.81.0"
 deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
+deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.42.0"
 deno_path_util = "=0.6.4"
@@ -309,7 +309,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.21.0"
 dprint-plugin-jupyter = "=0.2.1"
 dprint-plugin-markdown = "=0.20.0"
-dprint-plugin-typescript = "=0.95.11"
+dprint-plugin-typescript = "=0.95.12"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.11.0"
@@ -531,3 +531,15 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+[patch.crates-io.deno_ast]
+path = "../deno_ast"
+[patch.crates-io.deno_graph]
+path = "../deno_graph"
+[patch.crates-io.deno_doc]
+path = "../deno_doc"
+[patch.crates-io.deno_lint]
+path = "../deno_lint"
+[patch.crates-io.eszip]
+path = "../eszip"
+[patch.crates-io.dprint-plugin-typescript]
+path = "../dprint-plugin-typescript"
