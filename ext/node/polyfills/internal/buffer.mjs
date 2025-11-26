@@ -806,7 +806,7 @@ Buffer.prototype.compare = function compare(
   thisStart,
   thisEnd,
 ) {
-  if (!isUint8Array(target) || !BufferIsBuffer(target)) {
+  if (!isUint8Array(target)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "target",
       ["Buffer", "Uint8Array"],
