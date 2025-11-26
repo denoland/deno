@@ -663,7 +663,7 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
-      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+      format!("import{{createRequire as __deno_internal_createRequire}} from \"node:module\";var {var_name}=__deno_internal_createRequire(import.meta.url);")
     }).into_owned()
   } else {
     let re = lazy_regex::regex!(
@@ -671,8 +671,8 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace_all(
       contents,
-      r#"import { createRequire } from "node:module";
-var __require = createRequire(import.meta.url);
+      r#"import { createRequire as __deno_internal_createRequire } from "node:module";
+var __require = __deno_internal_createRequire(import.meta.url);
 "#,
     )
     .into_owned()
