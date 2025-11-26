@@ -117,8 +117,6 @@ function createMessagePort(id) {
   port[_id] = id;
   port[_enabled] = false;
   port[_messageEventListenerCount] = 0;
-  // Start unrefed to match Node.js behavior where MessagePorts
-  // don't keep the process alive by default
   port[_refed] = false;
   return port;
 }
@@ -215,7 +213,6 @@ class MessagePort extends EventTarget {
           this[_dataPromise] = op_message_port_recv_message(
             this[_id],
           );
-          // Unref the promise if the port is not explicitly refed
           if (!this[_refed]) {
             core.unrefOpPromise(this[_dataPromise]);
           }
@@ -269,18 +266,15 @@ class MessagePort extends EventTarget {
         this[_refed] = true;
       }
     } else if (!ref) {
-      // For unref, we need to update the state even if already false
-      // to handle the case where parentPort.unref() is called before start()
-      const wasRefed = this[_refed];
-      if (wasRefed) {
+      if (this[_refed]) {
         refedMessagePortsCount--;
+        if (
+          this[_dataPromise]
+        ) {
+          core.unrefOpPromise(this[_dataPromise]);
+        }
+        this[_refed] = false;
       }
-      if (
-        this[_dataPromise]
-      ) {
-        core.unrefOpPromise(this[_dataPromise]);
-      }
-      this[_refed] = false;
     }
   }
 
@@ -306,9 +300,6 @@ class MessagePort extends EventTarget {
   addEventListener(...args) {
     if (args[0] == "message") {
       ++this[_messageEventListenerCount];
-      // Don't auto-ref MessagePorts to match Node.js behavior
-      // where MessagePorts don't keep the process alive by default.
-      // Users must explicitly call port.ref() if they want that behavior.
     }
     super.addEventListener(...new SafeArrayIterator(args));
   }
