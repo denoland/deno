@@ -110,9 +110,13 @@ pub async fn ensure_esbuild(
     })?;
 
     if !existed {
-      std::fs::remove_dir_all(&package_folder).with_context(|| {
-        format!("failed to remove directory {}", package_folder.display())
-      })?;
+      let _ = std::fs::remove_dir_all(&package_folder).inspect_err(|e| {
+        log::warn!(
+          "failed to remove directory {}: {}",
+          package_folder.display(),
+          e
+        );
+      });
     }
     Ok(esbuild_path)
   } else {
