@@ -488,22 +488,10 @@ internals.__initWorkerThreads = (
     });
     parentPort.unref = () => {
       parentPort[unrefParentPort] = true;
-      // Actually unref the underlying MessagePort operation
-      if (typeof parentPort[refMessagePort] === "function") {
-        parentPort[refMessagePort](false);
-      }
     };
     parentPort.ref = () => {
       parentPort[unrefParentPort] = false;
-      // Actually ref the underlying MessagePort operation
-      if (typeof parentPort[refMessagePort] === "function") {
-        parentPort[refMessagePort](true);
-      }
     };
-
-    // In Node.js, parentPort doesn't keep the process alive by default.
-    // Unref it immediately to match Node.js behavior.
-    parentPort.unref();
 
     if (isWorkerThread) {
       // Notify the host that the worker is online
@@ -626,9 +614,6 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.ref = () => {
     port[refMessagePort](true);
   };
-  // In Node.js, MessagePorts from MessageChannel are unrefed by default
-  // to match Node.js behavior where they don't keep the process alive
-  port.unref();
   const webPostMessage = port.postMessage;
   port.postMessage = (message, transferList) => {
     for (let i = 0; i < transferList?.length; i++) {
