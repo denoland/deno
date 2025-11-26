@@ -2157,9 +2157,9 @@ export class ServerImpl extends EventEmitter {
     this.#server.finished.then(() => this.#serveDeferred!.resolve());
   }
 
-  setTimeout() {
-    // deno-lint-ignore no-console
-    console.error("Not implemented: Server.setTimeout()");
+  setTimeout(_msecs?: number, _callback?: () => void) {
+    // No-op for Node.js compatibility
+    return this;
   }
 
   ref() {
