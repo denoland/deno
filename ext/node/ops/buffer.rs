@@ -127,25 +127,7 @@ pub fn op_node_buffer_compare(
   #[buffer] buf1: &[u8],
   #[buffer] buf2: &[u8],
 ) -> i32 {
-  compare_impl(buf1, buf2)
-}
-
-#[inline(always)]
-fn compare_impl(buf1: &[u8], buf2: &[u8]) -> i32 {
-  let compare_length = std::cmp::min(buf1.len(), buf2.len());
-  match buf1[..compare_length].cmp(&buf2[..compare_length]) {
-    std::cmp::Ordering::Less => -1,
-    std::cmp::Ordering::Equal => {
-      if buf1.len() > buf2.len() {
-        1
-      } else if buf1.len() < buf2.len() {
-        -1
-      } else {
-        0
-      }
-    }
-    std::cmp::Ordering::Greater => 1,
-  }
+  buf1.cmp(buf2) as i32
 }
 
 #[op2(fast)]
@@ -176,10 +158,10 @@ pub fn op_node_buffer_compare_offset(
     panic!("target_start > target_end");
   }
 
-  Ok(compare_impl(
-    &source[source_start..source_end],
-    &target[target_start..target_end],
-  ))
+  Ok(
+    source[source_start..source_end].cmp(&target[target_start..target_end])
+      as i32,
+  )
 }
 
 #[op2]
