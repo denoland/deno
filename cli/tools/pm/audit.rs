@@ -12,6 +12,8 @@ use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_resolver::npmrc::npm_registry_url;
 use eszip::v2::Url;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -561,10 +563,6 @@ mod socket_dev {
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<(), AnyError> {
-    let socket_dev_url = std::env::var("SOCKET_DEV_URL")
-      .ok()
-      .unwrap_or_else(|| "https://firewall-api.socket.dev/".to_string());
-
     let purls = npm_resolution_snapshot
       .all_packages_for_every_system()
       .map(|package| {
@@ -572,14 +570,77 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
+    let api_key = std::env::var("SOCKET_API_KEY").ok();
+
+    let mut purl_responses = if let Some(api_key) = api_key {
+      call_authenticated_api(&client, &purls, &api_key).await?
+    } else {
+      call_unauthenticated_api(&client, &purls).await?
+    };
+
+    purl_responses.sort_by_cached_key(|r| r.name.to_string());
+
+    print_firewall_report(&purl_responses);
+
+    Ok(())
+  }
+
+  async fn call_authenticated_api(
+    client: &HttpClient,
+    purls: &[String],
+    api_key: &str,
+  ) -> Result<Vec<FirewallResponse>, AnyError> {
+    let socket_dev_url =
+      std::env::var("SOCKET_DEV_URL").ok().unwrap_or_else(|| {
+        "https://api.socket.dev/v0/purl?actions=error,warn".to_string()
+      });
+    let url = Url::parse(&socket_dev_url).unwrap();
+
+    let body = serde_json::json!({
+      "components": purls.iter().map(|purl| {
+        serde_json::json!({ "purl": purl })
+      }).collect::<Vec<_>>()
+    });
+
+    let auth_value = HeaderValue::from_str(&format!("Bearer {}", api_key))
+      .context("Failed to create Authorization header")?;
+
+    let request = client
+      .post_json(url, &body)?
+      .header(HeaderName::from_static("authorization"), auth_value);
+
+    let response = request.send().boxed_local().await?;
+    let text = http_util::body_to_string(response).await?;
+
+    // Response is nJSON
+    let responses = text
+      .lines()
+      .filter(|line| !line.trim().is_empty())
+      .map(|line| {
+        serde_json::from_str::<FirewallResponse>(line)
+          .context("Failed to parse Socket.dev response")
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(responses)
+  }
+
+  async fn call_unauthenticated_api(
+    client: &HttpClient,
+    purls: &[String],
+  ) -> Result<Vec<FirewallResponse>, AnyError> {
+    let socket_dev_url = std::env::var("SOCKET_DEV_URL")
+      .ok()
+      .unwrap_or_else(|| "https://firewall-api.socket.dev/".to_string());
+
     let futures = purls
-      .into_iter()
+      .iter()
       .map(|purl| {
         let url = Url::parse(&format!(
           "{}purl/{}",
           socket_dev_url,
           percent_encoding::utf8_percent_encode(
-            &purl,
+            purl,
             percent_encoding::NON_ALPHANUMERIC
           )
         ))
@@ -592,7 +653,8 @@ mod socket_dev {
       .buffer_unordered(20)
       .collect::<Vec<_>>()
       .await;
-    let mut purl_responses = purl_results
+
+    let responses = purl_results
       .into_iter()
       .filter_map(|result| match result {
         Ok(a) => Some(a),
@@ -607,17 +669,13 @@ mod socket_dev {
         response
       })
       .collect::<Vec<_>>();
-    purl_responses.sort_by_cached_key(|r| r.name.to_string());
 
-    print_firewall_report(&purl_responses);
-
-    Ok(())
+    Ok(responses)
   }
 
   fn print_firewall_report(responses: &[FirewallResponse]) {
     let stdout = &mut std::io::stdout();
 
-    // Separator
     _ = writeln!(stdout);
     _ = writeln!(stdout, "{}", colors::bold("Socket.dev firewall report"));
     _ = writeln!(stdout);
@@ -638,7 +696,6 @@ mod socket_dev {
 
       _ = writeln!(stdout, "╭ pkg:npm/{}@{}", response.name, response.version);
 
-      // Print scores if available
       if let Some(score) = &response.score {
         _ = writeln!(
           stdout,
@@ -672,7 +729,7 @@ mod socket_dev {
         );
       }
 
-      // Count alerts by severity
+      // critical and high are counted as one for display.
       let mut critical_count = 0;
       let mut medium_count = 0;
       let mut low_count = 0;
