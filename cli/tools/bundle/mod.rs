@@ -984,6 +984,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // to the output file. It will be tricky to figure out which
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
+        || r.starts_with("bun:")
         || self
           .externals_matcher
           .as_ref()
