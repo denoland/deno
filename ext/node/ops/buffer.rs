@@ -127,23 +127,10 @@ pub fn op_node_buffer_compare(
   #[buffer] buf1: &[u8],
   #[buffer] buf2: &[u8],
 ) -> i32 {
-  let compare_length = std::cmp::min(buf1.len(), buf2.len());
-
-  match buf1[..compare_length].cmp(&buf2[..compare_length]) {
-    std::cmp::Ordering::Less => -1,
-    std::cmp::Ordering::Equal => {
-      if buf1.len() > buf2.len() {
-        1
-      } else if buf1.len() < buf2.len() {
-        -1
-      } else {
-        0
-      }
-    }
-    std::cmp::Ordering::Greater => 1,
-  }
+  compare_impl(buf1, buf2)
 }
 
+#[inline(always)]
 fn compare_impl(buf1: &[u8], buf2: &[u8]) -> i32 {
   let compare_length = std::cmp::min(buf1.len(), buf2.len());
   match buf1[..compare_length].cmp(&buf2[..compare_length]) {
