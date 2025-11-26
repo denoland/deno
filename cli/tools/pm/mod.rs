@@ -35,14 +35,14 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
-mod approve_builds;
+mod approve_scripts;
 mod audit;
 mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
 mod outdated;
 
-pub use approve_builds::approve_builds;
+pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;

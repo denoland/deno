@@ -8,6 +8,7 @@ use console_static_text::TextItem;
 use deno_config::deno_json::AllowScriptsConfig;
 use deno_config::deno_json::AllowScriptsValueConfig;
 use deno_config::deno_json::ConfigFile;
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -20,7 +21,7 @@ use deno_terminal::colors;
 use jsonc_parser::json;
 use sys_traits::impls::RealSys;
 
-use crate::args::ApproveBuildsFlags;
+use crate::args::ApproveScriptsFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
@@ -35,9 +36,9 @@ struct ScriptCandidate {
   scripts: Vec<String>,
 }
 
-pub async fn approve_builds(
+pub async fn approve_scripts(
   flags: Arc<Flags>,
-  approve_flags: ApproveBuildsFlags,
+  approve_flags: ApproveScriptsFlags,
 ) -> Result<(), AnyError> {
   let mut factory = CliFactory::from_flags(flags.clone());
   let mut options = factory.cli_options()?;
@@ -45,10 +46,10 @@ pub async fn approve_builds(
     factory = create_deno_json(&flags, options)?;
     options = factory.cli_options()?;
   }
-  let deno_json = options
-    .start_dir
-    .maybe_deno_json()
-    .context("A deno.json file could not be found or created")?;
+  let deno_json = options.workspace().root_deno_json().ok_or_else(|| {
+    anyhow::anyhow!("A deno.json file could not be found or created")
+  })?;
+
   let deno_json_path = url_to_file_path(&deno_json.specifier)?;
 
   let mut config_updater =
@@ -113,6 +114,8 @@ pub async fn approve_builds(
   for req in additions {
     log::info!("Approved {}", colors::green(format!("npm:{}", req)));
   }
+
+  super::npm_install_after_modification(flags, None).await?;
 
   Ok(())
 }
@@ -203,7 +206,7 @@ fn pick_candidates(
   }
 
   let selected = interactive_picker::select_items(
-    "Select which packages to allow lifecycle scripts (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)",
+    "Select which packages to approve lifecycle scripts for (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)",
     &candidates,
     HashSet::new(),
     |_idx, is_selected, is_checked, candidate| {
