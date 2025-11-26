@@ -5540,12 +5540,16 @@
         "valueOf.any.worker.html": true
       },
       "idlharness.any.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
       ],
       "idlharness.any.worker.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
@@ -5601,13 +5605,9 @@
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "moduleSource.tentative.any.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ],
         "moduleSource.tentative.any.worker.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ]
       },
