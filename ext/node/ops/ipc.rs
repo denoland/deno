@@ -666,8 +666,12 @@ mod impl_ {
             .into(),
             // TODO(nathanwhit): this should just be `into()`, but I forgot to impl it in rusty_v8.
             // the underlying impl is just a transmute though.
+            // SAFETY: float16array is an object
             13 => unsafe {
-              std::mem::transmute(v8::Float16Array::new(
+              std::mem::transmute::<
+                v8::Local<v8::Float16Array>,
+                v8::Local<v8::Object>,
+              >(v8::Float16Array::new(
                 scope,
                 array_buffer,
                 0,
