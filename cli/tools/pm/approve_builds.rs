@@ -82,6 +82,10 @@ pub async fn approve_builds(
       &allow_list,
       &deny_reqs,
     )?;
+    if candidates.is_empty() {
+      log::info!("No npm packages with lifecycle scripts need approval.");
+      return Ok(());
+    }
     pick_candidates(candidates, &mut existing_allowed)?
   };
 
@@ -195,7 +199,6 @@ fn pick_candidates(
   existing_allowed: &mut HashSet<PackageReq>,
 ) -> Result<Vec<PackageReq>, AnyError> {
   if candidates.is_empty() {
-    log::info!("No npm packages with lifecycle scripts need approval.");
     return Ok(Vec::new());
   }
 
