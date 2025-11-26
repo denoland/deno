@@ -1241,23 +1241,13 @@ type Transferable = MessagePort | ArrayBuffer;
  *
  * @example
  * ```ts
- * // Create a channel and a buffer we want to move to the other side.
- * const { port1, port2 } = new MessageChannel();
+ * // Transferring an ArrayBuffer (zero-copy for large data)
  * const buffer = new ArrayBuffer(16);
+ * const cloned = structuredClone(buffer, { transfer: [buffer] });
  *
- * // Post a message transferring ownership of the buffer and one port.
- * port1.postMessage({ buf: buffer }, { transfer: [buffer, port2] });
- *
- * // After transfer, buffer.byteLength === 0 (neutered) and port2 is unusable here.
+ * // After transfer, the original buffer is neutered
  * console.log(buffer.byteLength); // 0
- *
- * // On the receiving side (port2's paired port), the message arrives with
- * // a live 16-byte ArrayBuffer and a functional MessagePort.
- * port2.onmessage = (ev) => {
- *   const received = ev.data.buf as ArrayBuffer;
- *   console.log(received.byteLength); // 16
- * };
- * ```
+ * console.log(cloned.byteLength); // 16
  *
  * @category Platform
  */
