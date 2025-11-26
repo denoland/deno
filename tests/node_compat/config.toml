@@ -977,6 +977,7 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-custom-functions.js" = {}
 "parallel/test-sqlite-data-types.js" = {}
 "parallel/test-sqlite-database-sync-dispose.js" = {}
 "parallel/test-sqlite-named-parameters.js" = {}
