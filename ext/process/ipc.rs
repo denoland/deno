@@ -1,8 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#![allow(unused)]
-
-use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::mem;
@@ -18,7 +15,6 @@ use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::ExternalOpsTracker;
 use deno_core::RcRef;
-use deno_core::serde;
 use deno_core::serde_json;
 use deno_io::BiPipe;
 use deno_io::BiPipeRead;
@@ -246,10 +242,6 @@ impl MessageLengthBuffer {
     }
   }
 
-  fn get_mut(&mut self) -> &mut [u8] {
-    &mut self.buffer
-  }
-
   fn message_len(&mut self) -> Option<usize> {
     if self.pos == 4 {
       self.value = u32::from_be_bytes(self.buffer);
@@ -268,14 +260,6 @@ impl MessageLengthBuffer {
 
   fn available_mut(&mut self) -> &mut [u8] {
     &mut self.buffer[self.pos as usize..4]
-  }
-
-  fn is_full(&self) -> bool {
-    self.pos >= 4
-  }
-
-  fn reset(&mut self) {
-    self.pos = 0;
   }
 }
 
@@ -321,7 +305,7 @@ impl IpcAdvancedStream {
   ) -> Result<Option<Vec<u8>>, IpcAdvancedStreamError> {
     let mut length_buffer = MessageLengthBuffer::new();
     let mut out_buf = Vec::with_capacity(32);
-    let mut nread = read_msg_bytes_inner(
+    let nread = read_msg_bytes_inner(
       &mut self.pipe,
       &mut length_buffer,
       &mut out_buf,
@@ -341,7 +325,7 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgBytesInner<'_, R> {
   type Output = io::Result<usize>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let mut me = self.project();
+    let me = self.project();
     read_advanced_msg_bytes_internal(
       Pin::new(me.reader),
       cx,
@@ -606,11 +590,8 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
 mod tests {
   use std::rc::Rc;
 
-  use deno_core::JsRuntime;
   use deno_core::RcRef;
-  use deno_core::RuntimeOptions;
   use deno_core::serde_json::json;
-  use deno_core::v8;
 
   use super::IpcJsonStreamResource;
 
