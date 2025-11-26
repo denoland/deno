@@ -50,6 +50,7 @@ use serde::Serialize;
 use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
+use ipc::IpcAdvancedStreamResource;
 use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
@@ -201,6 +202,8 @@ pub struct SpawnArgs {
   windows_raw_arguments: bool,
   ipc: Option<i32>,
 
+  serialization: Option<ChildIpcSerialization>,
+
   #[serde(flatten)]
   stdio: ChildStdio,
 
@@ -209,6 +212,26 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChildIpcSerialization {
+  Json,
+  Advanced,
+}
+
+impl std::fmt::Display for ChildIpcSerialization {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "{}",
+      match self {
+        ChildIpcSerialization::Json => "json",
+        ChildIpcSerialization::Advanced => "advanced",
+      }
+    )
+  }
 }
 
 #[cfg(unix)]
@@ -477,12 +500,30 @@ fn create_command(
       fds_to_dup.push((ipc_fd2, ipc));
       fds_to_close.push(ipc_fd2);
       /* One end returned to parent process (this) */
-      let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-        ipc_fd1 as _,
-        IpcRefTracker::new(state.external_ops_tracker.clone()),
-      )?);
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
+
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
       ipc_rid = Some(pipe_rid);
     }
 
@@ -548,18 +589,34 @@ fn create_command(
       let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
       /* One end returned to parent process (this) */
-      let pipe_rid =
-        Some(state.resource_table.add(IpcJsonStreamResource::new(
-          hd1 as i64,
-          IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?));
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            hd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            hd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
 
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
 
       handles_to_close.push(hd2);
 
-      ipc_rid = pipe_rid;
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {

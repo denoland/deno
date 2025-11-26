@@ -1006,6 +1006,95 @@ Deno.test(
   },
 );
 
+Deno.test(async function ipcSerializationAdvanced() {
+  const timeout = withTimeout<void>();
+  const script = `
+      if (typeof process.send !== "function") {
+        console.error("process.send is not a function");
+        process.exit(1);
+      }
+
+      class BigIntWrapper {
+        constructor(value) {
+          this.value = value;
+        }
+        toJSON() {
+          return this.value.toString();
+        }
+      }
+
+      const makeSab = (arr) => {
+        const sab = new SharedArrayBuffer(arr.length);
+        const buf = new Uint8Array(sab);
+        for (let i = 0; i < arr.length; i++) {
+          buf[i] = arr[i];
+        }
+        return buf;
+      };
+
+
+      const inputs = [
+        "foo",
+        {
+          foo: "bar",
+        },
+        42,
+        true,
+        null,
+        new Uint8Array([1, 2, 3]),
+        {
+          foo: new Uint8Array([1, 2, 3]),
+          bar: makeSab([4, 5, 6]),
+        },
+        [1, { foo: 2 }, [3, 4]],
+        42n,
+      ];
+      for (const input of inputs) {
+        process.send(input);
+      }
+    `;
+  const makeSab = (arr: number[]) => {
+    const sab = new SharedArrayBuffer(arr.length);
+    const buf = new Uint8Array(sab);
+    for (let i = 0; i < arr.length; i++) {
+      buf[i] = arr[i];
+    }
+    return buf;
+  };
+
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, script);
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+    serialization: "advanced",
+  });
+  const expect = [
+    "foo",
+    {
+      foo: "bar",
+    },
+    42,
+    true,
+    null,
+    new Uint8Array([1, 2, 3]),
+    {
+      foo: new Uint8Array([1, 2, 3]),
+      bar: makeSab([4, 5, 6]),
+    },
+    [1, { foo: 2 }, [3, 4]],
+    42n,
+  ];
+  let i = 0;
+
+  child.on("message", (message) => {
+    assertEquals(message, expect[i]);
+    i++;
+  });
+  child.on("close", () => timeout.resolve());
+  await timeout.promise;
+  assertEquals(i, expect.length);
+});
+
 Deno.test(async function childProcessExitsGracefully() {
   const testdataDir = path.join(
     path.dirname(path.fromFileUrl(import.meta.url)),

@@ -62,6 +62,7 @@ ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true

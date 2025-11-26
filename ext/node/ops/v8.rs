@@ -330,11 +330,18 @@ pub fn op_v8_new_deserializer(
 pub fn op_v8_transfer_array_buffer_de(
   #[cppgc] deser: &Deserializer,
   #[smi] id: u32,
-  array_buffer: v8::Local<v8::ArrayBuffer>,
-) {
-  // TODO(nathanwhit): also need binding for TransferSharedArrayBuffer, then call that if
-  // array_buffer is shared
+  array_buffer: v8::Local<v8::Value>,
+) -> Result<(), deno_core::error::DataError> {
+  if let Ok(shared_array_buffer) =
+    array_buffer.try_cast::<v8::SharedArrayBuffer>()
+  {
+    deser
+      .inner
+      .transfer_shared_array_buffer(id, shared_array_buffer)
+  }
+  let array_buffer = array_buffer.try_cast::<v8::ArrayBuffer>()?;
   deser.inner.transfer_array_buffer(id, array_buffer);
+  Ok(())
 }
 
 #[op2(fast)]
