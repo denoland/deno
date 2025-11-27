@@ -61,7 +61,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = { version = "0.368.0" }
+deno_core = { version = "0.370.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.186.0"
@@ -201,7 +201,7 @@ jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
 libc = "0.2.168"
 libz-sys = { version = "1.1.20", default-features = false }
-log = { version = "0.4.20", features = ["kv"] }
+log = { version = "0.4.28", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memchr = "2.7.4"
 mime = "0.3.16"
