@@ -67,9 +67,6 @@ pub enum GeometryError {
     "The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix"
   )]
   InvalidSequenceSize,
-  #[class(type)]
-  #[error("Mismatched types")]
-  TypeMismatch,
   #[class("DOMExceptionInvalidStateError")]
   #[error("Cannot be serialized with NaN or Infinity values")]
   InvalidState,
@@ -2152,40 +2149,10 @@ impl DOMMatrix {
   #[static_method]
   fn from_float32_array<'a>(
     scope: &mut v8::PinScope<'a, '_>,
-    value: v8::Local<'a, v8::Value>,
+    #[buffer] seq: &[f32],
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
-    if !value.is_float32_array() {
-      return Err(GeometryError::TypeMismatch);
-    }
-    let float64 = Vec::<webidl::UnrestrictedDouble>::convert(
-      scope,
-      value,
-      "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
-      (|| Cow::Borrowed("Argument 1")).into(),
-      &Default::default(),
-    )?;
-    let float64 = float64.into_iter().map(|f| *f).collect::<Vec<f64>>();
-
-    let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
-      DOMMatrixReadOnly {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        )),
-        is_2d: Cell::new(true),
-      }
-    } else if float64.len() == 16 {
-      DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
-        is_2d: Cell::new(false),
-      }
-    } else {
-      return Err(GeometryError::InvalidSequenceSize);
-    };
-
+    let seq = seq.iter().map(|&f| f as f64).collect::<Vec<f64>>();
+    let ro = DOMMatrixReadOnly::from_sequence_inner(&seq)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
     Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
   }
@@ -2195,40 +2162,9 @@ impl DOMMatrix {
   #[static_method]
   fn from_float64_array<'a>(
     scope: &mut v8::PinScope<'a, '_>,
-    value: v8::Local<'a, v8::Value>,
+    #[buffer] seq: &[f64],
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
-    if !value.is_float64_array() {
-      return Err(GeometryError::TypeMismatch);
-    }
-    let float64 = Vec::<webidl::UnrestrictedDouble>::convert(
-      scope,
-      value,
-      "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
-      (|| Cow::Borrowed("Argument 1")).into(),
-      &Default::default(),
-    )?;
-    let float64 = float64.into_iter().map(|f| *f).collect::<Vec<f64>>();
-
-    let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
-      DOMMatrixReadOnly {
-        #[rustfmt::skip]
-        inner: RefCell::new(Matrix4::new(
-           *a,  *c, 0.0,  *e,
-           *b,  *d, 0.0,  *f,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
-        )),
-        is_2d: Cell::new(true),
-      }
-    } else if float64.len() == 16 {
-      DOMMatrixReadOnly {
-        inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
-        is_2d: Cell::new(false),
-      }
-    } else {
-      return Err(GeometryError::InvalidSequenceSize);
-    };
-
+    let ro = DOMMatrixReadOnly::from_sequence_inner(seq)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
     Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
   }
