@@ -2129,7 +2129,7 @@ impl DOMMatrix {
       state,
       scope,
       value,
-      "Failed to construct 'DOMMatrixReadOnly'".into(),
+      "Failed to construct 'DOMMatrix'".into(),
       ContextFn::new_borrowed(&|| Cow::Borrowed("Argument 1")),
     )?;
     Ok((ro, DOMMatrix {}))
