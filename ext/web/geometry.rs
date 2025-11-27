@@ -2710,7 +2710,7 @@ impl DOMMatrix {
       let other = DOMMatrixInit::convert(
         scope,
         other,
-        "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+        "Failed to execute 'multiplySelf' on 'DOMMatrix'".into(),
         (|| Cow::Borrowed("Argument 1")).into(),
         &Default::default(),
       )?;
@@ -2742,7 +2742,7 @@ impl DOMMatrix {
       let other = DOMMatrixInit::convert(
         scope,
         other,
-        "Failed to execute 'multiply' on 'DOMMatrixReadOnly'".into(),
+        "Failed to execute 'preMultiplySelf' on 'DOMMatrix'".into(),
         (|| Cow::Borrowed("Argument 1")).into(),
         &Default::default(),
       )?;
