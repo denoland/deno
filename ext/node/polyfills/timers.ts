@@ -3,8 +3,6 @@
 import { primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
-  MapPrototypeGet,
-  MapPrototypeDelete,
   ObjectDefineProperty,
   Promise,
   PromiseReject,
@@ -14,9 +12,10 @@ const {
 } = primordials;
 import { op_immediate_count, op_immediate_ref_count } from "ext:core/ops";
 import {
-  activeTimers,
+  getActiveTimer,
   Immediate,
   immediateQueue,
+  kDestroy,
   kRefed,
   setUnrefTimeout,
   Timeout,
@@ -130,11 +129,7 @@ export function clearTimeout(timeout?: Timeout | number) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  getActiveTimer(id)?.[kDestroy]();
   clearTimeout_(id);
 }
 export function setInterval(
@@ -150,11 +145,7 @@ export function clearInterval(timeout?: Timeout | number | string) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  getActiveTimer(id)?.[kDestroy]();
   clearInterval_(id);
 }
 export function setImmediate(
