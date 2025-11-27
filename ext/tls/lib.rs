@@ -51,6 +51,9 @@ pub enum TlsError {
   #[class("InvalidData")]
   #[error("Unable to decode key")]
   KeyDecode,
+  #[class("NotSupported")]
+  #[error("TLS key resolver is not supported for client connections")]
+  ResolverNotSupported,
 }
 
 /// Lazily resolves the root cert store.
@@ -310,7 +313,9 @@ pub fn create_client_config(
         .with_client_auth_cert(cert_chain, private_key.clone_key())
         .expect("invalid client key or certificate"),
       TlsKeys::Null => client_config.with_no_client_auth(),
-      TlsKeys::Resolver(_) => unimplemented!(),
+      TlsKeys::Resolver(_) => {
+        return Err(TlsError::ResolverNotSupported);
+      }
     };
 
     add_alpn(&mut client, socket_use);
@@ -343,7 +348,9 @@ pub fn create_client_config(
       .with_client_auth_cert(cert_chain, private_key.clone_key())
       .expect("invalid client key or certificate"),
     TlsKeys::Null => client_config.with_no_client_auth(),
-    TlsKeys::Resolver(_) => unimplemented!(),
+    TlsKeys::Resolver(_) => {
+      return Err(TlsError::ResolverNotSupported);
+    }
   };
 
   add_alpn(&mut client, socket_use);
