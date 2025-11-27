@@ -740,8 +740,8 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       let mut state = op_state.borrow_mut();
       state.put(options.clone());
-      if let Some(node_ipc_fd) = options.node_ipc_fd {
-        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      if let Some((fd, serialization)) = options.node_ipc_init {
+        state.put(deno_node::ChildPipeFd(fd, serialization));
       }
     }
 
