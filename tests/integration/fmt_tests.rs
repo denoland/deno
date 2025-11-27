@@ -439,3 +439,111 @@ fn test_tty_non_workspace_directory() {
     pty.expect("Did not format non-workspace directory");
   });
 }
+
+#[test]
+fn fmt_check_fail_fast_stops_on_first_error() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  // Create multiple badly formatted files
+  let bad1 = t.path().join("bad1.ts");
+  let bad2 = t.path().join("bad2.ts");
+  let bad3 = t.path().join("bad3.ts");
+
+  bad1.write("const a   =   1\n");
+  bad2.write("const b   =   2\n");
+  bad3.write("const c   =   3\n");
+
+  // Run with --fail-fast
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      bad1.to_string(),
+      bad2.to_string(),
+      bad3.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+
+  // Should only report one file (the first one checked)
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "Found 1 not formatted file");
+}
+
+#[test]
+fn fmt_check_fail_fast_with_no_errors() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  // Create properly formatted files
+  let good1 = t.path().join("good1.ts");
+  let good2 = t.path().join("good2.ts");
+
+  good1.write("const a = 1;\n");
+  good2.write("const b = 2;\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      good1.to_string(),
+      good2.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.combined_output(), "Checked 2 files");
+}
+
+#[test]
+fn fmt_check_fail_fast_requires_check() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+  let file = t.path().join("file.ts");
+  file.write("const a = 1;\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--fail-fast".to_string(),
+      file.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
+    "the following required arguments were not provided"
+  );
+}
+
+#[test]
+fn fmt_check_fail_fast_quiet() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  let bad1 = t.path().join("bad1.ts");
+  bad1.write("const a   =   1\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      "--quiet".to_string(),
+      bad1.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+  // With --quiet, should have minimal output
+  assert_eq!(output.combined_output(), "");
+}
