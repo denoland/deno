@@ -11,13 +11,9 @@ import {
   DOMRectReadOnly,
   op_geometry_get_enable_window_features,
   op_geometry_matrix_set_matrix_value,
-  op_geometry_matrix_to_buffer,
   op_geometry_matrix_to_string,
 } from "ext:core/ops";
 const {
-  Float32Array,
-  Float64Array,
-  ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
@@ -103,28 +99,10 @@ webidl.configureInterface(DOMQuad);
 
 const DOMMatrixPrototype = DOMMatrix.prototype;
 const DOMMatrixReadOnlyPrototype = DOMMatrixReadOnly.prototype;
-ObjectDefineProperties(DOMMatrixReadOnlyPrototype, {
-  toFloat32Array: {
-    __proto__: null,
-    value: function toFloat32Array() {
-      return new Float32Array(
-        new Float64Array(op_geometry_matrix_to_buffer(this)),
-      );
-    },
-    enumerable: false,
-    writable: true,
-    configurable: true,
-  },
-  toFloat64Array: {
-    __proto__: null,
-    value: function toFloat64Array() {
-      return new Float64Array(op_geometry_matrix_to_buffer(this));
-    },
-    enumerable: false,
-    writable: true,
-    configurable: true,
-  },
-  [SymbolFor("Deno.privateCustomInspect")]: {
+ObjectDefineProperty(
+  DOMMatrixReadOnlyPrototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
     __proto__: null,
     value: function customInspect(inspect, inspectOptions) {
       return inspect(
@@ -168,7 +146,7 @@ ObjectDefineProperties(DOMMatrixReadOnlyPrototype, {
     writable: true,
     configurable: true,
   },
-});
+);
 
 if (op_geometry_get_enable_window_features()) {
   // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior

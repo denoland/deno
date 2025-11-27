@@ -5,9 +5,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::mem;
 use std::ptr;
-use std::slice;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -1632,21 +1630,10 @@ impl DOMMatrixReadOnly {
   #[required(1)]
   #[static_method]
   #[cppgc]
-  fn from_float32_array<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    value: v8::Local<'a, v8::Value>,
+  fn from_float32_array(
+    #[buffer] seq: &[f32],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    if !value.is_float32_array() {
-      return Err(GeometryError::TypeMismatch);
-    }
-    let seq = Vec::<webidl::UnrestrictedDouble>::convert(
-      scope,
-      value,
-      "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
-      (|| Cow::Borrowed("Argument 1")).into(),
-      &Default::default(),
-    )?;
-    let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
+    let seq = seq.iter().map(|&f| f as f64).collect::<Vec<f64>>();
     DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
@@ -1654,22 +1641,22 @@ impl DOMMatrixReadOnly {
   #[required(1)]
   #[static_method]
   #[cppgc]
-  fn from_float64_array<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    value: v8::Local<'a, v8::Value>,
+  fn from_float64_array(
+    #[buffer] seq: &[f64],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    if !value.is_float64_array() {
-      return Err(GeometryError::TypeMismatch);
-    }
-    let seq = Vec::<webidl::UnrestrictedDouble>::convert(
-      scope,
-      value,
-      "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
-      (|| Cow::Borrowed("Argument 1")).into(),
-      &Default::default(),
-    )?;
-    let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
-    DOMMatrixReadOnly::from_sequence_inner(&seq)
+    DOMMatrixReadOnly::from_sequence_inner(seq)
+  }
+
+  #[rename("toFloat32Array")]
+  #[buffer]
+  fn to_float32_array(&self) -> Vec<f32> {
+    self.inner.borrow().iter().map(|&f| f as f32).collect()
+  }
+
+  #[rename("toFloat64Array")]
+  #[buffer]
+  fn to_float64_array(&self) -> Vec<f64> {
+    self.inner.borrow().as_slice().to_vec()
   }
 
   #[fast]
@@ -2913,30 +2900,6 @@ fn matrix_transform_point(
   let point = point.inner.borrow();
   let mut result = out.inner.borrow_mut();
   inner.mul_to(&point, &mut result);
-}
-
-#[op2]
-#[arraybuffer]
-pub fn op_geometry_matrix_to_buffer<'a>(
-  scope: &mut v8::PinScope<'a, '_>,
-  matrix: v8::Local<'a, v8::Value>,
-) -> Result<Vec<u8>, GeometryError> {
-  let Some(matrix) =
-    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
-  else {
-    return Err(GeometryError::IllegalInvocation);
-  };
-  let inner = matrix.inner.borrow();
-  Ok(
-    // SAFETY: in-range access
-    unsafe {
-      slice::from_raw_parts(
-        inner.as_slice().as_ptr() as *mut u8,
-        mem::size_of::<f64>() * 16,
-      )
-    }
-    .to_vec(),
-  )
 }
 
 #[op2]
