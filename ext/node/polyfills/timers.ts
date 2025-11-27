@@ -127,8 +127,7 @@ export function clearTimeout(timeout?: Timeout | number) {
     return;
   }
   const id = +timeout;
-  const timer = getActiveTimer(id);
-  timer?.[kDestroy]();
+  getActiveTimer(id)?.[kDestroy]();
   clearTimeout_(id);
 }
 export function setInterval(
@@ -144,8 +143,7 @@ export function clearInterval(timeout?: Timeout | number | string) {
     return;
   }
   const id = +timeout;
-  const timer = getActiveTimer(id);
-  timer?.[kDestroy]();
+  getActiveTimer(id)?.[kDestroy]();
   clearInterval_(id);
 }
 export function setImmediate(
