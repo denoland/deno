@@ -28,6 +28,15 @@ use super::Request;
 use super::Response;
 use crate::args::TypeCheckMode;
 
+fn is_css_specifier(specifier: &str) -> bool {
+  use std::path::Path;
+  Path::new(specifier)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .map(|ext| ext.eq_ignore_ascii_case("css"))
+    .unwrap_or(false)
+}
+
 macro_rules! jsons {
   ($($arg:tt)*) => {
     serde_json::to_string(&json!($($arg)*))
@@ -387,8 +396,11 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
     let mut state = self.state.borrow_mut();
     match name {
       "readFile" => {
-        log::debug!("readFile: {}", payload);
         let payload = deser::<String>(payload)?;
+        if is_css_specifier(&payload) {
+          return Ok(jsons!("")?);
+        }
+        log::debug!("readFile: {}", payload);
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
@@ -645,6 +657,12 @@ fn load_inner(
   state: &mut HandlerState,
   load_specifier: &str,
 ) -> Result<Option<LoadResult>, ExecError> {
+  if is_css_specifier(load_specifier) {
+    return Ok(Some(LoadResult {
+      contents: "".to_string(),
+      script_kind: 0,
+    }));
+  }
   log::debug!("load_inner: {}", load_specifier);
   let result = super::load_for_tsc(
     load_specifier,
