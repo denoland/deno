@@ -8035,6 +8035,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
@@ -8061,6 +8062,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8086,6 +8088,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8111,6 +8114,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8146,6 +8150,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8182,6 +8187,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
@@ -8207,6 +8213,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8240,6 +8247,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
@@ -8278,6 +8286,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8310,6 +8319,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8337,6 +8347,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["./**".to_string()],
             ignore: vec![],
