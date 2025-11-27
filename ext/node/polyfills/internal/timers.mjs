@@ -5,6 +5,7 @@ import { primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
   MapPrototypeDelete,
+  MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
   SafeArrayIterator,
@@ -33,6 +34,7 @@ export { kTimerId } from "ext:deno_web/02_timers.js";
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
 
+export const kDestroy = Symbol("destroy");
 export const kTimeout = Symbol("timeout");
 const kRefed = Symbol("refed");
 const createTimer = Symbol("createTimer");
@@ -43,7 +45,15 @@ const createTimer = Symbol("createTimer");
  *
  * @type {Map<number, Timeout>}
  */
-export const activeTimers = new SafeMap();
+const activeTimers = new SafeMap();
+
+/**
+ * @param {number} id
+ * @returns {Timeout | undefined}
+ */
+export function getActiveTimer(id) {
+  return MapPrototypeGet(activeTimers, id);
+}
 
 // Timer constructor function.
 export function Timeout(callback, after, args, isRepeat, isRefed) {
@@ -87,6 +97,11 @@ Timeout.prototype[createTimer] = function () {
   return id;
 };
 
+Timeout.prototype[kDestroy] = function () {
+  this._destroyed = true;
+  MapPrototypeDelete(activeTimers, this[kTimerId]);
+};
+
 // Make sure the linked list only shows the minimal necessary information.
 Timeout.prototype[inspect.custom] = function (_, options) {
   return inspect(this, {
@@ -101,6 +116,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 Timeout.prototype.refresh = function () {
   if (!this._destroyed) {
     clearTimeout_(this[kTimerId]);
+    MapPrototypeDelete(activeTimers, this[kTimerId]);
     this[kTimerId] = this[createTimer]();
   }
   return this;
