@@ -1725,7 +1725,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.51.0"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30c2f6f65154faed61e45d6578566f9fab9d2a330c35c87366706883701cce51"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -1989,7 +1991,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.186.0"
+version = "0.187.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b76ea8ad99ec75f94c9fbfc5acfdf4803408dbe9c6563c1691970a768f6398f6"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2140,7 +2144,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.103.1"
+version = "0.104.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "166b59d27d3ef8a446bece020e1d72b629250a0cb6665b0c7929cd7bae93b9a1"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2310,7 +2316,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.81.0"
+version = "0.82.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a39ab04b95caa7ed722680d1f93f919525e9b141663224629de297cd3ed39529"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -3614,7 +3622,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.12"
+version = "0.95.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8c3e39abf274d7f85a017691da2d4c78db0141425d05201b7249de4a48cabd1"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -3903,7 +3913,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.104.0"
+version = "0.105.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d70ac1a894658d4841901d4548020c97baa339cc1289ed28622cdd04b440091"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -238,6 +238,7 @@ pub async fn compile_eszip(
     relative_file_base: Some(relative_file_base),
     npm_packages: None,
     module_kind_resolver: Default::default(),
+    npm_snapshot: Default::default(),
   })?;
 
   if let Some(import_map_specifier) = maybe_import_map_specifier {
