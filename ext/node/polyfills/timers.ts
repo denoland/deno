@@ -3,8 +3,6 @@
 import { primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
-  MapPrototypeGet,
-  MapPrototypeDelete,
   ObjectDefineProperty,
   Promise,
   PromiseReject,
@@ -14,8 +12,9 @@ const {
 } = primordials;
 
 import {
-  activeTimers,
+  getActiveTimer,
   Immediate,
+  kDestroy,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -128,11 +127,8 @@ export function clearTimeout(timeout?: Timeout | number) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  const timer = getActiveTimer(id);
+  timer?.[kDestroy]();
   clearTimeout_(id);
 }
 export function setInterval(
@@ -148,11 +144,8 @@ export function clearInterval(timeout?: Timeout | number | string) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  const timer = getActiveTimer(id);
+  timer?.[kDestroy]();
   clearInterval_(id);
 }
 export function setImmediate(
