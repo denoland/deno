@@ -1029,7 +1029,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc: None,
+    node_ipc_init: None,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
