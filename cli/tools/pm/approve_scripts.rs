@@ -105,9 +105,9 @@ pub async fn approve_scripts(
     deny_list.push(JsrDepPackageReq::npm(req.clone()));
   }
 
-  allow_list.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+  allow_list.sort_by_key(|a| a.to_string());
   allow_list.dedup_by(|a, b| a.req == b.req && a.kind == b.kind);
-  deny_list.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+  deny_list.sort_by_key(|a| a.to_string());
   deny_list.dedup_by(|a, b| a.req == b.req && a.kind == b.kind);
 
   let updated_allow_scripts = AllowScriptsConfig {
@@ -227,7 +227,7 @@ fn pick_candidates(
 
   let selected = interactive_picker::select_items(
     "Select which packages to approve lifecycle scripts for (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)",
-    &candidates,
+    candidates,
     HashSet::new(),
     |_idx, is_selected, is_checked, candidate| {
       render_candidate(candidate, is_selected, is_checked)
