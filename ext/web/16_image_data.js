@@ -21,10 +21,20 @@ webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
   ],
 );
 
+webidl.converters["ImageDataPixelFormat"] = webidl.createEnumConverter(
+  "ImageDataPixelFormat",
+  ["rgba-unorm8", "rgba-float16"],
+);
+
 webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
   "ImageDataSettings",
   [
     { key: "colorSpace", converter: webidl.converters["PredefinedColorSpace"] },
+    {
+      key: "pixelFormat",
+      converter: webidl.converters["ImageDataPixelFormat"],
+      defaultValue: "rgba-unorm8",
+    },
   ],
 );
 
@@ -34,11 +44,13 @@ const _height = Symbol("[[height]]");
 class ImageData {
   /** @type {number} */
   [_width];
-  /** @type {height} */
+  /** @type {number} */
   [_height];
-  /** @type {Uint8Array} */
+  /** @type {ImageDataArray} */
   [_data];
-  /** @type {'srgb' | 'display-p3'} */
+  /** @type {ImageDataPixelFormat} */
+  #pixelFormat;
+  /** @type {PredefinedColorSpace} */
   #colorSpace;
 
   constructor(arg0, arg1, arg2 = undefined, arg3 = undefined) {
@@ -54,13 +66,14 @@ class ImageData {
     let data;
     let settings;
     const prefix = "Failed to construct 'ImageData'";
+    const tag = TypedArrayPrototypeGetSymbolToStringTag(arg0);
 
     // Overload: new ImageData(data, sw [, sh [, settings ] ])
     if (
       arguments.length > 3 ||
-      TypedArrayPrototypeGetSymbolToStringTag(arg0) === "Uint8ClampedArray"
+      tag === "Uint8ClampedArray" || tag === "Float16Array"
     ) {
-      data = webidl.converters.Uint8ClampedArray(arg0, prefix, "Argument 1");
+      data = webidl.converters.ArrayBufferView(arg0, prefix, "Argument 1");
       sourceWidth = webidl.converters["unsigned long"](
         arg1,
         prefix,
@@ -68,7 +81,7 @@ class ImageData {
       );
       const dataLength = TypedArrayPrototypeGetLength(data);
 
-      if (webidl.type(arg2) !== "Undefined") {
+      if (arg2 !== undefined) {
         sourceHeight = webidl.converters["unsigned long"](
           arg2,
           prefix,
@@ -103,7 +116,7 @@ class ImageData {
         );
       }
 
-      if (webidl.type(sourceHeight) !== "Undefined" && sourceHeight < 1) {
+      if (sourceHeight !== undefined && sourceHeight < 1) {
         throw new DOMException(
           "Failed to construct 'ImageData': the source height is zero or not a number",
           "IndexSizeError",
@@ -118,8 +131,8 @@ class ImageData {
       }
 
       if (
-        webidl.type(sourceHeight) !== "Undefined" &&
-        (sourceWidth * sourceHeight * 4 !== dataLength)
+        sourceHeight !== undefined &&
+        dataLength / 4 / sourceWidth !== sourceHeight
       ) {
         throw new DOMException(
           "Failed to construct 'ImageData': the input data length is not equal to (4 * width * height)",
@@ -127,14 +140,29 @@ class ImageData {
         );
       }
 
-      if (webidl.type(sourceHeight) === "Undefined") {
-        this[_height] = dataLength / 4 / sourceWidth;
-      } else {
-        this[_height] = sourceHeight;
+      switch (tag) {
+        case "Uint8ClampedArray":
+          if (settings.pixelFormat !== "rgba-unorm8") {
+            throw new DOMException(
+              "Failed to construct 'ImageData': Uint8ClampedArray must use rgba-unorm8 pixelFormat.",
+              "InvalidStateError",
+            );
+          }
+          break;
+        case "Float16Array":
+          if (settings.pixelFormat !== "rgba-float16") {
+            throw new DOMException(
+              "Failed to construct 'ImageData': Float16Array must use rgba-float16 pixelFormat.",
+              "InvalidStateError",
+            );
+          }
+          break;
       }
 
+      this.#pixelFormat = settings.pixelFormat;
       this.#colorSpace = settings.colorSpace ?? "srgb";
       this[_width] = sourceWidth;
+      this[_height] = dataLength / 4 / sourceWidth;
       this[_data] = data;
       return;
     }
@@ -171,10 +199,21 @@ class ImageData {
       );
     }
 
+    switch (settings.pixelFormat) {
+      case "rgba-unorm8":
+        data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
+        break;
+      case "rgba-float16":
+        // TODO(0f-0b): add Float16Array to primordials
+        data = new Float16Array(sourceWidth * sourceHeight * 4);
+        break;
+    }
+
+    this.#pixelFormat = settings.pixelFormat;
     this.#colorSpace = settings.colorSpace ?? "srgb";
     this[_width] = sourceWidth;
     this[_height] = sourceHeight;
-    this[_data] = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
+    this[_data] = data;
   }
 
   get width() {
@@ -192,6 +231,11 @@ class ImageData {
     return this[_data];
   }
 
+  get pixelFormat() {
+    webidl.assertBranded(this, ImageDataPrototype);
+    return this.#pixelFormat;
+  }
+
   get colorSpace() {
     webidl.assertBranded(this, ImageDataPrototype);
     return this.#colorSpace;
@@ -206,6 +250,7 @@ class ImageData {
           "data",
           "width",
           "height",
+          "pixelFormat",
           "colorSpace",
         ],
       }),
