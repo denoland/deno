@@ -129,15 +129,35 @@ jobs:
           # Initialize V8 submodule
           git submodule update --init --recursive --depth=1
           
-          # Apply V8 patches if they exist
+          # Apply V8 patches if they exist, but only the critical ones
           if [ -d "$GITHUB_WORKSPACE/termux-patches/v8-patches" ]; then
             echo "Applying V8 patches..."
-            for patch in $GITHUB_WORKSPACE/termux-patches/v8-patches/*.patch; do
-              if [ -f "$patch" ]; then
-                echo "Applying $(basename $patch)..."
-                patch -p1 < "$patch" || echo "Patch $(basename $patch) failed, continuing..."
-              fi
-            done
+            
+            # Apply patches in order, but handle failures gracefully
+            # Patch 0001: Unset BINDGEN_EXTRA_CLANG_ARGS - critical
+            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" ]; then
+              echo "Applying 0001-unset-BINDGEN_EXTRA_CLANG_ARGS..."
+              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" || true
+            fi
+            
+            # Patches 0101, 0102: Jumbo build support - try but allow failure if files don't match
+            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0101-reland-jumbo-scripts.patch" ]; then
+              echo "Applying 0101-reland-jumbo-scripts..."
+              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0101-reland-jumbo-scripts.patch" || echo "Jumbo scripts patch failed, continuing without jumbo build"
+            fi
+            
+            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0102-reland-jumbo-cflags.patch" ]; then
+              echo "Applying 0102-reland-jumbo-cflags..."
+              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0102-reland-jumbo-cflags.patch" || echo "Jumbo cflags patch failed"
+            fi
+            
+            # Patch 0103: Actual jumbo for v8 - this is the one failing, skip if it doesn't apply
+            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" ]; then
+              echo "Trying 0103-reland-jumbo-for-v8..."
+              patch -p1 --dry-run < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" && \
+              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" || \
+              echo "Jumbo for V8 patch doesn't match this version, building without it"
+            fi
           fi
           
           echo "V8_SOURCE_DIR=/tmp/rusty_v8" >> $GITHUB_ENV
@@ -146,12 +166,13 @@ jobs:
         env:
           V8_FROM_SOURCE: 1
           PYTHON: python3
-          EXTRA_GN_ARGS: 'use_jumbo_build=true'
+          # Don't use jumbo build if patches didn't apply
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24'
         run: |
           cd /tmp/rusty_v8
           
           # Build rusty_v8 for Android
-          cargo build --release --target ${{ matrix.arch }}-linux-android
+          cargo build --release --target ${{ matrix.arch }}-linux-android -vv
           
           # Save the built library location
           echo "RUSTY_V8_ARCHIVE=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/obj/librusty_v8.a" >> $GITHUB_ENV
