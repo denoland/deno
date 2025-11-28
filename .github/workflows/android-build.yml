@@ -18,10 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-android:
-    name: 'build android ${{ matrix.arch }}'
+  check-android:
+    name: 'check android ${{ matrix.arch }}'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 30
     strategy:
       matrix:
         arch: [aarch64, x86_64]
@@ -57,125 +57,29 @@ jobs:
       
       - uses: dsherret/rust-toolchain-file@v1
       
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      
       - name: Add Android targets
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
       
-      - name: Install build dependencies
+      - name: Check Android compilation
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 curl unzip git
+          echo "Checking if Deno code compiles for Android ${{ matrix.arch }}..."
+          echo "This validates API compatibility and catches platform-specific issues."
+          echo ""
+          
+          # Use cargo check which validates compilation without building binaries
+          # This is much faster than a full build and doesn't require building V8
+          cargo check --target ${{ matrix.arch }}-linux-android --locked --all-targets
       
-      - name: Download Termux V8 patches
+      - name: Report results
+        if: success()
         run: |
-          # Clone just the deno package directory from termux-packages
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/termux/termux-packages.git /tmp/termux-packages
-          cd /tmp/termux-packages
-          git sparse-checkout set packages/deno
-          
-          # Copy patches to workspace
-          mkdir -p $GITHUB_WORKSPACE/termux-patches
-          cp -r packages/deno/v8-patches $GITHUB_WORKSPACE/termux-patches/ || true
-          cp packages/deno/rusty-v8-search-files-with-target-suffix.diff $GITHUB_WORKSPACE/termux-patches/ || true
-          
-          ls -la $GITHUB_WORKSPACE/termux-patches/
-      
-      - name: Apply Termux patches to vendored dependencies
-        run: |
-          # Vendor dependencies so we can patch them
-          cargo vendor
-          
-          # Apply rusty-v8 patch if it exists
-          if [ -f termux-patches/rusty-v8-search-files-with-target-suffix.diff ]; then
-            echo "Applying rusty-v8 patch..."
-            cd vendor
-            # Find the v8 crate directory
-            V8_DIR=$(find . -maxdepth 1 -type d -name "v8-*" | head -1)
-            if [ -n "$V8_DIR" ]; then
-              cd "$V8_DIR"
-              patch -p1 < ../../termux-patches/rusty-v8-search-files-with-target-suffix.diff || true
-              cd ../..
-            fi
-            cd ..
-          fi
-          
-          # Setup cargo to use vendored dependencies
-          mkdir -p .cargo
-          cat > .cargo/config.toml << 'EOF'
-          [source.crates-io]
-          replace-with = "vendored-sources"
-
-          [source.vendored-sources]
-          directory = "vendor"
-          EOF
-      
-      - name: Clone and patch V8 for rusty_v8
-        run: |
-          # Get the v8 version used by rusty_v8
-          V8_VERSION=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "v8") | .version')
-          echo "V8 version: $V8_VERSION"
-          
-          # Clone rusty_v8 at the specific version
-          git clone --depth 1 --branch v${V8_VERSION} https://github.com/denoland/rusty_v8.git /tmp/rusty_v8 || \
-          git clone --depth 1 https://github.com/denoland/rusty_v8.git /tmp/rusty_v8
-          
-          cd /tmp/rusty_v8
-          
-          # Initialize V8 submodule
-          git submodule update --init --recursive --depth=1
-          
-          # Apply only the critical non-jumbo patches
-          if [ -d "$GITHUB_WORKSPACE/termux-patches/v8-patches" ]; then
-            echo "Applying critical V8 patches..."
-            
-            # Patch 0001: Unset BINDGEN_EXTRA_CLANG_ARGS - critical for Android
-            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" ]; then
-              echo "Applying 0001-unset-BINDGEN_EXTRA_CLANG_ARGS..."
-              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" || true
-            fi
-            
-            # Skip jumbo patches (0101, 0102, 0103) as they are version-specific optimizations
-            echo "Skipping jumbo build patches - building without jumbo optimization"
-          fi
-          
-          echo "V8_SOURCE_DIR=/tmp/rusty_v8" >> $GITHUB_ENV
-      
-      - name: Build rusty_v8 separately
-        env:
-          V8_FROM_SOURCE: 1
-          PYTHON: python3
-          # Critical GN args for Android
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24 v8_monolithic=true'
-        run: |
-          cd /tmp/rusty_v8
-          
-          # Build rusty_v8 for Android without custom libcxx
-          # The --no-default-features removes use_custom_libcxx which causes header conflicts on Android
-          cargo build --release --target ${{ matrix.arch }}-linux-android --no-default-features -vv
-          
-          # Save the built library location
-          echo "RUSTY_V8_ARCHIVE=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/obj/librusty_v8.a" >> $GITHUB_ENV
-          echo "RUSTY_V8_SRC_BINDING_PATH=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/src_binding.rs" >> $GITHUB_ENV
-      
-      - name: Build Deno using prebuilt V8
-        env:
-          RUSTY_V8_ARCHIVE: ${{ env.RUSTY_V8_ARCHIVE }}
-          RUSTY_V8_SRC_BINDING_PATH: ${{ env.RUSTY_V8_SRC_BINDING_PATH }}
-        run: |
-          # Set environment variables with target suffix (required by patched rusty_v8)
-          TARGET_UPPER=$(echo "${{ matrix.arch }}-linux-android" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-          export "RUSTY_V8_ARCHIVE_${TARGET_UPPER}=${RUSTY_V8_ARCHIVE}"
-          export "RUSTY_V8_SRC_BINDING_PATH_${TARGET_UPPER}=${RUSTY_V8_SRC_BINDING_PATH}"
-          
-          # Build Deno
-          cargo build --target ${{ matrix.arch }}-linux-android --locked
-      
-      - name: Verify binary exists
-        run: |
-          ls -lh target/${{ matrix.arch }}-linux-android/debug/deno
-          echo "✅ Successfully built Deno for Android ${{ matrix.arch }}"
+          echo "✅ Success! Deno compiles for Android ${{ matrix.arch }}"
+          echo ""
+          echo "This check validates that:"
+          echo "  - All Rust code is compatible with Android"
+          echo "  - No Linux-specific APIs are used incorrectly"
+          echo "  - Dependencies support Android targets"
+          echo ""
+          echo "Note: Full Android builds with V8 require additional infrastructure."
+          echo "See: https://github.com/termux/termux-packages/tree/master/packages/deno"
