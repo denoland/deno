@@ -30,3 +30,39 @@ Deno.test(function hasStackAccessor() {
   assert(typeof desc.get === "function");
   assert(typeof desc.set === "function");
 });
+
+Deno.test(function quotaExceededErrorIsSubclass() {
+  const error = new QuotaExceededError("test message");
+  assert(error instanceof QuotaExceededError);
+  assert(error instanceof DOMException);
+  assert(error instanceof Error);
+});
+
+Deno.test(function quotaExceededErrorCodeIsZero() {
+  // QuotaExceededError is now a subclass, not a DOMException name
+  // So creating a DOMException with name "QuotaExceededError" should have code 0
+  const error = new DOMException("test", "QuotaExceededError");
+  assertEquals(error.code, 0);
+});
+
+Deno.test(function quotaExceededErrorHasCorrectName() {
+  const error = new QuotaExceededError("test message");
+  assertEquals(error.name, "QuotaExceededError");
+});
+
+Deno.test(function quotaExceededErrorHasQuotaAndRequestedProperties() {
+  const error = new QuotaExceededError("test message");
+  assertEquals(error.quota, null);
+  assertEquals(error.requested, null);
+});
+
+Deno.test(function quotaExceededErrorWithOptions() {
+  const error = new QuotaExceededError("test message", {
+    quota: 1000,
+    requested: 1500,
+  });
+  assertEquals(error.quota, 1000);
+  assertEquals(error.requested, 1500);
+  assertEquals(error.message, "test message");
+  assertEquals(error.name, "QuotaExceededError");
+});

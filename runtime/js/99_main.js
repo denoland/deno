@@ -76,7 +76,7 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { DOMException, QuotaExceededError } from "ext:deno_web/01_dom_exception.js";
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
@@ -309,11 +309,10 @@ function formatException(error) {
   ) {
     return null;
   } else if (typeof error == "string") {
-    return `Uncaught ${
-      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
-        colors: !getStderrNoColor(),
-      })
-    }`;
+    return `Uncaught ${inspectArgs([quoteString(error, getDefaultInspectOptions())], {
+      colors: !getStderrNoColor(),
+    })
+      }`;
   } else {
     return `Uncaught ${inspectArgs([error], { colors: !getStderrNoColor() })}`;
   }
@@ -350,7 +349,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionQuotaExceededError",
   function DOMExceptionQuotaExceededError(msg) {
-    return new DOMException(msg, "QuotaExceededError");
+    return new QuotaExceededError(msg);
   },
 );
 core.registerErrorBuilder(
@@ -566,8 +565,8 @@ const finalDenoNs = {
   // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
   // contexts.
-  test: () => {},
-  bench: () => {},
+  test: () => { },
+  bench: () => { },
   lint: {
     runPlugin: () => {
       throw new Error(
