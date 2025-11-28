@@ -127,12 +127,16 @@ function modifySourceFiles() {
   );
 
   for (const statement of typesNodeSourceFile.getStatementsWithComments()) {
-    if (!Node.isCommentStatement(statement)) {
-      throw new Error("Only expected comments in this file.");
+    if (Node.isCommentStatement(statement)) {
+      const text = statement.getText();
+      if (text.includes("/// <reference path=") && text.includes(".d.ts")) {
+        statement.replaceWithText(
+          text.replace('path="', 'path="./')
+            .replace('.d.ts"', '.d.cts"'),
+        );
+      }
     }
   }
-
-  typesNodeSourceFile.delete();
 
   for (const sourceFile of project.getSourceFiles()) {
     const updateModuleSpecifier = (

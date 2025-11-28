@@ -137,6 +137,9 @@ macro_rules! maybe_compressed_lib {
   };
 }
 
+// Include the auto-generated node type libs macro
+include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
+
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
@@ -174,7 +177,7 @@ pub struct StaticAsset {
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
   IndexMap<&'static str, StaticAsset>,
 > = Lazy::new(|| {
-  IndexMap::from([
+  Vec::from([
     // compressed in build.rs
     maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
     maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
@@ -300,6 +303,9 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
     maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
   ])
+  .into_iter()
+  .chain(node_type_libs!())
+  .collect()
 });
 
 /// A structure representing stats from a type check operation for a graph.
