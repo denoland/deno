@@ -583,9 +583,3 @@ impl DenoTaskLifeCycleScriptsExecutor {
       .await
   }
 }
-
-pub fn get_types_node_version_req() -> VersionReq {
-  // WARNING: When bumping this version, check if anything needs to be
-  // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-  VersionReq::parse_from_npm("24.0.4 - 24.2.0").unwrap()
-}

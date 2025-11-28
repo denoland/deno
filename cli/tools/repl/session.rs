@@ -890,19 +890,10 @@ impl ReplSession {
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
       .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
-    let has_node_specifier =
-      resolved_imports.iter().any(|url| url.scheme() == "node");
-    if !npm_imports.is_empty() || has_node_specifier {
+    if !npm_imports.is_empty() {
       npm_installer
         .add_and_cache_package_reqs(&npm_imports)
         .await?;
-
-      // prevent messages in the repl about @types/node not being cached
-      if has_node_specifier {
-        npm_installer
-          .inject_synthetic_types_node_package(NpmCachingStrategy::Eager)
-          .await?;
-      }
     }
     Ok(())
   }

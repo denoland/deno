@@ -679,9 +679,6 @@ pub struct ResolverFactoryOptions {
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
   pub allow_json_imports: AllowJsonImports,
-  /// Known good version requirement to use for the `@types/node` package
-  /// when the version is unspecified or "latest".
-  pub types_node_version_req: Option<VersionReq>,
   /// Modules loaded via --require flag that should always be treated as CommonJS
   pub require_modules: Vec<Url>,
 }
@@ -1095,7 +1092,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
       Ok(new_rc(NpmVersionResolver {
-        types_node_version_req: self.options.types_node_version_req.clone(),
+        types_node_version_req: None,
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
