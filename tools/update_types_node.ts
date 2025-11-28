@@ -2,139 +2,76 @@ import $, { Path } from "jsr:@david/dax@^0.42.0";
 import * as semver from "@std/semver";
 import { UntarStream } from "@std/tar/untar-stream";
 import {
+  InterfaceDeclaration,
+  ModuleDeclarationKind,
   ModuleKind,
   ModuleResolutionKind,
+  Node,
   Project,
   ScriptTarget,
   SyntaxKind,
+  VariableDeclaration,
 } from "jsr:@ts-morph/ts-morph@27.0.2";
 
 const typesNodeVersion = "24.2.0";
-$.logStep("Downloading @types/node packument");
-const typesNodeInfo = await $.request("https://registry.npmjs.org/@types/node")
-  .json();
-const typesNodeVersionInfo = typesNodeInfo.versions[typesNodeVersion];
-
-if (typesNodeVersionInfo == null) {
-  throw new Error("Could not find types node version info.");
-}
-
-if (Object.keys(typesNodeVersionInfo.dependencies).length !== 1) {
-  console.error("Dependencies", typesNodeVersionInfo.dependencies);
-  throw new Error("Expected only one @types/node dep");
-}
-
-const undiciTypesVersionConstraint = semver.parseRange(
-  typesNodeVersionInfo.dependencies["undici-types"],
-);
-if (undiciTypesVersionConstraint == null) {
-  console.error("Dependencies", typesNodeVersionInfo.dependencies);
-  throw new Error("Failed to find undici-types version constraint.");
-}
-
-$.logStep("Downloading undici-types packument");
-const undiciTypesInfo = await $.request(
-  "https://registry.npmjs.org/undici-types",
-).json();
-const undiciTypesVersion = semver.format(
-  semver.maxSatisfying(
-    Object.keys(undiciTypesInfo.versions).map((v) => semver.parse(v)),
-    undiciTypesVersionConstraint,
-  )!,
-);
-const undiciTypesVersionInfo = undiciTypesInfo.versions[undiciTypesVersion];
-if (undiciTypesVersionInfo == null) {
-  throw new Error("Could not find undici types version info.");
-}
-
-if (
-  undiciTypesVersionInfo.dependencies != null &&
-  Object.keys(undiciTypesVersionInfo.dependencies).length !== null
-) {
-  console.error(undiciTypesVersionInfo.dependencies);
-  throw new Error("Expected no deps for undici-types.");
-}
-
 const rootDir = $.path(import.meta.url).parentOrThrow().parentOrThrow();
 const dtsDir = rootDir.join("cli/tsc/dts/");
 const nodeTypesDir = dtsDir.join("node");
 const undiciTypesDir = nodeTypesDir.join("undici");
 
-await extractTarball(typesNodeVersionInfo.dist.tarball, nodeTypesDir);
-await extractTarball(undiciTypesVersionInfo.dist.tarball, undiciTypesDir);
+// await downloadAndExtractPackages();
+modifySourceFiles();
 
-const project = new Project({
-  compilerOptions: {
-    target: ScriptTarget.ESNext,
-    module: ModuleKind.ESNext,
-    moduleResolution: ModuleResolutionKind.Bundler,
-  },
-});
-project.addSourceFilesAtPaths(nodeTypesDir.join("**/*.d.ts").toString());
-const undiciTypesSourceFile = project.getSourceFileOrThrow(
-  undiciTypesDir.join("index.d.ts").toString(),
-);
+async function downloadAndExtractPackages() {
+  $.logStep("Downloading @types/node packument");
+  const typesNodeInfo = await $.request(
+    "https://registry.npmjs.org/@types/node",
+  )
+    .json();
+  const typesNodeVersionInfo = typesNodeInfo.versions[typesNodeVersion];
 
-for (const sourceFile of project.getSourceFiles()) {
-  const updateModuleSpecifier = (
-    moduleSpecifier: string | undefined,
-    setSpecifier: (value: string) => void,
-  ) => {
-    if (moduleSpecifier == null) {
-      return;
-    }
-    if (
-      moduleSpecifier.startsWith("./") && !moduleSpecifier.endsWith(".d.ts")
-    ) {
-      return setSpecifier(moduleSpecifier + ".d.ts");
-    }
-    if (moduleSpecifier === "undici-types") {
-      const relativeSpecifier = sourceFile.getRelativePathAsModuleSpecifierTo(
-        undiciTypesSourceFile,
-      ) + ".d.ts";
-      return setSpecifier(relativeSpecifier);
-    }
-
-    if (isKnownModuleSpecifier(moduleSpecifier)) {
-      return;
-    }
-
-    $.logWarn("WARN", "Encountered unknown module specifier:", moduleSpecifier);
-  };
-
-  // Get all import declarations
-  for (const importDecl of sourceFile.getImportDeclarations()) {
-    updateModuleSpecifier(
-      importDecl.getModuleSpecifierValue(),
-      (value) => importDecl.setModuleSpecifier(value),
-    );
+  if (typesNodeVersionInfo == null) {
+    throw new Error("Could not find types node version info.");
   }
 
-  // Get all export declarations with module specifiers
-  for (const exportDecl of sourceFile.getExportDeclarations()) {
-    updateModuleSpecifier(
-      exportDecl.getModuleSpecifierValue(),
-      (value) => exportDecl.setModuleSpecifier(value),
-    );
+  if (Object.keys(typesNodeVersionInfo.dependencies).length !== 1) {
+    console.error("Dependencies", typesNodeVersionInfo.dependencies);
+    throw new Error("Expected only one @types/node dep");
   }
 
-  // Get all import type queries (e.g., import("module").Type)
-  for (
-    const importType of sourceFile.getDescendantsOfKind(SyntaxKind.ImportType)
+  const undiciTypesVersionConstraint = semver.parseRange(
+    typesNodeVersionInfo.dependencies["undici-types"],
+  );
+  if (undiciTypesVersionConstraint == null) {
+    console.error("Dependencies", typesNodeVersionInfo.dependencies);
+    throw new Error("Failed to find undici-types version constraint.");
+  }
+
+  $.logStep("Downloading undici-types packument");
+  const undiciTypesInfo = await $.request(
+    "https://registry.npmjs.org/undici-types",
+  ).json();
+  const undiciTypesVersion = semver.format(
+    semver.maxSatisfying(
+      Object.keys(undiciTypesInfo.versions).map((v) => semver.parse(v)),
+      undiciTypesVersionConstraint,
+    )!,
+  );
+  const undiciTypesVersionInfo = undiciTypesInfo.versions[undiciTypesVersion];
+  if (undiciTypesVersionInfo == null) {
+    throw new Error("Could not find undici types version info.");
+  }
+
+  if (
+    undiciTypesVersionInfo.dependencies != null &&
+    Object.keys(undiciTypesVersionInfo.dependencies).length !== null
   ) {
-    const argument = importType.getArgument();
-    if (argument && argument.isKind(SyntaxKind.LiteralType)) {
-      const literal = argument.getLiteral();
-      if (literal.isKind(SyntaxKind.StringLiteral)) {
-        updateModuleSpecifier(
-          literal.getLiteralValue(),
-          (value) => literal.setLiteralValue(value),
-        );
-      }
-    }
+    console.error(undiciTypesVersionInfo.dependencies);
+    throw new Error("Expected no deps for undici-types.");
   }
 
-  sourceFile.saveSync();
+  await extractTarball(typesNodeVersionInfo.dist.tarball, nodeTypesDir);
+  await extractTarball(undiciTypesVersionInfo.dist.tarball, undiciTypesDir);
 }
 
 async function extractTarball(url: string, destination: Path) {
@@ -167,6 +104,196 @@ async function extractTarball(url: string, destination: Path) {
     path.parentOrThrow().mkdirSync({ recursive: true });
     using file = path.createSync();
     await entry.readable.pipeTo(file.writable);
+  }
+}
+
+function modifySourceFiles() {
+  const project = new Project({
+    compilerOptions: {
+      target: ScriptTarget.ESNext,
+      module: ModuleKind.ESNext,
+      moduleResolution: ModuleResolutionKind.Bundler,
+    },
+  });
+  project.addSourceFilesAtPaths(nodeTypesDir.join("**/*.d.ts").toString());
+  const undiciTypesSourceFile = project.getSourceFileOrThrow(
+    undiciTypesDir.join("index.d.ts").toString(),
+  );
+
+  for (const sourceFile of project.getSourceFiles()) {
+    const updateModuleSpecifier = (
+      moduleSpecifier: string | undefined,
+      setSpecifier: (value: string) => void,
+    ) => {
+      if (moduleSpecifier == null) {
+        return;
+      }
+      if (moduleSpecifier.startsWith("./")) {
+        if (!moduleSpecifier.endsWith(".d.ts")) {
+          setSpecifier(moduleSpecifier + ".d.ts");
+        }
+        return;
+      }
+      if (moduleSpecifier === "undici-types") {
+        const relativeSpecifier = sourceFile.getRelativePathAsModuleSpecifierTo(
+          undiciTypesSourceFile,
+        ) + ".d.ts";
+        return setSpecifier(relativeSpecifier);
+      }
+
+      if (isKnownModuleSpecifier(moduleSpecifier)) {
+        return;
+      }
+
+      $.logWarn(
+        "WARN",
+        "Encountered unknown module specifier:",
+        moduleSpecifier,
+      );
+    };
+
+    // Get all import declarations
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      updateModuleSpecifier(
+        importDecl.getModuleSpecifierValue(),
+        (value) => importDecl.setModuleSpecifier(value),
+      );
+    }
+
+    // Get all export declarations with module specifiers
+    for (const exportDecl of sourceFile.getExportDeclarations()) {
+      updateModuleSpecifier(
+        exportDecl.getModuleSpecifierValue(),
+        (value) => exportDecl.setModuleSpecifier(value),
+      );
+    }
+
+    // Get all import type queries (e.g., import("module").Type)
+    for (
+      const importType of sourceFile.getDescendantsOfKind(SyntaxKind.ImportType)
+    ) {
+      const argument = importType.getArgument();
+      if (argument && argument.isKind(SyntaxKind.LiteralType)) {
+        const literal = argument.getLiteral();
+        if (literal.isKind(SyntaxKind.StringLiteral)) {
+          updateModuleSpecifier(
+            literal.getLiteralValue(),
+            (value) => literal.setLiteralValue(value),
+          );
+        }
+      }
+    }
+
+    // go over every `global` declaration and output the text
+    for (
+      const moduleDecl of sourceFile.getDescendantsOfKind(
+        SyntaxKind.ModuleDeclaration,
+      )
+    ) {
+      if (moduleDecl.getDeclarationKind() !== ModuleDeclarationKind.Global) {
+        continue;
+      }
+      const body = moduleDecl.getBody();
+      if (body == null) {
+        continue;
+      }
+      for (const statement of body.getStatements()) {
+        if (Node.isVariableStatement(statement)) {
+          for (const decl of statement.getDeclarations()) {
+            handleVarDecl(decl);
+          }
+        } else if (Node.isInterfaceDeclaration(statement)) {
+          handleInterface(statement);
+        }
+      }
+    }
+
+    sourceFile.saveSync();
+  }
+}
+
+function handleInterface(decl: InterfaceDeclaration) {
+  switch (decl.getName()) {
+    case "ImportMeta": {
+      decl.getPropertyOrThrow("dirname").setHasQuestionToken(true);
+      decl.getPropertyOrThrow("filename").setHasQuestionToken(true);
+      break;
+    }
+    default:
+      console.log(decl.getName());
+      break;
+  }
+}
+
+function handleVarDecl(decl: VariableDeclaration) {
+  switch (decl.getName()) {
+    case "AbortController":
+    case "AbortSignal":
+    case "BroadcastChannel":
+    case "ByteLengthQueuingStrategy":
+    case "CloseEvent":
+    case "CompressionStream":
+    case "CountQueuingStrategy":
+    case "DecompressionStream":
+    case "DOMException":
+    case "EventSource":
+    case "FormData":
+    case "Headers":
+    case "MessageChannel":
+    case "MessageEvent":
+    case "MessagePort":
+    case "performance":
+    case "PerformanceEntry":
+    case "PerformanceMark":
+    case "PerformanceMeasure":
+    case "ReadableByteStreamController":
+    case "ReadableStream":
+    case "ReadableStreamBYOBReader":
+    case "ReadableStreamBYOBRequest":
+    case "ReadableStreamDefaultController":
+    case "ReadableStreamDefaultReader":
+    case "Request":
+    case "Response":
+    case "Storage":
+    case "TextDecoder":
+    case "TextDecoderStream":
+    case "TextEncoder":
+    case "TextEncoderStream":
+    case "TransformStream":
+    case "TransformStreamDefaultController":
+    case "URL":
+    case "URLPattern":
+    case "URLSearchParams":
+    case "WebSocket":
+    case "WritableStream":
+    case "WritableStreamDefaultController":
+    case "WritableStreamDefaultWriter":
+      assertIsVariableWithConditionalTypeOnGlobalThis();
+      decl.remove();
+      break;
+    default:
+      console.log(decl.getName());
+      break;
+  }
+
+  function assertIsVariableWithConditionalTypeOnGlobalThis() {
+    const typeNode = decl.getTypeNode();
+    // ensure we're removing what we're expecting to remove
+    if (typeNode.getKind() !== SyntaxKind.ConditionalType) {
+      console.error(typeNode.getText());
+      throw new Error(
+        "Assertion failed for type node being a conditional type.",
+      );
+    }
+    const typeQuery = typeNode.getFirstDescendantByKindOrThrow(
+      SyntaxKind.TypeQuery,
+    );
+    if (typeQuery.getExprName().getText() !== "globalThis") {
+      console.error(typeNode.getText());
+      throw new Error(
+        "Assertion failed for type node containing `typeof globalThis`",
+      );
+    }
   }
 }
 
