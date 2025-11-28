@@ -74,13 +74,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
-      
-      - name: Install gn
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: |
-          ./tools/install_prebuilt.js gn
+          sudo apt-get install -y ninja-build python3
       
       - name: Set up Android build environment
         run: |
@@ -92,9 +86,6 @@ jobs:
           
           # Set up CMake toolchain
           echo "CMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
-          
-          # Add gn to PATH
-          echo "$GITHUB_WORKSPACE/third_party/prebuilt/linux64" >> $GITHUB_PATH
       
       - name: Build for Android
         env:
