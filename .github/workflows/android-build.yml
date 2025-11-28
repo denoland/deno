@@ -1,0 +1,78 @@
+name: android-build
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.head_ref || github.run_id }}'
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: 'build android ${{ matrix.arch }}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        arch: [aarch64, x86_64]
+      fail-fast: false
+    
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
+      
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: 'cargo-home-android-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 'cargo-home-android-${{ matrix.arch }}-'
+      
+      - uses: dsherret/rust-toolchain-file@v1
+      
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+      
+      - name: Add Android targets
+        run: |
+          rustup target add ${{ matrix.arch }}-linux-android
+      
+      - name: Build for Android
+        env:
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
+        run: |
+          cargo build --target ${{ matrix.arch }}-linux-android --locked
+      
+      - name: Verify binary exists
+        run: |
+          ls -lh target/${{ matrix.arch }}-linux-android/debug/deno
