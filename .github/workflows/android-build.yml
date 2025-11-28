@@ -93,6 +93,8 @@ jobs:
           V8_FROM_SOURCE: 1
           # Set API level
           ANDROID_NDK_API_LEVEL: '24'
+          # Python for V8 build scripts
+          PYTHON: python3
           # Linkers
           CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android24-clang
           CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: x86_64-linux-android24-clang
@@ -103,8 +105,10 @@ jobs:
           CC_x86_64_linux_android: x86_64-linux-android24-clang
           CXX_x86_64_linux_android: x86_64-linux-android24-clang++
           AR_x86_64_linux_android: llvm-ar
-          # GN args for V8 build
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true'
+          # GN args for V8 build - disable Rust to avoid the missing file error
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true enable_rust=false'
+          # Set target CPU for GN
+          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}"'
         run: |
           cargo build --target ${{ matrix.arch }}-linux-android --locked
       
