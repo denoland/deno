@@ -66,6 +66,17 @@ jobs:
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
       
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      
+      - name: Install gn
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: |
+          ./tools/install_prebuilt.js gn
+      
       - name: Set up Android build environment
         run: |
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> $GITHUB_ENV
@@ -76,17 +87,28 @@ jobs:
           
           # Set up CMake toolchain
           echo "CMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+          
+          # Add gn to PATH
+          echo "$GITHUB_WORKSPACE/third_party/prebuilt/linux64" >> $GITHUB_PATH
       
       - name: Build for Android
         env:
+          # Build V8 from source since prebuilt binaries don't exist for Android
+          V8_FROM_SOURCE: 1
+          # Set API level
+          ANDROID_NDK_API_LEVEL: '24'
+          # Linkers
           CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android24-clang
           CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: x86_64-linux-android24-clang
+          # Compilers for build scripts
           CC_aarch64_linux_android: aarch64-linux-android24-clang
           CXX_aarch64_linux_android: aarch64-linux-android24-clang++
           AR_aarch64_linux_android: llvm-ar
           CC_x86_64_linux_android: x86_64-linux-android24-clang
           CXX_x86_64_linux_android: x86_64-linux-android24-clang++
           AR_x86_64_linux_android: llvm-ar
+          # GN args for V8 build
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true'
         run: |
           cargo build --target ${{ matrix.arch }}-linux-android --locked
       
