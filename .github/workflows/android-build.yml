@@ -107,12 +107,12 @@ jobs:
           # Setup cargo to use vendored dependencies
           mkdir -p .cargo
           cat > .cargo/config.toml << 'EOF'
-[source.crates-io]
-replace-with = "vendored-sources"
+          [source.crates-io]
+          replace-with = "vendored-sources"
 
-[source.vendored-sources]
-directory = "vendor"
-EOF
+          [source.vendored-sources]
+          directory = "vendor"
+          EOF
       
       - name: Clone and patch V8 for rusty_v8
         run: |
