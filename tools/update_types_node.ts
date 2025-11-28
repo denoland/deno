@@ -1,6 +1,13 @@
 import $, { Path } from "jsr:@david/dax@^0.42.0";
 import * as semver from "@std/semver";
 import { UntarStream } from "@std/tar/untar-stream";
+import {
+  ModuleKind,
+  ModuleResolutionKind,
+  Project,
+  ScriptTarget,
+  SyntaxKind,
+} from "jsr:@ts-morph/ts-morph@27.0.2";
 
 const typesNodeVersion = "24.2.0";
 $.logStep("Downloading @types/node packument");
@@ -56,6 +63,80 @@ const undiciTypesDir = nodeTypesDir.join("undici");
 await extractTarball(typesNodeVersionInfo.dist.tarball, nodeTypesDir);
 await extractTarball(undiciTypesVersionInfo.dist.tarball, undiciTypesDir);
 
+const project = new Project({
+  compilerOptions: {
+    target: ScriptTarget.ESNext,
+    module: ModuleKind.ESNext,
+    moduleResolution: ModuleResolutionKind.Bundler,
+  },
+});
+project.addSourceFilesAtPaths(nodeTypesDir.join("**/*.d.ts").toString());
+const undiciTypesSourceFile = project.getSourceFileOrThrow(
+  undiciTypesDir.join("index.d.ts").toString(),
+);
+
+for (const sourceFile of project.getSourceFiles()) {
+  const updateModuleSpecifier = (
+    moduleSpecifier: string | undefined,
+    setSpecifier: (value: string) => void,
+  ) => {
+    if (moduleSpecifier == null) {
+      return;
+    }
+    if (
+      moduleSpecifier.startsWith("./") && !moduleSpecifier.endsWith(".d.ts")
+    ) {
+      return setSpecifier(moduleSpecifier + ".d.ts");
+    }
+    if (moduleSpecifier === "undici-types") {
+      const relativeSpecifier = sourceFile.getRelativePathAsModuleSpecifierTo(
+        undiciTypesSourceFile,
+      ) + ".d.ts";
+      return setSpecifier(relativeSpecifier);
+    }
+
+    if (isKnownModuleSpecifier(moduleSpecifier)) {
+      return;
+    }
+
+    $.logWarn("WARN", "Encountered unknown module specifier:", moduleSpecifier);
+  };
+
+  // Get all import declarations
+  for (const importDecl of sourceFile.getImportDeclarations()) {
+    updateModuleSpecifier(
+      importDecl.getModuleSpecifierValue(),
+      (value) => importDecl.setModuleSpecifier(value),
+    );
+  }
+
+  // Get all export declarations with module specifiers
+  for (const exportDecl of sourceFile.getExportDeclarations()) {
+    updateModuleSpecifier(
+      exportDecl.getModuleSpecifierValue(),
+      (value) => exportDecl.setModuleSpecifier(value),
+    );
+  }
+
+  // Get all import type queries (e.g., import("module").Type)
+  for (
+    const importType of sourceFile.getDescendantsOfKind(SyntaxKind.ImportType)
+  ) {
+    const argument = importType.getArgument();
+    if (argument && argument.isKind(SyntaxKind.LiteralType)) {
+      const literal = argument.getLiteral();
+      if (literal.isKind(SyntaxKind.StringLiteral)) {
+        updateModuleSpecifier(
+          literal.getLiteralValue(),
+          (value) => literal.setLiteralValue(value),
+        );
+      }
+    }
+  }
+
+  sourceFile.saveSync();
+}
+
 async function extractTarball(url: string, destination: Path) {
   $.logStep("Downloading", url, "to", destination.toString());
   destination.ensureDirSync();
@@ -86,5 +167,66 @@ async function extractTarball(url: string, destination: Path) {
     path.parentOrThrow().mkdirSync({ recursive: true });
     using file = path.createSync();
     await entry.readable.pipeTo(file.writable);
+  }
+}
+
+function isKnownModuleSpecifier(text: string) {
+  switch (text) {
+    case "assert":
+    case "assert/strict":
+    case "async_hooks":
+    case "buffer":
+    case "child_process":
+    case "cluster":
+    case "console":
+    case "constants":
+    case "crypto":
+    case "dgram":
+    case "diagnostics_channel":
+    case "dns":
+    case "dns/promises":
+    case "domain":
+    case "events":
+    case "fs":
+    case "fs/promises":
+    case "http":
+    case "http2":
+    case "https":
+    case "inspector":
+    case "inspector/promises":
+    case "module":
+    case "net":
+    case "os":
+    case "path":
+    case "path/posix":
+    case "path/win32":
+    case "perf_hooks":
+    case "process":
+    case "punycode":
+    case "querystring":
+    case "readline":
+    case "readline/promises":
+    case "repl":
+    case "stream":
+    case "stream/consumers":
+    case "stream/promises":
+    case "stream/web":
+    case "string_decoder":
+    case "timers":
+    case "timers/promises":
+    case "tls":
+    case "trace_events":
+    case "tty":
+    case "url":
+    case "util":
+    case "util/types":
+    case "v8":
+    case "vm":
+    case "wasi":
+    case "worker_threads":
+    case "zlib":
+      return true;
+    default:
+      return text.startsWith("node:");
   }
 }
