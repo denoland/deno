@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 /// This module is shared between build script and the binaries. Use it sparsely.
+/// Items are marked with #[allow(unused)] because they may be used by either
+/// the build script or the binary, but not necessarily both.
 use thiserror::Error;
 
 #[derive(Debug, Error)]
