@@ -129,35 +129,18 @@ jobs:
           # Initialize V8 submodule
           git submodule update --init --recursive --depth=1
           
-          # Apply V8 patches if they exist, but only the critical ones
+          # Apply only the critical non-jumbo patches
           if [ -d "$GITHUB_WORKSPACE/termux-patches/v8-patches" ]; then
-            echo "Applying V8 patches..."
+            echo "Applying critical V8 patches..."
             
-            # Apply patches in order, but handle failures gracefully
-            # Patch 0001: Unset BINDGEN_EXTRA_CLANG_ARGS - critical
+            # Patch 0001: Unset BINDGEN_EXTRA_CLANG_ARGS - critical for Android
             if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" ]; then
               echo "Applying 0001-unset-BINDGEN_EXTRA_CLANG_ARGS..."
               patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0001-unset-BINDGEN_EXTRA_CLANG_ARGS-in-v8_s-bindgen.patch" || true
             fi
             
-            # Patches 0101, 0102: Jumbo build support - try but allow failure if files don't match
-            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0101-reland-jumbo-scripts.patch" ]; then
-              echo "Applying 0101-reland-jumbo-scripts..."
-              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0101-reland-jumbo-scripts.patch" || echo "Jumbo scripts patch failed, continuing without jumbo build"
-            fi
-            
-            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0102-reland-jumbo-cflags.patch" ]; then
-              echo "Applying 0102-reland-jumbo-cflags..."
-              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0102-reland-jumbo-cflags.patch" || echo "Jumbo cflags patch failed"
-            fi
-            
-            # Patch 0103: Actual jumbo for v8 - this is the one failing, skip if it doesn't apply
-            if [ -f "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" ]; then
-              echo "Trying 0103-reland-jumbo-for-v8..."
-              patch -p1 --dry-run < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" && \
-              patch -p1 < "$GITHUB_WORKSPACE/termux-patches/v8-patches/0103-reland-jumbo-for-v8.patch" || \
-              echo "Jumbo for V8 patch doesn't match this version, building without it"
-            fi
+            # Skip jumbo patches (0101, 0102, 0103) as they are version-specific optimizations
+            echo "Skipping jumbo build patches - building without jumbo optimization"
           fi
           
           echo "V8_SOURCE_DIR=/tmp/rusty_v8" >> $GITHUB_ENV
