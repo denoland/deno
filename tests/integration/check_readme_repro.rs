@@ -6,7 +6,7 @@ use util::TestContextBuilder;
 fn check_jsr_package_readme() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  
+
   temp_dir.write(
     "deno.json",
     r#"{
@@ -15,9 +15,9 @@ fn check_jsr_package_readme() {
   "exports": "./mod.ts"
 }"#,
   );
-  
+
   temp_dir.write("mod.ts", "export const a = 1;");
-  
+
   // README with a type error
   temp_dir.write(
     "README.md",
