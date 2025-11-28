@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;

@@ -643,7 +643,6 @@ struct GraphWalker<'a> {
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
-  has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
 }
