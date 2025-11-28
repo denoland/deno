@@ -66,10 +66,27 @@ jobs:
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
       
+      - name: Set up Android build environment
+        run: |
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          
+          # Add NDK toolchain to PATH
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          
+          # Set up CMake toolchain
+          echo "CMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+      
       - name: Build for Android
         env:
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
-          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android24-clang
+          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: x86_64-linux-android24-clang
+          CC_aarch64_linux_android: aarch64-linux-android24-clang
+          CXX_aarch64_linux_android: aarch64-linux-android24-clang++
+          AR_aarch64_linux_android: llvm-ar
+          CC_x86_64_linux_android: x86_64-linux-android24-clang
+          CXX_x86_64_linux_android: x86_64-linux-android24-clang++
+          AR_x86_64_linux_android: llvm-ar
         run: |
           cargo build --target ${{ matrix.arch }}-linux-android --locked
       
