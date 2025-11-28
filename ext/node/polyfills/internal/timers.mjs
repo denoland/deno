@@ -244,22 +244,16 @@ export function runImmediates() {
     ? outstandingQueue
     : immediateQueue;
   let immediate = queue.head;
-  // console.log("runImmediates called");
-  // console.log("running immediates", immediate);
   // Clear the linked list early in case new `setImmediate()`
   // calls occur while immediate callbacks are executed
   if (queue !== outstandingQueue) {
-    // console.log("using regular queue");
     queue.head = queue.tail = null;
     op_immediate_set_has_outstanding(true);
-  } else {
-    // console.log("using outstanding queue");
   }
 
   let prevImmediate;
   let ranAtLeastOneImmediate = false;
   while (immediate !== null) {
-    // console.log("starting while tick", ranAtLeastOneImmediate);
     if (ranAtLeastOneImmediate) {
       runNextTicks();
     } else {
@@ -309,16 +303,12 @@ export function runImmediates() {
       // }
 
       outstandingQueue.head = immediate = immediate._idleNext;
-      // console.log("running finally");
     }
-    // console.log("ending while tick");
     // emitAfter(asyncId);
 
     // TODO:
     // AsyncContextFrame.set(priorContextFrame);
   }
-
-  // console.log("checking outstanding queue");
 
   if (queue === outstandingQueue) {
     outstandingQueue.head = null;
@@ -329,7 +319,6 @@ export function runImmediates() {
 
 export class Immediate {
   constructor(unboundCallback, ...args) {
-    // console.log("immediate create");
     const asyncContext = getAsyncContext();
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
@@ -353,7 +342,6 @@ export class Immediate {
 
     this.ref();
     op_immediate_count(true);
-    // console.log("appending immediate, has head", !!immediateQueue.head);
     immediateQueue.append(this);
   }
 
