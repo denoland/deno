@@ -212,6 +212,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       // treat these as unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
@@ -260,6 +262,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       // treat these as unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
