@@ -1,4 +1,4 @@
-Download https://raw.githubusercontent.com/denoland/deno/3e987b146a4d90ffe9ec421925dddd3b05ce0abe/tests/specs/run/sourcemap_external/external.js.map
+Download https://localhost:5545/run/sourcemap_external.js.map
 error: Uncaught (in promise) Error: Test error with external sourcemap
   throw new Error("Test error with external sourcemap");
   ^
