@@ -256,3 +256,37 @@ pub fn load_env_variables_from_env_files(
     }
   }
 }
+
+pub fn get_env_vars_from_env_file(
+  file_path: &Path,
+  log_level: Option<log::Level>,
+) -> Option<HashMap<String, String>> {
+  match dotenvy::from_path_iter(file_path) {
+    Ok(iter) => {
+      let mut vars = HashMap::new();
+      for item in iter {
+        match item {
+          Ok((key, value)) => {
+            vars.insert(key, value);
+          }
+          Err(e) => {
+            WatchEnvTracker::handle_dotenvy_error(e, file_path, log_level);
+          }
+        }
+      }
+      Some(vars)
+    }
+    Err(e) => {
+      #[allow(clippy::print_stderr)]
+      if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+        eprintln!(
+          "{} Failed to read {}: {}",
+          colors::yellow("Warning"),
+          file_path.display(),
+          e
+        );
+      }
+      None
+    }
+  }
+}
