@@ -21,7 +21,7 @@ jobs:
   build-android:
     name: 'build android ${{ matrix.arch }}'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 180
     strategy:
       matrix:
         arch: [aarch64, x86_64]
@@ -57,24 +57,120 @@ jobs:
       
       - uses: dsherret/rust-toolchain-file@v1
       
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      
       - name: Add Android targets
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
       
-      # [NEW STEP] Install cargo-ndk to handle environment setup for C/C++ deps
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk
-
-      - name: Check compilation (without V8)
+      - name: Install build dependencies
         run: |
-          # We use `cargo ndk` to wrap the check command. 
-          # It sets CC, CXX, and PATH so aws-lc-sys can find the NDK compiler.
-          cargo ndk -t ${{ matrix.arch }}-linux-android check --target ${{ matrix.arch }}-linux-android --locked --workspace --exclude v8
+          sudo apt-get update
+          sudo apt-get install -y python3 curl unzip git
       
-      - name: Report status
-        if: success()
+      - name: Download Termux V8 patches
         run: |
-          echo "\u2705 Deno Rust code successfully compiles for Android ${{ matrix.arch }}"
-          echo ""
-          echo "Note: Full Android build with V8 requires patches from Termux."
-          echo "See: https://github.com/termux/termux-packages/tree/master/packages/deno"
+          # Clone just the deno package directory from termux-packages
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/termux/termux-packages.git /tmp/termux-packages
+          cd /tmp/termux-packages
+          git sparse-checkout set packages/deno
+          
+          # Copy patches to workspace
+          mkdir -p $GITHUB_WORKSPACE/termux-patches
+          cp -r packages/deno/v8-patches $GITHUB_WORKSPACE/termux-patches/ || true
+          cp packages/deno/rusty-v8-search-files-with-target-suffix.diff $GITHUB_WORKSPACE/termux-patches/ || true
+          
+          ls -la $GITHUB_WORKSPACE/termux-patches/
+      
+      - name: Apply Termux patches to vendored dependencies
+        run: |
+          # Vendor dependencies so we can patch them
+          cargo vendor
+          
+          # Apply rusty-v8 patch if it exists
+          if [ -f termux-patches/rusty-v8-search-files-with-target-suffix.diff ]; then
+            echo "Applying rusty-v8 patch..."
+            cd vendor
+            # Find the v8 crate directory
+            V8_DIR=$(find . -maxdepth 1 -type d -name "v8-*" | head -1)
+            if [ -n "$V8_DIR" ]; then
+              cd "$V8_DIR"
+              patch -p1 < ../../termux-patches/rusty-v8-search-files-with-target-suffix.diff || true
+              cd ../..
+            fi
+            cd ..
+          fi
+          
+          # Setup cargo to use vendored dependencies
+          mkdir -p .cargo
+          cat > .cargo/config.toml << 'EOF'
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+EOF
+      
+      - name: Clone and patch V8 for rusty_v8
+        run: |
+          # Get the v8 version used by rusty_v8
+          V8_VERSION=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "v8") | .version')
+          echo "V8 version: $V8_VERSION"
+          
+          # Clone rusty_v8 at the specific version
+          git clone --depth 1 --branch v${V8_VERSION} https://github.com/denoland/rusty_v8.git /tmp/rusty_v8 || \
+          git clone --depth 1 https://github.com/denoland/rusty_v8.git /tmp/rusty_v8
+          
+          cd /tmp/rusty_v8
+          
+          # Initialize V8 submodule
+          git submodule update --init --recursive --depth=1
+          
+          # Apply V8 patches if they exist
+          if [ -d "$GITHUB_WORKSPACE/termux-patches/v8-patches" ]; then
+            echo "Applying V8 patches..."
+            for patch in $GITHUB_WORKSPACE/termux-patches/v8-patches/*.patch; do
+              if [ -f "$patch" ]; then
+                echo "Applying $(basename $patch)..."
+                patch -p1 < "$patch" || echo "Patch $(basename $patch) failed, continuing..."
+              fi
+            done
+          fi
+          
+          echo "V8_SOURCE_DIR=/tmp/rusty_v8" >> $GITHUB_ENV
+      
+      - name: Build rusty_v8 separately
+        env:
+          V8_FROM_SOURCE: 1
+          PYTHON: python3
+          EXTRA_GN_ARGS: 'use_jumbo_build=true'
+        run: |
+          cd /tmp/rusty_v8
+          
+          # Build rusty_v8 for Android
+          cargo build --release --target ${{ matrix.arch }}-linux-android
+          
+          # Save the built library location
+          echo "RUSTY_V8_ARCHIVE=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/obj/librusty_v8.a" >> $GITHUB_ENV
+          echo "RUSTY_V8_SRC_BINDING_PATH=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/src_binding.rs" >> $GITHUB_ENV
+      
+      - name: Build Deno using prebuilt V8
+        env:
+          RUSTY_V8_ARCHIVE: ${{ env.RUSTY_V8_ARCHIVE }}
+          RUSTY_V8_SRC_BINDING_PATH: ${{ env.RUSTY_V8_SRC_BINDING_PATH }}
+        run: |
+          # Set environment variables with target suffix (required by patched rusty_v8)
+          TARGET_UPPER=$(echo "${{ matrix.arch }}-linux-android" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+          export "RUSTY_V8_ARCHIVE_${TARGET_UPPER}=${RUSTY_V8_ARCHIVE}"
+          export "RUSTY_V8_SRC_BINDING_PATH_${TARGET_UPPER}=${RUSTY_V8_SRC_BINDING_PATH}"
+          
+          # Build Deno
+          cargo build --target ${{ matrix.arch }}-linux-android --locked
+      
+      - name: Verify binary exists
+        run: |
+          ls -lh target/${{ matrix.arch }}-linux-android/debug/deno
+          echo "✅ Successfully built Deno for Android ${{ matrix.arch }}"
