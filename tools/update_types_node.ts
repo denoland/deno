@@ -19,7 +19,7 @@ const dtsDir = rootDir.join("cli/tsc/dts/");
 const nodeTypesDir = dtsDir.join("node");
 const undiciTypesDir = nodeTypesDir.join("undici");
 
-// await downloadAndExtractPackages();
+//await downloadAndExtractPackages();
 modifySourceFiles();
 
 async function downloadAndExtractPackages() {
@@ -116,8 +116,34 @@ function modifySourceFiles() {
     },
   });
   project.addSourceFilesAtPaths(nodeTypesDir.join("**/*.d.ts").toString());
+  project.addSourceFilesAtPaths(nodeTypesDir.join("**/*.d.cts").toString());
   const undiciTypesSourceFile = project.getSourceFileOrThrow(
     undiciTypesDir.join("index.d.ts").toString(),
+  );
+  const typesNodeSourceFile = project.getSourceFile(
+    nodeTypesDir.join("index.d.ts").toString(),
+  ) ?? project.getSourceFileOrThrow(
+    nodeTypesDir.join("index.d.cts").toString(),
+  );
+
+  for (const statement of typesNodeSourceFile.getStatementsWithComments()) {
+    if (Node.isCommentStatement(statement)) {
+      const text = statement.getText();
+      if (text.includes("/// <reference path=") && text.includes(".d.ts")) {
+        statement.replaceWithText(
+          text.replace('path="', 'path="./')
+            .replace('.d.ts"', '.d.cts"'),
+        );
+      }
+    }
+  }
+
+  typesNodeSourceFile.replaceText(
+    [0, typesNodeSourceFile.getEnd()],
+    typesNodeSourceFile.getFullText().replace(
+      '/// <reference types="node" />\n',
+      "",
+    ),
   );
 
   for (const sourceFile of project.getSourceFiles()) {
@@ -208,8 +234,27 @@ function modifySourceFiles() {
       }
     }
 
-    sourceFile.saveSync();
+    if (
+      !sourceFile.getFilePath().includes("undici") &&
+      sourceFile.getFilePath().endsWith(".d.ts")
+    ) {
+      sourceFile.move(
+        sourceFile.getFilePath().replace(/.d.ts$/, ".d.cts"),
+      );
+    }
+
+    if (sourceFile.getFullText().includes('/// <reference types="node" />\n')) {
+      sourceFile.replaceText(
+        [0, sourceFile.getEnd()],
+        sourceFile.getFullText().replace(
+          '/// <reference types="node" />\n',
+          "",
+        ),
+      );
+    }
   }
+
+  project.saveSync();
 }
 
 function handleInterface(decl: InterfaceDeclaration) {
@@ -229,14 +274,20 @@ function handleVarDecl(decl: VariableDeclaration) {
   switch (decl.getName()) {
     case "AbortController":
     case "AbortSignal":
+    case "Blob":
     case "BroadcastChannel":
     case "ByteLengthQueuingStrategy":
     case "CloseEvent":
     case "CompressionStream":
     case "CountQueuingStrategy":
+    case "crypto":
+    case "CustomEvent":
     case "DecompressionStream":
     case "DOMException":
+    case "Event":
     case "EventSource":
+    case "EventTarget":
+    case "File":
     case "FormData":
     case "Headers":
     case "MessageChannel":
@@ -262,13 +313,15 @@ function handleVarDecl(decl: VariableDeclaration) {
     case "TransformStream":
     case "TransformStreamDefaultController":
     case "URL":
-    case "URLPattern":
     case "URLSearchParams":
     case "WebSocket":
     case "WritableStream":
     case "WritableStreamDefaultController":
     case "WritableStreamDefaultWriter":
       assertIsVariableWithConditionalTypeOnGlobalThis();
+      decl.remove();
+      break;
+    case "URLPattern":
       decl.remove();
       break;
     default:
