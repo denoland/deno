@@ -28,7 +28,6 @@ use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_semver::VersionReq;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;

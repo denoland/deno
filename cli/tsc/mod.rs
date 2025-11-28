@@ -299,17 +299,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.webworker.d.ts"),
     maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
     maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
-    (
-      // Special file that can be used to inject the @types/node package.
-      // This is used for `node:` specifiers.
-      "node_types.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "/// <reference types=\"npm:@types/node\" />\n",
-        ),
-      },
-    ),
   ])
 });
 

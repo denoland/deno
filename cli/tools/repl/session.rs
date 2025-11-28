@@ -41,7 +41,6 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::analysis::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;

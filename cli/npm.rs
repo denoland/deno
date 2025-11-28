@@ -31,7 +31,6 @@ use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
-use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
