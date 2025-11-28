@@ -1,7 +1,4 @@
-# GN args for V8 build
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true'
-          # Explicitly set target architecture for Android
-          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}" v8_enable_i18n_support=false is_component_build=false'name: android-build
+name: android-build
 
 permissions:
   contents: read
@@ -24,7 +21,7 @@ jobs:
   build-android:
     name: 'build android ${{ matrix.arch }}'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       matrix:
         arch: [aarch64, x86_64]
@@ -78,26 +75,13 @@ jobs:
         env:
           # Build V8 from source since prebuilt binaries don't exist for Android
           V8_FROM_SOURCE: 1
-          # Set API level
-          ANDROID_NDK_API_LEVEL: '24'
           # Python for V8 build scripts
           PYTHON: python3
-          # Linkers
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android24-clang
-          CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: x86_64-linux-android24-clang
-          # Compilers for build scripts
-          CC_aarch64_linux_android: aarch64-linux-android24-clang
-          CXX_aarch64_linux_android: aarch64-linux-android24-clang++
-          AR_aarch64_linux_android: llvm-ar
-          CC_x86_64_linux_android: x86_64-linux-android24-clang
-          CXX_x86_64_linux_android: x86_64-linux-android24-clang++
-          AR_x86_64_linux_android: llvm-ar
-          # GN args for V8 build - disable Rust to avoid the missing file error
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true enable_rust=false v8_monolithic=true v8_enable_test_features=false'
-          # Set target CPU for GN
-          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}" is_official_build=false'
+          # GN args - let rusty_v8's build.rs handle most Android setup
+          EXTRA_GN_ARGS: 'use_jumbo_build=true'
         run: |
-          cargo build --target ${{ matrix.arch }}-linux-android --locked
+          # rusty_v8 will automatically download NDK r26c and clone required repos
+          cargo build --target ${{ matrix.arch }}-linux-android --locked -vv
       
       - name: Verify binary exists
         run: |
