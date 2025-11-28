@@ -1,4 +1,7 @@
-name: android-build
+# GN args for V8 build
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true'
+          # Explicitly set target architecture for Android
+          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}" v8_enable_i18n_support=false is_component_build=false'name: android-build
 
 permissions:
   contents: read
@@ -62,11 +65,6 @@ jobs:
         with:
           deno-version: v2.x
       
-      - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-      
       - name: Add Android targets
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
@@ -74,18 +72,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build python3
-      
-      - name: Set up Android build environment
-        run: |
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-          
-          # Add NDK toolchain to PATH
-          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-          
-          # Set up CMake toolchain
-          echo "CMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+          sudo apt-get install -y python3 curl unzip git
       
       - name: Build for Android
         env:
@@ -106,9 +93,9 @@ jobs:
           CXX_x86_64_linux_android: x86_64-linux-android24-clang++
           AR_x86_64_linux_android: llvm-ar
           # GN args for V8 build - disable Rust to avoid the missing file error
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true enable_rust=false'
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24 use_jumbo_build=true enable_rust=false v8_monolithic=true v8_enable_test_features=false'
           # Set target CPU for GN
-          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}"'
+          GN_ARGS: 'target_os="android" target_cpu="${{ matrix.arch == ''aarch64'' && ''arm64'' || ''x64'' }}" is_official_build=false'
         run: |
           cargo build --target ${{ matrix.arch }}-linux-android --locked
       
