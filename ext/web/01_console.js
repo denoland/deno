@@ -3172,6 +3172,7 @@ class Console {
     this.#printFunc(
       inspectArgs([obj], {
         ...getConsoleInspectOptions(noColorStdout()),
+        indentLevel: this.indentLevel,
         ...options,
       }) + "\n",
       1,
