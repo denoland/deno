@@ -2239,6 +2239,17 @@ declare namespace Deno {
      * ```
      */
     close(): void;
+    /**
+     * Check if the file is closed.
+     *
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * console.log(file.isClosed()); // false
+     * file.close();
+     * console.log(file.isClosed()); // true
+     * ```
+     */
+    isClosed(): boolean;
 
     [Symbol.dispose](): void;
   }
