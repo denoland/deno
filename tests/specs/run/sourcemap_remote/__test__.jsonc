@@ -1,5 +1,5 @@
 {
-  "args": "run external.js",
+  "args": "run --allow-import external.js",
   "output": "external.js.out",
   "exitCode": 1
 }

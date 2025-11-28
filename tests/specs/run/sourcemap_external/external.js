@@ -1,4 +1,4 @@
-// Original TypeScript file
+// Generated JavaScript file
 function throwError() {
   throw new Error("Test error with external sourcemap");
 }

@@ -1,8 +1,8 @@
-// Original TypeScript file
+// Generated JavaScript file
 function throwError() {
   throw new Error("Test error with external sourcemap");
 }
 
 throwError();
 
-//# sourceMappingURL=https://localhost:5545/run/sourcemap_external.js.map
+//# sourceMappingURL=http://localhost:4545/run/sourcemap_external.js.map

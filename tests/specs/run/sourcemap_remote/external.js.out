@@ -1,4 +1,4 @@
-Download https://localhost:5545/run/sourcemap_external.js.map
+Download http://localhost:4545/run/sourcemap_external.js.map
 error: Uncaught (in promise) Error: Test error with external sourcemap
   throw new Error("Test error with external sourcemap");
   ^
