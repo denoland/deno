@@ -149,13 +149,14 @@ jobs:
         env:
           V8_FROM_SOURCE: 1
           PYTHON: python3
-          # Don't use jumbo build if patches didn't apply
-          EXTRA_GN_ARGS: 'android_ndk_api_level=24'
+          # Critical GN args for Android
+          EXTRA_GN_ARGS: 'android_ndk_api_level=24 v8_monolithic=true'
         run: |
           cd /tmp/rusty_v8
           
-          # Build rusty_v8 for Android
-          cargo build --release --target ${{ matrix.arch }}-linux-android -vv
+          # Build rusty_v8 for Android without custom libcxx
+          # The --no-default-features removes use_custom_libcxx which causes header conflicts on Android
+          cargo build --release --target ${{ matrix.arch }}-linux-android --no-default-features -vv
           
           # Save the built library location
           echo "RUSTY_V8_ARCHIVE=/tmp/rusty_v8/target/${{ matrix.arch }}-linux-android/release/gn_out/obj/librusty_v8.a" >> $GITHUB_ENV
