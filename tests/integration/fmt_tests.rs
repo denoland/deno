@@ -544,6 +544,7 @@ fn fmt_check_fail_fast_quiet() {
     .run();
 
   output.assert_exit_code(1);
-  // With --quiet, should have minimal output
-  assert_eq!(output.combined_output(), "");
+  // With --quiet, errors are still shown but info messages are suppressed
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "Found 1 not formatted file");
 }
