@@ -7,19 +7,18 @@ use std::sync::Arc;
 use console_static_text::TextItem;
 use deno_config::deno_json::AllowScriptsConfig;
 use deno_config::deno_json::AllowScriptsValueConfig;
-use deno_config::deno_json::ConfigFile;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::jsr::JsrDepPackageReqParseError;
 use deno_semver::package::PackageKind;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 use jsonc_parser::json;
-use sys_traits::impls::RealSys;
 
 use crate::args::ApproveScriptsFlags;
 use crate::args::Flags;
@@ -54,14 +53,13 @@ pub async fn approve_scripts(
 
   let mut config_updater =
     ConfigUpdater::new(ConfigKind::DenoJson, deno_json_path.clone())?;
-  let allow_scripts_config =
-    ConfigFile::read(&RealSys, &deno_json_path)?.to_allow_scripts_config()?;
 
-  let (mut allow_list, deny_list) = match allow_scripts_config.allow {
+  let allow_scripts_config = deno_json.to_allow_scripts_config()?;
+
+  let (mut allow_list, mut deny_list) = match allow_scripts_config.allow {
     AllowScriptsValueConfig::All => {
       log::info!(
-        "Lifecycle scripts are already allowed for all npm packages in {}.",
-        deno_json_path.display()
+        "Lifecycle scripts are already allowed for all npm packages in the workspace.",
       );
       return Ok(());
     }
@@ -73,8 +71,11 @@ pub async fn approve_scripts(
   let deny_reqs: Vec<PackageReq> =
     deny_list.iter().map(|req| req.req.clone()).collect();
 
-  let additions = if !approve_flags.packages.is_empty() {
-    parse_user_packages(&approve_flags.packages, &mut existing_allowed)?
+  let (approvals, denials) = if !approve_flags.packages.is_empty() {
+    (
+      parse_user_packages(&approve_flags.packages, &mut existing_allowed)?,
+      Vec::new(),
+    )
   } else {
     let npm_resolver = factory.npm_resolver().await?;
     let candidates = find_script_candidates(
@@ -87,20 +88,27 @@ pub async fn approve_scripts(
       log::info!("No npm packages with lifecycle scripts need approval.");
       return Ok(());
     }
-    pick_candidates(candidates, &mut existing_allowed)?
+
+    let chosen = pick_candidates(&candidates, &mut existing_allowed)?;
+    (chosen.approved, chosen.denied)
   };
 
-  if additions.is_empty() {
+  if approvals.is_empty() && denials.is_empty() {
     log::info!("No new packages to approve.");
     return Ok(());
   }
 
-  for req in additions.iter() {
+  for req in &approvals {
     allow_list.push(JsrDepPackageReq::npm(req.clone()));
+  }
+  for req in &denials {
+    deny_list.push(JsrDepPackageReq::npm(req.clone()));
   }
 
   allow_list.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
   allow_list.dedup_by(|a, b| a.req == b.req && a.kind == b.kind);
+  deny_list.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+  deny_list.dedup_by(|a, b| a.req == b.req && a.kind == b.kind);
 
   let updated_allow_scripts = AllowScriptsConfig {
     allow: AllowScriptsValueConfig::Limited(allow_list),
@@ -111,8 +119,11 @@ pub async fn approve_scripts(
   config_updater.set_allow_scripts_value(allow_scripts_value);
   config_updater.commit()?;
 
-  for req in additions {
-    log::info!("Approved {}", colors::green(format!("npm:{}", req)));
+  for req in approvals {
+    log::info!("Approved {}", colors::green(format!("npm:{req}")));
+  }
+  for req in denials {
+    log::info!("Denied {}", colors::red(format!("npm:{req}")))
   }
 
   super::npm_install_after_modification(flags, None).await?;
@@ -197,12 +208,21 @@ fn find_script_candidates(
   Ok(candidates)
 }
 
+#[derive(Default, Debug)]
+struct ChosenCandidates {
+  approved: Vec<PackageReq>,
+  denied: Vec<PackageReq>,
+}
+
 fn pick_candidates(
-  candidates: Vec<ScriptCandidate>,
+  candidates: &[ScriptCandidate],
   existing_allowed: &mut HashSet<PackageReq>,
-) -> Result<Vec<PackageReq>, AnyError> {
+) -> Result<ChosenCandidates, AnyError> {
   if candidates.is_empty() {
-    return Ok(Vec::new());
+    return Ok(ChosenCandidates {
+      denied: candidates.iter().map(|c| c.req.clone()).collect(),
+      ..Default::default()
+    });
   }
 
   let selected = interactive_picker::select_items(
@@ -215,17 +235,30 @@ fn pick_candidates(
   )?;
 
   let Some(selected) = selected else {
-    return Ok(Vec::new());
+    return Ok(ChosenCandidates::default());
   };
 
-  let mut additions = Vec::with_capacity(selected.len());
+  let mut approvals = Vec::with_capacity(selected.len());
+  let mut denials = Vec::with_capacity(candidates.len() - selected.len());
+  for (idx, candidate) in candidates.iter().enumerate() {
+    if selected.contains(&idx) && existing_allowed.insert(candidate.req.clone())
+    {
+      approvals.push(candidate.req.clone());
+    } else {
+      denials.push(candidate.req.clone());
+    }
+  }
+
   for idx in selected {
     let candidate = &candidates[idx];
     if existing_allowed.insert(candidate.req.clone()) {
-      additions.push(candidate.req.clone());
+      approvals.push(candidate.req.clone());
     }
   }
-  Ok(additions)
+  Ok(ChosenCandidates {
+    approved: approvals,
+    denied: denials,
+  })
 }
 
 fn allow_scripts_to_value(
@@ -252,15 +285,28 @@ fn allow_scripts_to_value(
 }
 
 fn parse_npm_package_req(text: &str) -> Result<PackageReq, AnyError> {
-  let req = JsrDepPackageReq::from_str_loose(text)?;
-  if req.kind != PackageKind::Npm {
-    bail!("Only npm packages are supported: {}", text);
-  }
+  let req = match JsrDepPackageReq::from_str_loose(text) {
+    Ok(JsrDepPackageReq {
+      kind: PackageKind::Jsr,
+      ..
+    }) => {
+      bail!("Only npm packages are supported: {}", text);
+    }
+    Ok(
+      req @ JsrDepPackageReq {
+        kind: PackageKind::Npm,
+        ..
+      },
+    ) => req,
+    Err(JsrDepPackageReqParseError::NotExpectedScheme(_))
+      if !text.contains(':') =>
+    {
+      return parse_npm_package_req(&format!("npm:{text}"));
+    }
+    Err(e) => return Err(e.into()),
+  };
   if req.req.version_req.tag().is_some() {
-    bail!(
-      "Tags are not supported for lifecycle script approval: {}",
-      text
-    );
+    bail!("Tags are not supported in the allowScripts field: {}", text);
   }
   Ok(req.req)
 }
