@@ -61,16 +61,20 @@ jobs:
         run: |
           rustup target add ${{ matrix.arch }}-linux-android
       
+      # [NEW STEP] Install cargo-ndk to handle environment setup for C/C++ deps
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
       - name: Check compilation (without V8)
         run: |
-          # This checks if Deno's Rust code compiles for Android
-          # We exclude V8 crate since it requires extensive patches for Android
-          cargo check --target ${{ matrix.arch }}-linux-android --locked --workspace --exclude v8
+          # We use `cargo ndk` to wrap the check command. 
+          # It sets CC, CXX, and PATH so aws-lc-sys can find the NDK compiler.
+          cargo ndk -t ${{ matrix.arch }}-linux-android check --target ${{ matrix.arch }}-linux-android --locked --workspace --exclude v8
       
       - name: Report status
         if: success()
         run: |
-          echo "✅ Deno Rust code successfully compiles for Android ${{ matrix.arch }}"
+          echo "\u2705 Deno Rust code successfully compiles for Android ${{ matrix.arch }}"
           echo ""
           echo "Note: Full Android build with V8 requires patches from Termux."
           echo "See: https://github.com/termux/termux-packages/tree/master/packages/deno"
