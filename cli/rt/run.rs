@@ -583,6 +583,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
     data.source_map
   }
 
+  fn load_external_source_map(
+    &self,
+    source_map_url: &str,
+  ) -> Option<Cow<'_, [u8]>> {
+    let url = Url::parse(source_map_url).ok()?;
+    let data = self.shared.modules.read(&url).ok()??;
+    Some(Cow::Owned(data.data.to_vec()))
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
