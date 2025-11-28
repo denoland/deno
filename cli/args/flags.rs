@@ -786,6 +786,7 @@ pub struct Flags {
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<Vec<String>>,
+  pub allow_env_file: Option<Vec<String>>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -2216,6 +2217,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
       .arg(no_clear_screen_arg())
       .arg(script_arg().last(true))
       .arg(env_file_arg())
+      .arg(allow_env_file_arg())
       .arg(executable_ext_arg())
   })
 }
@@ -2391,6 +2393,7 @@ Future runs of this module will trigger no downloads or compilation unless --rel
       .arg(allow_import_arg())
       .arg(deny_import_arg())
       .arg(env_file_arg())
+      .arg(allow_env_file_arg())
   })
 }
 
@@ -2570,6 +2573,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
+      .arg(allow_env_file_arg())
       .arg(
         script_arg()
           .num_args(0..=1)
@@ -2883,6 +2887,7 @@ This command has implicit access to all permissions.
           .required_unless_present("help"),
       )
       .arg(env_file_arg())
+      .arg(allow_env_file_arg())
   })
 }
 
@@ -3233,6 +3238,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .help("Install dependents of the specified entrypoint(s)"),
         )
         .arg(env_file_arg())
+      .arg(allow_env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
     })
@@ -3628,6 +3634,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
     })
     .arg(env_file_arg())
+    .arg(allow_env_file_arg())
     .arg(
       Arg::new("args")
         .num_args(0..)
@@ -3651,6 +3658,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
       script_arg().trailing_var_arg(true)
     })
     .arg(env_file_arg())
+    .arg(allow_env_file_arg())
     .arg(no_code_cache_arg())
     .arg(coverage_arg())
     .arg(tunnel_arg())
@@ -3729,6 +3737,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
+    .arg(allow_env_file_arg())
     .arg(no_code_cache_arg())
     .arg(tunnel_arg())
 }
@@ -3992,6 +4001,7 @@ or <c>**/__tests__/**</>:
           .action(ArgAction::SetTrue)
       )
       .arg(env_file_arg())
+      .arg(allow_env_file_arg())
       .arg(executable_ext_arg())
     )
 }
@@ -4755,6 +4765,21 @@ fn env_file_arg() -> Arg {
     .action(ArgAction::Append)
 }
 
+fn allow_env_file_arg() -> Arg {
+  Arg::new("allow-env-file")
+    .long("allow-env-file")
+    .value_name("FILE")
+    .help(cstr!(
+      "Specify an environment file to load and allow reading its variables
+  <p(245)>This flag behaves like --env-file, but also grants read permissions to the variables defined in the file.</>"
+    ))
+    .value_hint(ValueHint::FilePath)
+    .default_missing_value(".env")
+    .require_equals(true)
+    .num_args(0..=1)
+    .action(ArgAction::Append)
+}
+
 fn reload_arg() -> Arg {
   Arg::new("reload")
     .short('r')
@@ -5502,6 +5527,7 @@ fn cache_parse(
   allow_scripts_arg_parse(flags, matches)?;
   allow_and_deny_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
+  allow_env_file_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
   Ok(())
@@ -6181,6 +6207,7 @@ fn repl_parse(
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  allow_env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
 
   let eval_files = matches
@@ -6875,6 +6902,7 @@ fn runtime_args_parse(
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  allow_env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
   eszip_arg_parse(flags, matches);
   Ok(())
@@ -6899,6 +6927,12 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.env_file = matches
     .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
+}
+
+fn allow_env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.allow_env_file = matches
+    .get_many::<String>("allow-env-file")
     .map(|values| values.cloned().collect());
 }
 

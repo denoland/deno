@@ -69,6 +69,7 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 use crate::util::watch_env_tracker::WatchEnvTracker;
+use crate::util::watch_env_tracker::get_env_vars_from_env_file;
 use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
@@ -714,6 +715,30 @@ async fn resolve_flags_and_init(
     .as_ref()
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  let allow_env_file_paths: Option<Vec<std::path::PathBuf>> = flags
+    .allow_env_file
+    .as_ref()
+    .map(|files| files.iter().map(PathBuf::from).collect());
+
+  if let Some(paths) = &allow_env_file_paths {
+    let mut allowed_vars = std::collections::HashSet::new();
+    for path in paths {
+      if let Some(vars) = get_env_vars_from_env_file(path, flags.log_level) {
+        for (key, _) in vars {
+          allowed_vars.insert(key);
+        }
+      }
+    }
+    if !flags.permissions.allow_all {
+      if let Some(ref mut env_perms) = flags.permissions.allow_env {
+        env_perms.extend(allowed_vars);
+      } else {
+        flags.permissions.allow_env = Some(allowed_vars.into_iter().collect());
+      }
+    }
+    load_env_variables_from_env_files(Some(paths), flags.log_level);
+  }
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
     flags.tunnel = true;
