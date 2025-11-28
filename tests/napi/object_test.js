@@ -36,3 +36,30 @@ Deno.test("napi object", function () {
     "Cannot assign to read only property 'method' of object '#<Object>'",
   );
 });
+
+Deno.test("napi create_object_with_properties", function () {
+  const objectWithProperties = object.test_create_object_with_properties();
+  assertEquals(typeof objectWithProperties, "object");
+  assertEquals(objectWithProperties.name, "Foo");
+  assertEquals(objectWithProperties.age, 42);
+  assertEquals(objectWithProperties.active, true);
+});
+
+Deno.test("napi create_object_with_properties_empty", function () {
+  const emptyObject = object.test_create_object_with_properties_empty();
+  assertEquals(typeof emptyObject, "object");
+  assertEquals(Object.keys(emptyObject).length, 0);
+});
+
+Deno.test("napi create_object_with_custom_prototype", function () {
+  const objectWithCustomPrototype = object
+    .test_create_object_with_custom_prototype();
+  assertEquals(typeof objectWithCustomPrototype, "object");
+  assertEquals(Object.getOwnPropertyNames(objectWithCustomPrototype).length, 1);
+  assertEquals(
+    Object.getOwnPropertyNames(objectWithCustomPrototype)[0],
+    "value",
+  );
+  assertEquals(objectWithCustomPrototype.value, 42);
+  assertEquals(typeof objectWithCustomPrototype.test, "function");
+});
