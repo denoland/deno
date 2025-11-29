@@ -130,14 +130,12 @@ export function readFile(
   const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
 
   let p: Promise<Uint8Array>;
-  if (path instanceof FileHandle) {
-    const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
-    p = readAll(fsFile, options);
-  } else if (typeof path === "number") {
-    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
-    p = readAll(fsFile, options);
-  } else {
+  if (typeof path === "string") {
     p = readFileAsync(path, options);
+  } else {
+    const rid = path instanceof FileHandle ? path.fd : path;
+    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    p = fsFileReadAll(fsFile, options);
   }
 
   if (cb) {
@@ -161,7 +159,6 @@ function concatBuffers(buffers: Uint8Array[]): Uint8Array {
   }
 
   const contents = new Uint8Array(totalLen);
-
   let n = 0;
   for (let i = 0; i < buffers.length; ++i) {
     const buf = buffers[i];
@@ -172,7 +169,7 @@ function concatBuffers(buffers: Uint8Array[]): Uint8Array {
   return contents;
 }
 
-async function readAll(fsFile: FsFile, options?: FileOptions) {
+async function fsFileReadAll(fsFile: FsFile, options?: FileOptions) {
   const signal = options?.signal;
   const encoding = options?.encoding;
   checkAborted(signal);
