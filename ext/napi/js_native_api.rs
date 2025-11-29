@@ -998,6 +998,66 @@ fn napi_create_object(
 }
 
 #[napi_sym]
+fn napi_create_object_with_properties<'s>(
+  env_ptr: *mut Env,
+  prototype_or_null: napi_value<'s>,
+  property_names: *const napi_value<'s>,
+  property_values: *const napi_value<'s>,
+  property_count: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let prototype = if let Some(proto) = *prototype_or_null {
+      proto
+    } else {
+      v8::null(scope).into()
+    };
+
+    let names = std::slice::from_raw_parts(property_names, property_count);
+    let values = std::slice::from_raw_parts(property_values, property_count);
+
+    for name in names {
+      if let Some(name_val) = **name {
+        if !name_val.is_name() {
+          return napi_name_expected;
+        }
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      if let Some(name) = *names[i] {
+        v8_names.push(name.try_cast::<v8::Name>().unwrap());
+      }
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      }
+    }
+
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
