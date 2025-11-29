@@ -170,6 +170,173 @@ impl Default for DatabaseSyncOptions {
   }
 }
 
+#[derive(Debug)]
+struct AggregateFunctionOption<'a> {
+  deterministic: bool,
+  direct_only: bool,
+  use_big_int_arguments: bool,
+  varargs: bool,
+  start: v8::Local<'a, v8::Value>,
+  step: v8::Local<'a, v8::Function>,
+  result: Option<v8::Local<'a, v8::Function>>,
+  inverse: Option<v8::Local<'a, v8::Function>>,
+}
+
+impl<'a> AggregateFunctionOption<'a> {
+  fn from_value(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, validators::Error> {
+    use validators::Error;
+
+    if !value.is_object() {
+      return Err(Error::InvalidArgType(
+        "The \"options\" argument must be an object.",
+      ));
+    }
+
+    v8_static_strings! {
+      DETERMINISTIC_STRING = "deterministic",
+      DIRECT_ONLY_STRING = "directOnly",
+      USE_BIG_INT_ARGUMENTS_STRING = "useBigIntArguments",
+      VARARGS_STRING = "varargs",
+      START_STRING = "start",
+      STEP_STRING = "step",
+      RESULT_STRING = "result",
+      INVERSE_STRING = "inverse",
+    }
+
+    let start_key = START_STRING.v8_string(scope).unwrap();
+    let start_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, start_key.into())
+      .unwrap();
+    if start_value.is_undefined() {
+      return Err(Error::InvalidArgType(
+        "The \"options.start\" argument must be a function or a primitive value.",
+      ));
+    }
+
+    let step_key = STEP_STRING.v8_string(scope).unwrap();
+    let step_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, step_key.into())
+      .unwrap();
+    let step_function = v8::Local::<v8::Function>::try_from(step_value)
+      .map_err(|_| {
+        Error::InvalidArgType(
+          "The \"options.step\" argument must be a function.",
+        )
+      })?;
+
+    let result_key = RESULT_STRING.v8_string(scope).unwrap();
+    let result_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, result_key.into())
+      .unwrap();
+    let result_function = if result_value.is_undefined() {
+      None
+    } else {
+      let func =
+        v8::Local::<v8::Function>::try_from(result_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.result\" argument must be a function.",
+          )
+        })?;
+      Some(func)
+    };
+
+    let mut deterministic = false;
+    let mut use_big_int_arguments = false;
+    let mut varargs = false;
+    let mut direct_only = false;
+
+    let deterministic_key = DETERMINISTIC_STRING.v8_string(scope).unwrap();
+    let deterministic_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, deterministic_key.into())
+      .unwrap();
+    if !deterministic_value.is_undefined() {
+      if !deterministic_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.deterministic\" argument must be a boolean.",
+        ));
+      }
+      deterministic = deterministic_value.boolean_value(scope);
+    }
+
+    let use_bigint_key = USE_BIG_INT_ARGUMENTS_STRING.v8_string(scope).unwrap();
+    let bigint_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, use_bigint_key.into())
+      .unwrap();
+    if !bigint_value.is_undefined() {
+      if !bigint_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.useBigIntArguments\" argument must be a boolean.",
+        ));
+      }
+      use_big_int_arguments = bigint_value.boolean_value(scope);
+    }
+
+    let varargs_key = VARARGS_STRING.v8_string(scope).unwrap();
+    let varargs_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, varargs_key.into())
+      .unwrap();
+    if !varargs_value.is_undefined() {
+      if !varargs_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.varargs\" argument must be a boolean.",
+        ));
+      }
+      varargs = varargs_value.boolean_value(scope);
+    }
+
+    let direct_only_key = DIRECT_ONLY_STRING.v8_string(scope).unwrap();
+    let direct_only_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, direct_only_key.into())
+      .unwrap();
+    if !direct_only_value.is_undefined() {
+      if !direct_only_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.directOnly\" argument must be a boolean.",
+        ));
+      }
+      direct_only = direct_only_value.boolean_value(scope);
+    }
+
+    let inverse_key = INVERSE_STRING.v8_string(scope).unwrap();
+    let inverse_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, inverse_key.into())
+      .unwrap();
+    let inverse_function = if inverse_value.is_undefined() {
+      None
+    } else {
+      let func =
+        v8::Local::<v8::Function>::try_from(inverse_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.inverse\" argument must be a function.",
+          )
+        })?;
+      Some(func)
+    };
+
+    Ok(AggregateFunctionOption {
+      deterministic,
+      direct_only,
+      use_big_int_arguments,
+      varargs,
+      start: start_value,
+      step: step_function,
+      result: result_function,
+      inverse: inverse_function,
+    })
+  }
+}
+
 struct ApplyChangesetOptions<'a> {
   filter: Option<v8::Local<'a, v8::Value>>,
   on_conflict: Option<v8::Local<'a, v8::Value>>,
@@ -1046,6 +1213,53 @@ impl DatabaseSync {
       freed: Cell::new(false),
       db: Rc::downgrade(&self.conn),
     })
+  }
+
+  #[fast]
+  #[validate(is_open)]
+  fn aggregate<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    #[validate(validators::name_str)]
+    #[string]
+    _name: &str,
+    options: v8::Local<'a, v8::Value>,
+  ) -> Result<(), SqliteError> {
+    use std::cmp;
+
+    let options = AggregateFunctionOption::from_value(scope, options)?;
+
+    let mut argc = -1;
+    if !options.varargs {
+      v8_static_strings! {
+        LENGTH = "length",
+      }
+      let length_key = LENGTH.v8_string(scope).unwrap();
+      let step_fn_length = options
+        .step
+        .get(scope, length_key.into())
+        .unwrap()
+        .int32_value(scope)
+        .unwrap();
+
+      // Subtract 1 because the first argument is the aggregate value.
+      argc = step_fn_length - 1;
+
+      let inverse_fn_length = if let Some(inverse_fn) = &options.inverse {
+        inverse_fn
+          .get(scope, length_key.into())
+          .unwrap()
+          .int32_value(scope)
+          .unwrap()
+      } else {
+        0
+      };
+
+      argc = cmp::max(argc, cmp::max(inverse_fn_length - 1, 0));
+    }
+    argc;
+
+    Ok(())
   }
 }
 
