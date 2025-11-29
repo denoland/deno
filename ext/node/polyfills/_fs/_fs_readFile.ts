@@ -98,54 +98,6 @@ async function readFileAsync(
   }
 }
 
-export function readFile(
-  path: Path,
-  options: TextOptionsArgument,
-  callback: TextCallback,
-): void;
-export function readFile(
-  path: Path,
-  options: BinaryOptionsArgument,
-  callback: BinaryCallback,
-): void;
-export function readFile(
-  path: Path,
-  options: null | undefined | FileOptionsArgument,
-  callback: BinaryCallback,
-): void;
-export function readFile(path: string | URL, callback: BinaryCallback): void;
-export function readFile(
-  path: Path,
-  optOrCallback?: FileOptionsArgument | Callback | null | undefined,
-  callback?: Callback,
-) {
-  path = path instanceof URL ? pathFromURL(path) : path;
-  let cb: Callback | undefined;
-  if (typeof optOrCallback === "function") {
-    cb = optOrCallback;
-  } else {
-    cb = callback;
-  }
-
-  const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
-
-  let p: Promise<Uint8Array>;
-  if (typeof path === "string") {
-    p = readFileAsync(path, options);
-  } else {
-    const rid = path instanceof FileHandle ? path.fd : path;
-    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
-    p = fsFileReadAll(fsFile, options);
-  }
-
-  if (cb) {
-    p.then((data: Uint8Array) => {
-      const textOrBuffer = maybeDecode(data, options?.encoding);
-      (cb as BinaryCallback)(null, textOrBuffer);
-    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
-  }
-}
-
 function checkAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) {
     throw new AbortError(undefined, { cause: signal.reason });
@@ -204,6 +156,54 @@ async function fsFileReadAll(fsFile: FsFile, options?: FileOptions) {
   }
 
   return concatBuffers(buffers);
+}
+
+export function readFile(
+  path: Path,
+  options: TextOptionsArgument,
+  callback: TextCallback,
+): void;
+export function readFile(
+  path: Path,
+  options: BinaryOptionsArgument,
+  callback: BinaryCallback,
+): void;
+export function readFile(
+  path: Path,
+  options: null | undefined | FileOptionsArgument,
+  callback: BinaryCallback,
+): void;
+export function readFile(path: string | URL, callback: BinaryCallback): void;
+export function readFile(
+  path: Path,
+  optOrCallback?: FileOptionsArgument | Callback | null | undefined,
+  callback?: Callback,
+) {
+  path = path instanceof URL ? pathFromURL(path) : path;
+  let cb: Callback | undefined;
+  if (typeof optOrCallback === "function") {
+    cb = optOrCallback;
+  } else {
+    cb = callback;
+  }
+
+  const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
+
+  let p: Promise<Uint8Array>;
+  if (typeof path === "string") {
+    p = readFileAsync(path, options);
+  } else {
+    const rid = path instanceof FileHandle ? path.fd : path;
+    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    p = fsFileReadAll(fsFile, options);
+  }
+
+  if (cb) {
+    p.then((data: Uint8Array) => {
+      const textOrBuffer = maybeDecode(data, options?.encoding);
+      (cb as BinaryCallback)(null, textOrBuffer);
+    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
+  }
 }
 
 export function readFilePromise(
