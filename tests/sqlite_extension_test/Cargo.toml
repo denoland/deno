@@ -1,7 +1,7 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
-name = "test_sqlite_extension"
+name = "sqlite_extension_test"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -9,11 +9,9 @@ license.workspace = true
 publish = false
 repository.workspace = true
 
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-rusqlite.workspace = true
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"
 
 [dev-dependencies]
 test_util.workspace = true
