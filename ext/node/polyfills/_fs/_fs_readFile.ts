@@ -132,10 +132,10 @@ export function readFile(
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
     const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
-    p = fsFileRead(fsFile, options);
+    p = readAll(fsFile, options);
   } else if (typeof path === "number") {
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
-    p = fsFileRead(fsFile, options);
+    p = readAll(fsFile, options);
   } else {
     p = readFileAsync(path, options);
   }
@@ -172,7 +172,7 @@ function concatBuffers(buffers: Uint8Array[]): Uint8Array {
   return contents;
 }
 
-async function fsFileRead(fsFile: FsFile, options?: FileOptions) {
+async function readAll(fsFile: FsFile, options?: FileOptions) {
   const signal = options?.signal;
   const encoding = options?.encoding;
   checkAborted(signal);
@@ -199,13 +199,11 @@ async function fsFileRead(fsFile: FsFile, options?: FileOptions) {
 
   while (true) {
     checkAborted(signal);
-
     const read = await fsFile.read(buffer);
-    if (typeof read == "number") {
-      ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, read));
-    } else {
+    if (typeof read !== "number") {
       break;
     }
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, read));
   }
 
   return concatBuffers(buffers);
