@@ -1604,6 +1604,7 @@ dependencies = [
  "deno_lib",
  "deno_lint",
  "deno_lockfile",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
  "deno_npm_cache",
