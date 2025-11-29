@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run --config=tests/config/deno.json
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --config=tests/config/deno.json
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { join, ROOT_PATH } from "./util.js";
