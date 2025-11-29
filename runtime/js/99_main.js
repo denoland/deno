@@ -348,12 +348,6 @@ core.registerErrorBuilder(
   },
 );
 core.registerErrorBuilder(
-  "DOMExceptionQuotaExceededError",
-  function DOMExceptionQuotaExceededError(msg) {
-    return new DOMException(msg, "QuotaExceededError");
-  },
-);
-core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
     return new DOMException(msg, "NotSupported");
