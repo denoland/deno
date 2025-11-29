@@ -32,7 +32,6 @@ data-encoding.workspace = true
 deno_core.workspace = true
 deno_crypto_provider.workspace = true
 deno_error.workspace = true
-deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
@@ -41,6 +40,7 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
 deno_tls.workspace = true
+deno_web.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
