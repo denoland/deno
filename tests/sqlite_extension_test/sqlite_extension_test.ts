@@ -1,4 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
+
+// NOTE: This test requires building the extension separately (it is excluded
+// from the workspace due to incompatible rusqlite feature requirements):
+//   cargo build --manifest-path tests/sqlite_extension/Cargo.toml
+
 import { DatabaseSync } from "node:sqlite";
 import { assertEquals, assertThrows } from "@std/assert";
 import * as path from "node:path";
