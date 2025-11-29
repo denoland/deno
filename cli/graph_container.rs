@@ -135,6 +135,13 @@ impl MainModuleGraphContainer {
       include: Some(include_patterns),
       exclude: excludes,
     };
+    let jsr_roots: std::collections::HashSet<std::path::PathBuf> = self
+      .cli_options
+      .workspace()
+      .jsr_packages()
+      .map(|p| p.member_dir.dir_path())
+      .collect();
+
     collect_specifiers(
       crate::util::fs::CollectSpecifiersOptions {
         file_patterns,
@@ -144,7 +151,15 @@ impl MainModuleGraphContainer {
           .map(ToOwned::to_owned),
         include_ignored_specified: options.include_ignored_specified,
       },
-      |e| is_script_ext(e.path),
+      move |e| {
+        is_script_ext(e.path)
+          || (e.path.file_name() == Some(std::ffi::OsStr::new("README.md"))
+            && e
+              .path
+              .parent()
+              .map(|p| jsr_roots.contains(p))
+              .unwrap_or(false))
+      },
     )
   }
 }
