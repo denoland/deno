@@ -30,17 +30,20 @@ const extensionPath = (() => {
   return path.join(targetDir, `${libPrefix}test_sqlite_extension.${libSuffix}`);
 })();
 
+const extensionExists = (() => {
+  try {
+    Deno.statSync(extensionPath);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 Deno.test({
   name: "[node/sqlite] DatabaseSync loadExtension",
+  ignore: !extensionExists,
   permissions: { read: true, write: true, ffi: true },
   fn() {
-    // skip the test if the extension is not found
-    try {
-      Deno.statSync(extensionPath);
-    } catch {
-      return;
-    }
-
     const db = new DatabaseSync(":memory:", {
       allowExtension: true,
       readOnly: false,
