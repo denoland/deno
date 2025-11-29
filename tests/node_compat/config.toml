@@ -135,6 +135,10 @@
 "parallel/test-buffer-zero-fill-cli.js" = {}
 "parallel/test-buffer-zero-fill-reset.js" = {}
 "parallel/test-buffer-zero-fill.js" = {}
+"parallel/test-child-process-advanced-serialization.js" = {}
+# TODO(nathanwhit): figure out why this is failing on windows
+"parallel/test-child-process-advanced-serialization-largebuffer.js" = { windows = false }
+"parallel/test-child-process-advanced-serialization-splitted-length-field.js" = {}
 "parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
 "parallel/test-child-process-default-options.js" = {}
 "parallel/test-child-process-detached.js" = {}
@@ -1196,7 +1200,15 @@
 "parallel/test-timers-clear-timeout-interval-equivalent.js" = {}
 "parallel/test-timers-clearImmediate-als.js" = {}
 "parallel/test-timers-clearImmediate.js" = {}
+# TODO(bartlomieju): need to rearrange code for this one
+# "parallel/test-timers-immediate-promisified.js" = {}
+# TODO(bartlomieju): doesn't work correctly because of `node:domain`
+# error handling
+# "parallel/test-timers-immediate-queue-throw.js" = {}
 "parallel/test-timers-immediate-queue.js" = {}
+"parallel/test-timers-immediate-unref-nested-once.js" = {}
+"parallel/test-timers-immediate-unref-simple.js" = {}
+"parallel/test-timers-immediate-unref.js" = {}
 "parallel/test-timers-immediate.js" = {}
 "parallel/test-timers-interval-throw.js" = {}
 "parallel/test-timers-non-integer-delay.js" = {}

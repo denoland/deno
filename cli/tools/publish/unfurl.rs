@@ -979,7 +979,7 @@ impl Visit for ImportMetaResolveCollector {
         self.specifiers.push((
           // remove quotes
           SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.clone(),
+          arg.value.to_atom_lossy().into_owned(),
         ));
       } else {
         self.diagnostic_ranges.push(first_arg.expr.range());

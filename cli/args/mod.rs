@@ -48,6 +48,7 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
@@ -586,18 +587,31 @@ impl CliOptions {
     )
   }
 
-  pub fn node_ipc_fd(&self) -> Option<i64> {
+  pub fn node_ipc_init(
+    &self,
+  ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variable.
-
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD")
-      };
-      node_channel_fd.parse::<i64>().ok()
+    let maybe_node_channel_serialization = if let Ok(serialization) =
+      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+    {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
     } else {
       None
+    };
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      // Remove so that child processes don't inherit this environment variables.
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var("NODE_CHANNEL_FD");
+        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+      }
+      let node_channel_fd = node_channel_fd.parse::<i64>()?;
+      Ok(Some((
+        node_channel_fd,
+        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
+      )))
+    } else {
+      Ok(None)
     }
   }
 
