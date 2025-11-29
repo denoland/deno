@@ -2997,20 +2997,6 @@ impl UnaryPermission<ReadDescriptor> {
     self.check_desc(Some(desc), true, api_name)
   }
 
-  #[inline]
-  pub fn check_partial(
-    &mut self,
-    desc: &ReadQueryDescriptor,
-    api_name: Option<&str>,
-  ) -> Result<(), PermissionDeniedError> {
-    audit_and_skip_check_if_is_permission_fully_granted!(
-      self,
-      ReadQueryDescriptor::flag_name(),
-      desc.display_name()
-    );
-    self.check_desc(Some(desc), false, api_name)
-  }
-
   pub fn check_all(
     &mut self,
     api_name: Option<&str>,
@@ -3389,6 +3375,7 @@ pub struct PermissionsOptions {
   pub deny_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<String>>,
   pub deny_read: Option<Vec<String>>,
+  pub ignore_read: Option<Vec<String>>,
   pub allow_run: Option<Vec<String>>,
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
@@ -3548,12 +3535,15 @@ impl Permissions {
     }
 
     Ok(Self {
-      read: Permissions::new_unary(
+      read: Permissions::new_unary_with_ignore(
         parse_maybe_vec(opts.allow_read.as_deref(), |item| {
           parser.parse_read_descriptor(item)
         })?,
         parse_maybe_vec(opts.deny_read.as_deref(), |item| {
           parser.parse_read_descriptor(item)
+        })?,
+        parse_maybe_vec(opts.ignore_read.as_deref(), |text| {
+          parser.parse_read_descriptor(text)
         })?,
         opts.prompt,
       ),
@@ -3708,6 +3698,37 @@ pub enum PermissionCheckError {
   #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(std::io::Error),
+}
+
+fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
+  #[cfg(target_arch = "wasm32")]
+  fn not_found() -> std::io::Error {
+    std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "No such file or directory (os error 2)",
+    )
+  }
+
+  #[cfg(all(not(windows), not(target_arch = "wasm32")))]
+  fn not_found() -> std::io::Error {
+    std::io::Error::from_raw_os_error(libc::ENOENT)
+  }
+
+  #[cfg(windows)]
+  fn not_found() -> std::io::Error {
+    std::io::Error::from_raw_os_error(
+      winapi::shared::winerror::ERROR_FILE_NOT_FOUND as i32,
+    )
+  }
+
+  if err.state == PermissionState::Ignored {
+    PermissionCheckError::Io(not_found())
+  } else {
+    PermissionCheckError::PermissionDenied(err)
+  }
 }
 
 impl PermissionCheckError {
@@ -3721,6 +3742,7 @@ impl PermissionCheckError {
         std::io::ErrorKind::Other
       }
       PermissionCheckError::PathResolve(e) => e.kind(),
+      PermissionCheckError::Io(e) => e.kind(),
     }
   }
 
@@ -3734,6 +3756,7 @@ impl PermissionCheckError {
         std::io::Error::new(self.kind(), format!("{}", self))
       }
       Self::PathResolve(e) => e.into_io_error(),
+      Self::Io(e) => e,
     }
   }
 }
@@ -3885,7 +3908,7 @@ impl PermissionsContainer {
                 .into_read(),
               Some("import()"),
             )
-            .map_err(PermissionCheckError::PermissionDenied),
+            .map_err(ignored_to_not_found),
           Err(_) => {
             Err(PermissionCheckError::InvalidFilePath(specifier.clone()))
           }
@@ -3976,7 +3999,7 @@ impl PermissionsContainer {
         let path = if should_check_read {
           let inner = &mut inner.read;
           let desc = path_descriptor.into_read();
-          inner.check(&desc, api_name)?;
+          inner.check(&desc, api_name).map_err(ignored_to_not_found)?;
           desc.0
         } else {
           path_descriptor
@@ -4011,8 +4034,12 @@ impl PermissionsContainer {
     &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    self.inner.lock().read.check_all(Some(api_name))?;
-    Ok(())
+    self
+      .inner
+      .lock()
+      .read
+      .check_all(Some(api_name))
+      .map_err(ignored_to_not_found)
   }
 
   #[inline(always)]
@@ -6572,26 +6599,108 @@ mod tests {
   }
 
   #[test]
+  fn test_read_ignore() {
+    set_prompter(Box::new(TestPrompter));
+    let _prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let parser = TestPermissionDescriptorParser;
+    {
+      let mut perms = Permissions::none_without_prompt();
+      perms.read = UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_unary_with_ignore(
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("allowed"),
+          )])),
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("denied"),
+          )])),
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("ignored"),
+          )])),
+          false,
+        )
+      };
+      let allowed_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/allowed")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&allowed_query)),
+        PermissionState::Granted
+      );
+      let ignored_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/ignored")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&ignored_query)),
+        PermissionState::Ignored
+      );
+      let denied_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/denied")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&denied_query)),
+        PermissionState::Denied
+      );
+    }
+    {
+      let mut perms = Permissions::none_without_prompt();
+      perms.read = UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_unary_with_ignore(
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("prefix/allowed"),
+          )])),
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("prefix"),
+          )])),
+          Some(Vec::from([ReadDescriptor(
+            parser.join_path_with_root("prefix/ignored"),
+          )])),
+          false,
+        )
+      };
+      let denied_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/prefix/test")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&denied_query)),
+        PermissionState::Denied
+      );
+      let ignored_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/prefix/ignored/test")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&ignored_query)),
+        PermissionState::Ignored
+      );
+      let allowed_query = parser
+        .parse_path_query(Cow::Borrowed(Path::new("/prefix/allowed/test")))
+        .unwrap()
+        .into_read();
+      assert_eq!(
+        perms.read.query(Some(&allowed_query)),
+        PermissionState::Granted
+      );
+    }
+  }
+
+  #[test]
   fn test_check_partial_denied() {
     let parser = TestPermissionDescriptorParser;
     let mut perms = Permissions::from_options(
       &parser,
       &PermissionsOptions {
-        allow_read: Some(vec![]),
-        deny_read: Some(svec!["/foo/bar"]),
         allow_write: Some(vec![]),
         deny_write: Some(svec!["/foo/bar"]),
         ..Default::default()
       },
     )
     .unwrap();
-
-    let read_query = parser
-      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
-      .unwrap()
-      .into_read();
-    perms.read.check_partial(&read_query, None).unwrap();
-    assert!(perms.read.check(&read_query, None).is_err());
 
     let write_query = parser
       .parse_path_query(Cow::Borrowed(Path::new("/foo")))
