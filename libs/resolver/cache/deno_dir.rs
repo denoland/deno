@@ -66,7 +66,7 @@ impl<TSys: DiskCacheSys> DenoDir<TSys> {
     #[cfg(not(target_arch = "wasm32"))]
     assert!(root.is_absolute());
 
-    let gen_path = root.join("gen");
+    let gen_path = root.join("gen_v2");
     Self {
       root,
       gen_cache: DiskCache::new(sys, gen_path),
