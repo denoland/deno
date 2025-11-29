@@ -81,7 +81,6 @@ const nameToCodeMapping = ObjectCreate(null, {
   NetworkError: { value: NETWORK_ERR },
   AbortError: { value: ABORT_ERR },
   URLMismatchError: { value: URL_MISMATCH_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
   TimeoutError: { value: TIMEOUT_ERR },
   InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
   DataCloneError: { value: DATA_CLONE_ERR },
@@ -194,4 +193,42 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export { DOMException, DOMExceptionPrototype };
+// Defined in WebIDL 4.3.
+// https://webidl.spec.whatwg.org/#quotaexceedederror
+class QuotaExceededError extends DOMException {
+  #quota = null;
+  #requested = null;
+
+  constructor(message = "", options = { __proto__: null }) {
+    message = webidl.converters.DOMString(
+      message,
+      "Failed to construct 'QuotaExceededError'",
+      "Argument 1",
+    );
+    super(message, "QuotaExceededError");
+
+    if (options !== null && options !== undefined) {
+      if (ObjectHasOwn(options, "quota")) {
+        this.#quota = options.quota ?? null;
+      }
+      if (ObjectHasOwn(options, "requested")) {
+        this.#requested = options.requested ?? null;
+      }
+    }
+  }
+
+  get quota() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this.#quota;
+  }
+
+  get requested() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this.#requested;
+  }
+}
+
+webidl.configureInterface(QuotaExceededError);
+const QuotaExceededErrorPrototype = QuotaExceededError.prototype;
+
+export { DOMException, DOMExceptionPrototype, QuotaExceededError };
