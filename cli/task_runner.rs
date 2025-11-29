@@ -245,7 +245,9 @@ impl ShellCommand for NpmCommand {
       );
       return ExecutableCommand::new(
         "deno".to_string(),
-        std::env::current_exe().unwrap(),
+        std::env::current_exe()
+          .and_then(|p| p.canonicalize())
+          .unwrap(),
       )
       .execute(ShellCommandContext {
         args,
@@ -274,7 +276,9 @@ impl Default for DenoCommand {
   fn default() -> Self {
     Self(ExecutableCommand::new(
       "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
     ))
   }
 }
@@ -323,12 +327,17 @@ impl ShellCommand for NodeCommand {
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
     );
-    ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
-      .execute(ShellCommandContext {
-        args,
-        state,
-        ..context
-      })
+    ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
+    )
+    .execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    })
   }
 }
 
@@ -418,7 +427,9 @@ impl ShellCommand for NodeModulesFileRunCommand {
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
     );
     // set this environment variable so that the launched process knows the npm command name
     context.state.apply_env_var(
@@ -457,8 +468,10 @@ pub fn resolve_npm_commands_from_bin_dir(
     .map(|(command_name, path)| {
       (
         command_name.clone(),
-        Rc::new(NodeModulesFileRunCommand { command_name, path })
-          as Rc<dyn ShellCommand>,
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
       )
     })
     .collect()
@@ -476,8 +489,10 @@ fn resolve_managed_npm_commands(
     result.extend(bins.into_iter().map(|(command_name, path)| {
       (
         command_name.clone(),
-        Rc::new(NodeModulesFileRunCommand { command_name, path })
-          as Rc<dyn ShellCommand>,
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
       )
     }));
   }
