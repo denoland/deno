@@ -9,7 +9,7 @@ const extensionPath = (() => {
   const isLinux = Deno.build.os === "linux";
 
   const currentDir = new URL(".", import.meta.url).pathname;
-  const denoDir = path.resolve(currentDir, "..");
+  const denoDir = path.resolve(currentDir, "../..");
 
   let libPrefix = "";
   let libSuffix = "";
