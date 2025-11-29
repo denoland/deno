@@ -23,10 +23,15 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 
+pub struct CacheTopLevelDepsOptions {
+  pub lockfile_only: bool,
+}
+
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let _clear_guard = factory
     .text_only_progress_bar()
@@ -214,7 +219,13 @@ pub async fn cache_top_level_deps(
       graph_builder.graph_roots_valid(graph, &roots, true, true);
   }
 
-  npm_installer.cache_packages(PackageCaching::All).await?;
+  if options.lockfile_only {
+    // do a resolution install if the npm snapshot is in a
+    // pending state due to a config file change
+    npm_installer.install_resolution_if_pending().await?;
+  } else {
+    npm_installer.cache_packages(PackageCaching::All).await?;
+  }
 
   maybe_graph_error?;
 

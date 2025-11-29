@@ -15,6 +15,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
+use super::CacheTopLevelDepsOptions;
 use super::deps::Dep;
 use super::deps::DepId;
 use super::deps::DepKind;
@@ -252,8 +253,17 @@ pub async fn outdated(
     crate::args::OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only,
     } => {
-      update(deps, latest, &filter_set, interactive, flags).await?;
+      update(
+        deps,
+        latest,
+        &filter_set,
+        interactive,
+        flags,
+        CacheTopLevelDepsOptions { lockfile_only },
+      )
+      .await?;
     }
     crate::args::OutdatedKind::PrintOutdated { compatible } => {
       print_outdated(&mut deps, compatible)?;
@@ -353,6 +363,7 @@ async fn update(
   filter_set: &filter::FilterSet,
   interactive: bool,
   flags: Arc<Flags>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let mut to_update = Vec::new();
 
@@ -425,6 +436,7 @@ async fn update(
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
+      cache_options,
     )
     .await?;
 

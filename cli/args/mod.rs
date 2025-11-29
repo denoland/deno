@@ -1398,7 +1398,12 @@ impl CliOptions {
     if matches!(
       self.sub_command(),
       DenoSubcommand::Install(InstallFlags::Local(
-        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+        InstallFlagsLocal::TopLevel(_)
+          | InstallFlagsLocal::Add(_)
+          | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            lockfile_only: true,
+            ..
+          })
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {

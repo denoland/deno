@@ -152,8 +152,14 @@ async fn run_subcommand(
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      tools::installer::install_from_entrypoints(flags, &cache_flags.files)
-        .await
+      tools::installer::install_from_entrypoints(
+        flags,
+        self::args::InstallEntrypointsFlags {
+          entrypoints: cache_flags.files,
+          lockfile_only: false,
+        },
+      )
+      .await
     }),
     DenoSubcommand::Check(check_flags) => {
       spawn_subcommand(
