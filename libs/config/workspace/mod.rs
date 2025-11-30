@@ -798,11 +798,14 @@ impl Workspace {
     self
       .config_folders
       .iter()
-      .filter_map(|(dir_url, f)| Some((dir_url, f.deno_json.as_ref()?, false)))
-      .chain(self.links.iter().filter_map(|(dir_url, f)| {
-        Some((dir_url, f.deno_json.as_ref()?, true))
-      }))
-      .filter_map(|(dir_url, config_file, is_link)| {
+      .map(|(dir_url, f)| (dir_url, f, false))
+      .chain(self.links.iter().map(|(dir_url, f)| (dir_url, f, true)))
+      .filter_map(|(dir_url, folder, is_link)| {
+        let config_file = folder
+          .deno_json
+          .as_ref()
+          .filter(|c| c.is_package())
+          .or_else(|| folder.jsr_json.as_ref().filter(|c| c.is_package()))?;
         let name = config_file.json.name.as_ref()?;
         let version = config_file
           .json
