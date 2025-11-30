@@ -171,7 +171,6 @@ impl Default for DatabaseSyncOptions {
   }
 }
 
-#[derive(Debug)]
 struct AggregateFunctionOption<'a> {
   deterministic: bool,
   direct_only: bool,
