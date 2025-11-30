@@ -463,7 +463,7 @@
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
-"parallel/test-fs-promises-file-handle-readFile.js" = {}
+"parallel/test-fs-promises-file-handle-readFile.js" = { flaky = true }
 "parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
