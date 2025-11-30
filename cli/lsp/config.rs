@@ -267,17 +267,14 @@ impl Default for InlayHintsParamNamesOptions {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum InlayHintsParamNamesEnabled {
+  #[default]
   None,
   Literals,
   All,
 }
 
-impl Default for InlayHintsParamNamesEnabled {
-  fn default() -> Self {
-    Self::None
-  }
-}
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -381,46 +378,37 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ImportModuleSpecifier {
   NonRelative,
   ProjectRelative,
   Relative,
+  #[default]
   Shortest,
 }
 
-impl Default for ImportModuleSpecifier {
-  fn default() -> Self {
-    Self::Shortest
-  }
-}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum JsxAttributeCompletionStyle {
+  #[default]
   Auto,
   Braces,
   None,
 }
 
-impl Default for JsxAttributeCompletionStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
-}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum QuoteStyle {
+  #[default]
   Auto,
   Double,
   Single,
 }
 
-impl Default for QuoteStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
-}
 
 impl From<&FmtOptionsConfig> for QuoteStyle {
   fn from(config: &FmtOptionsConfig) -> Self {
@@ -483,17 +471,14 @@ pub struct UpdateImportsOnFileMoveOptions {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
+  #[default]
   Prompt,
   Never,
 }
 
-impl Default for UpdateImportsOnFileMoveEnabled {
-  fn default() -> Self {
-    Self::Prompt
-  }
-}
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

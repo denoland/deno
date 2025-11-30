@@ -223,16 +223,13 @@ pub struct CoverageFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Default)]
 pub enum DocSourceFileFlag {
+  #[default]
   Builtin,
   Paths(Vec<String>),
 }
 
-impl Default for DocSourceFileFlag {
-  fn default() -> Self {
-    Self::Builtin
-  }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
@@ -696,11 +693,13 @@ impl Default for DenoSubcommand {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Default)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
   /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
+  #[default]
   None,
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
@@ -726,11 +725,6 @@ impl TypeCheckMode {
   }
 }
 
-impl Default for TypeCheckMode {
-  fn default() -> Self {
-    Self::None
-  }
-}
 
 fn minutes_duration_or_date_parser(
   s: &str,

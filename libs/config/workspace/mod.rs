@@ -1510,16 +1510,13 @@ pub struct WorkspaceDirLintConfig {
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Default)]
 pub enum TsTypeLib {
+  #[default]
   DenoWindow,
   DenoWorker,
 }
 
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
-}
 
 #[derive(Debug, Clone)]
 pub struct CompilerOptionsSource {
