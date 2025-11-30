@@ -3013,6 +3013,84 @@ pub mod test {
   }
 
   #[test]
+  fn test_jsr_package_config_fallback_with_deno_not_package() {
+    let sys = InMemorySys::default();
+    // deno.json exists but is not a package (no name/version/exports)
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "fmt": {
+          "semiColons": false
+        }
+      }),
+    );
+    // jsr.json has package metadata
+    sys.fs_insert_json(
+      root_dir().join("jsr.json"),
+      json!({
+        "name": "@scope/pkg",
+        "version": "1.2.3",
+        "exports": "./mod.ts"
+      }),
+    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[root_dir()]),
+      &WorkspaceDiscoverOptions {
+        discover_jsr_config: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let package = workspace_dir
+      .maybe_package_config()
+      .expect("expected package config");
+    assert_eq!(package.name, "@scope/pkg");
+    assert!(package.config_file.specifier.path().ends_with("/jsr.json"));
+  }
+
+  #[test]
+  fn test_resolver_jsr_pkgs_with_jsr_fallback() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./pkg1"]
+      }),
+    );
+    // pkg1 has deno.json but not a package, jsr.json has package metadata
+    sys.fs_insert_json(
+      root_dir().join("pkg1/deno.json"),
+      json!({
+        "fmt": {
+          "semiColons": false
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("pkg1/jsr.json"),
+      json!({
+        "name": "@scope/pkg1",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[root_dir()]),
+      &WorkspaceDiscoverOptions {
+        discover_jsr_config: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let jsr_pkgs: Vec<_> =
+      workspace_dir.workspace.resolver_jsr_pkgs().collect();
+    assert_eq!(jsr_pkgs.len(), 1);
+    assert_eq!(jsr_pkgs[0].name, "@scope/pkg1");
+  }
+
+  #[test]
   fn test_conflicting_publish_configs_diagnostic() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(

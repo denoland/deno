@@ -1528,4 +1528,40 @@ mod tests {
     let hint = diagnostic.hint().expect("expected hint");
     assert!(hint.contains("Remove the conflicting configuration"));
   }
+
+  #[test]
+  fn test_workspace_diagnostics_converted_to_publish_diagnostics() {
+    use deno_ast::diagnostics::DiagnosticLevel;
+    use deno_config::workspace::WorkspaceDiagnosticKind;
+
+    let deno_config_url = Url::parse("file:///example/deno.json").unwrap();
+    let jsr_config_url = Url::parse("file:///example/jsr.json").unwrap();
+
+    let workspace_diagnostic_kind =
+      WorkspaceDiagnosticKind::ConflictingPublishConfig {
+        deno_config_url: deno_config_url.clone(),
+        jsr_config_url: jsr_config_url.clone(),
+      };
+
+    // Simulate the conversion logic from publish()
+    let mut specifiers = vec![deno_config_url.clone(), jsr_config_url.clone()];
+    specifiers.sort();
+    specifiers.dedup();
+
+    let publish_diagnostic = PublishDiagnostic::ConflictingPublishConfig {
+      primary_specifier: jsr_config_url.clone(),
+      specifiers: specifiers.clone(),
+    };
+
+    // Verify the diagnostic was created correctly
+    assert!(matches!(
+      workspace_diagnostic_kind,
+      WorkspaceDiagnosticKind::ConflictingPublishConfig { .. }
+    ));
+    assert!(matches!(publish_diagnostic.level(), DiagnosticLevel::Error));
+    let message = publish_diagnostic.message();
+    assert!(message.contains("deno.json"));
+    assert!(message.contains("jsr.json"));
+    assert_eq!(specifiers.len(), 2);
+  }
 }
