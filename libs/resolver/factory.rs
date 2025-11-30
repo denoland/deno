@@ -199,7 +199,7 @@ pub struct NpmProcessStateOptions {
 
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions {
-  pub additional_config_file_names: &'static [&'static str],
+  pub discover_jsr_config: bool,
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
@@ -570,9 +570,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           deno_json_cache: None,
           pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
           workspace_cache: None,
-          additional_config_file_names: self
-            .options
-            .additional_config_file_names,
+          discover_jsr_config: self.options.discover_jsr_config,
           discover_pkg_json,
           maybe_vendor_override,
         }

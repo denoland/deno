@@ -28,7 +28,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_maybe_sync::new_rc;
 use deno_resolver::collections::FolderScopedMap;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
@@ -55,7 +54,6 @@ use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::registry;
-use crate::sys::CliSys;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
@@ -88,50 +86,33 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
-  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
-  let sys = cli_factory.sys();
   let diagnostics_collector = PublishDiagnosticsCollector::default();
-  let mut jsr_package =
-    maybe_jsr_package_config(&sys, &cli_options.start_dir, false)?;
-  if !publish_configs.is_empty() {
-    if let Some(jsr_package) = jsr_package {
-      let mut specifiers = publish_configs
-        .iter()
-        .map(|pkg| pkg.config_file.specifier.clone())
-        .collect::<Vec<_>>();
-      specifiers.push(jsr_package.config_file.specifier.clone());
-      specifiers.sort();
-      specifiers.dedup();
-      diagnostics_collector.push(PublishDiagnostic::ConflictingPublishConfig {
-        primary_specifier: jsr_package.config_file.specifier.clone(),
-        specifiers,
-      });
-      return diagnostics_collector.print_and_error();
-    }
-  } else {
-    if jsr_package.is_none() {
-      jsr_package =
-        maybe_jsr_package_config(&sys, &cli_options.start_dir, true)?;
-    }
-    if let Some(jsr_package_config) = jsr_package {
-      publish_configs.push(jsr_package_config);
-    }
+  collect_publish_config_conflicts(
+    &diagnostics_collector,
+    &cli_options.start_dir,
+  );
+  if diagnostics_collector.has_error() {
+    return diagnostics_collector.print_and_error();
   }
+  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
-      Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
-        if deno_json.json.name.is_none() {
-          bail!("Missing 'name' field in '{}'.", deno_json.specifier);
-        }
-        error_missing_exports_field(deno_json)?;
+    if let Some(deno_json) = cli_options.start_dir.maybe_deno_json() {
+      debug_assert!(!deno_json.is_package());
+      if deno_json.json.name.is_none() {
+        bail!("Missing 'name' field in '{}'.", deno_json.specifier);
       }
-      None => {
-        bail!(
-          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
-          directory_path.display()
-        );
+      error_missing_exports_field(deno_json)?;
+    } else if let Some(jsr_json) = cli_options.start_dir.maybe_jsr_json() {
+      debug_assert!(!jsr_json.is_package());
+      if jsr_json.json.name.is_none() {
+        bail!("Missing 'name' field in '{}'.", jsr_json.specifier);
       }
+      error_missing_exports_field(jsr_json)?;
+    } else {
+      bail!(
+        "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
+        directory_path.display()
+      );
     }
   }
 
@@ -1376,45 +1357,26 @@ fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
   );
 }
 
-fn maybe_jsr_package_config(
-  sys: &CliSys,
+fn collect_publish_config_conflicts(
+  diagnostics_collector: &PublishDiagnosticsCollector,
   workspace_dir: &WorkspaceDirectoryRc,
-  strict: bool,
-) -> Result<Option<JsrPackageConfig>, AnyError> {
-  let dir_path = workspace_dir.dir_path();
-  for file_name in ["jsr.json", "jsr.jsonc"] {
-    let config_path = dir_path.join(file_name);
-    match ConfigFile::read(sys, &config_path) {
-      Ok(config_file) => {
-        let config_file = new_rc(config_file);
-        if !config_file.is_package() {
-          if strict {
-            if config_file.json.name.is_none() {
-              bail!("Missing 'name' field in '{}'.", config_file.specifier);
-            }
-            error_missing_exports_field(config_file.as_ref())?;
-          }
-          continue;
-        }
-        let Some(name) = config_file.json.name.clone() else {
-          if strict {
-            bail!("Missing 'name' field in '{}'.", config_file.specifier);
-          } else {
-            continue;
-          }
-        };
-        return Ok(Some(JsrPackageConfig {
-          name,
-          member_dir: workspace_dir.clone(),
-          config_file: config_file.clone(),
-          license: config_file.to_license(),
-        }));
-      }
-      Err(err) if err.is_not_found() => continue,
-      Err(err) => return Err(err.into()),
+) {
+  for folder in workspace_dir.workspace.config_folders().values() {
+    if let (Some(deno_json), Some(jsr_json)) =
+      (folder.deno_json.as_ref(), folder.jsr_json.as_ref())
+      && deno_json.is_package()
+      && jsr_json.is_package()
+    {
+      let mut specifiers =
+        vec![deno_json.specifier.clone(), jsr_json.specifier.clone()];
+      specifiers.sort();
+      specifiers.dedup();
+      diagnostics_collector.push(PublishDiagnostic::ConflictingPublishConfig {
+        primary_specifier: jsr_json.specifier.clone(),
+        specifiers,
+      });
     }
   }
-  Ok(None)
 }
 
 #[allow(clippy::print_stderr)]
@@ -1426,25 +1388,16 @@ fn ring_bell() {
 #[cfg(test)]
 mod tests {
   use std::collections::HashMap;
-  use std::fs;
 
   use deno_ast::ModuleSpecifier;
   use deno_ast::diagnostics::Diagnostic;
-  use deno_config::workspace::VendorEnablement;
-  use deno_config::workspace::WorkspaceDirectory;
-  use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
   use deno_core::url::Url;
-  use deno_path_util::url_from_directory_path;
-  use tempfile::tempdir;
 
   use super::PublishDiagnostic;
   use super::has_license_file;
-  use super::maybe_jsr_package_config;
-  use super::new_rc;
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
-  use crate::sys::CliSys;
 
   #[test]
   fn test_verify_version_manifest() {
@@ -1568,82 +1521,6 @@ mod tests {
       "file:///other",
       "file:///test/tLICENSE"
     ]),);
-  }
-
-  #[test]
-  fn test_maybe_jsr_package_config_reads_jsr_json() {
-    let temp_dir = tempdir().unwrap();
-    let dir_path = temp_dir.path();
-    fs::write(
-      dir_path.join("jsr.json"),
-      r#"{
-  "name": "@scope/pkg",
-  "version": "1.2.3",
-  "exports": "./mod.ts"
-}"#,
-    )
-    .unwrap();
-    let workspace_dir =
-      WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
-        root_dir: new_rc(url_from_directory_path(dir_path).unwrap()),
-        use_vendor_dir: VendorEnablement::Disable,
-      });
-    let jsr_package =
-      maybe_jsr_package_config(&CliSys::default(), &workspace_dir, true)
-        .unwrap()
-        .expect("expected jsr package");
-    assert_eq!(jsr_package.name, "@scope/pkg");
-    assert!(
-      jsr_package
-        .config_file
-        .specifier
-        .path()
-        .ends_with("/jsr.json")
-    );
-  }
-
-  #[test]
-  fn test_maybe_jsr_package_config_requires_name() {
-    let temp_dir = tempdir().unwrap();
-    let dir_path = temp_dir.path();
-    fs::write(
-      dir_path.join("jsr.json"),
-      r#"{
-  "exports": "./mod.ts"
-}"#,
-    )
-    .unwrap();
-    let workspace_dir =
-      WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
-        root_dir: new_rc(url_from_directory_path(dir_path).unwrap()),
-        use_vendor_dir: VendorEnablement::Disable,
-      });
-    let err =
-      maybe_jsr_package_config(&CliSys::default(), &workspace_dir, true)
-        .unwrap_err();
-    assert!(err.to_string().contains("Missing 'name' field"));
-  }
-
-  #[test]
-  fn test_maybe_jsr_package_config_non_strict_missing_fields_returns_none() {
-    let temp_dir = tempdir().unwrap();
-    let dir_path = temp_dir.path();
-    fs::write(
-      dir_path.join("jsr.json"),
-      r#"{
-  "version": "1.0.0"
-}"#,
-    )
-    .unwrap();
-    let workspace_dir =
-      WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
-        root_dir: new_rc(url_from_directory_path(dir_path).unwrap()),
-        use_vendor_dir: VendorEnablement::Disable,
-      });
-    let result =
-      maybe_jsr_package_config(&CliSys::default(), &workspace_dir, false)
-        .unwrap();
-    assert!(result.is_none());
   }
 
   #[test]

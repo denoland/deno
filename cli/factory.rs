@@ -1282,14 +1282,7 @@ fn new_workspace_factory_options(
   flags: &Flags,
 ) -> deno_resolver::factory::WorkspaceFactoryOptions {
   deno_resolver::factory::WorkspaceFactoryOptions {
-    additional_config_file_names: if matches!(
-      flags.subcommand,
-      DenoSubcommand::Publish(..)
-    ) {
-      &["jsr.json", "jsr.jsonc"]
-    } else {
-      &[]
-    },
+    discover_jsr_config: true,
     config_discovery: match &flags.config_flag {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(initial_cwd) {

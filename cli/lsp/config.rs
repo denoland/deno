@@ -1284,7 +1284,7 @@ impl ConfigData {
             }
           },
           &WorkspaceDiscoverOptions {
-            additional_config_file_names: &[],
+            discover_jsr_config: true,
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
@@ -1428,7 +1428,7 @@ impl ConfigData {
       CliSys::default(),
       member_dir.dir_path(),
       WorkspaceFactoryOptions {
-        additional_config_file_names: &[],
+        discover_jsr_config: true,
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
         maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
