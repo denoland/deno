@@ -265,16 +265,14 @@ impl Default for InlayHintsParamNamesOptions {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub enum InlayHintsParamNamesEnabled {
   #[default]
   None,
   Literals,
   All,
 }
-
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -376,9 +374,10 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
-#[derive(Default)]
 pub enum ImportModuleSpecifier {
   NonRelative,
   ProjectRelative,
@@ -387,10 +386,10 @@ pub enum ImportModuleSpecifier {
   Shortest,
 }
 
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
-#[derive(Default)]
 pub enum JsxAttributeCompletionStyle {
   #[default]
   Auto,
@@ -398,17 +397,16 @@ pub enum JsxAttributeCompletionStyle {
   None,
 }
 
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
-#[derive(Default)]
 pub enum QuoteStyle {
   #[default]
   Auto,
   Double,
   Single,
 }
-
 
 impl From<&FmtOptionsConfig> for QuoteStyle {
   fn from(config: &FmtOptionsConfig) -> Self {
@@ -469,16 +467,16 @@ pub struct UpdateImportsOnFileMoveOptions {
   pub enabled: UpdateImportsOnFileMoveEnabled,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
-#[derive(Default)]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
   #[default]
   Prompt,
   Never,
 }
-
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

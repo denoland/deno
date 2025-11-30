@@ -222,14 +222,12 @@ pub struct CoverageFlags {
   pub r#type: CoverageType,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
   #[default]
   Builtin,
   Paths(Vec<String>),
 }
-
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
@@ -692,8 +690,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -724,7 +721,6 @@ impl TypeCheckMode {
     }
   }
 }
-
 
 fn minutes_duration_or_date_parser(
   s: &str,

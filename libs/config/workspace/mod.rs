@@ -1509,14 +1509,12 @@ pub struct WorkspaceDirLintConfig {
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TsTypeLib {
   #[default]
   DenoWindow,
   DenoWorker,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CompilerOptionsSource {

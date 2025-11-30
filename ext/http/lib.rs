@@ -950,7 +950,6 @@ pub enum HttpRequestReader {
   Closed,
 }
 
-
 /// The write half of an HTTP stream.
 #[derive(Default)]
 enum HttpResponseWriter {
@@ -963,7 +962,6 @@ enum HttpResponseWriter {
   #[default]
   Closed,
 }
-
 
 struct BodyUncompressedSender(Option<hyper_v014::body::Sender>);
 

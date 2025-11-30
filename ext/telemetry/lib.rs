@@ -162,16 +162,16 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[repr(u8)]
-#[derive(Default)]
 pub enum OtelConsoleConfig {
   #[default]
   Ignore = 0,
   Capture = 1,
   Replace = 2,
 }
-
 
 static OTEL_SHARED_RUNTIME_SPAWN_TASK_TX: Lazy<
   UnboundedSender<BoxFuture<'static, ()>>,

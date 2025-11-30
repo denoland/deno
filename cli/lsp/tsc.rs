@@ -1718,8 +1718,9 @@ pub enum OneOrMany<T> {
 }
 
 /// Aligns with ts.ScriptElementKind
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(
+  Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, Hash,
+)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   #[default]
@@ -1803,7 +1804,6 @@ pub enum ScriptElementKind {
   #[serde(rename = "link text")]
   LinkText,
 }
-
 
 /// This mirrors the method `convertKind` in `completions.ts` in vscode (extensions/typescript-language-features)
 /// https://github.com/microsoft/vscode/blob/bd2df940d74b51105aefb11304e028d2fb56a9dc/extensions/typescript-language-features/src/languageFeatures/completions.ts#L440
