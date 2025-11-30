@@ -556,7 +556,7 @@ Deno.test("[node/sqlite] DatabaseSync.aggregate input validation", () => {
   });
 });
 
-Deno.test("[node/sqlite] DatabaseSync.arggregate varargs: supports variable number of arguments when true", () => {
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: supports variable number of arguments when true", () => {
   using db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data (value INTEGER)");
   db.exec("INSERT INTO data VALUES (1), (2), (3)");
@@ -575,7 +575,7 @@ Deno.test("[node/sqlite] DatabaseSync.arggregate varargs: supports variable numb
   nodeAssert.deepStrictEqual(result, { __proto__: null, total: 6 });
 });
 
-Deno.test("[node/sqlite] DatabaseSync.arggregate varargs: uses the max between step.length and inverse.length when false", () => {
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: uses the max between step.length and inverse.length when false", () => {
   using db = new DatabaseSync(":memory:");
   db.exec(`
     CREATE TABLE t3(x, y);
@@ -623,7 +623,7 @@ Deno.test("[node/sqlite] DatabaseSync.arggregate varargs: uses the max between s
   });
 });
 
-Deno.test("[node/sqlite] DatabaseSync.arggregate varargs: throws if an incorrect number of arguments is provided when false", () => {
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: throws if an incorrect number of arguments is provided when false", () => {
   using db = new DatabaseSync(":memory:");
   db.aggregate("sum_int", {
     start: 0,
