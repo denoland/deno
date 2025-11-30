@@ -81,7 +81,7 @@ const nameToCodeMapping = ObjectCreate(null, {
   NetworkError: { value: NETWORK_ERR },
   AbortError: { value: ABORT_ERR },
   URLMismatchError: { value: URL_MISMATCH_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
+  // QuotaExceededError removed per https://github.com/whatwg/webidl/pull/1465
   TimeoutError: { value: TIMEOUT_ERR },
   InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
   DataCloneError: { value: DATA_CLONE_ERR },
