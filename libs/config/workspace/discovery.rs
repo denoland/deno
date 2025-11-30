@@ -43,91 +43,72 @@ use crate::util::is_skippable_io_error;
 use crate::workspace::ConfigReadError;
 use crate::workspace::Workspace;
 
-#[derive(Debug)]
-pub enum DenoOrPkgJson {
-  Deno(ConfigFileRc),
-  PkgJson(PackageJsonRc),
-}
-
-impl DenoOrPkgJson {
-  pub fn specifier(&self) -> Cow<'_, Url> {
-    match self {
-      Self::Deno(config) => Cow::Borrowed(&config.specifier),
-      Self::PkgJson(pkg_json) => Cow::Owned(pkg_json.specifier()),
-    }
-  }
-}
-
-#[derive(Debug)]
-pub enum ConfigFolder {
-  Single(DenoOrPkgJson),
-  Both {
-    deno_json: ConfigFileRc,
-    pkg_json: PackageJsonRc,
-  },
+#[derive(Debug, Clone)]
+pub struct ConfigFolder {
+  deno_json: Option<ConfigFileRc>,
+  jsr_json: Option<ConfigFileRc>,
+  pkg_json: Option<PackageJsonRc>,
 }
 
 impl ConfigFolder {
+  pub fn new(
+    deno_json: Option<ConfigFileRc>,
+    jsr_json: Option<ConfigFileRc>,
+    pkg_json: Option<PackageJsonRc>,
+  ) -> Option<Self> {
+    if deno_json.is_none() && jsr_json.is_none() && pkg_json.is_none() {
+      None
+    } else {
+      Some(Self {
+        deno_json,
+        jsr_json,
+        pkg_json,
+      })
+    }
+  }
+
   pub fn folder_url(&self) -> Url {
     match self {
-      Self::Single(DenoOrPkgJson::Deno(config)) => {
-        url_parent(&config.specifier)
-      }
-      Self::Single(DenoOrPkgJson::PkgJson(pkg_json)) => {
-        url_from_directory_path(pkg_json.path.parent().unwrap()).unwrap()
-      }
-      Self::Both { deno_json, .. } => url_parent(&deno_json.specifier),
+      Self {
+        deno_json: Some(config),
+        ..
+      } => url_parent(&config.specifier),
+      Self {
+        jsr_json: Some(config),
+        ..
+      } => url_parent(&config.specifier),
+      Self {
+        pkg_json: Some(pkg_json),
+        ..
+      } => url_from_directory_path(pkg_json.path.parent().unwrap()).unwrap(),
+      _ => unreachable!("config folder must have at least one config"),
     }
   }
 
   pub fn has_workspace_members(&self) -> bool {
     match self {
-      Self::Single(DenoOrPkgJson::Deno(config)) => {
-        config.json.workspace.is_some()
-      }
-      Self::Single(DenoOrPkgJson::PkgJson(pkg_json)) => {
-        pkg_json.workspaces.is_some()
-      }
-      Self::Both {
-        deno_json,
-        pkg_json,
-      } => deno_json.json.workspace.is_some() || pkg_json.workspaces.is_some(),
+      Self {
+        deno_json: Some(config),
+        ..
+      } => config.json.workspace.is_some(),
+      Self {
+        pkg_json: Some(pkg_json),
+        ..
+      } => pkg_json.workspaces.is_some(),
+      Self { .. } => false,
     }
   }
 
   pub fn deno_json(&self) -> Option<&ConfigFileRc> {
-    match self {
-      Self::Single(DenoOrPkgJson::Deno(deno_json)) => Some(deno_json),
-      Self::Both { deno_json, .. } => Some(deno_json),
-      _ => None,
-    }
+    self.deno_json.as_ref()
+  }
+
+  pub fn jsr_json(&self) -> Option<&ConfigFileRc> {
+    self.jsr_json.as_ref()
   }
 
   pub fn pkg_json(&self) -> Option<&PackageJsonRc> {
-    match self {
-      Self::Single(DenoOrPkgJson::PkgJson(pkg_json)) => Some(pkg_json),
-      Self::Both { pkg_json, .. } => Some(pkg_json),
-      _ => None,
-    }
-  }
-
-  pub fn from_maybe_both(
-    maybe_deno_json: Option<ConfigFileRc>,
-    maybe_pkg_json: Option<PackageJsonRc>,
-  ) -> Option<Self> {
-    match (maybe_deno_json, maybe_pkg_json) {
-      (Some(deno_json), Some(pkg_json)) => Some(Self::Both {
-        deno_json,
-        pkg_json,
-      }),
-      (Some(deno_json), None) => {
-        Some(Self::Single(DenoOrPkgJson::Deno(deno_json)))
-      }
-      (None, Some(pkg_json)) => {
-        Some(Self::Single(DenoOrPkgJson::PkgJson(pkg_json)))
-      }
-      (None, None) => None,
-    }
+    self.pkg_json.as_ref()
   }
 }
 
@@ -156,9 +137,14 @@ impl ConfigFileDiscovery {
 }
 
 fn config_folder_config_specifier(res: &ConfigFolder) -> Cow<'_, Url> {
-  match res {
-    ConfigFolder::Single(config) => config.specifier(),
-    ConfigFolder::Both { deno_json, .. } => Cow::Borrowed(&deno_json.specifier),
+  if let Some(deno_json) = res.deno_json() {
+    Cow::Borrowed(&deno_json.specifier)
+  } else if let Some(jsr_json) = res.jsr_json() {
+    Cow::Borrowed(&jsr_json.specifier)
+  } else if let Some(pkg_json) = res.pkg_json() {
+    Cow::Owned(pkg_json.specifier())
+  } else {
+    unreachable!("Config folder should have at least one configuration file.")
   }
 }
 
@@ -263,8 +249,7 @@ fn discover_workspace_config_files_for_single_dir<
   let start_dir: Option<&Path>;
   let mut first_config_folder_url: Option<Url> = None;
   let mut found_config_folders: HashMap<_, ConfigFolder> = HashMap::new();
-  let config_file_names =
-    ConfigFile::resolve_config_file_names(opts.additional_config_file_names);
+  let config_file_names = ConfigFile::resolve_config_file_names(&[]);
   let load_pkg_json_in_folder = |folder_path: &Path| {
     if opts.discover_pkg_json {
       let pkg_json_path = folder_path.join("package.json");
@@ -294,15 +279,27 @@ fn discover_workspace_config_files_for_single_dir<
     }
   };
   let load_config_folder = |folder_path: &Path| -> Result<_, ConfigReadError> {
+    const JSR_CONFIG_FILE_NAMES: [&str; 2] = ["jsr.json", "jsr.jsonc"];
     let maybe_config_file = ConfigFile::maybe_find_in_folder(
       sys,
       opts.deno_json_cache,
       folder_path,
       &config_file_names,
     )?;
+    let maybe_jsr_config = if opts.discover_jsr_config {
+      ConfigFile::maybe_find_in_folder(
+        sys,
+        opts.deno_json_cache,
+        folder_path,
+        &JSR_CONFIG_FILE_NAMES,
+      )?
+    } else {
+      None
+    };
     let maybe_pkg_json = load_pkg_json_in_folder(folder_path)?;
-    Ok(ConfigFolder::from_maybe_both(
+    Ok(ConfigFolder::new(
       maybe_config_file,
+      maybe_jsr_config,
       maybe_pkg_json,
     ))
   };
@@ -342,7 +339,7 @@ fn discover_workspace_config_files_for_single_dir<
           // don't try to load a workspace and don't store this information in
           // the workspace cache
           let config_folder =
-            ConfigFolder::Single(DenoOrPkgJson::Deno(config_file));
+            ConfigFolder::new(Some(config_file), None, None).unwrap();
 
           if config_folder.has_workspace_members() {
             return handle_workspace_folder_with_members(
