@@ -16,7 +16,7 @@ use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceDirectoryRc;
+use deno_config::workspace::WorkspaceDiagnosticKind;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -87,10 +87,23 @@ pub async fn publish(
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
   let diagnostics_collector = PublishDiagnosticsCollector::default();
-  collect_publish_config_conflicts(
-    &diagnostics_collector,
-    &cli_options.start_dir,
-  );
+  // Convert workspace diagnostics to publish diagnostics
+  for workspace_diagnostic in cli_options.start_dir.workspace.diagnostics() {
+    if let WorkspaceDiagnosticKind::ConflictingPublishConfig {
+      deno_config_url,
+      jsr_config_url,
+    } = &workspace_diagnostic.kind
+    {
+      let mut specifiers =
+        vec![deno_config_url.clone(), jsr_config_url.clone()];
+      specifiers.sort();
+      specifiers.dedup();
+      diagnostics_collector.push(PublishDiagnostic::ConflictingPublishConfig {
+        primary_specifier: jsr_config_url.clone(),
+        specifiers,
+      });
+    }
+  }
   if diagnostics_collector.has_error() {
     return diagnostics_collector.print_and_error();
   }
@@ -1355,28 +1368,6 @@ fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
     deno_json.specifier,
     exports_content
   );
-}
-
-fn collect_publish_config_conflicts(
-  diagnostics_collector: &PublishDiagnosticsCollector,
-  workspace_dir: &WorkspaceDirectoryRc,
-) {
-  for folder in workspace_dir.workspace.config_folders().values() {
-    if let (Some(deno_json), Some(jsr_json)) =
-      (folder.deno_json.as_ref(), folder.jsr_json.as_ref())
-      && deno_json.is_package()
-      && jsr_json.is_package()
-    {
-      let mut specifiers =
-        vec![deno_json.specifier.clone(), jsr_json.specifier.clone()];
-      specifiers.sort();
-      specifiers.dedup();
-      diagnostics_collector.push(PublishDiagnostic::ConflictingPublishConfig {
-        primary_specifier: jsr_json.specifier.clone(),
-        specifiers,
-      });
-    }
-  }
 }
 
 #[allow(clippy::print_stderr)]
