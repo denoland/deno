@@ -1376,6 +1376,7 @@ unsafe fn get_aggregate_data(
     ) as *mut AggregateData;
 
     if agg_ptr.is_null() {
+      sqlite_result_error(ctx, "Failed to allocate aggregate context");
       return None;
     }
 
@@ -1420,6 +1421,14 @@ unsafe fn custom_aggregate_step_base(
     let data_ptr =
       libsqlite3_sys::sqlite3_user_data(ctx) as *mut CustomAggregate;
 
+    if data_ptr.is_null() {
+      sqlite_result_error(
+        ctx,
+        "Internal error: missing custom aggregate context",
+      );
+      return;
+    }
+
     let data = &*data_ptr;
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
@@ -1429,7 +1438,11 @@ unsafe fn custom_aggregate_step_base(
     v8::tc_scope!(tc_scope, scope);
 
     let Some(agg_ptr) = get_aggregate_data(ctx, data, tc_scope) else {
-      tc_scope.rethrow();
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+      }
       return;
     };
     let agg = &mut *agg_ptr;
@@ -1529,7 +1542,11 @@ unsafe fn custom_aggregate_value_base(
     v8::tc_scope!(tc_scope, scope);
 
     let Some(agg_ptr) = get_aggregate_data(ctx, data, tc_scope) else {
-      tc_scope.rethrow();
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+      }
       return;
     };
     let agg = &mut *agg_ptr;
