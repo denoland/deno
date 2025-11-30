@@ -670,6 +670,24 @@ interface Worker extends EventTarget {
    * ```
    */
   terminate(): void;
+
+  /**
+   * Updates the permissions for the worker.
+   *
+   * @example
+   * ```ts
+   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
+   *   type: "module",
+   *   deno: { permissions: "none" }
+   * });
+   *
+   * // Later, grant network permissions to the worker
+   * worker.updatePermissions({
+   *   net: ["example.com"],
+   * });
+   * ```
+   */
+  updatePermissions(permissions: Deno.PermissionOptions): void;
 }
 
 /**
