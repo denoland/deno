@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -345,7 +346,7 @@ pub struct LibMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
-  pub node_ipc: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
@@ -489,7 +490,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
-          node_ipc_fd: None,
+          node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
@@ -584,11 +585,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     permissions: PermissionsContainer,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       vec![],
       Default::default(),
@@ -603,6 +606,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -685,7 +689,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_fd: shared.options.node_ipc,
+        node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
@@ -725,6 +729,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     Ok(LibMainWorker {
       main_module,
       preload_modules,
+      require_modules,
       worker,
     })
   }
@@ -812,6 +817,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 pub struct LibMainWorker {
   main_module: Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -876,6 +882,13 @@ impl LibMainWorker {
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    // Even though we load as ESM here, these files will be forced to be loaded as CJS
+    // because of checks in get_known_mode_with_is_script
+    for require_module_url in self.require_modules.iter() {
+      let id = self.worker.preload_side_module(require_module_url).await?;
       self.worker.evaluate_module(id).await?;
       self.worker.run_event_loop(false).await?;
     }

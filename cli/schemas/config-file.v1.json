@@ -16,6 +16,23 @@
         "items": { "type": "string" }
       }]
     },
+    "allowDenyIgnorePermissionConfig": {
+      "type": "object",
+      "description": "Object form to allow, deny, and/or ignore permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" },
+        "ignore": { "$ref": "#/$defs/permissionConfigValue" }
+      }
+    },
+    "allowDenyIgnorePermissionConfigValue": {
+      "oneOf": [{
+        "$ref": "#/$defs/permissionConfigValue"
+      }, {
+        "$ref": "#/$defs/allowDenyIgnorePermissionConfig"
+      }]
+    },
     "allowDenyPermissionConfig": {
       "type": "object",
       "description": "Object form to allow and/or deny permissions.",
@@ -52,7 +69,7 @@
         "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
-        "env": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "env": { "$ref": "#/$defs/allowDenyIgnorePermissionConfigValue" },
         "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
@@ -882,8 +899,8 @@
       "items": {
         "type": "string",
         "examples": [
-          "broadcast-channel",
           "bare-node-builtins",
+          "bundle",
           "byonm",
           "cron",
           "detect-cjs",

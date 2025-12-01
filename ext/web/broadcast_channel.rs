@@ -4,22 +4,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
-use deno_error::JsErrorBox;
-use deno_features::FeatureChecker;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 use uuid::Uuid;
-
-pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BroadcastChannelError {
@@ -38,9 +32,6 @@ pub enum BroadcastChannelError {
   BroadcastSendError(
     BroadcastSendError<Box<dyn std::fmt::Debug + Send + Sync>>,
   ),
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[inherit] JsErrorBox),
 }
 
 impl<T: std::fmt::Debug + Send + Sync + 'static> From<MpscSendError<T>>
@@ -60,87 +51,56 @@ impl<T: std::fmt::Debug + Send + Sync + 'static> From<BroadcastSendError<T>>
   }
 }
 
-#[async_trait]
-pub trait BroadcastChannel: Clone {
-  type Resource: Resource;
-
-  fn subscribe(&self) -> Result<Self::Resource, BroadcastChannelError>;
-
-  fn unsubscribe(
-    &self,
-    resource: &Self::Resource,
-  ) -> Result<(), BroadcastChannelError>;
-
-  async fn send(
-    &self,
-    resource: &Self::Resource,
-    name: String,
-    data: Vec<u8>,
-  ) -> Result<(), BroadcastChannelError>;
-
-  async fn recv(
-    &self,
-    resource: &Self::Resource,
-  ) -> Result<Option<Message>, BroadcastChannelError>;
-}
-
-pub type Message = (String, Vec<u8>);
+pub type BroadcastChannelMessage = (String, Vec<u8>);
 
 #[op2(fast)]
 #[smi]
-pub fn op_broadcast_subscribe<BC>(
+pub fn op_broadcast_subscribe(
   state: &mut OpState,
-) -> Result<ResourceId, BroadcastChannelError>
-where
-  BC: BroadcastChannel + 'static,
-{
-  state
-    .borrow::<Arc<FeatureChecker>>()
-    .check_or_exit(UNSTABLE_FEATURE_NAME, "BroadcastChannel");
-  let bc = state.borrow::<BC>();
+) -> Result<ResourceId, BroadcastChannelError> {
+  let bc = state.borrow::<InMemoryBroadcastChannel>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))
 }
 
 #[op2(fast)]
-pub fn op_broadcast_unsubscribe<BC>(
+pub fn op_broadcast_unsubscribe(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), BroadcastChannelError>
-where
-  BC: BroadcastChannel + 'static,
-{
-  let resource = state.resource_table.get::<BC::Resource>(rid)?;
-  let bc = state.borrow::<BC>();
+) -> Result<(), BroadcastChannelError> {
+  let resource = state
+    .resource_table
+    .get::<InMemoryBroadcastChannelResource>(rid)?;
+  let bc = state.borrow::<InMemoryBroadcastChannel>();
   bc.unsubscribe(&resource)
 }
 
-#[op2(async)]
-pub async fn op_broadcast_send<BC>(
+#[op2]
+pub fn op_broadcast_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] name: String,
   #[buffer] buf: JsBuffer,
-) -> Result<(), BroadcastChannelError>
-where
-  BC: BroadcastChannel + 'static,
-{
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
-  let bc = state.borrow().borrow::<BC>().clone();
-  bc.send(&resource, name, buf.to_vec()).await
+) -> Result<(), BroadcastChannelError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<InMemoryBroadcastChannelResource>(rid)?;
+  let bc = state.borrow().borrow::<InMemoryBroadcastChannel>().clone();
+  bc.send(&resource, name, buf.to_vec())
 }
 
 #[op2(async)]
 #[serde]
-pub async fn op_broadcast_recv<BC>(
+pub async fn op_broadcast_recv(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<Message>, BroadcastChannelError>
-where
-  BC: BroadcastChannel + 'static,
-{
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
-  let bc = state.borrow().borrow::<BC>().clone();
+) -> Result<Option<BroadcastChannelMessage>, BroadcastChannelError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<InMemoryBroadcastChannelResource>(rid)?;
+  let bc = state.borrow().borrow::<InMemoryBroadcastChannel>().clone();
   bc.recv(&resource).await
 }
 
@@ -158,6 +118,8 @@ pub struct InMemoryBroadcastChannelResource {
   uuid: Uuid,
 }
 
+impl deno_core::Resource for InMemoryBroadcastChannelResource {}
+
 #[derive(Clone, Debug)]
 struct InMemoryChannelMessage {
   name: Arc<String>,
@@ -172,16 +134,15 @@ impl Default for InMemoryBroadcastChannel {
   }
 }
 
-#[async_trait]
-impl BroadcastChannel for InMemoryBroadcastChannel {
-  type Resource = InMemoryBroadcastChannelResource;
-
-  fn subscribe(&self) -> Result<Self::Resource, BroadcastChannelError> {
+impl InMemoryBroadcastChannel {
+  fn subscribe(
+    &self,
+  ) -> Result<InMemoryBroadcastChannelResource, BroadcastChannelError> {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let broadcast_rx = self.0.lock().subscribe();
     let rx = tokio::sync::Mutex::new((broadcast_rx, cancel_rx));
     let uuid = Uuid::new_v4();
-    Ok(Self::Resource {
+    Ok(InMemoryBroadcastChannelResource {
       rx,
       cancel_tx,
       uuid,
@@ -190,14 +151,14 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
 
   fn unsubscribe(
     &self,
-    resource: &Self::Resource,
+    resource: &InMemoryBroadcastChannelResource,
   ) -> Result<(), BroadcastChannelError> {
     Ok(resource.cancel_tx.send(())?)
   }
 
-  async fn send(
+  fn send(
     &self,
-    resource: &Self::Resource,
+    resource: &InMemoryBroadcastChannelResource,
     name: String,
     data: Vec<u8>,
   ) -> Result<(), BroadcastChannelError> {
@@ -213,8 +174,8 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
 
   async fn recv(
     &self,
-    resource: &Self::Resource,
-  ) -> Result<Option<Message>, BroadcastChannelError> {
+    resource: &InMemoryBroadcastChannelResource,
+  ) -> Result<Option<BroadcastChannelMessage>, BroadcastChannelError> {
     let mut g = resource.rx.lock().await;
     let (broadcast_rx, cancel_rx) = &mut *g;
     loop {
@@ -236,5 +197,3 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
     }
   }
 }
-
-impl deno_core::Resource for InMemoryBroadcastChannelResource {}

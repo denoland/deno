@@ -15962,6 +15962,77 @@ fn lsp_vendor_dir() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_npm_global_cache_hover() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file("main.ts", "import \"npm:chalk@5.0.1\";\n");
+  context.run_deno("check main.ts");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  let npm_cache_file_path = context
+    .deno_dir()
+    .path()
+    .canonicalize()
+    .join("npm/localhost_4260/chalk/5.0.1/source/index.d.ts");
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": npm_cache_file_path.uri_file(),
+      "targetRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+      "targetSelectionRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+    }]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": npm_cache_file_path.uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": npm_cache_file_path.read_to_string(),
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": npm_cache_file_path.uri_file() },
+      "position": { "line": 2, "character": 43 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Types**: file&#8203;{}\n", context.deno_dir().path().canonicalize().join("npm/localhost_4260/chalk/5.0.1/source/vendor/supports-color/index.d.ts").url_file().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 2, "character": 43 },
+        "end": { "line": 2, "character": 77 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

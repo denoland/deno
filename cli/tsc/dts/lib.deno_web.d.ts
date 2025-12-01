@@ -1493,16 +1493,26 @@ declare function reportError(
 type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Platform */
+type ImageDataArray =
+  | Uint8ClampedArray<ArrayBuffer>
+  | Float16Array<ArrayBuffer>;
+
+/** @category Platform */
+type ImageDataPixelFormat = "rgba-unorm8" | "rgba-float16";
+
+/** @category Platform */
 interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
+  readonly pixelFormat?: ImageDataPixelFormat;
 }
 
 /** @category Platform */
 interface ImageData {
-  readonly colorSpace: PredefinedColorSpace;
-  readonly data: Uint8ClampedArray<ArrayBuffer>;
-  readonly height: number;
   readonly width: number;
+  readonly height: number;
+  readonly data: ImageDataArray;
+  readonly pixelFormat: ImageDataPixelFormat;
+  readonly colorSpace: PredefinedColorSpace;
 }
 
 /** @category Platform */
@@ -1510,7 +1520,7 @@ declare var ImageData: {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
-    data: Uint8ClampedArray<ArrayBuffer>,
+    data: ImageDataArray,
     sw: number,
     sh?: number,
     settings?: ImageDataSettings,
