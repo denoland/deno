@@ -15,7 +15,7 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { DOMException } from "./01_dom_exception.js";
 
 const locationConstructorKey = Symbol("locationConstructorKey");

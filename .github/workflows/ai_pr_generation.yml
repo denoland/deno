@@ -1,0 +1,363 @@
+name: AI PR Generation
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number or URL to work on'
+        required: true
+        type: string
+      pr_number:
+        description: 'PR number to update based on feedback (optional)'
+        required: false
+        type: string
+
+jobs:
+  generate-pr:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'ai:generate-pr' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '@claude') &&
+       github.event.comment.user.type != 'Bot' &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ai-pr-${{ github.event.issue.number || 'none' }}-${{ inputs.pr_number || 'none' }}-${{ inputs.issue_number || 'none' }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "issue_comment" ] && [ "${{ github.event.issue.pull_request != null }}" = "true" ]; then
+            echo "type=pr_comment" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
+            echo "type=pr_comment" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "type=issue" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get issue details
+        if: steps.mode.outputs.type == 'issue'
+        id: issue
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
+          EVENT_ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          EVENT_ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Extract issue number from input (handles both URLs and plain numbers)
+            ISSUE_INPUT="${{ inputs.issue_number }}"
+            ISSUE_NUM=$(echo "$ISSUE_INPUT" | grep -oE '[0-9]+$')
+
+            if [ -z "$ISSUE_NUM" ]; then
+              echo "Error: Could not extract issue number from input: $ISSUE_INPUT"
+              exit 1
+            fi
+
+            if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+              echo "Error: Invalid issue number format: $ISSUE_NUM"
+              exit 1
+            fi
+
+            # Fetch issue details
+            ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --json number,title,body,author --repo ${{ github.repository }})
+            echo "number=$(echo "$ISSUE_JSON" | jq -r '.number')" >> $GITHUB_OUTPUT
+            echo "title=$(echo "$ISSUE_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+            echo "author=$(echo "$ISSUE_JSON" | jq -r '.author.login')" >> $GITHUB_OUTPUT
+            # Handle multiline body by base64 encoding
+            echo "body=$(echo "$ISSUE_JSON" | jq -r '.body' | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
+          else
+            # Use event data for label trigger - use env vars to prevent injection
+            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "title=$(printf '%s' "$EVENT_ISSUE_TITLE" | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
+            echo "author=$EVENT_ISSUE_AUTHOR" >> $GITHUB_OUTPUT
+            echo "body=$(printf '%s' "$EVENT_ISSUE_BODY" | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Decode issue data
+        if: steps.mode.outputs.type == 'issue'
+        id: decoded
+        run: |
+          # Decode title
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.issue.outputs.title }}" | base64 -d >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            # workflow_dispatch path - title from gh is not encoded
+            echo "title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.issue.outputs.title }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+          # Decode body
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ steps.issue.outputs.body }}" | base64 -d >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Get PR details and feedback
+        if: steps.mode.outputs.type == 'pr_comment'
+        id: pr
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ steps.mode.outputs.pr_number }}"
+
+          # Validate PR number is numeric
+          if ! [[ "$PR_NUM" =~ ^[0-9]+$ ]]; then
+            echo "Error: Invalid PR number format: $PR_NUM"
+            exit 1
+          fi
+
+          # Get PR details including fork information
+          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author,state,headRepository,headRepositoryOwner --repo ${{ github.repository }}) || {
+            echo "Error: Failed to fetch PR #$PR_NUM"
+            exit 1
+          }
+
+          # Check PR state
+          PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+          if [ "$PR_STATE" != "OPEN" ]; then
+            echo "Error: PR #$PR_NUM is $PR_STATE, not OPEN"
+            exit 1
+          fi
+
+          echo "number=$(echo "$PR_JSON" | jq -r '.number')" >> $GITHUB_OUTPUT
+          echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+
+          # Check if PR is from a fork
+          HEAD_REPO_OWNER=$(echo "$PR_JSON" | jq -r '.headRepositoryOwner.login')
+          BASE_REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+
+          if [ "$HEAD_REPO_OWNER" != "$BASE_REPO_OWNER" ]; then
+            echo "is_fork=true" >> $GITHUB_OUTPUT
+            echo "head_repo_owner=$HEAD_REPO_OWNER" >> $GITHUB_OUTPUT
+            echo "head_repo_name=$(echo "$PR_JSON" | jq -r '.headRepository.name')" >> $GITHUB_OUTPUT
+          else
+            echo "is_fork=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Validate and extract branch names
+          HEAD_BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+          BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
+
+          # Validate branch names contain only safe characters
+          if ! [[ "$HEAD_BRANCH" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
+            echo "Error: Invalid characters in head branch name: $HEAD_BRANCH"
+            exit 1
+          fi
+
+          if ! [[ "$BASE_BRANCH" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
+            echo "Error: Invalid characters in base branch name: $BASE_BRANCH"
+            exit 1
+          fi
+
+          echo "branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+
+          # Get all comments on the PR with unique delimiter
+          COMMENTS=$(gh pr view "$PR_NUM" --json comments --repo ${{ github.repository }} | jq -r '
+            if (.comments | length) == 0 then
+              "No comments yet."
+            else
+              .comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)\n---"
+            end
+          ')
+          DELIMITER_COMMENTS="EOF_COMMENTS_${{ github.run_id }}_${{ github.run_attempt }}_COMMENTS"
+          echo "comments<<$DELIMITER_COMMENTS" >> $GITHUB_OUTPUT
+          echo "$COMMENTS" >> $GITHUB_OUTPUT
+          echo "$DELIMITER_COMMENTS" >> $GITHUB_OUTPUT
+
+          # Get the diff with unique delimiter
+          DIFF=$(gh pr diff "$PR_NUM" --repo ${{ github.repository }}) || {
+            echo "Error: Failed to fetch diff for PR #$PR_NUM"
+            exit 1
+          }
+
+          # Limit diff to 500KB to avoid exceeding GitHub Actions output limits (1MB)
+          # and to keep the prompt size manageable for the AI
+          MAX_DIFF_SIZE=500000
+          DIFF_SIZE=${#DIFF}
+          if [ $DIFF_SIZE -gt $MAX_DIFF_SIZE ]; then
+            DIFF="[Diff too large to include - $DIFF_SIZE bytes. Review the PR directly at ${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUM/files]"
+          fi
+
+          DELIMITER_DIFF="EOF_DIFF_${{ github.run_id }}_${{ github.run_attempt }}_DIFF"
+          echo "diff<<$DELIMITER_DIFF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "$DELIMITER_DIFF" >> $GITHUB_OUTPUT
+
+      - name: Handle PR feedback
+        if: steps.mode.outputs.type == 'pr_comment'
+        uses: anthropics/claude-code-action@v1
+        with:
+          timeout-minutes: 60
+          github_token: ${{ secrets.DENOBOT_PAT }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            PR TITLE: ${{ steps.pr.outputs.title }}
+            PR BRANCH: ${{ steps.pr.outputs.branch }}
+            BASE BRANCH: ${{ steps.pr.outputs.base_branch }}
+            IS FORK: ${{ steps.pr.outputs.is_fork }}
+
+            CONVERSATION / FEEDBACK:
+            ${{ steps.pr.outputs.comments }}
+
+            CURRENT PR DIFF:
+            ```diff
+            ${{ steps.pr.outputs.diff }}
+            ```
+
+            You have been asked to address feedback on this pull request. Your goal is to:
+
+            1. **Understand the feedback**: Carefully read all the comments on the PR to understand what changes are being requested.
+
+            2. **Checkout the PR branch**:
+               ${{ steps.pr.outputs.is_fork == 'true' && format('
+               WARNING: This PR is from a fork ({0}/{1}). You cannot push directly to this branch.
+               Instead, you should:
+               - Add a comment to the PR explaining what changes are needed
+               - Provide code snippets or suggestions
+               - Or ask the PR author to make the changes
+               - DO NOT attempt to push to the fork branch as it will fail', steps.pr.outputs.head_repo_owner, steps.pr.outputs.head_repo_name) || format('
+               This PR is from the main repository. Checkout the branch:
+               - Run `git fetch origin {0}`
+               - Run `git checkout {0}`', steps.pr.outputs.branch) }}
+
+            3. **Review the current changes**: Look at the diff above to understand what changes have already been made.
+
+            4. **Address the feedback**: Make the necessary changes to address all the comments and feedback:
+               - Follow the feedback precisely
+               - Maintain consistency with existing code style and patterns
+               - If feedback is unclear, add a comment to the PR asking for clarification
+               - Ensure your changes don't introduce new bugs or regressions
+
+            5. **Test your changes**: ${{ steps.pr.outputs.is_fork == 'false' && 'Run relevant tests to verify your updates work:
+               - Run existing tests that might be affected
+               - Verify the changes manually if possible
+               - If tests fail, debug and fix them' || 'Since this is a fork PR, you cannot run tests directly. Review the changes carefully.' }}
+
+            6. **Commit and push**: ${{ steps.pr.outputs.is_fork == 'false' && format('Once your changes are ready:
+               - Stage your changes with `git add`
+               - Commit with a clear message describing what feedback you addressed
+               - Push to the PR branch: `git push origin {0}`
+               - The push will automatically update the PR', steps.pr.outputs.branch) || 'Since this is a fork PR, you cannot push changes. Skip this step.' }}
+
+            7. **Respond to comments**: Add a comment to the PR summarizing:
+               - What feedback you addressed
+               - What changes you made (or what changes you recommend for fork PRs)
+               - Any questions or clarifications needed
+               - Use `gh pr comment ${{ steps.pr.outputs.number }}` to add comments
+
+            Important notes:
+            - You are ${{ steps.pr.outputs.is_fork == 'false' && 'updating an existing PR, not creating a new one' || 'reviewing a fork PR - you can only comment, not push changes' }}
+            - ${{ steps.pr.outputs.is_fork == 'false' && format('Make sure to work on branch `{0}`, not main', steps.pr.outputs.branch) || 'For fork PRs, provide detailed feedback in comments with code suggestions' }}
+            - Be thorough in addressing all feedback points
+            - If you cannot address certain feedback, explain why in a comment
+
+            You have access to the full repository and can use git, cargo, and gh CLI commands.
+          claude_args: |
+            --dangerously-skip-permissions --allowed-tools "*"
+
+      - name: Handle issue
+        if: steps.mode.outputs.type == 'issue'
+        uses: anthropics/claude-code-action@v1
+        with:
+          timeout-minutes: 60
+          github_token: ${{ secrets.DENOBOT_PAT }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ steps.issue.outputs.number }}
+            TITLE: ${{ steps.decoded.outputs.title }}
+            BODY: ${{ steps.decoded.outputs.body }}
+            AUTHOR: ${{ steps.issue.outputs.author }}
+
+            You have been assigned to work on fixing this issue. Your goal is to:
+
+            1. **FIRST: Check for specific implementation instructions**: Before doing anything else, fetch all comments on this issue using:
+               `gh issue view ${{ steps.issue.outputs.number }} --comments`
+
+               Look for any comments that contain the "**AI PR instruction**" banner. These comments contain specific
+               implementation guidance from maintainers that MUST take precedence over all other context.
+
+               If you find such comments:
+               - Follow the instructions in those comments EXACTLY
+               - Use them as your primary guide for the implementation
+               - The issue description and body provide context, but the AI PR instruction comments contain
+                 the authoritative implementation approach you should follow
+
+            2. **Understand the issue thoroughly**: Read the issue description, analyze what's being reported or requested.
+
+            3. **Investigate the codebase**: Find the relevant files and code sections that need to be modified to address the issue.
+
+            4. **Implement a fix or feature**: Make the necessary code changes to resolve the issue. Ensure your changes:
+               - Are minimal and focused on the issue at hand
+               - Follow the existing code style and patterns in the repository
+               - Don't introduce new bugs or regressions
+               - Include appropriate error handling
+
+            5. **Test your changes**: If applicable, run relevant tests to verify your fix works:
+               - Run existing tests that might be affected: `cargo test` or specific test commands
+               - Verify the fix manually if possible
+               - If tests fail, debug and fix them
+
+            6. **Create a pull request**: Once your changes are ready:
+               - Create a new branch with a descriptive name (e.g., `fix-issue-${{ steps.issue.outputs.number }}`)
+               - Commit your changes with a clear commit message
+               - Push the branch and create a PR with:
+                 - Title that references the issue: "Fix #${{ steps.issue.outputs.number }}: [brief description]"
+                 - Description explaining what was changed and why
+                 - Reference to the original issue
+
+            7. **Comment on the issue**: After creating the PR, add a comment to issue #${{ steps.issue.outputs.number }} with:
+               - A link to the PR you created
+               - A brief summary of the changes made
+               - Include this banner: "_This PR was autogenerated and may require review and adjustments._"
+
+            Important notes:
+            - If the issue is unclear or lacks information, add a comment requesting clarification instead of creating a PR
+            - If you determine the issue is a duplicate or already fixed, comment on the issue explaining this
+            - Focus on quality over speed - it's better to ask for clarification than to create a broken PR
+            - Make sure to use `gh pr create` for creating the pull request
+            - Use `gh issue comment` to add comments to the issue
+
+            You have access to the full repository and can use git, cargo, and gh CLI commands.
+
+          claude_args: |
+            --dangerously-skip-permissions --allowed-tools "*"
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.mode.outputs.type }}" = "pr_comment" ] && [ -n "${{ steps.pr.outputs.number }}" ]; then
+            gh pr comment ${{ steps.pr.outputs.number }} --repo ${{ github.repository }} --body "❌ Failed to process feedback. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          elif [ "${{ steps.mode.outputs.type }}" = "issue" ] && [ -n "${{ steps.issue.outputs.number }}" ]; then
+            gh issue comment ${{ steps.issue.outputs.number }} --repo ${{ github.repository }} --body "❌ Failed to generate PR. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi

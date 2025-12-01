@@ -50,6 +50,7 @@ use serde::Serialize;
 use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
+use ipc::IpcAdvancedStreamResource;
 use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
@@ -201,6 +202,8 @@ pub struct SpawnArgs {
   windows_raw_arguments: bool,
   ipc: Option<i32>,
 
+  serialization: Option<ChildIpcSerialization>,
+
   #[serde(flatten)]
   stdio: ChildStdio,
 
@@ -209,6 +212,26 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChildIpcSerialization {
+  Json,
+  Advanced,
+}
+
+impl std::fmt::Display for ChildIpcSerialization {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "{}",
+      match self {
+        ChildIpcSerialization::Json => "json",
+        ChildIpcSerialization::Advanced => "advanced",
+      }
+    )
+  }
 }
 
 #[cfg(unix)]
@@ -477,12 +500,30 @@ fn create_command(
       fds_to_dup.push((ipc_fd2, ipc));
       fds_to_close.push(ipc_fd2);
       /* One end returned to parent process (this) */
-      let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-        ipc_fd1 as _,
-        IpcRefTracker::new(state.external_ops_tracker.clone()),
-      )?);
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
+
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
       ipc_rid = Some(pipe_rid);
     }
 
@@ -548,18 +589,34 @@ fn create_command(
       let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
       /* One end returned to parent process (this) */
-      let pipe_rid =
-        Some(state.resource_table.add(IpcJsonStreamResource::new(
-          hd1 as i64,
-          IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?));
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            hd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            hd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
 
       /* The other end passed to child process via NODE_CHANNEL_FD */
       command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
 
       handles_to_close.push(hd2);
 
-      ipc_rid = pipe_rid;
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
@@ -752,26 +809,6 @@ fn compute_run_cmd_and_check_permissions(
       command: arg_cmd.to_string(),
       error: Box::new(e),
     })?;
-  // Undocumented feature of CreateProcess API allows spawning batch files directly
-  // without proper argument escaping. We reject it here.
-  #[cfg(windows)]
-  if let Some(ext) = cmd.extension() {
-    let ext_str = ext.to_string_lossy();
-    if ext_str.eq_ignore_ascii_case("bat")
-      || ext_str.eq_ignore_ascii_case("cmd")
-    {
-      return Err(ProcessError::SpawnFailed {
-        command: arg_cmd.to_string(),
-        error: Box::new(
-          std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "Use a shell to execute .bat or .cmd files",
-          )
-          .into(),
-        ),
-      });
-    }
-  }
   check_run_permission(
     state,
     &RunQueryDescriptor::Path(
@@ -1067,11 +1104,18 @@ fn op_spawn_sync(
   })
 }
 
-#[op2(fast)]
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum SignalArg {
+  String(String),
+  Int(i32),
+}
+
+#[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[string] signal: String,
+  #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
@@ -1282,20 +1326,32 @@ mod deprecated {
   }
 
   #[cfg(unix)]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = deno_signals::signal_str_to_int(signal)
-      .map_err(SignalError::InvalidSignalStr)?;
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
+    };
     use nix::sys::signal::Signal;
     use nix::sys::signal::kill as unix_kill;
     use nix::unistd::Pid;
-    let sig =
-      Signal::try_from(signo).map_err(|e| ProcessError::Nix(JsNixError(e)))?;
-    unix_kill(Pid::from_raw(pid), Some(sig))
+
+    // Signal 0 is special, it checks if the process exists without sending a signal
+    let sig = if signo == 0 {
+      None
+    } else {
+      Some(
+        Signal::try_from(signo)
+          .map_err(|e| ProcessError::Nix(JsNixError(e)))?,
+      )
+    };
+
+    unix_kill(Pid::from_raw(pid), sig)
       .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
 
@@ -1309,10 +1365,15 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    let signal_str = match signal {
+      SignalArg::Int(n) => n.to_string(),
+      SignalArg::String(s) => s.clone(),
+    };
+
+    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
       Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal.to_string(),
+          signal_str,
         ))
         .into(),
       )
@@ -1345,11 +1406,11 @@ mod deprecated {
     }
   }
 
-  #[op2(fast, stack_trace)]
+  #[op2(stack_trace)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,
-    #[string] signal: String,
+    #[serde] signal: SignalArg,
     #[string] api_name: String,
   ) -> Result<(), ProcessError> {
     state

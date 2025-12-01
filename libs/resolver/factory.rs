@@ -682,6 +682,8 @@ pub struct ResolverFactoryOptions {
   /// Known good version requirement to use for the `@types/node` package
   /// when the version is unspecified or "latest".
   pub types_node_version_req: Option<VersionReq>,
+  /// Modules loaded via --require flag that should always be treated as CommonJS
+  pub require_modules: Vec<Url>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -848,6 +850,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.in_npm_package_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         self.options.is_cjs_resolution_mode,
+        self.options.require_modules.clone(),
       )))
     })
   }
@@ -940,7 +943,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         newest_dependency_date_options:
           deno_graph::packages::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
-              .date
+              .age
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_graph::packages::NewestDependencyDate),
@@ -960,23 +963,22 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
     self.minimum_dependency_age.get_or_try_init(|| {
-      let maybe_date = if let Some(date) = self.options.newest_dependency_date {
-        date.into_option()
+      let config = if let Some(date) = self.options.newest_dependency_date {
+        MinimumDependencyAgeConfig {
+          age: Some(date),
+          exclude: Vec::new(),
+        }
       } else {
         let workspace_factory = self.workspace_factory();
         let workspace = &workspace_factory.workspace_directory()?.workspace;
-        workspace
-          .minimum_dependency_age(workspace_factory.sys())?
-          .and_then(|d| d.into_option())
+        workspace.minimum_dependency_age(workspace_factory.sys())?
       };
-      if let Some(newest_dependency_date) = &maybe_date {
+      if let Some(newest_dependency_date) =
+        config.age.and_then(|d| d.into_option())
+      {
         log::debug!("Newest dependency date: {}", newest_dependency_date);
       }
-      Ok(MinimumDependencyAgeConfig {
-        date: maybe_date.map(NewestDependencyDate::Enabled),
-        // TODO(#31010): deserialize this from the config
-        exclude: Vec::new(),
-      })
+      Ok(config)
     })
   }
 
@@ -1097,7 +1099,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
-              .date
+              .age
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_npm::resolution::NewestDependencyDate),

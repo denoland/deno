@@ -151,15 +151,6 @@ function addNumericalSeparator(val: string) {
   return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
 
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    ErrorCaptureStackTrace(err);
-
-    return err;
-  },
-);
-
 export interface ErrnoException extends Error {
   errno?: number;
   code?: string;
@@ -207,7 +198,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -235,7 +226,7 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
@@ -291,7 +282,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -336,7 +327,23 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
+  },
+);
+
+export const handleDnsError = hideStackFrames(
+  (err: Error, syscall: string, address: string) => {
+    //@ts-expect-error code is safe to access with optional chaining
+    if (typeof err?.uv_errcode === "number") {
+      //@ts-expect-error code is safe to access with optional chaining
+      return dnsException(err?.uv_errcode, syscall, address);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+      return dnsException(codeMap.get("EPERM")!, syscall, address);
+    }
+
+    return denoErrorToNodeError(err, { syscall });
   },
 );
 
@@ -376,7 +383,7 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 /**
@@ -479,7 +486,7 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
     ObjectDefineProperties(this, {
       [kIsNodeError]: {

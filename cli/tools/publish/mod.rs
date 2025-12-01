@@ -875,14 +875,14 @@ async fn perform_publish(
       futures.push(
         async move {
           let display_name = package.display_name();
-          publish_package(
+          Box::pin(publish_package(
             http_client,
             package,
             registry_api_url,
             registry_url,
             &authorization,
             provenance,
-          )
+          ))
           .await
           .with_context(|| format!("Failed to publish {}", display_name))?;
           Ok(package_name)
@@ -1043,7 +1043,8 @@ async fn publish_package(
       },
     };
     let bundle =
-      provenance::generate_provenance(http_client, vec![subject]).await?;
+      Box::pin(provenance::generate_provenance(http_client, vec![subject]))
+        .await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!(

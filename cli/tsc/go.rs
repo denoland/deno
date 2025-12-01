@@ -60,6 +60,7 @@ fn synthetic_config(
   {
     obj.insert("jsx".to_string(), json!("react-jsx"));
   }
+  obj.insert("allowArbitraryExtensions".to_string(), json!(true));
   let config = serde_json::to_string(&json!({
     "compilerOptions": config,
     "files": root_names,
@@ -334,6 +335,22 @@ fn get_package_json_scope_if_applicable(
   Ok(jsons!(None::<String>)?)
 }
 
+fn append_raw_import_fragment(specifier: &mut String, raw_kind: &str) {
+  let fragment_index = specifier.find('#');
+  match fragment_index {
+    Some(index) => {
+      if specifier[index..].contains(&format!("denoRawImport={}.ts", raw_kind))
+      {
+        return;
+      }
+      specifier.push_str(&format!("&denoRawImport={}.ts", raw_kind));
+    }
+    None => {
+      specifier.push_str(&format!("#denoRawImport={}.ts", raw_kind));
+    }
+  }
+}
+
 struct HandlerState {
   config_path: String,
   synthetic_config: String,
@@ -407,7 +424,17 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       }
       "resolveModuleName" => {
         let payload = deser::<ResolveModuleNamePayload>(payload)?;
-        let (out_name, extension) = resolve_name(&mut state, payload)?;
+        let import_attribute_type = payload.import_attribute_type.clone();
+        let (mut out_name, mut extension) = resolve_name(&mut state, payload)?;
+        if let Some(import_attribute_type) = &import_attribute_type
+          && matches!(import_attribute_type.as_str(), "text" | "bytes")
+        {
+          append_raw_import_fragment(
+            &mut out_name,
+            import_attribute_type.as_str(),
+          );
+          extension = Some("ts");
+        }
 
         Ok(jsons!({
           "resolvedFileName": out_name,
@@ -432,6 +459,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
           module_name: payload.type_reference_directive_name,
           containing_file: payload.containing_file,
           resolution_mode: payload.resolution_mode,
+          import_attribute_type: None,
         };
         let (out_name, extension) = resolve_name(&mut state, payload)?;
         log::debug!(
@@ -507,6 +535,7 @@ fn resolve_name(
   payload: ResolveModuleNamePayload,
 ) -> Result<(String, Option<&'static str>), deno_typescript_go_client_rust::Error>
 {
+  log::debug!("resolve_name({payload:?})");
   let graph = &handler.graph;
   let maybe_npm = handler.maybe_npm.as_ref();
   let referrer = if let Some(remapped_specifier) =
@@ -627,6 +656,7 @@ fn load_inner(
     state,
   )?;
   let Some(result) = result else {
+    log::debug!("load_inner {load_specifier} -> None");
     return Ok(None);
   };
   let is_cjs = result.is_cjs;
@@ -635,6 +665,7 @@ fn load_inner(
   let module_kind = get_resolution_mode(is_cjs, media_type);
   let script_kind = super::as_ts_script_kind(media_type);
   log::debug!("load_inner {load_specifier} -> {:?}", module_kind);
+  log::trace!("loaded contents ({load_specifier}) -> {:?}", result.data);
   state
     .module_kind_map
     .insert(load_specifier.to_string(), module_kind);

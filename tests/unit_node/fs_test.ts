@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   openSync,
   promises,
+  promises as fsPromises,
   readFileSync,
   readSync,
   Stats,
@@ -226,6 +227,34 @@ Deno.test("[node/fs createWriteStream", async () => {
     await promise;
   } finally {
     await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/fs] FileHandle.appendFile", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const filePath = join(tempDir, "test_append.txt");
+  const initialContent = "Hello, ";
+  const appendContent = "World!";
+  const expectedContent = "Hello, World!";
+
+  try {
+    await Deno.writeTextFile(filePath, initialContent);
+    const fileHandle = await fsPromises.open(filePath, "a+");
+    try {
+      await fileHandle.appendFile(appendContent);
+      const content = await Deno.readTextFile(filePath);
+      assertEquals(content, expectedContent);
+      const binaryData = new Uint8Array([65, 66, 67]);
+      await fileHandle.appendFile(binaryData);
+      const finalContent = await Deno.readFile(filePath);
+      const expectedBinary = new TextEncoder().encode(expectedContent);
+      const expectedFinal = new Uint8Array([...expectedBinary, ...binaryData]);
+      assertEquals(finalContent, expectedFinal);
+    } finally {
+      await fileHandle.close().catch(() => {});
+    }
+  } finally {
+    await Deno.remove(tempDir, { recursive: true }).catch(() => {});
   }
 });
 

@@ -114,7 +114,7 @@ impl DenoTestCollector {
             {
               match key_value_prop.value.as_ref() {
                 ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-                  let name = lit_str.value.to_string();
+                  let name = lit_str.value.to_string_lossy().to_string();
                   self.add_code_lenses(name, range);
                 }
                 ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
@@ -133,7 +133,7 @@ impl DenoTestCollector {
           }
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-          let name = lit_str.value.to_string();
+          let name = lit_str.value.to_string_lossy().to_string();
           self.add_code_lenses(name, range);
         }
         ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {

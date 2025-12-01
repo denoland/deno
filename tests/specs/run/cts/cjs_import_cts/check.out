@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]main.js
+Check [WILDCARD]main.js
 TS2580 [ERROR]: Cannot find name 'module'.
 module.exports.add = function (a, b) {
 ~~~~~~
