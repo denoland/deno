@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ptr;
+use std::rc::Rc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -46,9 +47,8 @@ impl State {
 }
 
 #[op2(fast)]
-pub fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
-  let state = state.borrow_mut::<State>();
-  state.enable_window_features
+pub fn op_geometry_get_enable_window_features(state: &OpState) -> bool {
+  state.borrow::<State>().enable_window_features
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -921,7 +921,7 @@ const INDEX_M44: usize = 15;
 
 impl DOMMatrixReadOnly {
   fn new<'a>(
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
@@ -948,8 +948,7 @@ impl DOMMatrixReadOnly {
 
     // DOMString
     if let Some(value) = value.to_string(scope) {
-      let state = state.borrow_mut::<State>();
-      if !state.enable_window_features {
+      if !state.borrow().borrow::<State>().enable_window_features {
         return Err(GeometryError::DisallowWindowFeatures);
       }
 
@@ -1600,7 +1599,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   #[cppgc]
   fn constructor<'a>(
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
@@ -2116,7 +2115,7 @@ impl DOMMatrix {
   #[required(0)]
   #[cppgc]
   fn constructor<'a>(
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     // TODO(petamoriken): Error when deleting next line. proc-macro bug?
