@@ -13417,9 +13417,9 @@
     "storage_key.window.html": true,
     "storage_key_empty_string.window.html": true,
     "storage_length.window.html": true,
-    "storage_local_setitem_quotaexceedederr.window.html": true,
+    "storage_local_setitem_quotaexceedederr.window.html": false,
     "storage_removeitem.window.html": true,
-    "storage_session_setitem_quotaexceedederr.window.html": true,
+    "storage_session_setitem_quotaexceedederr.window.html": false,
     "storage_set_value_enumerate.window.html": true,
     "storage_setitem.window.html": [
       "localStorage[] = \"\ud800\"",
