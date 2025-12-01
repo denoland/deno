@@ -182,8 +182,8 @@ pub struct PermissionsObjectWithBase {
 pub struct PermissionsObject {
   #[serde(default)]
   pub all: Option<bool>,
-  #[serde(default, deserialize_with = "deserialize_allow_deny")]
-  pub read: AllowDenyPermissionConfig,
+  #[serde(default, deserialize_with = "deserialize_allow_deny_ignore")]
+  pub read: AllowDenyIgnorePermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub write: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
@@ -293,9 +293,10 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: Some(true),
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: None,
+          ignore: None,
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::All),
@@ -343,9 +344,10 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
-          deny: None
+          deny: None,
+          ignore: None,
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
@@ -384,6 +386,7 @@ mod test {
         "read": {
           "allow": ["test"],
           "deny": ["test-deny"],
+          "ignore": ["test-ignore"],
         },
         "write": [],
         "sys": {
@@ -393,11 +396,14 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: Some(PermissionConfigValue::Some(vec![
             "test-deny".to_string()
           ])),
+          ignore: Some(PermissionConfigValue::Some(vec![
+            "test-ignore".to_string()
+          ]))
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::None),
@@ -416,15 +422,19 @@ mod test {
         "read": {
           "allow": true,
           "deny": ["test-deny"],
+          "ignore": ["test-ignore"],
         },
       }))
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: Some(PermissionConfigValue::Some(vec![
             "test-deny".to_string()
+          ])),
+          ignore: Some(PermissionConfigValue::Some(vec![
+            "test-ignore".to_string()
           ])),
         },
         ..Default::default()
