@@ -222,16 +222,11 @@ pub struct CoverageFlags {
   pub r#type: CoverageType,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
+  #[default]
   Builtin,
   Paths(Vec<String>),
-}
-
-impl Default for DocSourceFileFlag {
-  fn default() -> Self {
-    Self::Builtin
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -695,12 +690,13 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
   /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
+  #[default]
   None,
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
@@ -723,12 +719,6 @@ impl TypeCheckMode {
       true => GraphKind::All,
       false => GraphKind::CodeOnly,
     }
-  }
-}
-
-impl Default for TypeCheckMode {
-  fn default() -> Self {
-    Self::None
   }
 }
 
