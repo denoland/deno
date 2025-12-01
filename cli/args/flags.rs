@@ -222,16 +222,11 @@ pub struct CoverageFlags {
   pub r#type: CoverageType,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
+  #[default]
   Builtin,
   Paths(Vec<String>),
-}
-
-impl Default for DocSourceFileFlag {
-  fn default() -> Self {
-    Self::Builtin
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -695,12 +690,13 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
   /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
+  #[default]
   None,
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
@@ -723,12 +719,6 @@ impl TypeCheckMode {
       true => GraphKind::All,
       false => GraphKind::CodeOnly,
     }
-  }
-}
-
-impl Default for TypeCheckMode {
-  fn default() -> Self {
-    Self::None
   }
 }
 
@@ -825,6 +815,7 @@ pub struct PermissionFlags {
   pub deny_net: Option<Vec<String>>,
   pub allow_read: Option<Vec<String>>,
   pub deny_read: Option<Vec<String>>,
+  pub ignore_read: Option<Vec<String>>,
   pub allow_run: Option<Vec<String>>,
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
@@ -848,6 +839,7 @@ impl PermissionFlags {
       || self.deny_net.is_some()
       || self.allow_read.is_some()
       || self.deny_read.is_some()
+      || self.ignore_read.is_some()
       || self.allow_run.is_some()
       || self.deny_run.is_some()
       || self.allow_sys.is_some()
@@ -981,11 +973,22 @@ impl Flags {
     }
 
     match &self.permissions.ignore_env {
-      Some(env_ignorelist) if env_ignorelist.is_empty() => {
+      Some(ignorelist) if ignorelist.is_empty() => {
         args.push("--ignore-env".to_string());
       }
-      Some(env_ignorelist) => {
-        let s = format!("--ignore-env={}", env_ignorelist.join(","));
+      Some(ignorelist) => {
+        let s = format!("--ignore-env={}", ignorelist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.ignore_read {
+      Some(ignorelist) if ignorelist.is_empty() => {
+        args.push("--ignore-read".to_string());
+      }
+      Some(ignorelist) => {
+        let s = format!("--ignore-read={}", ignorelist.join(","));
         args.push(s);
       }
       _ => {}
@@ -4223,6 +4226,20 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     }
     arg
   };
+  let make_deny_ignore_read_arg = |arg: Arg| {
+    let mut arg = arg
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .require_equals(true)
+      .value_name("PATH")
+      .long_help("false")
+      .value_hint(ValueHint::AnyPath)
+      .hide(true);
+    if let Some(requires) = requires {
+      arg = arg.requires(requires)
+    }
+    arg
+  };
   app
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
@@ -4264,6 +4281,10 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
       <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
+      <g>--ignore-env[=<<VARIABLE_NAME>...]</>    Ignore access to environment variables returning `undefined`. Optionally specify ignored environment variables.
+                                             <p(245)>--ignore-env  |  --ignore-env="PORT,HOME,PATH"</>
+      <g>--ignore-read[=<<PATH>...]</>            Ignore file system read access with a `NotFound` error. Optionally specify ignored paths.
+                                             <p(245)>--ignore-read  |  --ignore-read="/etc,/var/log.txt"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
       <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to generate a JSONL file with all permissions accesses.
@@ -4312,23 +4333,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
-    .arg(
-      {
-        let mut arg = Arg::new("deny-read")
-          .long("deny-read")
-          .num_args(0..)
-          .action(ArgAction::Append)
-          .require_equals(true)
-          .value_name("PATH")
-          .long_help("false")
-          .value_hint(ValueHint::AnyPath)
-          .hide(true);
-        if let Some(requires) = requires {
-          arg = arg.requires(requires)
-        }
-        arg
-      }
-    )
+    .arg(make_deny_ignore_read_arg(Arg::new("deny-read").long("deny-read")))
+    .arg(make_deny_ignore_read_arg(Arg::new("ignore-read").long("ignore-read")))
     .arg(
       {
         let mut arg = Arg::new("allow-write")
@@ -6723,6 +6729,11 @@ fn permission_args_parse(
       .flat_map(flat_escape_split_commas)
       .collect::<Result<Vec<_>, _>>()?;
     flags.permissions.deny_read = Some(read_wl);
+  }
+
+  if let Some(read_wl) = matches.remove_many::<String>("ignore-read") {
+    flags.permissions.ignore_read = Some(read_wl.collect());
+    debug!("read ignorelist: {:#?}", &flags.permissions.ignore_read);
   }
 
   if let Some(write_wl) = matches.remove_many::<String>("allow-write") {
@@ -9205,6 +9216,55 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn ignore_read_ignorelist() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--ignore-read=something.txt",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_read: Some(svec!["something.txt"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn ignore_read_ignorelist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--ignore-read=something.txt",
+      "--ignore-read=something2.txt",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_read: Some(svec!["something.txt", "something2.txt"]),
+          ..Default::default()
+        },
         code_cache_enabled: true,
         ..Flags::default()
       }

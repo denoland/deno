@@ -497,6 +497,8 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
             }
             MediaType::Css
             | MediaType::Html
+            | MediaType::Jsonc
+            | MediaType::Json5
             | MediaType::Sql
             | MediaType::Wasm
             | MediaType::SourceMap => {
