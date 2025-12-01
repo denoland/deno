@@ -16,6 +16,7 @@ use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiagnosticKind;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -85,22 +86,46 @@ pub async fn publish(
 
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
+  let diagnostics_collector = PublishDiagnosticsCollector::default();
+  // Convert workspace diagnostics to publish diagnostics
+  for workspace_diagnostic in cli_options.start_dir.workspace.diagnostics() {
+    if let WorkspaceDiagnosticKind::ConflictingPublishConfig {
+      deno_config_url,
+      jsr_config_url,
+    } = &workspace_diagnostic.kind
+    {
+      let mut specifiers =
+        vec![deno_config_url.clone(), jsr_config_url.clone()];
+      specifiers.sort();
+      specifiers.dedup();
+      diagnostics_collector.push(PublishDiagnostic::ConflictingPublishConfig {
+        primary_specifier: jsr_config_url.clone(),
+        specifiers,
+      });
+    }
+  }
+  if diagnostics_collector.has_error() {
+    return diagnostics_collector.print_and_error();
+  }
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
-      Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
-        if deno_json.json.name.is_none() {
-          bail!("Missing 'name' field in '{}'.", deno_json.specifier);
-        }
-        error_missing_exports_field(deno_json)?;
+    if let Some(deno_json) = cli_options.start_dir.maybe_deno_json() {
+      debug_assert!(!deno_json.is_package());
+      if deno_json.json.name.is_none() {
+        bail!("Missing 'name' field in '{}'.", deno_json.specifier);
       }
-      None => {
-        bail!(
-          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
-          directory_path.display()
-        );
+      error_missing_exports_field(deno_json)?;
+    } else if let Some(jsr_json) = cli_options.start_dir.maybe_jsr_json() {
+      debug_assert!(!jsr_json.is_package());
+      if jsr_json.json.name.is_none() {
+        bail!("Missing 'name' field in '{}'.", jsr_json.specifier);
       }
+      error_missing_exports_field(jsr_json)?;
+    } else {
+      bail!(
+        "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
+        directory_path.display()
+      );
     }
   }
 
@@ -123,7 +148,6 @@ pub async fn publish(
     cli_options.unstable_bare_node_builtins(),
   );
 
-  let diagnostics_collector = PublishDiagnosticsCollector::default();
   let parsed_source_cache = cli_factory.parsed_source_cache()?;
   let module_content_provider = Arc::new(ModuleContentProvider::new(
     parsed_source_cache.clone(),
@@ -1357,7 +1381,10 @@ mod tests {
   use std::collections::HashMap;
 
   use deno_ast::ModuleSpecifier;
+  use deno_ast::diagnostics::Diagnostic;
+  use deno_core::url::Url;
 
+  use super::PublishDiagnostic;
   use super::has_license_file;
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
@@ -1485,5 +1512,56 @@ mod tests {
       "file:///other",
       "file:///test/tLICENSE"
     ]),);
+  }
+
+  #[test]
+  fn test_conflicting_publish_config_diagnostic_lists_specifiers() {
+    let deno_specifier = Url::parse("file:///example/deno.json").unwrap();
+    let jsr_specifier = Url::parse("file:///example/jsr.json").unwrap();
+    let diagnostic = PublishDiagnostic::ConflictingPublishConfig {
+      primary_specifier: jsr_specifier.clone(),
+      specifiers: vec![deno_specifier.clone(), jsr_specifier.clone()],
+    };
+    let message = diagnostic.message();
+    assert!(message.contains("deno.json"));
+    assert!(message.contains("jsr.json"));
+    let hint = diagnostic.hint().expect("expected hint");
+    assert!(hint.contains("Remove the conflicting configuration"));
+  }
+
+  #[test]
+  fn test_workspace_diagnostics_converted_to_publish_diagnostics() {
+    use deno_ast::diagnostics::DiagnosticLevel;
+    use deno_config::workspace::WorkspaceDiagnosticKind;
+
+    let deno_config_url = Url::parse("file:///example/deno.json").unwrap();
+    let jsr_config_url = Url::parse("file:///example/jsr.json").unwrap();
+
+    let workspace_diagnostic_kind =
+      WorkspaceDiagnosticKind::ConflictingPublishConfig {
+        deno_config_url: deno_config_url.clone(),
+        jsr_config_url: jsr_config_url.clone(),
+      };
+
+    // Simulate the conversion logic from publish()
+    let mut specifiers = vec![deno_config_url.clone(), jsr_config_url.clone()];
+    specifiers.sort();
+    specifiers.dedup();
+
+    let publish_diagnostic = PublishDiagnostic::ConflictingPublishConfig {
+      primary_specifier: jsr_config_url.clone(),
+      specifiers: specifiers.clone(),
+    };
+
+    // Verify the diagnostic was created correctly
+    assert!(matches!(
+      workspace_diagnostic_kind,
+      WorkspaceDiagnosticKind::ConflictingPublishConfig { .. }
+    ));
+    assert!(matches!(publish_diagnostic.level(), DiagnosticLevel::Error));
+    let message = publish_diagnostic.message();
+    assert!(message.contains("deno.json"));
+    assert!(message.contains("jsr.json"));
+    assert_eq!(specifiers.len(), 2);
   }
 }

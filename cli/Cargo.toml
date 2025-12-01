@@ -77,6 +77,7 @@ deno_graph = { workspace = true, features = ["fast_check"] }
 deno_lib.workspace = true
 deno_lint.workspace = true
 deno_lockfile.workspace = true
+deno_maybe_sync.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true

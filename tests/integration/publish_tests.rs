@@ -527,3 +527,55 @@ fn publish_context_builder_with_git_checks() -> TestContextBuilder {
     .envs(env_vars_for_jsr_tests_with_git_check())
     .use_temp_cwd()
 }
+
+#[test]
+fn publish_workspace_with_jsr_json_fallback() {
+  let context = publish_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  // Root workspace config
+  temp_dir.join("deno.json").write_json(&json!({
+    "workspace": ["./pkg1", "./pkg2"]
+  }));
+  temp_dir.join("LICENSE").write("MIT License");
+
+  // pkg1: deno.json without package fields, jsr.json with package metadata
+  let pkg1_dir = temp_dir.join("pkg1");
+  pkg1_dir.create_dir_all();
+  pkg1_dir.join("deno.json").write_json(&json!({
+    "fmt": {
+      "semiColons": false
+    }
+  }));
+  pkg1_dir.join("jsr.json").write_json(&json!({
+    "name": "@scope/pkg1",
+    "version": "0.1.0",
+    "exports": "./mod.ts"
+  }));
+  pkg1_dir.join("mod.ts").write(
+    "export function add(a: number, b: number): number { return a + b; }",
+  );
+
+  // pkg2: deno.json with package metadata (standard case)
+  let pkg2_dir = temp_dir.join("pkg2");
+  pkg2_dir.create_dir_all();
+  pkg2_dir.join("deno.json").write_json(&json!({
+    "name": "@scope/pkg2",
+    "version": "0.2.0",
+    "exports": "./mod.ts"
+  }));
+  pkg2_dir.join("mod.ts").write(
+    "export function subtract(a: number, b: number): number { return a - b; }",
+  );
+
+  let output = context
+    .new_command()
+    .args("publish --dry-run --allow-dirty")
+    .run();
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "@scope/pkg1@0.1.0");
+  assert_contains!(output_text, "@scope/pkg2@0.2.0");
+  assert_contains!(output_text, "pkg1/jsr.json");
+  assert_contains!(output_text, "pkg2/deno.json");
+}
