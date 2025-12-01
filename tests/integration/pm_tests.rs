@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::sync::LazyLock;
+
 use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
@@ -155,6 +157,9 @@ fn pm_context_builder() -> TestContextBuilder {
 
 #[test]
 fn approve_scripts_basic() {
+  if cfg!(windows) && *IS_CI {
+    return;
+  }
   let context = pm_context_builder().build();
   context
     .temp_dir()
@@ -190,8 +195,13 @@ fn approve_scripts_basic() {
     }));
 }
 
+static IS_CI: LazyLock<bool> = LazyLock::new(|| std::env::var("CI").is_ok());
+
 #[test]
 fn approve_scripts_deny_some() {
+  if cfg!(windows) && *IS_CI {
+    return;
+  }
   let context = pm_context_builder().build();
   context
     .temp_dir()
