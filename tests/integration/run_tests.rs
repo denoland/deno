@@ -179,7 +179,7 @@ fn _090_run_permissions_request() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -190,7 +190,7 @@ fn _090_run_permissions_request() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -212,7 +212,7 @@ fn _090_run_permissions_request_sync() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -223,7 +223,7 @@ fn _090_run_permissions_request_sync() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -246,7 +246,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -258,7 +258,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -270,7 +270,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-write\r\n",
         "┠─ Run again with --allow-write to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -282,7 +282,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-net\r\n",
         "┠─ Run again with --allow-net to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -294,7 +294,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -306,7 +306,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
         "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -318,7 +318,7 @@ fn permissions_prompt_allow_all() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-ffi\r\n",
         "┠─ Run again with --allow-ffi to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -339,7 +339,7 @@ fn permissions_prompt_allow_all_2() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -352,13 +352,13 @@ fn permissions_prompt_allow_all_2() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
         "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
       console.expect("Granted all sys access.");
 
-      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
+      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)");
       // "read" permissions
       test_util::assertions::assert_wildcard_match(&text, concat!(
         "\r\n",
@@ -367,7 +367,7 @@ fn permissions_prompt_allow_all_2() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("A");
@@ -388,7 +388,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-run\r\n",
         "┠─ Run again with --allow-run to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("a");
@@ -423,7 +423,7 @@ fn permissions_cache() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("y");
@@ -440,7 +440,7 @@ fn permissions_trace() {
     .env("DENO_TRACE_PERMISSIONS", "1")
     .args_vec(["run", "--quiet", "run/permissions_trace.ts"])
     .with_pty(|mut console| {
-      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)");
+      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) (default: n)");
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
@@ -450,7 +450,7 @@ fn permissions_trace() {
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
       "┠─ Learn more at: https://docs.deno.com/go/--allow-sys\r\n",
       "┠─ Run again with --allow-sys to bypass this prompt.\r\n",
-      "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
+      "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) (default: n)",
       ));
 
       console.human_delay();
@@ -1638,7 +1638,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -1648,7 +1648,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -1670,7 +1670,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -1680,7 +1680,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("n");
@@ -1702,7 +1702,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("y\n");
@@ -1727,7 +1727,7 @@ mod permissions {
           "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
           "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
           "┠─ Run again with --allow-read to bypass this prompt.\r\n",
-          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+          "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n)",
         ));
         console.human_delay();
         console.write_line_raw("y");
@@ -1805,7 +1805,7 @@ fn issue9750() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -1815,7 +1815,7 @@ fn issue9750() {
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-env\r\n",
         "┠─ Run again with --allow-env to bypass this prompt.\r\n",
-        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+        "┗ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) (default: n)",
       ));
       console.human_delay();
       console.write_line_raw("n");
@@ -2842,7 +2842,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       console.expect(malicious_output);
       console.write_line(r#"Deno.readTextFileSync('../Cargo.toml');"#);
       // We will get a permission prompt
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > ");
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n) > ");
       // The worker is blocked, so nothing else should get written here
       console.human_delay();
       console.write_line_raw("i");
@@ -2857,12 +2857,12 @@ fn stdio_streams_are_locked_in_permission_prompt() {
         // outputs a bunch of control characters, so we instead rely on the last assertion
         // in this test that checks to ensure we didn't receive any malicious output during
         // the permission prompts
-        console.expect("Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) >");
+        console.expect("Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n) >");
         console.human_delay();
         console.write_line_raw("y");
         console.expect("Granted read access to");
       } else {
-        console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+        console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) (default: n) > "));
         console.human_delay();
         console.write_line_raw("y");
         // We ensure that nothing gets written here between the permission prompt and this text, despite the delay

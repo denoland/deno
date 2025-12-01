@@ -380,10 +380,10 @@ impl PermissionPrompter for TtyPrompter {
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
       format!(
-        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
+        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions) (default: n)"
       )
     } else {
-      "[y/n] (y = yes, allow; n = no, deny)".to_string()
+      "[y/n] (y = yes, allow; n = no, deny) (default: n)".to_string()
     };
 
     // output everything in one shot to make the tests more reliable
