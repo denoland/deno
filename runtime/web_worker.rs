@@ -377,6 +377,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: Option<deno_core::futures::channel::mpsc::UnboundedSender<deno_core::InspectorSessionProxy>>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -674,12 +675,69 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
+    // Workers should connect to the main thread's inspector for debugging
+    // using the Target domain approach (like Node.js --experimental-worker-inspection)
+    if let Some(main_session_tx) = services.main_inspector_session_tx {
+      eprintln!("[WORKER DEBUG] Worker {} connecting to main thread inspector", options.name);
+
+      // Create channels for bidirectional communication between worker and main thread
+      let (main_to_worker_tx, mut main_to_worker_rx) = deno_core::futures::channel::mpsc::unbounded::<String>();
+      let (worker_to_main_tx, worker_to_main_rx) = deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>();
+
+      // Create dummy channels for the proxy fields that won't be used
+      let (dummy_tx, _dummy_rx) = deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>();
+      let (_dummy_str_tx, dummy_str_rx) = deno_core::futures::channel::mpsc::unbounded::<String>();
+
+      let proxy = deno_core::InspectorSessionProxy {
+        tx: dummy_tx,
+        rx: dummy_str_rx,
+        kind: deno_core::InspectorSessionKind::NonBlocking {
+          wait_for_disconnect: false,
+        },
+        worker_tx: Some(main_to_worker_tx),
+        worker_rx: Some(worker_to_main_rx),
+      };
+
+      // Send the proxy to the main thread
+      if let Err(e) = main_session_tx.unbounded_send(proxy) {
+        eprintln!("[WORKER DEBUG] Failed to send worker inspector proxy: {}", e);
+      } else {
+        eprintln!("[WORKER DEBUG] Worker inspector proxy sent to main thread");
+
+        // Create a local inspector session for this worker
+        let worker_to_main_tx_clone = worker_to_main_tx.clone();
+        let mut local_session = deno_core::JsRuntimeInspector::create_local_session(
+          js_runtime.inspector(),
+          Box::new(move |msg| {
+            eprintln!("[WORKER DEBUG] Worker V8 inspector callback: {:?}", msg.kind);
+            if let Err(e) = worker_to_main_tx_clone.unbounded_send(msg) {
+              eprintln!("[WORKER DEBUG] Failed to send message to main: {}", e);
+            }
+          }),
+          deno_core::InspectorSessionKind::NonBlocking {
+            wait_for_disconnect: false,
+          },
+        );
+
+        // Spawn a task to pump messages from main thread to worker's inspector
+        let main_to_worker_pump = async move {
+          use deno_core::futures::StreamExt;
+
+          eprintln!("[WORKER DEBUG] Starting main->worker message pump");
+
+          while let Some(msg) = main_to_worker_rx.next().await {
+            eprintln!("[WORKER DEBUG] Worker received message from main: {}", msg);
+            local_session.dispatch(msg);
+          }
+          eprintln!("[WORKER DEBUG] Main->worker pump ended");
+        };
+
+        deno_core::unsync::spawn(main_to_worker_pump);
+      }
+    } else if let Some(_server) = services.maybe_inspector_server {
+      // Fallback to old behavior if no main session tx available
+      // (this shouldn't happen in our new architecture)
+      eprintln!("[WORKER DEBUG] No main inspector session tx, worker debugging disabled");
     }
 
     let (internal_handle, external_handle) = {
