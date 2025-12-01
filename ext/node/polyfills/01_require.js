@@ -961,7 +961,8 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
+  // TODO(bartlomieju): these should actually be stored somewhere
+  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = globalThis; (() => {`,
   "\n})(); })",
 ];
 Module.wrap = function (script) {

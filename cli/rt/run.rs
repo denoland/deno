@@ -849,6 +849,11 @@ pub async fn run(
     node_resolution_sys,
     node_resolver::NodeResolverOptions::default(),
   ));
+  let require_modules = metadata
+    .require_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
@@ -859,6 +864,7 @@ pub async fn run(
     } else {
       IsCjsResolutionMode::ExplicitTypeCommonJs
     },
+    require_modules.clone(),
   ));
   let npm_req_resolver = Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
     sys: sys.clone(),
@@ -1023,7 +1029,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc: None,
+    node_ipc_init: None,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1088,6 +1094,7 @@ pub async fn run(
     permissions,
     main_module,
     preload_modules,
+    require_modules,
   )?;
 
   let exit_code = worker.run().await?;

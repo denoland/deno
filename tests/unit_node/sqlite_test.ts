@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
+import * as nodeAssert from "node:assert";
 
 const tempDir = Deno.makeTempDirSync();
 
@@ -437,4 +438,57 @@ Deno.test("[node/sqlite] Database backup", async () => {
 
   Deno.removeSync(`${tempDir}/original.db`);
   Deno.removeSync(`${tempDir}/backup.db`);
+});
+
+Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+  const errMessage = "statement has been finalized";
+
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (value INTEGER)");
+  const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  stmt.run(1, 2);
+  db.close();
+
+  assertThrows(() => stmt.all(), Error, errMessage);
+  assertThrows(() => stmt.expandedSQL, Error, errMessage);
+  assertThrows(() => stmt.get(), Error, errMessage);
+  assertThrows(() => stmt.iterate(), Error, errMessage);
+  assertThrows(() => stmt.setAllowBareNamedParameters(true), Error, errMessage);
+  assertThrows(
+    () => stmt.setAllowUnknownNamedParameters(true),
+    Error,
+    errMessage,
+  );
+  assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
+  assertThrows(() => stmt.sourceSQL, Error, errMessage);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30144
+Deno.test("[node/sqlite] StatementSync iterate should not reuse previous state", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE numbers (value INTEGER)");
+
+  const stmt = db.prepare("SELECT value FROM numbers");
+  assertEquals(Array.from(stmt.iterate()), []);
+
+  db.exec("INSERT INTO numbers (value) VALUES (10), (20), (30)");
+  assertEquals(Array.from(stmt.iterate()), [
+    { value: 10, __proto__: null },
+    { value: 20, __proto__: null },
+    { value: 30, __proto__: null },
+  ]);
+
+  db.exec("DELETE FROM numbers");
+  assertEquals(Array.from(stmt.iterate()), []);
+});
+
+Deno.test("[node/sqlite] detailed SQLite errors", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => db.prepare("SELECT * FROM noop"), {
+    message: "no such table: noop",
+    code: "ERR_SQLITE_ERROR",
+    errcode: 1,
+    errstr: "SQL logic error",
+  });
 });

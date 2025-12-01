@@ -25,8 +25,6 @@ use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
-
-mod global;
 pub mod ops;
 
 pub use deno_package_json::PackageJson;
@@ -40,10 +38,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -157,6 +151,8 @@ deno_core::extension!(deno_node,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
+    ops::buffer::op_node_buffer_compare,
+    ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
     ops::crypto::op_node_check_prime_async,
@@ -264,6 +260,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::crypto::x509::op_node_x509_public_key,
     ops::dns::op_node_getaddrinfo,
+    ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
     ops::fs::op_node_fs_exists,
     ops::fs::op_node_lchmod_sync,
@@ -365,12 +362,16 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
+    ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
-    ops::ipc::op_node_ipc_write,
-    ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_write_json,
+    ops::ipc::op_node_ipc_read_json,
+    ops::ipc::op_node_ipc_read_advanced,
+    ops::ipc::op_node_ipc_write_advanced,
+    ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
@@ -410,7 +411,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -682,8 +682,6 @@ deno_core::extension!(deno_node,
 
     state.put(AsyncId::default());
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -755,42 +753,6 @@ deno_core::extension!(deno_node,
       vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
         ExternalReference {
           enumerator: *enumerator,
-        }
-      }),
-
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
         }
       }),
     ];

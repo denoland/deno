@@ -1,14 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread::ThreadId;
 
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -26,6 +23,7 @@ use http::header::CONTENT_LENGTH;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http_body_util::BodyExt;
+use once_cell::sync::OnceCell;
 use thiserror::Error;
 
 use crate::util::progress_bar::UpdateGuard;
@@ -41,10 +39,7 @@ pub enum SendError {
 pub struct HttpClientProvider {
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  // it's not safe to share a reqwest::Client across tokio runtimes,
-  // so we store these Clients keyed by thread id
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  clients_by_thread_id: Mutex<HashMap<ThreadId, deno_fetch::Client>>,
+  client: OnceCell<deno_fetch::Client>,
 }
 
 impl std::fmt::Debug for HttpClientProvider {
@@ -66,33 +61,25 @@ impl HttpClientProvider {
         ..Default::default()
       },
       root_cert_store_provider,
-      clients_by_thread_id: Default::default(),
+      client: OnceCell::new(),
     }
   }
 
   pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
-    use std::collections::hash_map::Entry;
-    let thread_id = std::thread::current().id();
-    let mut clients = self.clients_by_thread_id.lock();
-    let entry = clients.entry(thread_id);
-    match entry {
-      Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
-      Entry::Vacant(entry) => {
-        let client = create_http_client(
-          DENO_VERSION_INFO.user_agent,
-          CreateHttpClientOptions {
-            root_cert_store: match &self.root_cert_store_provider {
-              Some(provider) => Some(provider.get_or_try_init()?.clone()),
-              None => None,
-            },
-            ..self.options.clone()
+    let client = self.client.get_or_try_init(|| {
+      create_http_client(
+        DENO_VERSION_INFO.user_agent,
+        CreateHttpClientOptions {
+          root_cert_store: match &self.root_cert_store_provider {
+            Some(provider) => Some(provider.get_or_try_init()?.clone()),
+            None => None,
           },
-        )
-        .map_err(JsErrorBox::from_err)?;
-        entry.insert(client.clone());
-        Ok(HttpClient::new(client))
-      }
-    }
+          ..self.options.clone()
+        },
+      )
+      .map_err(JsErrorBox::from_err)
+    })?;
+    Ok(HttpClient::new(client.clone()))
   }
 }
 
@@ -179,21 +166,13 @@ impl HttpClientResponse {
 #[derive(Debug)]
 pub struct HttpClient {
   client: deno_fetch::Client,
-  // don't allow sending this across threads because then
-  // it might be shared accidentally across tokio runtimes
-  // which will cause issues
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  _unsend_marker: deno_core::unsync::UnsendMarker,
 }
 
 impl HttpClient {
   // DO NOT make this public. You should always be creating one of these from
   // the HttpClientProvider
   fn new(client: deno_fetch::Client) -> Self {
-    Self {
-      client,
-      _unsend_marker: deno_core::unsync::UnsendMarker::default(),
-    }
+    Self { client }
   }
 
   pub fn get(&self, url: Url) -> Result<RequestBuilder, http::Error> {

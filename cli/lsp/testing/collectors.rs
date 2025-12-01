@@ -171,7 +171,7 @@ fn visit_call_expr(
               // matches string literals (e.g. "test name" or
               // 'test name')
               ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-                maybe_name = Some(lit_str.value.to_string());
+                maybe_name = Some(lit_str.value.to_string_lossy().to_string());
               }
               // matches template literals with only a single quasis
               // (e.g. `test name`)
@@ -271,7 +271,7 @@ fn visit_call_expr(
         }
       }
       ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-        let name = lit_str.value.to_string();
+        let name = lit_str.value.to_string_lossy().to_string();
         let (id, _) = test_module.register(
           name,
           Some(range),
