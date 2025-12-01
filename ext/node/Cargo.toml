@@ -62,6 +62,7 @@ ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
@@ -88,6 +89,7 @@ sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
+socket2.workspace = true
 spki.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true

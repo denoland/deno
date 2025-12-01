@@ -1053,6 +1053,8 @@ impl Config {
       | MediaType::Dcts
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
@@ -1469,6 +1471,7 @@ impl ConfigData {
         specified_import_map: None,
         types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
+        require_modules: vec![],
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);

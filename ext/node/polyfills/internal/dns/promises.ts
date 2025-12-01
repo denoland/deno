@@ -27,6 +27,7 @@ import {
   validateBoolean,
   validateNumber,
   validateOneOf,
+  validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
@@ -52,10 +53,13 @@ import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_ARGS,
+  handleDnsError,
 } from "ext:deno_node/internal/errors.ts";
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { toASCII } from "node:punycode";
@@ -228,6 +232,52 @@ function onresolve(
     : records;
 
   this.resolve(parsedRecords);
+}
+
+function onlookupservice(
+  this: GetNameInfoReqWrap,
+  err: Error | null,
+  hostname?: string,
+  service?: string,
+) {
+  if (err) {
+    this.reject(handleDnsError(err, "getnameinfo", this.address));
+    return;
+  }
+
+  this.resolve({ hostname: hostname!, service: service! });
+}
+
+function createLookupServicePromise(address: string, port: number) {
+  return new Promise((resolve, reject) => {
+    const req = new GetNameInfoReqWrap();
+
+    req.address = address;
+    req.port = port;
+    req.oncomplete = onlookupservice;
+    req.resolve = resolve;
+    req.reject = reject;
+
+    const errCode = cares.getnameinfo(req, address, port);
+
+    if (errCode) {
+      reject(dnsException(errCode, "getnameinfo", address));
+    }
+  });
+}
+
+export function lookupService(address: string, port: number) {
+  if (arguments.length !== 2) {
+    throw new ERR_MISSING_ARGS("address", "port");
+  }
+
+  if (isIP(address) === 0) {
+    throw new ERR_INVALID_ARG_VALUE("address", address);
+  }
+
+  port = validatePort(port);
+
+  return createLookupServicePromise(address, port);
 }
 
 function createResolverPromise(
@@ -500,6 +550,7 @@ export { Resolver };
 
 export default {
   lookup,
+  lookupService,
   Resolver,
   getServers,
   resolveAny,
