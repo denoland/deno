@@ -8,17 +8,17 @@ use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::task::Poll;
 use std::thread;
 
+use deno_core::InspectorIoDelegate;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntimeInspector;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::StreamExt;
@@ -102,15 +102,10 @@ impl InspectorServer {
     inspector: Rc<JsRuntimeInspector>,
     wait_for_session: bool,
   ) {
-    let session_sender = inspector.get_session_sender();
-    let deregister_rx = inspector.add_deregister_handler();
-    let info = InspectorInfo::new(
-      self.host,
-      session_sender,
-      deregister_rx,
-      module_url,
-      wait_for_session,
-    );
+    let io_delegate = inspector.create_io_delegate();
+
+    let info =
+      InspectorInfo::new(self.host, io_delegate, module_url, wait_for_session);
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -149,7 +144,7 @@ fn handle_ws_request(
   };
 
   // run in a block to not hold borrow to `inspector_map` for too long
-  let new_session_tx = {
+  let io_delegate = {
     let inspector_map = inspector_map_rc.borrow();
     let maybe_inspector_info = inspector_map.get(&uuid);
 
@@ -160,7 +155,7 @@ fn handle_ws_request(
     }
 
     let info = maybe_inspector_info.unwrap();
-    info.new_session_tx.clone()
+    info.io_delegate.clone()
   };
   let (parts, _) = req.into_parts();
   let mut req = http::Request::from_parts(parts, body);
@@ -192,17 +187,17 @@ fn handle_ws_request(
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
     // The 'inbound' channel carries messages received from the websocket.
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
-
-    let inspector_session_proxy = InspectorSessionProxy {
-      tx: outbound_tx,
-      rx: inbound_rx,
-      kind: InspectorSessionKind::NonBlocking {
+    let session_cb = Box::new(move |msg| {
+      let _ = outbound_tx.unbounded_send(msg);
+    });
+    log::info!("Debugger session started.");
+    io_delegate.new_remote_session(
+      session_cb,
+      inbound_rx,
+      InspectorSessionKind::NonBlocking {
         wait_for_disconnect: true,
       },
-    };
-
-    log::info!("Debugger session started.");
-    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
+    );
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
@@ -260,9 +255,10 @@ async fn server(
 
   let inspector_map = Rc::clone(&inspector_map_);
   let deregister_inspector_handler = future::poll_fn(|cx| {
-    inspector_map
-      .borrow_mut()
-      .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
+    // TODO(bartlomieju): this should be simplified
+    inspector_map.borrow_mut().retain(|_, info| {
+      info.io_delegate.poll_deregister_rx(cx) == Poll::Pending
+    });
     Poll::<Never>::Pending
   })
   .boxed_local();
@@ -285,11 +281,11 @@ async fn server(
   let server_handler = async move {
     loop {
       let mut rx = shutdown_server_rx.resubscribe();
-      let mut shutdown_rx = pin!(rx.recv());
-      let mut accept = pin!(listener.accept());
+      let shutdown_rx_fut = &mut rx.recv().boxed_local();
+      let accept_fut = &mut listener.accept().boxed_local();
 
       let stream = tokio::select! {
-        accept_result = &mut accept => {
+       accept_result = accept_fut => {
           match accept_result {
             Ok((s, _)) => s,
             Err(err) => {
@@ -299,7 +295,7 @@ async fn server(
           }
         },
 
-        _ = &mut shutdown_rx => {
+        _ = shutdown_rx_fut => {
           break;
         }
       };
@@ -325,16 +321,16 @@ async fn server(
               });
             match (req.method(), req.uri().path()) {
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
-                handle_ws_request(req, Rc::clone(&inspector_map))
+                handle_ws_request(req, inspector_map.clone())
               }
               (&http::Method::GET, "/json/version") => {
                 handle_json_version_request(json_version_response.clone())
               }
               (&http::Method::GET, "/json") => {
-                handle_json_request(Rc::clone(&inspector_map), host)
+                handle_json_request(inspector_map.clone(), host)
               }
               (&http::Method::GET, "/json/list") => {
-                handle_json_request(Rc::clone(&inspector_map), host)
+                handle_json_request(inspector_map.clone(), host)
               }
               _ => http::Response::builder()
                 .status(http::StatusCode::NOT_FOUND)
@@ -449,8 +445,7 @@ pub struct InspectorInfo {
   pub host: SocketAddr,
   pub uuid: Uuid,
   pub thread_name: Option<String>,
-  pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
-  pub deregister_rx: oneshot::Receiver<()>,
+  pub io_delegate: Arc<InspectorIoDelegate>,
   pub url: String,
   pub wait_for_session: bool,
 }
@@ -458,8 +453,7 @@ pub struct InspectorInfo {
 impl InspectorInfo {
   pub fn new(
     host: SocketAddr,
-    new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
-    deregister_rx: oneshot::Receiver<()>,
+    io_delegate: Arc<InspectorIoDelegate>,
     url: String,
     wait_for_session: bool,
   ) -> Self {
@@ -467,8 +461,7 @@ impl InspectorInfo {
       host,
       uuid: Uuid::new_v4(),
       thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_session_tx,
-      deregister_rx,
+      io_delegate,
       url,
       wait_for_session,
     }
