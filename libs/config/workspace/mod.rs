@@ -798,14 +798,11 @@ impl Workspace {
     self
       .config_folders
       .iter()
-      .map(|(dir_url, f)| (dir_url, f, false))
-      .chain(self.links.iter().map(|(dir_url, f)| (dir_url, f, true)))
-      .filter_map(|(dir_url, folder, is_link)| {
-        let config_file = folder
-          .deno_json
-          .as_ref()
-          .filter(|c| c.is_package())
-          .or_else(|| folder.jsr_json.as_ref().filter(|c| c.is_package()))?;
+      .filter_map(|(dir_url, f)| Some((dir_url, f.deno_json.as_ref()?, false)))
+      .chain(self.links.iter().filter_map(|(dir_url, f)| {
+        Some((dir_url, f.deno_json.as_ref()?, true))
+      }))
+      .filter_map(|(dir_url, config_file, is_link)| {
         let name = config_file.json.name.as_ref()?;
         let version = config_file
           .json
@@ -3047,47 +3044,6 @@ pub mod test {
       .expect("expected package config");
     assert_eq!(package.name, "@scope/pkg");
     assert!(package.config_file.specifier.path().ends_with("/jsr.json"));
-  }
-
-  #[test]
-  fn test_resolver_jsr_pkgs_with_jsr_fallback() {
-    let sys = InMemorySys::default();
-    sys.fs_insert_json(
-      root_dir().join("deno.json"),
-      json!({
-        "workspace": ["./pkg1"]
-      }),
-    );
-    // pkg1 has deno.json but not a package, jsr.json has package metadata
-    sys.fs_insert_json(
-      root_dir().join("pkg1/deno.json"),
-      json!({
-        "fmt": {
-          "semiColons": false
-        }
-      }),
-    );
-    sys.fs_insert_json(
-      root_dir().join("pkg1/jsr.json"),
-      json!({
-        "name": "@scope/pkg1",
-        "version": "1.0.0",
-        "exports": "./mod.ts"
-      }),
-    );
-    let workspace_dir = WorkspaceDirectory::discover(
-      &sys,
-      WorkspaceDiscoverStart::Paths(&[root_dir()]),
-      &WorkspaceDiscoverOptions {
-        discover_jsr_config: true,
-        ..Default::default()
-      },
-    )
-    .unwrap();
-    let jsr_pkgs: Vec<_> =
-      workspace_dir.workspace.resolver_jsr_pkgs().collect();
-    assert_eq!(jsr_pkgs.len(), 1);
-    assert_eq!(jsr_pkgs[0].name, "@scope/pkg1");
   }
 
   #[test]
