@@ -105,6 +105,13 @@ pub async fn approve_scripts(
     deny_list.push(JsrDepPackageReq::npm(req.clone()));
   }
 
+  if !approvals.is_empty() {
+    deny_list.retain(|entry| {
+      !(entry.kind == PackageKind::Npm
+        && approvals.iter().any(|approved| *approved == entry.req))
+    });
+  }
+
   allow_list.sort_by_key(|a| a.to_string());
   allow_list.dedup_by(|a, b| a.req == b.req && a.kind == b.kind);
   deny_list.sort_by_key(|a| a.to_string());
