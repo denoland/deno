@@ -107,8 +107,7 @@ pub async fn approve_scripts(
 
   if !approvals.is_empty() {
     deny_list.retain(|entry| {
-      !(entry.kind == PackageKind::Npm
-        && approvals.iter().any(|approved| *approved == entry.req))
+      !(entry.kind == PackageKind::Npm && approvals.contains(&entry.req))
     });
   }
 
