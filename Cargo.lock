@@ -559,7 +559,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -579,7 +579,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1888,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.371.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#593dd22cbf490ad52804ebf9aa880091e44d9e62"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#78c50be5276f7f2627bffc54e8b7e30845caaed9"
 dependencies = [
  "anyhow",
  "az",
@@ -2613,7 +2613,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.247.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#593dd22cbf490ad52804ebf9aa880091e44d9e62"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#78c50be5276f7f2627bffc54e8b7e30845caaed9"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -7172,8 +7172,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.5.0",
- "itertools 0.13.0",
+ "heck 0.4.1",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -7193,7 +7193,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8215,7 +8215,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.280.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#593dd22cbf490ad52804ebf9aa880091e44d9e62"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=reland_inspector#78c50be5276f7f2627bffc54e8b7e30845caaed9"
 dependencies = [
  "deno_error",
  "num-bigint",
