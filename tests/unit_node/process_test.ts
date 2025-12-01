@@ -544,7 +544,19 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
