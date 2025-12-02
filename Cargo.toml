@@ -427,7 +427,6 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
-
 # speeds up deno compile tests a lot
 [profile.dev.package.libsui]
 opt-level = 3
