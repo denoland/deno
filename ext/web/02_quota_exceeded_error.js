@@ -23,7 +23,7 @@ class QuotaExceededError extends DOMException {
   [_message];
   [_code] = 22;
 
-  constructor(message = "", options = {}) {
+  constructor(message = "", options = { __proto__: null }) {
     super(message, "QuotaExceededError", options);
   }
 }

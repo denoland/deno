@@ -52,7 +52,7 @@ const SECURITY_ERR = 18;
 const NETWORK_ERR = 19;
 const ABORT_ERR = 20;
 const URL_MISMATCH_ERR = 21;
-const QUOTA_EXCEEDED_ERR = 22;
+
 const TIMEOUT_ERR = 23;
 const INVALID_NODE_TYPE_ERR = 24;
 const DATA_CLONE_ERR = 25;
