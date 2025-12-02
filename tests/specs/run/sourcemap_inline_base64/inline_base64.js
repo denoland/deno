@@ -1,0 +1,8 @@
+// JavaScript file with inline source map
+function throwError() {
+  throw new Error("Test error from inline sourcemap");
+}
+
+throwError();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImZpbGU6Ly8vdGVzdC50cyJdLCJzb3VyY2VzQ29udGVudCI6WyIvLyBPcmlnaW5hbCBUeXBlU2NyaXB0IGZpbGVcbmZ1bmN0aW9uIHRocm93RXJyb3IoKSB7XG4gIHRocm93IG5ldyBFcnJvcihcIlRlc3QgZXJyb3IgZnJvbSBpbmxpbmUgc291cmNlbWFwXCIpO1xufVxuXG50aHJvd0Vycm9yKCk7XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkFBQUE7QUFDQTtBQUNBO0FBQ0E7QUFDQTtBQUNBIn0=
