@@ -583,6 +583,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
     data.source_map
   }
 
+  fn load_external_source_map(
+    &self,
+    source_map_url: &str,
+  ) -> Option<Cow<'_, [u8]>> {
+    let url = Url::parse(source_map_url).ok()?;
+    let data = self.shared.modules.read(&url).ok()??;
+    Some(Cow::Owned(data.data.to_vec()))
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
@@ -610,7 +619,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if self.shared.modules.has_file(&path) {
@@ -849,6 +858,11 @@ pub async fn run(
     node_resolution_sys,
     node_resolver::NodeResolverOptions::default(),
   ));
+  let require_modules = metadata
+    .require_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
@@ -859,6 +873,7 @@ pub async fn run(
     } else {
       IsCjsResolutionMode::ExplicitTypeCommonJs
     },
+    require_modules.clone(),
   ));
   let npm_req_resolver = Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
     sys: sys.clone(),
@@ -1023,7 +1038,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc: None,
+    node_ipc_init: None,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1088,6 +1103,7 @@ pub async fn run(
     permissions,
     main_module,
     preload_modules,
+    require_modules,
   )?;
 
   let exit_code = worker.run().await?;

@@ -1,0 +1,50 @@
+╭ @denotest/with-vuln1 is susceptible to prototype pollution
+│ Severity:   high
+│ Package:    @edenotest/with-vuln1
+│ Vulnerable: <1.1.0
+│ Patched:    >=1.1.0
+│ Path:       @denotest/with-vuln1
+│ Info:       https://example.com/vuln/101010
+╰ Actions:    install @denotest/with-vuln1@1.1.0
+
+╭ @denotest/with-vuln2 can steal crypto keys
+│ Severity:   critical
+│ Package:    @edenotest/with-vuln2
+│ Vulnerable: <2.0.0
+│ Patched:    >=2.0.0
+│ Path:       @denotest/using-vuln>@denotest/with-vuln2
+│ Info:       https://example.com/vuln/202020
+│ Actions:    install @denotest/with-vuln2@2.0.0 (major upgrade)
+╰             review @denotest/with-vuln2
+
+Found 2 vulnerabilities
+Severity: 0 low, 0 moderate, 1 high, 1 critical
+
+Socket.dev firewall report
+
+╭ pkg:npm/@denotest/using-vuln@1.0.0
+│ Supply Chain Risk:   100
+│ Maintenance:          78
+│ Quality:              94
+│ Vulnerabilities:     100
+│ License:             100
+╰ Alerts (1/0/0):      [critical] malware
+
+╭ pkg:npm/@denotest/with-vuln1@1.0.0
+│ Supply Chain Risk:   100
+│ Maintenance:          78
+│ Quality:              94
+│ Vulnerabilities:     100
+│ License:             100
+╰ Alerts (1/0/0):      [critical] malware
+
+╭ pkg:npm/@denotest/with-vuln2@1.5.0
+│ Supply Chain Risk:   100
+│ Maintenance:          78
+│ Quality:              94
+│ Vulnerabilities:     100
+│ License:             100
+╰ Alerts (1/0/0):      [critical] malware
+
+Found 3 alerts across 3 packages
+Severity: 0 low, 0 medium, 0 high, 3 critical

@@ -2,8 +2,9 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
+use std::ffi::OsString;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
@@ -13,8 +14,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
-use once_cell::sync::Lazy;
 use serde::Serialize;
 
 mod ops;
@@ -22,11 +23,10 @@ pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<&str>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  HashSet::from(["NODE_DEBUG", "NODE_OPTIONS", "FORCE_COLOR", "NO_COLOR"])
-});
+// The full list of environment variables supported by Node.js is available
+// at https://nodejs.org/api/cli.html#environment-variables
+const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
+  ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
@@ -155,7 +155,9 @@ fn op_set_env(
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -174,20 +176,64 @@ fn op_set_env(
   Ok(())
 }
 
+fn check_env_with_maybe_exit(
+  state: &mut OpState,
+  key: &str,
+) -> Result<ControlFlow<()>, PermissionCheckError> {
+  match state.borrow_mut::<PermissionsContainer>().check_env(key) {
+    Ok(()) => Ok(ControlFlow::Continue(())),
+    Err(PermissionCheckError::PermissionDenied(err))
+      if err.state == PermissionState::Ignored =>
+    {
+      Ok(ControlFlow::Break(()))
+    }
+    Err(err) => Err(err),
+  }
+}
+
 #[op2(stack_trace)]
 #[serde]
 fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
+  fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
+    kv.0
+      .into_string()
+      .ok()
+      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+  }
 
+  let permissions_container = state.borrow::<PermissionsContainer>();
+  let grant_all = match permissions_container.check_env_all() {
+    Ok(()) => true,
+    Err(PermissionCheckError::PermissionDenied(err)) => match err.state {
+      PermissionState::Granted
+      | PermissionState::Prompt
+      | PermissionState::Denied => return Err(err.into()),
+      PermissionState::GrantedPartial
+      | PermissionState::DeniedPartial
+      | PermissionState::Ignored => false,
+    },
+    Err(err) => return Err(err),
+  };
   Ok(
     env::vars_os()
-      .filter_map(|(key_os, value_os)| {
-        key_os
-          .into_string()
-          .ok()
-          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      .filter_map(|kv| {
+        let (k, v) = map_kv(kv)?;
+        let state = if grant_all {
+          PermissionState::Granted
+        } else {
+          permissions_container.query_env(Some(&k))
+        };
+        match state {
+          PermissionState::Granted | PermissionState::GrantedPartial => {
+            Some((k, v))
+          }
+          PermissionState::Ignored
+          | PermissionState::Prompt
+          | PermissionState::Denied
+          | PermissionState::DeniedPartial => None,
+        }
       })
       .collect(),
   )
@@ -223,10 +269,12 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: &str,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
+  let skip_permission_check =
+    SORTED_NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
 
-  if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if !skip_permission_check && check_env_with_maybe_exit(state, key)?.is_break()
+  {
+    return Ok(None);
   }
 
   get_env_var(key)
@@ -235,9 +283,11 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
-  #[string] key: String,
+  #[string] key: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
@@ -700,4 +750,17 @@ fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
 #[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
+}
+
+#[cfg(test)]
+mod test {
+  use crate::SORTED_NODE_ENV_VAR_ALLOWLIST;
+
+  #[test]
+  fn ensure_node_env_var_list_sorted() {
+    // ensure this is sorted for binary search
+    let mut items = SORTED_NODE_ENV_VAR_ALLOWLIST.to_vec();
+    items.sort();
+    assert_eq!(items, SORTED_NODE_ENV_VAR_ALLOWLIST);
+  }
 }

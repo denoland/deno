@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::ops::AddAssign;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityTrace;
@@ -88,10 +89,16 @@ pub fn format_test_error(
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
-  if options.hide_stacktraces {
-    return js_error.exception_message;
+  let message = if options.hide_stacktraces {
+    js_error.exception_message
+  } else {
+    format_js_error(&js_error, options.initial_cwd.as_ref())
+  };
+  if options.strip_ascii_color {
+    strip_ansi_codes(&message).to_string()
+  } else {
+    message
   }
-  format_js_error(&js_error, options.initial_cwd.as_ref())
 }
 
 pub fn format_sanitizer_diff(
