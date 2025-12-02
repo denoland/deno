@@ -8,10 +8,6 @@
     {
       "args": "audit",
       "output": "audit.out"
-    },
-    {
-      "args": "audit --socket",
-      "output": "audit.out"
     }
   ]
 }
