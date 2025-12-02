@@ -663,10 +663,14 @@ mod socket_dev {
           None
         }
       })
-      .map(|json_response| {
-        let response: FirewallResponse =
-          serde_json::from_str(&json_response).unwrap();
-        response
+      .filter_map(|json_response| {
+        match serde_json::from_str::<FirewallResponse>(&json_response) {
+          Ok(response) => Some(response),
+          Err(err) => {
+            log::error!("Failed deserializing socket.dev response {:?}", err);
+            None
+          }
+        }
       })
       .collect::<Vec<_>>();
 
