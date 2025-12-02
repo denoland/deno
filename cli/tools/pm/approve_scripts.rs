@@ -247,20 +247,15 @@ fn pick_candidates(
   let mut approvals = Vec::with_capacity(selected.len());
   let mut denials = Vec::with_capacity(candidates.len() - selected.len());
   for (idx, candidate) in candidates.iter().enumerate() {
-    if selected.contains(&idx) && existing_allowed.insert(candidate.req.clone())
-    {
-      approvals.push(candidate.req.clone());
+    if selected.contains(&idx) {
+      if existing_allowed.insert(candidate.req.clone()) {
+        approvals.push(candidate.req.clone());
+      }
     } else {
       denials.push(candidate.req.clone());
     }
   }
 
-  for idx in selected {
-    let candidate = &candidates[idx];
-    if existing_allowed.insert(candidate.req.clone()) {
-      approvals.push(candidate.req.clone());
-    }
-  }
   Ok(ChosenCandidates {
     approved: approvals,
     denied: denials,
