@@ -979,10 +979,10 @@ impl Formatter for CheckFormatter {
       let fail_fast_found_error = self.fail_fast_found_error.clone();
       move |file_path| {
         // Early exit if fail-fast is enabled and we've already found an error
-        if let Some(fast) = &fail_fast_found_error {
-          if fast.load(Ordering::Relaxed) {
-            return Ok(());
-          }
+        if let Some(fast) = &fail_fast_found_error
+          && fast.load(Ordering::Relaxed)
+        {
+          return Ok(());
         }
 
         checked_files_count.fetch_add(1, Ordering::Relaxed);
