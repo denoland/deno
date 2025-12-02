@@ -227,7 +227,8 @@ async fn format_files(
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
   let formatter: Box<dyn Formatter> = if fmt_flags.check {
-    Box::new(CheckFormatter::new(fmt_flags.fail_fast))
+    let fail_fast = fmt_flags.fail_fast || cli_options.is_quiet();
+    Box::new(CheckFormatter::new(fail_fast))
   } else {
     Box::new(RealFormatter::default())
   };
@@ -942,8 +943,7 @@ trait Formatter {
 struct CheckFormatter {
   not_formatted_files_count: Arc<AtomicUsize>,
   checked_files_count: Arc<AtomicUsize>,
-  fail_fast: bool,
-  found_error: Arc<std::sync::atomic::AtomicBool>,
+  fail_fast_found_error: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl CheckFormatter {
@@ -951,8 +951,11 @@ impl CheckFormatter {
     Self {
       not_formatted_files_count: Arc::new(AtomicUsize::new(0)),
       checked_files_count: Arc::new(AtomicUsize::new(0)),
-      fail_fast,
-      found_error: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+      fail_fast_found_error: if fail_fast {
+        Some(Arc::new(std::sync::atomic::AtomicBool::new(false)))
+      } else {
+        None
+      },
     }
   }
 }
@@ -973,12 +976,13 @@ impl Formatter for CheckFormatter {
     run_parallelized(paths, {
       let not_formatted_files_count = self.not_formatted_files_count.clone();
       let checked_files_count = self.checked_files_count.clone();
-      let fail_fast = self.fail_fast;
-      let found_error = self.found_error.clone();
+      let fail_fast_found_error = self.fail_fast_found_error.clone();
       move |file_path| {
         // Early exit if fail-fast is enabled and we've already found an error
-        if fail_fast && found_error.load(Ordering::Relaxed) {
-          return Ok(());
+        if let Some(fast) = &fail_fast_found_error {
+          if fast.load(Ordering::Relaxed) {
+            return Ok(());
+          }
         }
 
         checked_files_count.fetch_add(1, Ordering::Relaxed);
@@ -1000,7 +1004,9 @@ impl Formatter for CheckFormatter {
         ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
-            found_error.store(true, Ordering::Relaxed);
+            if let Some(fast) = &fail_fast_found_error {
+              fast.store(true, Ordering::Relaxed);
+            }
             let _g = output_lock.lock();
             let diff =
               deno_resolver::display::diff(&file.text, &formatted_text);
@@ -1021,7 +1027,9 @@ impl Formatter for CheckFormatter {
           }
           Err(e) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
-            found_error.store(true, Ordering::Relaxed);
+            if let Some(fast) = &fail_fast_found_error {
+              fast.store(true, Ordering::Relaxed);
+            }
             let _g = output_lock.lock();
             warn!("Error checking: {}", file_path.to_string_lossy());
             warn!(
