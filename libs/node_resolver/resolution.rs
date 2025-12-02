@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -803,10 +804,30 @@ impl<
       deno_package_json::PackageJsonBins::Bins(items) => items
         .into_iter()
         .filter_map(|(command, path)| {
-          let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
+          let mut file =
+            self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
+          let is_binary = {
+            let mut buf = [0; 4];
+            let result = file.read_exact(&mut buf);
+            if let Err(err) = result {
+              log::debug!(
+                "Failed to read binary file '{}': {:#}",
+                path.display(),
+                err
+              );
+              // safer fallback to assume it's a binary
+              false
+            } else {
+              is_binary(&buf)
+            }
+          };
+
+          if is_binary {
+            return Some((command, BinValue::Executable(path.to_path_buf())));
+          }
           let mut buf_read = BufReader::new(file);
           let mut line = String::new();
-          if let Ok(len) = buf_read.read_line(&mut line)
+          if let Ok(len) = buf_read.read_to_string(&mut line)
             && len > 0
             && let Some(path) =
               resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), &line)
@@ -2586,6 +2607,37 @@ impl BinValue {
       BinValue::Executable(path) => path,
     }
   }
+}
+fn is_binary(data: &[u8]) -> bool {
+  is_elf(data) || is_macho(data) || is_pe(data)
+}
+
+// vendored from libsui because they're super small
+/// Check if the given data is an ELF64 binary
+fn is_elf(data: &[u8]) -> bool {
+  if data.len() < 4 {
+    return false;
+  }
+  let magic = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+  magic == 0x7f454c46
+}
+
+/// Check if the given data is a 64-bit Mach-O binary
+fn is_macho(data: &[u8]) -> bool {
+  if data.len() < 4 {
+    return false;
+  }
+  let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+  magic == 0xfeedfacf
+}
+
+/// Check if the given data is a PE32+ binary
+fn is_pe(data: &[u8]) -> bool {
+  if data.len() < 2 {
+    return false;
+  }
+  let magic = u16::from_le_bytes([data[0], data[1]]);
+  magic == 0x5a4d
 }
 
 #[cfg(test)]
