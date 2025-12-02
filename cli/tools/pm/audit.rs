@@ -680,6 +680,15 @@ mod socket_dev {
   fn print_firewall_report(responses: &[FirewallResponse]) {
     let stdout = &mut std::io::stdout();
 
+    let responses_with_alerts = responses
+      .iter()
+      .filter(|r| !r.alerts.is_empty())
+      .collect::<Vec<_>>();
+
+    if responses_with_alerts.is_empty() {
+      return;
+    }
+
     _ = writeln!(stdout);
     _ = writeln!(stdout, "{}", colors::bold("Socket.dev firewall report"));
     _ = writeln!(stdout);
@@ -691,11 +700,7 @@ mod socket_dev {
     let mut total_low = 0;
     let mut packages_with_issues = 0;
 
-    for response in responses {
-      if response.alerts.is_empty() && response.score.is_none() {
-        continue;
-      }
-
+    for response in responses_with_alerts {
       packages_with_issues += 1;
 
       _ = writeln!(stdout, "╭ pkg:npm/{}@{}", response.name, response.version);
