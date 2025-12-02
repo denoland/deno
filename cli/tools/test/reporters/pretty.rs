@@ -119,26 +119,49 @@ impl PrettyTestReporter {
       }
     }
 
-    let status = match &result {
-      TestStepResult::Ok => colors::green("ok").to_string(),
-      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
-      TestStepResult::Failed(failure) => failure.format_label(),
-    };
-    write!(&mut self.writer, " {status}").ok();
-    if let TestStepResult::Failed(failure) = result
-      && let Some(inline_summary) = failure.format_inline_summary()
-    {
-      write!(&mut self.writer, " ({})", inline_summary).ok();
+    match &result {
+      TestStepResult::Ok => {
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!(
+            "ok ({})",
+            display::human_elapsed(elapsed.into())
+          ))
+        )
+        .ok();
+      }
+      TestStepResult::Ignored => {
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!(
+            "ignored ({})",
+            display::human_elapsed(elapsed.into())
+          ))
+        )
+        .ok();
+      }
+      TestStepResult::Failed(failure) => {
+        let status = failure.format_label();
+        write!(&mut self.writer, " {status}").ok();
+        if let Some(inline_summary) = failure.format_inline_summary() {
+          write!(&mut self.writer, " ({})", inline_summary).ok();
+        }
+        if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
+          write!(
+            &mut self.writer,
+            " {}",
+            colors::gray(format!(
+              "({})",
+              display::human_elapsed(elapsed.into())
+            ))
+          )
+          .ok();
+        }
+        writeln!(&mut self.writer).ok();
+      }
     }
-    if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
-      write!(
-        &mut self.writer,
-        " {}",
-        colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-      )
-      .ok();
-    }
-    writeln!(&mut self.writer).ok();
     self.in_new_line = true;
     if self.parallel {
       self.scope_test_id = None;
@@ -278,24 +301,54 @@ impl TestReporter for PrettyTestReporter {
       self.force_report_wait(description);
     }
 
-    let status = match result {
-      TestResult::Ok => colors::green("ok").to_string(),
-      TestResult::Ignored => colors::yellow("ignored").to_string(),
-      TestResult::Failed(failure) => failure.format_label(),
-      TestResult::Cancelled => colors::gray("cancelled").to_string(),
-    };
-    write!(&mut self.writer, " {status}").ok();
-    if let TestResult::Failed(failure) = result
-      && let Some(inline_summary) = failure.format_inline_summary()
-    {
-      write!(&mut self.writer, " ({})", inline_summary).ok();
+    match result {
+      TestResult::Ok => {
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!(
+            "ok ({})",
+            display::human_elapsed(elapsed.into())
+          ))
+        )
+        .ok();
+      }
+      TestResult::Ignored => {
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!(
+            "ignored ({})",
+            display::human_elapsed(elapsed.into())
+          ))
+        )
+        .ok();
+      }
+      TestResult::Cancelled => {
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!(
+            "cancelled ({})",
+            display::human_elapsed(elapsed.into())
+          ))
+        )
+        .ok();
+      }
+      TestResult::Failed(failure) => {
+        let status = failure.format_label();
+        write!(&mut self.writer, " {status}").ok();
+        if let Some(inline_summary) = failure.format_inline_summary() {
+          write!(&mut self.writer, " ({})", inline_summary).ok();
+        }
+        writeln!(
+          &mut self.writer,
+          " {}",
+          colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+        )
+        .ok();
+      }
     }
-    writeln!(
-      &mut self.writer,
-      " {}",
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    )
-    .ok();
     self.in_new_line = true;
     self.scope_test_id = None;
   }
