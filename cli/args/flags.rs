@@ -1587,8 +1587,9 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
-  let args = if !args.is_empty() && args[0].as_encoded_bytes().ends_with(b"dx")
-    || args[0].as_encoded_bytes().ends_with(b"denox")
+  let args = if !args.is_empty()
+    && (args[0].as_encoded_bytes().ends_with(b"dx")
+      || args[0].as_encoded_bytes().ends_with(b"denox"))
   {
     let mut new_args = Vec::with_capacity(args.len() + 1);
     new_args.push(args[0].clone());

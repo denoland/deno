@@ -806,8 +806,8 @@ impl<
         .filter_map(|(command, path)| {
           let mut file =
             self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
-          let is_binary = {
-            let mut buf = [0; 4];
+          let mut buf = [0; 4];
+          let (is_binary, buf): (bool, &[u8]) = {
             let result = file.read_exact(&mut buf);
             if let Err(err) = result {
               log::debug!(
@@ -816,9 +816,9 @@ impl<
                 err
               );
               // safer fallback to assume it's a binary
-              false
+              (false, &[])
             } else {
-              is_binary(&buf)
+              (is_binary(&buf), &buf[..])
             }
           };
 
@@ -826,11 +826,15 @@ impl<
             return Some((command, BinValue::Executable(path.to_path_buf())));
           }
           let mut buf_read = BufReader::new(file);
-          let mut line = String::new();
-          if let Ok(len) = buf_read.read_to_string(&mut line)
+          let mut contents = Vec::new();
+          contents.extend_from_slice(buf);
+          if let Ok(len) = buf_read.read_to_end(&mut contents)
             && len > 0
-            && let Some(path) =
-              resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), &line)
+            && let Ok(contents) = String::from_utf8(contents)
+            && let Some(path) = resolve_execution_path_from_npx_shim(
+              Cow::Borrowed(&path),
+              &contents,
+            )
           {
             return Some((command, BinValue::JsFile(path)));
           }
