@@ -1317,6 +1317,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Uninstall(_)
+        | DenoSubcommand::ApproveScripts(_)
     ),
     no_lock: flags.no_lock
       || matches!(
