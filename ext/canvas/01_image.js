@@ -4,7 +4,7 @@ import { internals, primordials } from "ext:core/mod.js";
 import { op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
@@ -12,7 +12,11 @@ const {
   Symbol,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
+  Uint8ClampedArray,
   PromiseReject,
   RangeError,
   ArrayPrototypeJoin,
@@ -152,6 +156,15 @@ class ImageBitmap {
   }
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;
+
+function float16ToUnorm8(data) {
+  const length = TypedArrayPrototypeGetLength(data);
+  const result = new Uint8ClampedArray(length);
+  for (let i = 0; i < length; i++) {
+    result[i] = data[i] * 255;
+  }
+  return result;
+}
 
 function createImageBitmap(
   image,
@@ -296,7 +309,17 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       width = image[_width];
       height = image[_height];
       imageBitmapSource = 1;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+      let data = image[_data];
+      switch (TypedArrayPrototypeGetSymbolToStringTag(data)) {
+        case "Float16Array":
+          data = float16ToUnorm8(data);
+          break;
+      }
+      buf = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(data),
+        TypedArrayPrototypeGetByteOffset(data),
+        TypedArrayPrototypeGetLength(data),
+      );
     } else if (isImageBitmap) {
       width = image[_width];
       height = image[_height];

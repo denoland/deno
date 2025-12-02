@@ -14,6 +14,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 /** @category Wasm */
 declare namespace WebAssembly {

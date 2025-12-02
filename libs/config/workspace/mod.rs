@@ -40,6 +40,7 @@ use url::Url;
 
 use crate::UrlToFilePathError;
 use crate::deno_json;
+use crate::deno_json::AllowScriptsConfig;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
@@ -1061,6 +1062,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
         });
       }
+      if member_config.json.allow_scripts.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
+        });
+      }
       if let Some(value) = &member_config.json.lint
         && value.get("report").is_some()
       {
@@ -1136,11 +1143,11 @@ impl Workspace {
             && !value.starts_with("npm:")
           {
             diagnostics.push(WorkspaceDiagnostic {
-                config_url: config.specifier.clone(),
-                kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
-                  entry: value.to_string()
-                },
-              });
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+                entry: value.to_string()
+              },
+            });
           }
         }
       }
@@ -1460,6 +1467,16 @@ impl Workspace {
       .transpose()
       .map(|v| v.unwrap_or_default())
   }
+
+  pub fn allow_scripts(
+    &self,
+  ) -> Result<AllowScriptsConfig, deno_json::ToInvalidConfigError> {
+    self
+      .root_deno_json()
+      .map(|c| c.to_allow_scripts_config())
+      .transpose()
+      .map(|v| v.unwrap_or_default())
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -1492,16 +1509,11 @@ pub struct WorkspaceDirLintConfig {
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TsTypeLib {
+  #[default]
   DenoWindow,
   DenoWorker,
-}
-
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
 }
 
 #[derive(Debug, Clone)]

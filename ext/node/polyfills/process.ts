@@ -14,6 +14,8 @@ import {
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
+  op_node_process_setgid,
+  op_node_process_setuid,
   op_process_abort,
 } from "ext:core/ops";
 
@@ -68,6 +70,7 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "ext:deno_node/_next_tick.ts";
+import { runImmediates } from "ext:deno_node/internal/timers.mjs";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -379,7 +382,7 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, getegid, geteuid, setegid, seteuid;
+let getgid, getuid, getegid, geteuid, setegid, seteuid, setgid, setuid;
 
 function wrapIdSetter(
   syscall: string,
@@ -410,10 +413,12 @@ if (!isWindows) {
   if (!isAndroid) {
     setegid = wrapIdSetter("setegid", op_node_process_setegid);
     seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
+    setgid = wrapIdSetter("setgid", op_node_process_setgid);
+    setuid = wrapIdSetter("setuid", op_node_process_setuid);
   }
 }
 
-export { getegid, geteuid, getgid, getuid, setegid, seteuid };
+export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -752,6 +757,15 @@ process.setSourceMapsEnabled = (_val: boolean) => {
   // TODO(@satyarohith): support disabling source maps if needed.
 };
 
+// Source maps are always enabled in Deno.
+Object.defineProperty(process, "sourceMapsEnabled", {
+  get() {
+    return true; // Source maps are always enabled in Deno.
+  },
+  enumerable: true,
+  configurable: true,
+});
+
 /**
  * Returns the current high-resolution real time in a [seconds, nanoseconds]
  * tuple.
@@ -827,6 +841,12 @@ process.setegid = setegid;
 
 /** This method is removed on Windows */
 process.seteuid = seteuid;
+
+/** This method is removed on Windows */
+process.setgid = setgid;
+
+/** This method is removed on Windows */
+process.setuid = setuid;
 
 process.getBuiltinModule = getBuiltinModule;
 
@@ -1005,18 +1025,6 @@ function synchronizeListeners() {
   }
 }
 
-// Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule?.startsWith("file:")) {
-      return pathFromURL(new URL(Deno.mainModule));
-    } else {
-      return join(Deno.cwd(), "$deno$node.mjs");
-    }
-  },
-});
-
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
@@ -1030,6 +1038,10 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
+    argv[0] = argv0;
+    argv[1] = Deno.mainModule?.startsWith("file:")
+      ? pathFromURL(new URL(Deno.mainModule))
+      : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter
     for (let i = 0; i < args.length; i++) {
       argv[i + 2] = args[i];
@@ -1040,6 +1052,7 @@ internals.__bootstrapNodeProcess = function (
     }
 
     core.setNextTickCallback(processTicksAndRejections);
+    core.setImmediateCallback(runImmediates);
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 

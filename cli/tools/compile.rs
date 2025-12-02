@@ -72,11 +72,27 @@ pub async fn compile(
     graph
   };
 
+  let initial_cwd =
+    deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
+
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
-    entrypoint,
-    output_path.display(),
+    crate::util::path::relative_specifier_path_for_display(
+      &initial_cwd,
+      entrypoint
+    ),
+    {
+      if let Ok(output_path) = deno_path_util::url_from_file_path(&output_path)
+      {
+        crate::util::path::relative_specifier_path_for_display(
+          &initial_cwd,
+          &output_path,
+        )
+      } else {
+        output_path.display().to_string()
+      }
+    }
   );
   validate_output_path(&output_path)?;
 
@@ -222,6 +238,7 @@ pub async fn compile_eszip(
     relative_file_base: Some(relative_file_base),
     npm_packages: None,
     module_kind_resolver: Default::default(),
+    npm_snapshot: Default::default(),
   })?;
 
   if let Some(import_map_specifier) = maybe_import_map_specifier {
@@ -353,6 +370,8 @@ fn get_module_roots_and_include_paths(
       | MediaType::Wasm => true,
       MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,
@@ -422,6 +441,10 @@ fn get_module_roots_and_include_paths(
 
   for preload_module in cli_options.preload_modules()? {
     module_roots.push(preload_module);
+  }
+
+  for require_module in cli_options.require_modules()? {
+    module_roots.push(require_module);
   }
 
   Ok((module_roots, include_paths))

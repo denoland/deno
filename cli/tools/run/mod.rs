@@ -91,6 +91,7 @@ pub async fn run_script(
     ),
   ))?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
     set_npm_user_agent();
@@ -106,6 +107,7 @@ pub async fn run_script(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await
@@ -127,6 +129,7 @@ pub async fn run_from_stdin(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -151,6 +154,7 @@ pub async fn run_from_stdin(
       WorkerExecutionMode::Run,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;
@@ -191,6 +195,7 @@ async fn run_with_watch(
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
 
         if main_module.scheme() == "npm" {
           set_npm_user_agent();
@@ -203,7 +208,12 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module.clone(), preload_modules)
+          .create_main_worker(
+            mode,
+            main_module.clone(),
+            preload_modules,
+            require_modules,
+          )
           .await?;
 
         if watch_flags.hmr {
@@ -231,6 +241,7 @@ pub async fn eval_command(
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -257,6 +268,7 @@ pub async fn eval_command(
       WorkerExecutionMode::Eval,
       main_module.clone(),
       preload_modules,
+      require_modules,
     )
     .await?;
   let exit_code = worker.run().await?;
@@ -308,6 +320,7 @@ pub async fn run_eszip(
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
@@ -317,6 +330,7 @@ pub async fn run_eszip(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;

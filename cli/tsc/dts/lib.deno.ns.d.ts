@@ -1700,9 +1700,6 @@ declare namespace Deno {
    *
    * Throws {@linkcode Deno.errors.NotFound} if directory not available.
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function cwd(): string;
@@ -3796,13 +3793,13 @@ declare namespace Deno {
     /** Waits for the child to exit completely, returning all its output and
      * status. */
     output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}.
+    /** Kills the process with given {@linkcode Deno.Signal} or numeric signal.
      *
      * Defaults to `SIGTERM` if no signal is provided.
      *
      * @param [signo="SIGTERM"]
      */
-    kill(signo?: Signal): void;
+    kill(signo?: Signal | number): void;
 
     /** Ensure that the status of the child process prevents the Deno process
      * from exiting. */
@@ -4739,12 +4736,14 @@ declare namespace Deno {
    * Deno.kill(child.pid, "SIGINT");
    * ```
    *
+   * As a special case, a signal of 0 can be used to test for the existence of a process.
+   *
    * Requires `allow-run` permission.
    *
    * @tags allow-run
    * @category Subprocess
    */
-  export function kill(pid: number, signo?: Signal): void;
+  export function kill(pid: number, signo?: Signal | number): void;
 
   /** The type of the resource record to resolve via DNS using
    * {@linkcode Deno.resolveDns}.

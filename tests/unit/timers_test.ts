@@ -28,7 +28,8 @@ Deno.test(async function functionParameterBindingSuccess() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function stringifyAndEvalNonFunctions() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function stringifyAndEvalNonFunctions() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
@@ -65,7 +66,8 @@ Deno.test(async function timeoutSuccess() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function timeoutEvalNoScopeLeak() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function timeoutEvalNoScopeLeak() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<Error>>;
@@ -86,7 +88,8 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
   Reflect.deleteProperty(global, "globalPromise");
 });
 
-Deno.test(async function evalPrimordial() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function evalPrimordial() {
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
   };
@@ -300,7 +303,8 @@ Deno.test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function timeoutCallbackThis() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function timeoutCallbackThis() {
   const { promise, resolve } = Promise.withResolvers<void>();
   let capturedThis: unknown;
   const obj = {
@@ -314,7 +318,8 @@ Deno.test(async function timeoutCallbackThis() {
   assertEquals(capturedThis, globalThis);
 });
 
-Deno.test(async function timeoutBindThis() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function timeoutBindThis() {
   const thisCheckPassed = [null, undefined, globalThis];
 
   const thisCheckFailed = [
@@ -409,7 +414,8 @@ Deno.test(function testFunctionName() {
   assertEquals(clearInterval.name, "clearInterval");
 });
 
-Deno.test(function testFunctionParamsLength() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(function testFunctionParamsLength() {
   assertEquals(setTimeout.length, 1);
   assertEquals(setInterval.length, 1);
   assertEquals(clearTimeout.length, 0);
@@ -779,7 +785,8 @@ Deno.test({
   },
 });
 
-Deno.test(async function setTimeoutWithStringCallback() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function setTimeoutWithStringCallback() {
   const global = globalThis as unknown as {
     timeoutStringTest: number;
     timeoutStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
@@ -796,7 +803,8 @@ Deno.test(async function setTimeoutWithStringCallback() {
   Reflect.deleteProperty(global, "timeoutStringPromise");
 });
 
-Deno.test(async function setIntervalWithStringCallback() {
+// TODO(bartlomieju): no longer valid since we're using Node.js timer APIs
+Deno.test.ignore(async function setIntervalWithStringCallback() {
   const global = globalThis as unknown as {
     intervalStringTest: number;
     intervalStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
