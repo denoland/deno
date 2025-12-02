@@ -1679,6 +1679,8 @@ fn media_type_to_loader(
     Jsx | Tsx => esbuild_client::BuiltinLoader::Jsx,
     Css => esbuild_client::BuiltinLoader::Css,
     Json => esbuild_client::BuiltinLoader::Json,
+    Jsonc => esbuild_client::BuiltinLoader::Text,
+    Json5 => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,

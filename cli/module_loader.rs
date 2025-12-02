@@ -1218,6 +1218,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
+
+    // Load the prepared module and extract inline source map
     let graph = self.0.graph_container.graph();
     let source = self
       .0
@@ -1228,29 +1230,76 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     source_map_from_code(source.source.as_bytes()).map(Cow::Owned)
   }
 
+  fn load_external_source_map(
+    &self,
+    source_map_url: &str,
+  ) -> Option<Cow<'_, [u8]>> {
+    let specifier = resolve_url(source_map_url).ok()?;
+
+    if let Ok(Some(file)) = self
+      .0
+      .shared
+      .file_fetcher
+      .get_cached_source_or_local(&specifier)
+    {
+      return Some(Cow::Owned(file.source.to_vec()));
+    }
+
+    None
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
+    let specifier = resolve_url(file_name).ok()?;
     let graph = self.0.graph_container.graph();
-    let code = match graph.get(&resolve_url(file_name).ok()?) {
+
+    let code = match graph.get(&specifier) {
       Some(deno_graph::Module::Js(module)) => &module.source.text,
       Some(deno_graph::Module::Json(module)) => &module.source.text,
-      _ => return None,
+      Some(
+        deno_graph::Module::Wasm(_)
+        | deno_graph::Module::Npm(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::External(_),
+      ) => {
+        return None;
+      }
+      None => {
+        // Not in graph, try to read from file system (for source-mapped original files)
+        if let Ok(Some(file)) = self
+          .0
+          .shared
+          .file_fetcher
+          .get_cached_source_or_local(&specifier)
+        {
+          return extract_source_line(
+            &String::from_utf8_lossy(&file.source),
+            line_number,
+          );
+        } else {
+          return None;
+        }
+      }
     };
-    // Do NOT use .lines(): it skips the terminating empty line.
-    // (due to internally using_terminator() instead of .split())
-    let lines: Vec<&str> = code.split('\n').collect();
-    if line_number >= lines.len() {
-      Some(format!(
-        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"),
-        line_number + 1,
-      ))
-    } else {
-      Some(lines[line_number].to_string())
-    }
+
+    extract_source_line(code, line_number)
+  }
+}
+
+/// Extracts a specific line from source code text.
+fn extract_source_line(text: &str, line_number: usize) -> Option<String> {
+  // Do NOT use .lines(): it skips the terminating empty line.
+  // (due to internally using_terminator() instead of .split())
+  match text.split('\n').nth(line_number) {
+    Some(line) => Some(line.to_string()),
+    None => Some(format!(
+      "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"),
+      line_number + 1,
+    )),
   }
 }
 

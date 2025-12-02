@@ -1216,8 +1216,43 @@ declare var MessageEvent: {
 /** @category Events */
 type Transferable = MessagePort | ArrayBuffer;
 
-/** @category Platform */
+/**
+ * Options that control structured serialization operations such as
+ * `structuredClone(value, options)` and `MessagePort.postMessage(message, options)`.
+ *
+ * The optional `transfer` array lists {@link Transferable} objects whose
+ * underlying resources should be moved (transferred) to the receiving side
+ * instead of being cloned. After a successful transfer:
+ *
+ * - For an `ArrayBuffer`, the original buffer becomes neutered (its
+ *   `byteLength` is set to `0`).
+ * - For a `MessagePort`, the port becomes unusable on the sending side and
+ *   future events will arrive only on the transferred port at the receiver.
+ *
+ * Validation rules:
+ * - Each transferable may appear only once in the `transfer` list.
+ * - A `MessagePort` cannot be listed together with its counterpart port from
+ *   the same `MessageChannel` in the same transfer operation.
+ * - Duplicate or otherwise invalid entries will cause a `DataCloneError`
+ *   `DOMException` to be thrown.
+ *
+ * Transferring improves performance for large binary data and allows moving
+ * communication endpoints without copying.
+ *
+ * @example
+ * ```ts
+ * // Transferring an ArrayBuffer (zero-copy for large data)
+ * const buffer = new ArrayBuffer(16);
+ * const cloned = structuredClone(buffer, { transfer: [buffer] });
+ *
+ * // After transfer, the original buffer is neutered
+ * console.log(buffer.byteLength); // 0
+ * console.log(cloned.byteLength); // 16
+ *
+ * @category Platform
+ */
 interface StructuredSerializeOptions {
+  /** List of transferable objects whose ownership is moved instead of cloned. */
   transfer?: Transferable[];
 }
 
@@ -1458,16 +1493,26 @@ declare function reportError(
 type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Platform */
+type ImageDataArray =
+  | Uint8ClampedArray<ArrayBuffer>
+  | Float16Array<ArrayBuffer>;
+
+/** @category Platform */
+type ImageDataPixelFormat = "rgba-unorm8" | "rgba-float16";
+
+/** @category Platform */
 interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
+  readonly pixelFormat?: ImageDataPixelFormat;
 }
 
 /** @category Platform */
 interface ImageData {
-  readonly colorSpace: PredefinedColorSpace;
-  readonly data: Uint8ClampedArray<ArrayBuffer>;
-  readonly height: number;
   readonly width: number;
+  readonly height: number;
+  readonly data: ImageDataArray;
+  readonly pixelFormat: ImageDataPixelFormat;
+  readonly colorSpace: PredefinedColorSpace;
 }
 
 /** @category Platform */
@@ -1475,7 +1520,7 @@ declare var ImageData: {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
-    data: Uint8ClampedArray<ArrayBuffer>,
+    data: ImageDataArray,
     sw: number,
     sh?: number,
     settings?: ImageDataSettings,

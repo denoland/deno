@@ -835,9 +835,12 @@ export function execFileSync(
 }
 
 function setupChildProcessIpcChannel() {
-  const fd = op_node_child_ipc_pipe();
+  const maybePipe = op_node_child_ipc_pipe();
+  if (!maybePipe) return;
+  const [fd, serialization] = maybePipe;
+  const serializationMode = serialization === 0 ? "json" : "advanced";
   if (typeof fd != "number" || fd < 0) return;
-  const control = setupChannel(process, fd);
+  const control = setupChannel(process, fd, serializationMode);
   process.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.refCounted();
