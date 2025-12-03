@@ -60,7 +60,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core", branch = "source-phase-imports" }
+deno_core = { git = "https://github.com/denoland/deno_core", rev = "d3e54ac5c1cac575c6dc7f490598346da7f2423a" }
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
