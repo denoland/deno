@@ -60,12 +60,12 @@ jobs:
         include:
           - os: macos
             arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
             job: test
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-13'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
@@ -762,7 +762,7 @@ jobs:
             job: lint
           - os: macos
             arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
             profile: debug
             job: lint
           - os: windows
