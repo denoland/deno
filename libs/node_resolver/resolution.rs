@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
@@ -804,42 +803,8 @@ impl<
       deno_package_json::PackageJsonBins::Bins(items) => items
         .into_iter()
         .filter_map(|(command, path)| {
-          let mut file =
-            self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
-          let mut buf = [0; 4];
-          let (is_binary, buf): (bool, &[u8]) = {
-            let result = file.read_exact(&mut buf);
-            if let Err(err) = result {
-              log::debug!(
-                "Failed to read binary file '{}': {:#}",
-                path.display(),
-                err
-              );
-              // safer fallback to assume it's a binary
-              (false, &[])
-            } else {
-              (is_binary(&buf), &buf[..])
-            }
-          };
-
-          if is_binary {
-            return Some((command, BinValue::Executable(path.to_path_buf())));
-          }
-          let mut buf_read = BufReader::new(file);
-          let mut contents = Vec::new();
-          contents.extend_from_slice(buf);
-          if let Ok(len) = buf_read.read_to_end(&mut contents)
-            && len > 0
-            && let Ok(contents) = String::from_utf8(contents)
-            && let Some(path) = resolve_execution_path_from_npx_shim(
-              Cow::Borrowed(&path),
-              &contents,
-            )
-          {
-            return Some((command, BinValue::JsFile(path)));
-          }
-
-          Some((command, BinValue::Executable(path.to_path_buf())))
+          let bin_value = bin_value_from_file(&path, &self.sys)?;
+          Some((command, bin_value))
         })
         .collect(),
     };
@@ -888,22 +853,8 @@ impl<
       return None;
     };
     let command_name = entry.file_name().to_string_lossy().into_owned();
-    let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
-    let mut buf_read = BufReader::new(file);
-    let mut line = String::new();
-    if let Ok(len) = buf_read.read_line(&mut line)
-      && len > 0
-      && let Some(path) =
-        resolve_execution_path_from_npx_shim(path.clone(), &line)
-    {
-      log::debug!(
-        "Resolved npx command '{}' to '{}'.",
-        command_name,
-        path.display()
-      );
-      return Some((command_name, BinValue::JsFile(path)));
-    }
-    Some((command_name, BinValue::Executable(path.to_path_buf())))
+    let bin_value = bin_value_from_file(&path, &self.sys)?;
+    Some((command_name, bin_value))
   }
 
   /// Resolves an npm package folder path from the specified referrer.
@@ -2230,6 +2181,41 @@ fn resolve_pkg_json_import<'a>(
       None
     }
   }
+}
+
+fn bin_value_from_file<TSys: FsOpen>(
+  path: &Path,
+  sys: &NodeResolutionSys<TSys>,
+) -> Option<BinValue> {
+  let mut file = sys.fs_open(path, OpenOptions::new().read()).ok()?;
+  let mut buf = [0; 4];
+  let (is_binary, buf): (bool, &[u8]) = {
+    let result = file.read_exact(&mut buf);
+    if let Err(err) = result {
+      log::debug!("Failed to read binary file '{}': {:#}", path.display(), err);
+      // safer fallback to assume it's a binary
+      (false, &[])
+    } else {
+      (is_binary(&buf), &buf[..])
+    }
+  };
+
+  if is_binary {
+    return Some(BinValue::Executable(path.to_path_buf()));
+  }
+  let mut buf_read = BufReader::new(file);
+  let mut contents = Vec::new();
+  contents.extend_from_slice(buf);
+  if let Ok(len) = buf_read.read_to_end(&mut contents)
+    && len > 0
+    && let Ok(contents) = String::from_utf8(contents)
+    && let Some(path) =
+      resolve_execution_path_from_npx_shim(Cow::Borrowed(path), &contents)
+  {
+    return Some(BinValue::JsFile(path));
+  }
+
+  Some(BinValue::Executable(path.to_path_buf()))
 }
 
 /// This is not ideal, but it works ok because it allows us to bypass
