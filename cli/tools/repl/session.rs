@@ -16,6 +16,7 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::atoms::Wtf8Atom;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
@@ -40,6 +41,7 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::analysis::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -868,17 +870,18 @@ impl ReplSession {
       .imports
       .iter()
       .flat_map(|i| {
+        let specifier = i.to_string_lossy();
         self
           .resolver
           .resolve(
-            i,
+            &specifier,
             &self.referrer,
             deno_graph::Position::zeroed(),
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
           .ok()
-          .or_else(|| ModuleSpecifier::parse(i).ok())
+          .or_else(|| ModuleSpecifier::parse(&specifier).ok())
       })
       .collect::<Vec<_>>();
 
@@ -896,7 +899,9 @@ impl ReplSession {
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        npm_installer.inject_synthetic_types_node_package().await?;
+        npm_installer
+          .inject_synthetic_types_node_package(NpmCachingStrategy::Eager)
+          .await?;
       }
     }
     Ok(())
@@ -935,7 +940,7 @@ impl ReplSession {
 /// Walk an AST and get all import specifiers for analysis if any of them is
 /// an npm specifier.
 struct ImportCollector {
-  pub imports: Vec<String>,
+  pub imports: Vec<Wtf8Atom>,
 }
 
 impl ImportCollector {
@@ -955,7 +960,7 @@ impl Visit for ImportCollector {
     if !call_expr.args.is_empty() {
       let arg = &call_expr.args[0];
       if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = &*arg.expr {
-        self.imports.push(str_lit.value.to_string());
+        self.imports.push(str_lit.value.clone());
       }
     }
   }
@@ -969,14 +974,14 @@ impl Visit for ImportCollector {
           return;
         }
 
-        self.imports.push(import_decl.src.value.to_string());
+        self.imports.push(import_decl.src.value.clone());
       }
       ModuleDecl::ExportAll(export_all) => {
-        self.imports.push(export_all.src.value.to_string());
+        self.imports.push(export_all.src.value.clone());
       }
       ModuleDecl::ExportNamed(export_named) => {
         if let Some(src) = &export_named.src {
-          self.imports.push(src.value.to_string());
+          self.imports.push(src.value.clone());
         }
       }
       _ => {}

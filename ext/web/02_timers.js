@@ -7,6 +7,7 @@ const {
   TypeError,
   indirectEval,
   ReflectApply,
+  Symbol,
 } = primordials;
 const {
   getAsyncContext,
@@ -15,28 +16,14 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
+export const kTimerId = Symbol("timerId");
+
 // ---------------------------------------------------------------------------
 
 function checkThis(thisArg) {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
     throw new TypeError("Illegal invocation");
   }
-}
-
-/**
- * Call a callback function immediately.
- */
-function setImmediate(callback, ...args) {
-  const asyncContext = getAsyncContext();
-  return core.queueImmediate(() => {
-    const oldContext = getAsyncContext();
-    try {
-      setAsyncContext(asyncContext);
-      return ReflectApply(callback, globalThis, args);
-    } finally {
-      setAsyncContext(oldContext);
-    }
-  });
 }
 
 /**
@@ -116,17 +103,25 @@ function clearInterval(id = 0) {
   core.cancelTimer(id);
 }
 
+// TODO(bartlomieju): this should be deprecated I think
 /**
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   core.unrefTimer(id);
 }
 
+// TODO(bartlomieju): this should be deprecated I think
 /**
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
+  if (typeof id !== "number") {
+    id = id[kTimerId];
+  }
   core.refTimer(id);
 }
 
@@ -142,7 +137,6 @@ export {
   clearTimeout,
   defer,
   refTimer,
-  setImmediate,
   setInterval,
   setTimeout,
   unrefTimer,

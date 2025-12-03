@@ -40,6 +40,7 @@ use url::Url;
 
 use crate::UrlToFilePathError;
 use crate::deno_json;
+use crate::deno_json::AllowScriptsConfig;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
@@ -104,6 +105,7 @@ pub struct JsrPackageConfig {
   pub member_dir: WorkspaceDirectoryRc,
   pub config_file: ConfigFileRc,
   pub license: Option<String>,
+  pub should_publish: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -747,6 +749,7 @@ impl Workspace {
         name: c.json.name.clone()?,
         config_file: c.clone(),
         license: c.to_license(),
+        should_publish: c.should_publish(),
       })
     })
   }
@@ -1061,6 +1064,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
         });
       }
+      if member_config.json.allow_scripts.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
+        });
+      }
       if let Some(value) = &member_config.json.lint
         && value.get("report").is_some()
       {
@@ -1136,11 +1145,11 @@ impl Workspace {
             && !value.starts_with("npm:")
           {
             diagnostics.push(WorkspaceDiagnostic {
-                config_url: config.specifier.clone(),
-                kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
-                  entry: value.to_string()
-                },
-              });
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+                entry: value.to_string()
+              },
+            });
           }
         }
       }
@@ -1460,6 +1469,16 @@ impl Workspace {
       .transpose()
       .map(|v| v.unwrap_or_default())
   }
+
+  pub fn allow_scripts(
+    &self,
+  ) -> Result<AllowScriptsConfig, deno_json::ToInvalidConfigError> {
+    self
+      .root_deno_json()
+      .map(|c| c.to_allow_scripts_config())
+      .transpose()
+      .map(|v| v.unwrap_or_default())
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -1492,16 +1511,11 @@ pub struct WorkspaceDirLintConfig {
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TsTypeLib {
+  #[default]
   DenoWindow,
   DenoWorker,
-}
-
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -1673,7 +1687,11 @@ impl WorkspaceDirectory {
   ) -> Vec<JsrPackageConfig> {
     // only publish the current folder if it's a package
     if let Some(package_config) = self.maybe_package_config() {
-      return vec![package_config];
+      if package_config.should_publish {
+        return vec![package_config];
+      } else {
+        return Vec::new();
+      }
     }
     if let Some(pkg_json) = &self.pkg_json {
       let dir_path = url_to_file_path(&self.dir_url).unwrap();
@@ -1686,7 +1704,11 @@ impl WorkspaceDirectory {
       }
     }
     if self.dir_url == self.workspace.root_dir_url {
-      self.workspace.jsr_packages().collect()
+      self
+        .workspace
+        .jsr_packages()
+        .filter(|p| p.should_publish)
+        .collect()
     } else {
       // nothing to publish
       Vec::new()
@@ -1734,6 +1756,7 @@ impl WorkspaceDirectory {
       config_file: deno_json.clone(),
       member_dir: self.clone(),
       license: deno_json.to_license(),
+      should_publish: deno_json.should_publish(),
     })
   }
 
@@ -4171,7 +4194,7 @@ pub mod test {
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "workspace": ["./a", "./b", "./c", "./d"]
+        "workspace": ["./a", "./b", "./c", "./d", "./e"]
       }),
     );
     sys.fs_insert_json(
@@ -4200,6 +4223,15 @@ pub mod test {
       json!({
         "name": "pkg",
         "version": "1.0.0",
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("e/deno.json"),
+      json!({
+        "name": "@scope/e",
+        "version": "1.0.0",
+        "exports": "./main.ts",
+        "publish": false,
       }),
     );
     // root

@@ -43,6 +43,7 @@ declare module "ext:deno_web/00_infra.js" {
   function forgivingBase64Decode(data: string): Uint8Array;
   function forgivingBase64UrlEncode(data: Uint8Array | string): string;
   function forgivingBase64UrlDecode(data: string): Uint8Array;
+  function pathFromURL(pathOrURL: string | URL): string;
   function serializeJSValueToJSONString(value: unknown): string;
 }
 
@@ -116,4 +117,25 @@ declare module "ext:deno_web/13_message_port.js" {
   function deserializeJsMessageData(
     messageData: messagePort.MessageData,
   ): [object, object[]];
+}
+
+declare module "ext:deno_web/00_url.js" {
+  const URL: typeof URL;
+  const URLSearchParams: typeof URLSearchParams;
+  function parseUrlEncoded(bytes: Uint8Array): [string, string][];
+}
+
+declare module "ext:deno_web/01_urlpattern.js" {
+  const URLPattern: typeof URLPattern;
+}
+
+declare module "ext:deno_web/01_console.js" {
+  function createFilteredInspectProxy<TObject>(params: {
+    object: TObject;
+    keys: (keyof TObject)[];
+    evaluate: boolean;
+  }): Record<string, unknown>;
+
+  class Console {
+  }
 }

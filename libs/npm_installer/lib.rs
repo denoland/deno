@@ -65,11 +65,11 @@ pub enum PackageCaching<'a> {
   All,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
 /// The set of npm packages that are allowed to run lifecycle scripts.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum PackagesAllowedScripts {
   All,
-  Some(Vec<String>),
+  Some(Vec<PackageReq>),
   #[default]
   None,
 }
@@ -78,6 +78,7 @@ pub enum PackagesAllowedScripts {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
+  pub denied: Vec<PackageReq>,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
@@ -182,7 +183,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     maybe_node_modules_path: Option<PathBuf>,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
     workspace_link_packages: WorkspaceNpmLinkPackagesRc,
     install_reporter: Option<Arc<dyn InstallReporter>>,
@@ -297,50 +298,65 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
-      // the async mutex is unfortunate, but needed to handle the edge case where two workers
-      // try to cache the same package at the same time. we need to hold the lock while we cache
-      // and since that crosses an await point, we need the async mutex.
-      //
-      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-      // while caching typically takes micro or milli seconds.
-      let _permit = self.install_queue.acquire().await;
-      let uncached = {
-        let cached_reqs = self.cached_reqs.lock();
-        packages
-          .iter()
-          .filter(|req| !cached_reqs.contains(req))
-          .collect::<Vec<_>>()
-      };
-
-      if !uncached.is_empty() {
-        result.dependencies_result =
-          self.fs_installer.cache_packages(caching).await;
-        if result.dependencies_result.is_ok() {
-          let mut cached_reqs = self.cached_reqs.lock();
-          for req in uncached {
-            cached_reqs.insert(req.clone());
-          }
-        }
-      }
+      result.dependencies_result =
+        self.maybe_cache_packages(packages, caching).await;
     }
 
     result
   }
 
+  async fn maybe_cache_packages(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    // the async mutex is unfortunate, but needed to handle the edge case where two workers
+    // try to cache the same package at the same time. we need to hold the lock while we cache
+    // and since that crosses an await point, we need the async mutex.
+    //
+    // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+    // while caching typically takes micro or milli seconds.
+    let _permit = self.install_queue.acquire().await;
+    let uncached = {
+      let cached_reqs = self.cached_reqs.lock();
+      packages
+        .iter()
+        .filter(|req| !cached_reqs.contains(req))
+        .collect::<Vec<_>>()
+    };
+
+    if uncached.is_empty() {
+      return Ok(());
+    }
+    let result = self.fs_installer.cache_packages(caching).await;
+    if result.is_ok() {
+      let mut cached_reqs = self.cached_reqs.lock();
+      for req in uncached {
+        cached_reqs.insert(req.clone());
+      }
+    }
+    result
+  }
+
   pub async fn inject_synthetic_types_node_package(
     &self,
+    cache_strategy: graph::NpmCachingStrategy,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
 
     // don't inject this if it's already been added
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     if self
       .npm_resolution
       .any_top_level_package(|id| id.nv.name == "@types/node")
     {
+      // ensure it's cached though
+      if let Some(caching) = cache_strategy.as_package_caching(reqs) {
+        self.maybe_cache_packages(reqs, caching).await?;
+      }
       return Ok(());
     }
 
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;

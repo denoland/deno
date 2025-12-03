@@ -297,10 +297,10 @@ pub fn resolution_error_for_tsc_diagnostic(
       | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
       | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
       | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
       | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
-      NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+      NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
     }
   }
 
@@ -792,7 +792,9 @@ impl ModuleGraphBuilder {
       && graph.has_node_specifier
       && graph.graph_kind().include_types()
     {
-      npm_installer.inject_synthetic_types_node_package().await?;
+      npm_installer
+        .inject_synthetic_types_node_package(options.npm_caching)
+        .await?;
     }
 
     Ok(())

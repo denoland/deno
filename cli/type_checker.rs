@@ -44,7 +44,6 @@ use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -255,6 +254,10 @@ impl TypeChecker {
         code_cache: self.code_cache.clone(),
         tsgo_path: self.tsgo_path.clone(),
         initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
+        current_dir: deno_path_util::url_from_directory_path(
+          self.cli_options.initial_cwd(),
+        )
+        .map_err(|e| CheckError::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
@@ -385,6 +388,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   tsgo_path: Option<PathBuf>,
   initial_cwd: PathBuf,
+  current_dir: Url,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -441,12 +445,15 @@ impl DiagnosticsByFolderRealIterator<'_> {
     &self,
     check_group: &CheckGroup,
   ) -> Result<Diagnostics, CheckError> {
-    fn log_provided_roots(provided_roots: &[Url]) {
+    fn log_provided_roots(provided_roots: &[Url], current_dir: &Url) {
       for root in provided_roots {
         log::info!(
           "{} {}",
           colors::green("Check"),
-          to_percent_decoded_str(root.as_str())
+          crate::util::path::relative_specifier_path_for_display(
+            current_dir,
+            root
+          ),
         );
       }
     }
@@ -483,7 +490,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     if root_names.is_empty() {
       if missing_diagnostics.has_diagnostic() {
-        log_provided_roots(&check_group.roots);
+        log_provided_roots(&check_group.roots, &self.current_dir);
       }
       return Ok(missing_diagnostics);
     }
@@ -499,7 +506,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     }
 
     // log out the roots that we're checking
-    log_provided_roots(&check_group.roots);
+    log_provided_roots(&check_group.roots, &self.current_dir);
 
     // the first root will always either be the specifier that the user provided
     // or the first specifier in a directory
@@ -874,6 +881,8 @@ impl<'a> GraphWalker<'a> {
             }
           }
           MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css
           | MediaType::Html
@@ -990,6 +999,8 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Dmts
     | MediaType::Tsx
     | MediaType::Json
+    | MediaType::Jsonc
+    | MediaType::Json5
     | MediaType::Wasm
     | MediaType::Css
     | MediaType::Html

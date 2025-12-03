@@ -26,7 +26,7 @@ import {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
-import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import { BroadcastChannel } from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
 import { createRequire } from "node:module";
@@ -99,6 +99,7 @@ class NodeWorker extends EventEmitter {
   #messagePromise = undefined;
   #controlPromise = undefined;
   #workerOnline = false;
+  #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -229,7 +230,12 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-        } /* falls through */
+          if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", 1);
+          }
+          return;
+        }
         case 2: { // Error
           this.#handleError(data);
           break;
@@ -237,6 +243,10 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", 0);
+          }
           return;
         }
         default: {
@@ -311,11 +321,18 @@ class NodeWorker extends EventEmitter {
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    if (this.#status !== "TERMINATED") {
-      this.#status = "TERMINATED";
-      op_host_terminate_worker(this.#id);
+    if (this.#status === "TERMINATED") {
+      return PromiseResolve(0);
+    }
+
+    this.#status = "TERMINATED";
+    op_host_terminate_worker(this.#id);
+
+    if (!this.#exited) {
+      this.#exited = true;
       this.emit("exit", 0);
     }
+
     return PromiseResolve(0);
   }
 

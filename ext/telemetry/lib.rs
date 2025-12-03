@@ -162,18 +162,15 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
+  #[default]
   Ignore = 0,
   Capture = 1,
   Replace = 2,
-}
-
-impl Default for OtelConsoleConfig {
-  fn default() -> Self {
-    Self::Ignore
-  }
 }
 
 static OTEL_SHARED_RUNTIME_SPAWN_TASK_TX: Lazy<
@@ -1002,6 +999,8 @@ pub fn init(
 }
 
 fn before_exit() {
+  log::trace!("deno_telemetry::before_exit");
+
   let Some(OtelGlobals {
     span_processor: spans,
     log_processor: logs,
@@ -1011,8 +1010,6 @@ fn before_exit() {
   else {
     return;
   };
-
-  log::trace!("deno_telemetry::before_exit");
 
   let r = spans.shutdown();
   log::trace!("spans={:?}", r);

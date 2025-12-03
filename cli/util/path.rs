@@ -99,25 +99,9 @@ pub fn relative_specifier(
     return Some("./".to_string());
   }
 
-  // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-  let from = if !from.path().ends_with('/') {
-    if let Some(end_slash) = from.path().rfind('/') {
-      let mut new_from = from.clone();
-      new_from.set_path(&from.path()[..end_slash + 1]);
-      Cow::Owned(new_from)
-    } else {
-      Cow::Borrowed(from)
-    }
-  } else {
-    Cow::Borrowed(from)
-  };
-
   // workaround for url crate not adding a trailing slash for a directory
   // it seems to be fixed once a version greater than 2.2.2 is released
-  let mut text = from.make_relative(to)?;
-  if is_dir && !text.ends_with('/') && to.query().is_none() {
-    text.push('/');
-  }
+  let text = from.make_relative(to)?;
 
   let text = if text.starts_with("../") || text.starts_with("./") {
     text
@@ -125,6 +109,25 @@ pub fn relative_specifier(
     format!("./{text}")
   };
   Some(to_percent_decoded_str(&text))
+}
+
+pub fn relative_specifier_path_for_display(
+  from: &ModuleSpecifier,
+  to: &ModuleSpecifier,
+) -> String {
+  if to.scheme() == "file" && from.scheme() == "file" {
+    let relative_specifier = relative_specifier(from, to)
+      .map(Cow::Owned)
+      .unwrap_or_else(|| Cow::Borrowed(to.as_str()));
+    let relative_specifier = if relative_specifier.starts_with("../../../") {
+      to.as_str()
+    } else {
+      relative_specifier.trim_start_matches("./")
+    };
+    to_percent_decoded_str(relative_specifier)
+  } else {
+    to_percent_decoded_str(to.as_str())
+  }
 }
 
 /// Slightly different behaviour than the default matching

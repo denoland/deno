@@ -3,23 +3,22 @@
 import { core } from "ext:core/mod.js";
 
 import * as event from "ext:deno_web/02_event.js";
-import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as console from "ext:deno_console/01_console.js";
+import * as console from "ext:deno_web/01_console.js";
 import * as caches from "ext:deno_cache/01_cache.js";
 import * as compression from "ext:deno_web/14_compression.js";
 import * as worker from "ext:runtime/11_workers.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as crypto from "ext:deno_crypto/00_crypto.js";
-import * as url from "ext:deno_url/00_url.js";
-import * as urlPattern from "ext:deno_url/01_urlpattern.js";
+import * as url from "ext:deno_web/00_url.js";
+import * as urlPattern from "ext:deno_web/01_urlpattern.js";
 import * as headers from "ext:deno_fetch/20_headers.js";
 import * as streams from "ext:deno_web/06_streams.js";
 import * as fileReader from "ext:deno_web/10_filereader.js";
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
 import * as webSocketStream from "ext:deno_websocket/02_websocketstream.js";
-import * as broadcastChannel from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import * as broadcastChannel from "ext:deno_web/01_broadcast_channel.js";
 import * as file from "ext:deno_web/09_file.js";
 import * as formData from "ext:deno_fetch/21_formdata.js";
 import * as request from "ext:deno_fetch/23_request.js";
@@ -53,6 +52,7 @@ const windowOrWorkerGlobalScope = {
   AbortController: core.propNonEnumerable(abortSignal.AbortController),
   AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
   Blob: core.propNonEnumerable(file.Blob),
+  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
   ByteLengthQueuingStrategy: core.propNonEnumerable(
     streams.ByteLengthQueuingStrategy,
   ),
@@ -130,8 +130,8 @@ const windowOrWorkerGlobalScope = {
     (image) => image.createImageBitmap,
     loadImage,
   ),
-  clearInterval: core.propWritable(timers.clearInterval),
-  clearTimeout: core.propWritable(timers.clearTimeout),
+  clearInterval: core.propWritable(nodeClearInterval),
+  clearTimeout: core.propWritable(nodeClearTimeout),
   caches: {
     enumerable: true,
     configurable: true,
@@ -154,8 +154,8 @@ const windowOrWorkerGlobalScope = {
   Buffer: core.propWritable(Buffer),
   global: core.propWritable(globalThis),
   reportError: core.propWritable(event.reportError),
-  setInterval: core.propWritable(timers.setInterval),
-  setTimeout: core.propWritable(timers.setTimeout),
+  setInterval: core.propWritable(nodeSetInterval),
+  setTimeout: core.propWritable(nodeSetTimeout),
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
@@ -304,9 +304,6 @@ const windowOrWorkerGlobalScope = {
 };
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
-unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
-  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
-};
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
   WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
@@ -341,12 +338,5 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
-
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
-  clearInterval: core.propWritable(nodeClearInterval),
-  clearTimeout: core.propWritable(nodeClearTimeout),
-  setInterval: core.propWritable(nodeSetInterval),
-  setTimeout: core.propWritable(nodeSetTimeout),
-};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

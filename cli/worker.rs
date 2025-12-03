@@ -43,6 +43,7 @@ pub struct CliMainWorkerOptions {
   pub maybe_coverage_dir: Option<PathBuf>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
+  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
 }
 
 /// Data shared between the factory and workers.
@@ -50,6 +51,7 @@ struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
+  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
 }
 
 pub struct CliMainWorker {
@@ -314,6 +316,7 @@ impl CliMainWorkerFactory {
         create_hmr_runner: options.create_hmr_runner,
         maybe_coverage_dir: options.maybe_coverage_dir,
         maybe_file_watcher_communicator,
+        maybe_initial_cwd: options.maybe_initial_cwd,
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
       needs_test_modules: options.needs_test_modules,
@@ -325,12 +328,14 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -344,6 +349,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
@@ -351,6 +357,7 @@ impl CliMainWorkerFactory {
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -365,6 +372,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -424,6 +432,7 @@ impl CliMainWorkerFactory {
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       custom_extensions,
       stdio,
@@ -448,6 +457,13 @@ impl CliMainWorkerFactory {
         "40_lint_selector.js",
         "40_lint.js"
       );
+    }
+
+    if let Some(initial_cwd) = &self.shared.maybe_initial_cwd {
+      let op_state = worker.js_runtime().op_state();
+      op_state
+        .borrow_mut()
+        .put(deno_core::error::InitialCwd(initial_cwd.clone()));
     }
 
     Ok(CliMainWorker {
