@@ -76,7 +76,7 @@ const prCachePath = [
 ].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 20;
+const llvmVersion = 21;
 const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
