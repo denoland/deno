@@ -408,8 +408,6 @@ pub fn set_up_bin_entry<'a>(
   if sys_traits::impls::is_windows() {
     set_up_bin_shim(
       sys,
-      package,
-      extra,
       bin_name,
       bin_script,
       package_path,
@@ -450,6 +448,7 @@ fn parse_shebang(s: &str) -> Option<Shebang> {
   if !s.starts_with("#!") {
     return None;
   }
+  // lifted from npm/cmd-shim
   let regex = lazy_regex::regex!(
     r"^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?((?:[^ \t=]+=[^ \t=]+\s+)*))?([^ \t\r\n]+)(.*)$"
   );
@@ -626,8 +625,6 @@ impl ShimData {
 
 fn set_up_bin_shim<'a>(
   sys: &(impl FsOpen + FsWrite),
-  #[allow(unused)] package: &'a NpmResolutionPackage,
-  #[allow(unused)] extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
   bin_script: &'a str,
   package_path: &'a Path,
