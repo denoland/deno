@@ -1128,16 +1128,16 @@ impl Inner {
             | MediaType::Dmts
             | MediaType::Dcts
             | MediaType::Json
+            | MediaType::Jsonc
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
             | MediaType::Css
             | MediaType::Html
+            | MediaType::Json5
             | MediaType::Sql
             | MediaType::Unknown => {
-              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
-                continue;
-              }
+              continue;
             }
           }
           dir_files.insert(path);

@@ -78,10 +78,6 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   AlreadyOpen,
   #[class(generic)]
-  #[error("failed to prepare statement")]
-  #[property("code" = self.code())]
-  PrepareFailed,
-  #[class(generic)]
   #[error("failed to create session")]
   #[property("code" = self.code())]
   SessionCreateFailed,

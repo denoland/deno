@@ -62,6 +62,8 @@ const {
 import {
   op_is_ascii,
   op_is_utf8,
+  op_node_buffer_compare,
+  op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
   op_node_decode_utf8,
   op_transcode,
@@ -174,7 +176,7 @@ function showFlaggedDeprecation() {
   bufferWarningAlreadyEmitted = true;
 }
 
-class FastBuffer extends Uint8Array {
+export class FastBuffer extends Uint8Array {
   constructor(bufferOrLength, byteOffset, length) {
     super(bufferOrLength, byteOffset, length);
   }
@@ -534,22 +536,7 @@ const BufferCompare = Buffer.compare = function compare(a, b) {
   if (a === b) {
     return 0;
   }
-  let x = a.length;
-  let y = b.length;
-  for (let i = 0, len = MathMin(x, y); i < len; ++i) {
-    if (a[i] !== b[i]) {
-      x = a[i];
-      y = b[i];
-      break;
-    }
-  }
-  if (x < y) {
-    return -1;
-  }
-  if (y < x) {
-    return 1;
-  }
-  return 0;
+  return op_node_buffer_compare(a, b);
 };
 
 const BufferIsEncoding = Buffer.isEncoding = function isEncoding(encoding) {
@@ -819,14 +806,7 @@ Buffer.prototype.compare = function compare(
   thisStart,
   thisEnd,
 ) {
-  if (isUint8Array(target)) {
-    target = BufferFrom(
-      target,
-      TypedArrayPrototypeGetByteOffset(target),
-      TypedArrayPrototypeGetByteLength(target),
-    );
-  }
-  if (!BufferIsBuffer(target)) {
+  if (!isUint8Array(target)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "target",
       ["Buffer", "Uint8Array"],
@@ -874,33 +854,14 @@ Buffer.prototype.compare = function compare(
   if (start >= end) {
     return 1;
   }
-  start >>>= 0;
-  end >>>= 0;
-  thisStart >>>= 0;
-  thisEnd >>>= 0;
-  if (this === target) {
-    return 0;
-  }
-  let x = thisEnd - thisStart;
-  let y = end - start;
-  const len = MathMin(x, y);
-  const thisCopy = TypedArrayPrototypeSlice(this, thisStart, thisEnd);
-  // deno-lint-ignore prefer-primordials
-  const targetCopy = target.slice(start, end);
-  for (let i = 0; i < len; ++i) {
-    if (thisCopy[i] !== targetCopy[i]) {
-      x = thisCopy[i];
-      y = targetCopy[i];
-      break;
-    }
-  }
-  if (x < y) {
-    return -1;
-  }
-  if (y < x) {
-    return 1;
-  }
-  return 0;
+  return op_node_buffer_compare_offset(
+    this,
+    target,
+    thisStart,
+    start,
+    thisEnd,
+    end,
+  );
 };
 
 function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
