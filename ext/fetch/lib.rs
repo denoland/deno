@@ -874,6 +874,7 @@ pub fn op_fetch_custom_client(
         let permissions = state.borrow_mut::<PermissionsContainer>();
         permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
       }
+      Proxy::Tunnel { .. } => {}
     }
   }
 
@@ -1046,16 +1047,15 @@ pub fn create_http_client(
         }
         intercept
       }
-      Proxy::Tcp {
-        hostname: host,
-        port,
-      } => {
-        let target = proxy::Target::new_tcp(host, port);
+      Proxy::Tcp { hostname, port } => {
+        let target = proxy::Target::Tcp { hostname, port };
         proxy::Intercept::all(target)
       }
       #[cfg(not(windows))]
       Proxy::Unix { path } => {
-        let target = proxy::Target::new_unix(PathBuf::from(path));
+        let target = proxy::Target::Unix {
+          path: PathBuf::from(path),
+        };
         proxy::Intercept::all(target)
       }
       #[cfg(windows)]
@@ -1068,7 +1068,7 @@ pub fn create_http_client(
         target_os = "macos"
       ))]
       Proxy::Vsock { cid, port } => {
-        let target = proxy::Target::new_vsock(cid, port);
+        let target = proxy::Target::Vsock { cid, port };
         proxy::Intercept::all(target)
       }
       #[cfg(not(any(
@@ -1079,6 +1079,7 @@ pub fn create_http_client(
       Proxy::Vsock { .. } => {
         return Err(HttpClientCreateError::VsockProxyNotSupported);
       }
+      Proxy::Tunnel { .. } => proxy::Intercept::all(proxy::Target::Tunnel),
     };
     proxies.prepend(intercept);
   }
