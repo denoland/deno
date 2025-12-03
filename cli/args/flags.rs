@@ -5183,15 +5183,7 @@ impl CommandExt for Command {
       }
     };
 
-    let mut cmd = self.arg(
-      Arg::new("unstable")
-      .long("unstable")
-      .help(cstr!("The `--unstable` flag has been removed. Use granular `--unstable-*` flags instead
-  <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
-      .action(ArgAction::SetTrue)
-      .hide(matches!(cfg, UnstableArgsConfig::None))
-      .display_order(next_display_order())
-    );
+    let mut cmd = self;
 
     for feature in deno_runtime::UNSTABLE_FEATURES.iter() {
       let mut arg = Arg::new(feature.flag_name)
