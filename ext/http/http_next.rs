@@ -37,6 +37,7 @@ use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamReadHalf;
 use deno_net::raw::NetworkStreamWriteHalf;
+use deno_websocket::WsStreamKind;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
@@ -224,21 +225,31 @@ pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
 ) -> Result<ResourceId, HttpNextError> {
-  let upgrade = {
+  let (version, upgrade) = {
     // SAFETY: op is called with external.
     let http =
       unsafe { clone_external!(external, "op_http_upgrade_websocket_next") };
-    http.upgrade()?
+
+    ({ http.request_parts().version }, http.upgrade()?)
   };
 
   let upgraded = upgrade.await?;
-  let (stream, bytes) = extract_network_stream(upgraded);
 
-  Ok(ws_create_server_stream(
-    &mut state.borrow_mut(),
-    stream,
-    bytes,
-  ))
+  if version == hyper::Version::HTTP_2 {
+    Ok(ws_create_server_stream(
+      &mut state.borrow_mut(),
+      WsStreamKind::Upgraded(TokioIo::new(upgraded)),
+      Default::default(),
+    ))
+  } else {
+    let (stream, bytes) = extract_network_stream(upgraded);
+
+    Ok(ws_create_server_stream(
+      &mut state.borrow_mut(),
+      WsStreamKind::Network(stream),
+      bytes,
+    ))
+  }
 }
 
 #[op2(fast)]
@@ -363,6 +374,31 @@ where
 
   let vec = [method, authority, path, peer_ip, peer_port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
+}
+
+#[op2]
+#[serde]
+pub fn op_http_get_request_extra_info(
+  external: *const c_void,
+) -> (f64, String) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_method_and_url") };
+  let request_parts = http.request_parts();
+
+  let version = match request_parts.version {
+    hyper::Version::HTTP_09 => 0.9,
+    hyper::Version::HTTP_10 => 1.0,
+    hyper::Version::HTTP_11 => 1.1,
+    hyper::Version::HTTP_2 => 2.0,
+    hyper::Version::HTTP_3 => 3.0,
+    _ => f64::NAN,
+  };
+
+  let protocol = request_parts.extensions.get::<hyper::ext::Protocol>();
+  let protocol = protocol.map(|p| p.as_str().to_owned()).unwrap_or_default();
+
+  (version, protocol)
 }
 
 #[op2]
@@ -854,6 +890,8 @@ fn serve_http2_unconditional(
   if let Some(http2_builder_hook) = http2_builder_hook {
     builder = http2_builder_hook(builder);
   }
+
+  builder.enable_connect_protocol();
 
   let conn = builder.serve_connection(TokioIo::new(io), svc);
   async {
