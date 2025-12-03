@@ -1523,6 +1523,32 @@ Deno.test(function consoleGroup() {
   });
 });
 
+// console.group with console.dir test
+Deno.test(function consoleGroupDir() {
+  mockConsole((console, out) => {
+    console.dir("1");
+    console.group();
+    console.dir("2");
+    console.group();
+    console.dir("3");
+    console.groupEnd();
+    console.dir("4");
+    console.groupEnd();
+    console.dir("5");
+
+    // console.dir should respect group indentation
+    assertEquals(
+      out.toString(),
+      `1
+  2
+    3
+  4
+5
+`,
+    );
+  });
+});
+
 // console.group with console.warn test
 Deno.test(function consoleGroupWarn() {
   mockConsole((console, _out, _err, both) => {

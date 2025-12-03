@@ -463,6 +463,8 @@
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
+# TODO(bartlomieju): crashes constantly on CI, disabling for now
+# "parallel/test-fs-promises-file-handle-readFile.js" = { flaky = true }
 "parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
@@ -1199,7 +1201,15 @@
 "parallel/test-timers-clear-timeout-interval-equivalent.js" = {}
 "parallel/test-timers-clearImmediate-als.js" = {}
 "parallel/test-timers-clearImmediate.js" = {}
+# TODO(bartlomieju): need to rearrange code for this one
+# "parallel/test-timers-immediate-promisified.js" = {}
+# TODO(bartlomieju): doesn't work correctly because of `node:domain`
+# error handling
+# "parallel/test-timers-immediate-queue-throw.js" = {}
 "parallel/test-timers-immediate-queue.js" = {}
+"parallel/test-timers-immediate-unref-nested-once.js" = {}
+"parallel/test-timers-immediate-unref-simple.js" = {}
+"parallel/test-timers-immediate-unref.js" = {}
 "parallel/test-timers-immediate.js" = {}
 "parallel/test-timers-interval-throw.js" = {}
 "parallel/test-timers-non-integer-delay.js" = {}
