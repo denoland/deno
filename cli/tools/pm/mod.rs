@@ -35,11 +35,14 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
+mod approve_scripts;
 mod audit;
 mod cache_deps;
 pub(crate) mod deps;
+pub(crate) mod interactive_picker;
 mod outdated;
 
+pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
@@ -250,6 +253,19 @@ impl ConfigUpdater {
       self.modified = true;
     }
     removed
+  }
+
+  fn set_allow_scripts_value(
+    &mut self,
+    value: jsonc_parser::cst::CstInputValue,
+  ) {
+    if let Some(prop) = self.root_object.get("allowScripts") {
+      prop.set_value(value);
+    } else {
+      let index = self.root_object.properties().len();
+      self.root_object.insert(index, "allowScripts", value);
+    }
+    self.modified = true;
   }
 
   fn commit(&self) -> Result<(), AnyError> {

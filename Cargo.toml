@@ -60,16 +60,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = { version = "0.368.0" }
+deno_ast = { version = "=0.52.0", features = ["transpiling"] }
+deno_core = { version = "0.371.0" }
 
-deno_cache_dir = "=0.25.0"
-deno_doc = "=0.186.0"
-deno_error = "=0.7.0"
-deno_graph = { version = "=0.103.1", default-features = false }
-deno_lint = "=0.80.0"
+deno_cache_dir = "=0.26.3"
+deno_doc = "=0.187.0"
+deno_error = "=0.7.1"
+deno_graph = { version = "=0.104.0", default-features = false }
+deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
+deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.42.1"
 deno_path_util = "=0.6.4"
@@ -78,7 +78,7 @@ deno_task_shell = "=0.26.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.104.0"
+eszip = "=0.105.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -201,7 +201,7 @@ jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
 libc = "0.2.168"
 libz-sys = { version = "1.1.20", default-features = false }
-log = { version = "0.4.20", features = ["kv"] }
+log = { version = "0.4.28", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memchr = "2.7.4"
 mime = "0.3.16"
@@ -309,10 +309,10 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.21.0"
 dprint-plugin-jupyter = "=0.2.1"
 dprint-plugin-markdown = "=0.20.0"
-dprint-plugin-typescript = "=0.95.11"
+dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
-libsui = "0.10.0"
+libsui = "0.11.0"
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"
@@ -426,6 +426,13 @@ opt-level = 3
 # rusty-v8 needs at least -O1 to not miscompile
 [profile.dev.package.v8]
 opt-level = 1
+
+# speeds up deno compile tests a lot
+[profile.dev.package.libsui]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
 
 [profile.release.package.async-compression]
 opt-level = 3

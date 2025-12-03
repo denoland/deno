@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_core::anyhow::Context;
 
 use super::fmt::to_relative_path_or_remote_url;
@@ -66,9 +67,14 @@ impl JunitTestReporter {
       TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
       TestStepResult::Ignored => quick_junit::TestCaseStatus::skipped(),
       TestStepResult::Failed(failure) => {
+        let message = if failure_format_options.strip_ascii_color {
+          strip_ansi_codes(&failure.overview()).to_string()
+        } else {
+          failure.overview()
+        };
         quick_junit::TestCaseStatus::NonSuccess {
           kind: quick_junit::NonSuccessKind::Failure,
-          message: Some(failure.overview()),
+          message: Some(message),
           ty: None,
           description: Some(
             failure.format(failure_format_options).into_owned(),
@@ -325,6 +331,8 @@ impl From<TestStepDescription> for TestNameTreeNode {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::error::JsStackFrame;
+
   use super::*;
 
   #[test]
@@ -435,5 +443,48 @@ mod tests {
       tree.construct_full_test_name(4),
       "root > child 1 > grandchild 2".to_string(),
     );
+  }
+
+  #[test]
+  fn escapes_short_failure_message() {
+    let jserror = JsError {
+      exception_message: "Uncaught Error: \x1b[31mtest error\x1b[0m"
+        .to_string(),
+      frames: vec![JsStackFrame::from_location(
+        Some("File name".to_string()),
+        Some(10),
+        Some(15),
+      )],
+      name: Some("Error".to_string()),
+      message: Some("test error".to_string()),
+      source_line: Some("&quot;source \x1b[32mline\x1b[0m&quot;".to_string()),
+      source_line_frame_index: Some(0),
+      stack: None,
+      cause: None,
+      aggregated: None,
+      additional_properties: vec![],
+    };
+
+    let step_result =
+      TestStepResult::Failed(TestFailure::JsError(Box::new(jserror)));
+    let step = JunitTestReporter::convert_step_status(
+      &step_result,
+      &TestFailureFormatOptions {
+        strip_ascii_color: true,
+        hide_stacktraces: false,
+        ..Default::default()
+      },
+    );
+    if let quick_junit::TestCaseStatus::NonSuccess {
+      description,
+      message,
+      ..
+    } = step
+    {
+      assert!(!description.unwrap().contains("\x1b"));
+      assert!(!message.unwrap().contains("\x1b"));
+    } else {
+      panic!("Expected NonSuccess status");
+    }
   }
 }

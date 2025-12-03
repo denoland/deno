@@ -27,22 +27,6 @@ function checkThis(thisArg) {
 }
 
 /**
- * Call a callback function immediately.
- */
-function setImmediate(callback, ...args) {
-  const asyncContext = getAsyncContext();
-  return core.queueImmediate(() => {
-    const oldContext = getAsyncContext();
-    try {
-      setAsyncContext(asyncContext);
-      return ReflectApply(callback, globalThis, args);
-    } finally {
-      setAsyncContext(oldContext);
-    }
-  });
-}
-
-/**
  * Call a callback function after a delay.
  */
 function setTimeout(callback, timeout = 0, ...args) {
@@ -153,7 +137,6 @@ export {
   clearTimeout,
   defer,
   refTimer,
-  setImmediate,
   setInterval,
   setTimeout,
   unrefTimer,
