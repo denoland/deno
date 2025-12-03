@@ -24,6 +24,7 @@ use crate::NodeResolverSys;
 use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
+use crate::REQUIRE_CONDITIONS;
 use crate::ResolutionMode;
 use crate::UrlOrPath;
 use crate::UrlOrPathRef;
@@ -228,14 +229,7 @@ impl<
             .resolve(
               &reexport,
               &referrer,
-              // FIXME(bartlomieju): check if these conditions are okay, probably
-              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-              &[
-                Cow::Borrowed("deno"),
-                Cow::Borrowed("node"),
-                Cow::Borrowed("require"),
-                Cow::Borrowed("default"),
-              ],
+              REQUIRE_CONDITIONS,
               NodeResolutionKind::Execution,
             )
             .and_then(|value| {
