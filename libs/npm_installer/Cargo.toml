@@ -46,6 +46,7 @@ sys_traits = { workspace = true, features = ["getrandom", "real", "winapi", "lib
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
+lazy-regex.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sys_traits = { workspace = true, features = ["real", "wasm"] }
