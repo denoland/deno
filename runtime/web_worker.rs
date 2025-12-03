@@ -701,13 +701,7 @@ impl WebWorker {
       let (_dummy_str_tx, dummy_str_rx) =
         deno_core::futures::channel::mpsc::unbounded::<String>();
 
-      // Convert URL to path format for DevTools (strip file:// scheme)
-      let worker_url = options
-        .main_module
-        .as_str()
-        .strip_prefix("file://")
-        .map(String::from)
-        .or_else(|| Some(options.main_module.to_string()));
+      let worker_url = Some(options.main_module.to_string());
 
       let proxy = deno_core::InspectorSessionProxy {
         tx: dummy_tx,
@@ -715,8 +709,8 @@ impl WebWorker {
         kind: deno_core::InspectorSessionKind::NonBlocking {
           wait_for_disconnect: false,
         },
-        worker_tx: Some(main_to_worker_tx),
         worker_rx: Some(worker_to_main_rx),
+        worker_tx: Some(main_to_worker_tx),
         worker_url,
       };
 
@@ -760,7 +754,7 @@ impl WebWorker {
           while let Some(msg) = main_to_worker_rx.next().await {
             eprintln!(
               "[WORKER DEBUG] Worker received message from main: {}",
-              msg
+              &msg[..msg.len().min(150)]
             );
             local_session.dispatch(msg);
           }
