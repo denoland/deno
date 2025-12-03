@@ -114,12 +114,12 @@ pub fn op_node_idna_punycode_to_unicode(
 
 /// Converts a domain to ASCII as per the IDNA spec
 /// (specifically UTS #46)
+///
+/// Returns an empty string if the domain is invalid, matching Node.js behavior
 #[op2]
 #[string]
-pub fn op_node_idna_domain_to_ascii(
-  #[string] domain: String,
-) -> Result<String, JsIdnaErrors> {
-  idna::domain_to_ascii(&domain).map_err(Into::into)
+pub fn op_node_idna_domain_to_ascii(#[string] domain: String) -> String {
+  idna::domain_to_ascii(&domain).unwrap_or_default()
 }
 
 /// Converts a domain to Unicode as per the IDNA spec

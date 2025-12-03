@@ -99,6 +99,7 @@ util::unit_test_factory!(
     timers_test,
     tls_test,
     tty_test,
+    url_test,
     util_test,
     v8_test,
     vm_test,
