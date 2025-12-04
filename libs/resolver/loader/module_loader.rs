@@ -224,23 +224,21 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
             .map_err(LoadCodeSourceError::from)?;
           LoadedModuleOrAsset::Module(loaded_module)
         } else {
-          // TODO(This PR): Pass the import phase down from deno_core.
-          let is_source_phase = true;
-          let allow_external_asset = is_source_phase
-            || matches!(
-              requested_module_type,
-              RequestedModuleType::Text | RequestedModuleType::Bytes
-            );
-          if allow_external_asset {
-            LoadedModuleOrAsset::ExternalAsset {
-              specifier: Cow::Borrowed(specifier),
-              statically_analyzable: false,
+          match requested_module_type {
+            RequestedModuleType::Text | RequestedModuleType::Bytes => {
+              LoadedModuleOrAsset::ExternalAsset {
+                specifier: Cow::Borrowed(specifier),
+                statically_analyzable: false,
+              }
             }
-          } else {
-            return Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
-              specifier: specifier.clone(),
-              maybe_referrer: maybe_referrer.cloned(),
-            }));
+            _ => {
+              return Err(LoadCodeSourceError::from(
+                LoadUnpreparedModuleError {
+                  specifier: specifier.clone(),
+                  maybe_referrer: maybe_referrer.cloned(),
+                },
+              ));
+            }
           }
         }
       }
@@ -525,22 +523,14 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         specifier: Cow::Borrowed(specifier),
         media_type: MediaType::Wasm,
       }))),
-      Some(deno_graph::Module::External(module))
-        if matches!(
-          requested_module_type,
-          RequestedModuleType::Bytes | RequestedModuleType::Text
-        ) =>
-      {
+      Some(deno_graph::Module::External(module)) => {
         Ok(Some(CodeOrDeferredEmit::ExternalAsset {
           specifier: &module.specifier,
         }))
       }
-      Some(
-        deno_graph::Module::External(_)
-        | deno_graph::Module::Node(_)
-        | deno_graph::Module::Npm(_),
-      )
-      | None => Ok(None),
+      Some(deno_graph::Module::Node(_) | deno_graph::Module::Npm(_)) | None => {
+        Ok(None)
+      }
     }
   }
 
