@@ -1,14 +1,5 @@
 {
   "tempDir": true,
-  "steps": [
-    {
-      "args": "init --yes --lib my-lib",
-      "output": "init_lib.out"
-    },
-    {
-      "cwd": "my-lib",
-      "args": "test",
-      "output": "lib_test.out"
-    }
-  ]
+  "args": "init --npm --yes @denotest",
+  "output": "init.out"
 }

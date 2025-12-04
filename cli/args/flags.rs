@@ -3145,6 +3145,7 @@ fn init_subcommand() -> Command {
           Arg::new("yes")
             .short('y')
             .long("yes")
+            .requires("npm")
             .help("Bypass the prompt and run with full permissions")
             .action(ArgAction::SetTrue),
         )
@@ -12687,12 +12688,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "--yes"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "vite"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: None,
+          package: Some("vite".to_string()),
           package_args: vec![],
           dir: None,
           lib: false,
