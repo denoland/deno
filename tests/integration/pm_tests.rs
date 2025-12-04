@@ -181,6 +181,7 @@ fn approve_scripts_basic() {
       pty.expect(
         "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
       );
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context
     .temp_dir()
@@ -225,6 +226,7 @@ fn approve_scripts_deny_some() {
       pty.expect(
         "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
       );
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context.temp_dir().path().join("deno.json").assert_matches_json(json!({
     "nodeModulesDir": "manual",

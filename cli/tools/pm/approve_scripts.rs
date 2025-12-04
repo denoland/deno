@@ -125,14 +125,33 @@ pub async fn approve_scripts(
   config_updater.set_allow_scripts_value(allow_scripts_value);
   config_updater.commit()?;
 
-  for req in approvals {
-    log::info!("Approved {}", colors::green(format!("npm:{req}")));
-  }
   for req in denials {
-    log::info!("Denied {}", colors::red(format!("npm:{req}")))
+    log::info!(
+      "{} {}{}",
+      colors::yellow("Denied"),
+      colors::gray("npm:"),
+      req
+    )
+  }
+  for req in approvals.iter() {
+    log::info!(
+      "{} {}{}",
+      colors::green("Approved"),
+      colors::gray("npm:"),
+      req
+    );
   }
 
   super::npm_install_after_modification(flags, None).await?;
+
+  for req in approvals {
+    log::info!(
+      "{} {}{}",
+      colors::cyan("Run build script"),
+      colors::gray("npm:"),
+      req
+    );
+  }
 
   Ok(())
 }

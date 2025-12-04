@@ -1085,12 +1085,6 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
 
       _ = writeln!(&mut output, "{}", colors::yellow("│"));
 
-      let packages_comma_separated = packages
-        .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
-        .collect::<Vec<_>>()
-        .join(",");
-
       _ = writeln!(
         &mut output,
         "{}  Run \"{}\" to run build scripts.",
