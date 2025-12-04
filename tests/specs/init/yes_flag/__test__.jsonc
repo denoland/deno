@@ -1,5 +1,14 @@
 {
   "tempDir": true,
-  "args": "init --npm --yes @denotest",
-  "output": "init.out"
+  "tests": {
+    "missing": {
+      "args": "init --npm @denotest",
+      "output": "missing.out",
+      "exitCode": 1
+    },
+    "yes": {
+      "args": "init --npm --yes @denotest",
+      "output": "init.out"
+    }
+  }
 }

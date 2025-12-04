@@ -318,9 +318,11 @@ async fn init_npm(options: InitNpmOptions<'_>) -> Result<i32, AnyError> {
     log::info!(
       "{}",
       cformat!(
-        "You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.",
-        script_name,
-        args.join(" ")
+        "You can initialize project manually by running <u>deno run {}</> and applying desired permissions.",
+        std::iter::once(script_name)
+          .chain(args.iter().map(|a| a.as_ref()))
+          .collect::<Vec<_>>()
+          .join(" ")
       )
     );
     1
