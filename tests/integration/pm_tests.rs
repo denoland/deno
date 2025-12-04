@@ -179,7 +179,7 @@ fn approve_scripts_basic() {
       pty.write_line("\r\n");
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect(
-        "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
+        "@denotest/node-lifecycle-scripts@1.0.0: running 'install' script",
       );
     });
   context
@@ -223,7 +223,7 @@ fn approve_scripts_deny_some() {
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
       pty.expect(
-        "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
+        "@denotest/node-lifecycle-scripts@1.0.0: running 'install' script",
       );
     });
   context.temp_dir().path().join("deno.json").assert_matches_json(json!({
