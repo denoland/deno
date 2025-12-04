@@ -601,6 +601,7 @@ mod tests {
   ) -> Result<Response, ExecError> {
     test_exec_with_cache(specifier, None).await
   }
+
   async fn test_exec_with_cache(
     specifier: &ModuleSpecifier,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,

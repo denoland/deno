@@ -121,6 +121,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.esnext.iterator.d.ts",
     "lib.esnext.promise.d.ts",
     "lib.esnext.sharedmemory.d.ts",
+    "lib.node.d.ts",
     "lib.scripthost.d.ts",
     "lib.webworker.asynciterable.d.ts",
     "lib.webworker.d.ts",
