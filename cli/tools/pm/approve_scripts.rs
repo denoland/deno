@@ -147,7 +147,7 @@ pub async fn approve_scripts(
   for req in approvals {
     log::info!(
       "{} {}{}",
-      colors::cyan("Run build script"),
+      colors::cyan("Ran build script"),
       colors::gray("npm:"),
       req
     );

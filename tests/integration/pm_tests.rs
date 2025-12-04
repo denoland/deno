@@ -221,8 +221,8 @@ fn approve_scripts_deny_some() {
       pty.expect("@denotest/print-npm-user-agent@1.0.0");
       pty.write_line(" ");
       pty.write_line("\r\n");
-      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect(
         "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
       );
