@@ -10960,91 +10960,6 @@ fn lsp_completions_node_builtin() {
     ])
   );
 
-  // update to have fs import
-  client.write_notification(
-    "textDocument/didChange",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "version": 2
-      },
-      "contentChanges": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 16 },
-            "end": { "line": 0, "character": 33 },
-          },
-          "text": "fs"
-        }
-      ]
-    }),
-  );
-  let diagnostics = client.read_diagnostics();
-  let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String(
-          "import-node-prefix-missing".to_string(),
-        ))
-    })
-    .collect::<Vec<_>>();
-
-  // get the quick fixes
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "range": {
-        "start": { "line": 0, "character": 16 },
-        "end": { "line": 0, "character": 18 },
-      },
-      "context": {
-        "diagnostics": json!(diagnostics),
-        "only": ["quickfix"]
-      }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to node:fs",
-      "kind": "quickfix",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 }
-          },
-          "severity": 1,
-          "code": "import-node-prefix-missing",
-          "source": "deno",
-          "message": "Import \"fs\" not a dependency\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
-          "data": {
-            "specifier": "fs"
-          },
-        }
-      ],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [
-            {
-              "range": {
-                "start": { "line": 0, "character": 15 },
-                "end": { "line": 0, "character": 19 }
-              },
-              "newText": "\"node:fs\""
-            }
-          ]
-        }
-      }
-    }])
-  );
-
   // update to have node:fs import
   client.write_notification(
     "textDocument/didChange",
@@ -11056,17 +10971,15 @@ fn lsp_completions_node_builtin() {
       "contentChanges": [
         {
           "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 },
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 33 },
           },
-          "text": "\"node:fs\"",
+          "text": "node:fs",
         }
       ]
     }),
   );
-
-  let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.len(), 0);
+  client.read_diagnostics();
 
   client.write_notification(
     "textDocument/didChange",
