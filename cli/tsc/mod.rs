@@ -297,6 +297,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
