@@ -1344,9 +1344,6 @@ declare module "util" {
         encodeInto(src: string, dest: Uint8Array): EncodeIntoResult;
     }
     import { TextDecoder as _TextDecoder, TextEncoder as _TextEncoder } from "util";
-    global {
-    }
-
     //// parseArgs
     /**
      * Provides a higher level API for command-line argument parsing than interacting

@@ -75,10 +75,3 @@ interface EventListenerObject {
 }
 
 // Merge conditional interfaces into global scope, and conditionally declare global constructors.
-declare global {
-    interface Event extends __Event {}
-
-    interface CustomEvent<T = any> extends __CustomEvent<T> {}
-
-    interface EventTarget extends __EventTarget {}
-}

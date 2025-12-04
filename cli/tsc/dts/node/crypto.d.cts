@@ -4518,9 +4518,6 @@ declare module "crypto" {
             ): Promise<ArrayBuffer>;
         }
     }
-
-    global {
-    }
 }
 declare module "node:crypto" {
     export * from "crypto";

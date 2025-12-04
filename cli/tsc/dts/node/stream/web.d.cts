@@ -426,42 +426,6 @@ declare module "stream/web" {
         prototype: DecompressionStream;
         new(format: "deflate" | "deflate-raw" | "gzip"): DecompressionStream;
     };
-
-    global {
-        interface ByteLengthQueuingStrategy extends _ByteLengthQueuingStrategy {}
-
-        interface CompressionStream extends _CompressionStream {}
-
-        interface CountQueuingStrategy extends _CountQueuingStrategy {}
-
-        interface DecompressionStream extends _DecompressionStream {}
-
-        interface ReadableByteStreamController extends _ReadableByteStreamController {}
-
-        interface ReadableStream<R = any> extends _ReadableStream<R> {}
-
-        interface ReadableStreamBYOBReader extends _ReadableStreamBYOBReader {}
-
-        interface ReadableStreamBYOBRequest extends _ReadableStreamBYOBRequest {}
-
-        interface ReadableStreamDefaultController<R = any> extends _ReadableStreamDefaultController<R> {}
-
-        interface ReadableStreamDefaultReader<R = any> extends _ReadableStreamDefaultReader<R> {}
-
-        interface TextDecoderStream extends _TextDecoderStream {}
-
-        interface TextEncoderStream extends _TextEncoderStream {}
-
-        interface TransformStream<I = any, O = any> extends _TransformStream<I, O> {}
-
-        interface TransformStreamDefaultController<O = any> extends _TransformStreamDefaultController<O> {}
-
-        interface WritableStream<W = any> extends _WritableStream<W> {}
-
-        interface WritableStreamDefaultController extends _WritableStreamDefaultController {}
-
-        interface WritableStreamDefaultWriter<W = any> extends _WritableStreamDefaultWriter<W> {}
-    }
 }
 declare module "node:stream/web" {
     export * from "stream/web";

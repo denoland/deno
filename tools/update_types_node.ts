@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run -A
 import $, { Path } from "jsr:@david/dax@^0.42.0";
 import * as semver from "@std/semver";
 import { UntarStream } from "@std/tar/untar-stream";
@@ -224,6 +225,9 @@ function modifySourceFiles() {
           handleInterface(statement);
         }
       }
+      if (moduleDecl.getStatements().length === 0) {
+        moduleDecl.remove();
+      }
     }
 
     if (
@@ -256,6 +260,30 @@ function handleInterface(decl: InterfaceDeclaration) {
       decl.getPropertyOrThrow("filename").setHasQuestionToken(true);
       break;
     }
+    case "Blob":
+    case "ByteLengthQueuingStrategy":
+    case "CompressionStream":
+    case "CountQueuingStrategy":
+    case "CustomEvent":
+    case "DecompressionStream":
+    case "Event":
+    case "EventTarget":
+    case "File":
+    case "ReadableByteStreamController":
+    case "ReadableStream":
+    case "ReadableStreamBYOBReader":
+    case "ReadableStreamBYOBRequest":
+    case "ReadableStreamDefaultController":
+    case "ReadableStreamDefaultReader":
+    case "TextDecoderStream":
+    case "TextEncoderStream":
+    case "TransformStream":
+    case "TransformStreamDefaultController":
+    case "WritableStream":
+    case "WritableStreamDefaultController":
+    case "WritableStreamDefaultWriter":
+      decl.remove();
+      break;
     default:
       console.log(decl.getName());
       break;

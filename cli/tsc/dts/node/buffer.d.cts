@@ -1907,9 +1907,6 @@ declare module "buffer" {
          * @param data An ASCII (Latin1) string.
          */
         function btoa(data: string): string;
-        interface Blob extends _Blob {}
-
-        interface File extends _File {}
     }
 }
 declare module "node:buffer" {
