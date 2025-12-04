@@ -452,6 +452,8 @@ impl<'a> DenoCompileModuleData<'a> {
       // just assume javascript if we made it here
       MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {

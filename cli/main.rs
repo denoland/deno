@@ -123,6 +123,11 @@ async fn run_subcommand(
     DenoSubcommand::Audit(audit_flags) => {
       spawn_subcommand(async { tools::pm::audit(flags, audit_flags).await })
     }
+    DenoSubcommand::ApproveScripts(approve_scripts_flags) => {
+      spawn_subcommand(async move {
+        tools::pm::approve_scripts(flags, approve_scripts_flags).await
+      })
+    }
     DenoSubcommand::Remove(remove_flags) => {
       spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
     }

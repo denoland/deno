@@ -3,8 +3,6 @@
 import { primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
-  MapPrototypeGet,
-  MapPrototypeDelete,
   ObjectDefineProperty,
   Promise,
   PromiseReject,
@@ -12,10 +10,13 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
 } = primordials;
-
+import { op_immediate_count, op_immediate_ref_count } from "ext:core/ops";
 import {
-  activeTimers,
+  getActiveTimer,
   Immediate,
+  immediateQueue,
+  kDestroy,
+  kRefed,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -128,11 +129,7 @@ export function clearTimeout(timeout?: Timeout | number) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  getActiveTimer(id)?.[kDestroy]();
   clearTimeout_(id);
 }
 export function setInterval(
@@ -148,27 +145,33 @@ export function clearInterval(timeout?: Timeout | number | string) {
     return;
   }
   const id = +timeout;
-  const timer = MapPrototypeGet(activeTimers, id);
-  if (timer) {
-    timer._destroyed = true;
-    MapPrototypeDelete(activeTimers, id);
-  }
+  getActiveTimer(id)?.[kDestroy]();
   clearInterval_(id);
 }
 export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
+  validateFunction(cb, "callback");
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
+
 export function clearImmediate(immediate: Immediate) {
-  if (immediate == null) {
+  if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
 
-  // FIXME(nathanwhit): will probably change once
-  //  deno_core has proper support for immediates
-  clearTimeout_(immediate._immediateId);
+  op_immediate_count(false);
+  immediate._destroyed = true;
+
+  if (immediate[kRefed]) {
+    op_immediate_ref_count(false);
+  }
+  immediate[kRefed] = null;
+
+  immediate._onImmediate = null;
+
+  immediateQueue.remove(immediate);
 }
 
 async function* setIntervalAsync(

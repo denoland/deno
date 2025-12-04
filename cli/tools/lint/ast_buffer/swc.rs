@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_ast::ParsedSource;
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::AssignTargetPat;
@@ -52,6 +54,7 @@ use deno_ast::swc::ast::PropName;
 use deno_ast::swc::ast::PropOrSpread;
 use deno_ast::swc::ast::SimpleAssignTarget;
 use deno_ast::swc::ast::Stmt;
+use deno_ast::swc::ast::Str;
 use deno_ast::swc::ast::SuperProp;
 use deno_ast::swc::ast::TsEntityName;
 use deno_ast::swc::ast::TsEnumMemberId;
@@ -959,7 +962,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
             &quasi
               .cooked
               .as_ref()
-              .map_or("".to_string(), |v| v.to_string()),
+              .map_or("".to_string(), |v| v.to_string_lossy().to_string()),
           )
         })
         .collect::<Vec<_>>();
@@ -1839,7 +1842,7 @@ fn serialize_jsx_opening_element(
         };
 
         let value = attr.value.as_ref().map(|value| match value {
-          JSXAttrValue::Lit(lit) => serialize_lit(ctx, lit),
+          JSXAttrValue::Str(str) => serialize_str(ctx, str),
           JSXAttrValue::JSXExprContainer(container) => {
             serialize_jsx_container_expr(ctx, container)
           }
@@ -2063,15 +2066,7 @@ fn serialize_prop_name(
 
 fn serialize_lit(ctx: &mut TsEsTreeBuilder, lit: &Lit) -> NodeRef {
   match lit {
-    Lit::Str(node) => {
-      let raw_value = if let Some(v) = &node.raw {
-        v.to_string()
-      } else {
-        format!("{}", node.value).to_string()
-      };
-
-      ctx.write_str_lit(&node.span, &node.value, &raw_value)
-    }
+    Lit::Str(node) => serialize_str(ctx, node),
     Lit::Bool(node) => ctx.write_bool_lit(&node.span, node.value),
     Lit::Null(node) => ctx.write_null_lit(&node.span),
     Lit::Num(node) => {
@@ -2121,6 +2116,16 @@ fn serialize_lit(ctx: &mut TsEsTreeBuilder, lit: &Lit) -> NodeRef {
       ctx.write_jsx_text(&node.span, &node.raw, &node.value)
     }
   }
+}
+
+fn serialize_str(ctx: &mut TsEsTreeBuilder, node: &Str) -> NodeRef {
+  let raw_value = if let Some(v) = &node.raw {
+    Cow::Borrowed(v.as_str())
+  } else {
+    node.value.to_string_lossy()
+  };
+
+  ctx.write_str_lit(&node.span, &node.value.to_string_lossy(), &raw_value)
 }
 
 fn serialize_class_member(
@@ -2772,7 +2777,8 @@ fn serialize_ts_lit_type(
             &quasi
               .cooked
               .as_ref()
-              .map_or("".to_string(), |v| v.to_string()),
+              .map(|v| v.to_string_lossy())
+              .unwrap_or(Cow::Borrowed("")),
           )
         })
         .collect::<Vec<_>>();

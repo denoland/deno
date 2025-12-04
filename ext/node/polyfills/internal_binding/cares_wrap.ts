@@ -40,6 +40,7 @@ import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_node_getaddrinfo,
+  op_node_getnameinfo,
 } from "ext:core/ops";
 
 interface LookupAddress {
@@ -134,6 +135,44 @@ export function getaddrinfo(
     req.oncomplete(error, addresses, netPermToken);
   })();
 
+  return 0;
+}
+
+export class GetNameInfoReqWrap extends AsyncWrap {
+  address!: string;
+  port!: number;
+
+  callback?: (
+    err: ErrnoException | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+  resolve!: (result: { hostname: string; service: string }) => void;
+  reject!: (err: ErrnoException | null) => void;
+  oncomplete!: (
+    err: Error | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+
+  constructor() {
+    super(providerType.GETNAMEINFOREQWRAP);
+  }
+}
+
+export function getnameinfo(
+  req: GetNameInfoReqWrap,
+  address: string,
+  port: number,
+): number {
+  (async () => {
+    try {
+      const [hostname, service] = await op_node_getnameinfo(address, port);
+      req.oncomplete(null, hostname, service);
+    } catch (err) {
+      req.oncomplete(err as Error);
+    }
+  })();
   return 0;
 }
 
@@ -576,6 +615,7 @@ export default {
   DNS_ORDER_IPV6_FIRST,
   GetAddrInfoReqWrap,
   getaddrinfo,
+  getnameinfo,
   QueryReqWrap,
   ChannelWrap,
   strerror,

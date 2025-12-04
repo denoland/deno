@@ -306,6 +306,7 @@ impl From<&TestDescription> for TestFailureDescription {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
+  pub strip_ascii_color: bool,
   pub initial_cwd: Option<Url>,
 }
 
@@ -606,6 +607,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let failure_format_options = TestFailureFormatOptions {
     hide_stacktraces: options.hide_stacktraces,
+    strip_ascii_color: false,
     initial_cwd: Some(options.cwd.clone()),
   };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
@@ -624,7 +626,10 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       "-".to_string(),
-      failure_format_options,
+      TestFailureFormatOptions {
+        strip_ascii_color: true,
+        ..failure_format_options
+      },
     )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
@@ -639,6 +644,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       junit_path.to_string(),
       TestFailureFormatOptions {
         hide_stacktraces: options.hide_stacktraces,
+        strip_ascii_color: true,
         initial_cwd: Some(options.cwd.clone()),
       },
     ));
@@ -648,10 +654,12 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
@@ -662,6 +670,7 @@ async fn configure_main_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
       preload_modules,
+      require_modules,
       permissions_container,
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
@@ -707,11 +716,13 @@ async fn configure_main_worker(
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
+#[allow(clippy::too_many_arguments)]
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
@@ -724,6 +735,7 @@ pub async fn test_specifier(
     worker_factory,
     &specifier,
     preload_modules,
+    require_modules,
     permissions_container,
     worker_sender,
     &options,
@@ -1169,6 +1181,7 @@ async fn test_specifiers(
   permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
@@ -1197,6 +1210,7 @@ async fn test_specifiers(
     let worker_factory = worker_factory.clone();
     let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let preload_modules = preload_modules.clone();
+    let require_modules = require_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
@@ -1220,6 +1234,7 @@ async fn test_specifiers(
         permissions_container,
         specifier,
         preload_modules,
+        require_modules,
         worker_sender,
         fail_fast_tracker,
         specifier_options,
@@ -1582,6 +1597,7 @@ pub async fn run_tests(
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   // Run tests
   test_specifiers(
@@ -1590,6 +1606,7 @@ pub async fn run_tests(
     factory.permission_desc_parser()?,
     specifiers_for_typecheck_and_test,
     preload_modules,
+    require_modules,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1794,6 +1811,7 @@ pub async fn run_tests_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
         let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
 
         test_specifiers(
           worker_factory,
@@ -1801,6 +1819,7 @@ pub async fn run_tests_with_watch(
           factory.permission_desc_parser()?,
           specifiers_for_typecheck_and_test,
           preload_modules,
+          require_modules,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {

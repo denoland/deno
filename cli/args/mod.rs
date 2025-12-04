@@ -48,6 +48,7 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
@@ -586,18 +587,31 @@ impl CliOptions {
     )
   }
 
-  pub fn node_ipc_fd(&self) -> Option<i64> {
+  pub fn node_ipc_init(
+    &self,
+  ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variable.
-
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD")
-      };
-      node_channel_fd.parse::<i64>().ok()
+    let maybe_node_channel_serialization = if let Ok(serialization) =
+      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+    {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
     } else {
       None
+    };
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      // Remove so that child processes don't inherit this environment variables.
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var("NODE_CHANNEL_FD");
+        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+      }
+      let node_channel_fd = node_channel_fd.parse::<i64>()?;
+      Ok(Some((
+        node_channel_fd,
+        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
+      )))
+    } else {
+      Ok(None)
     }
   }
 
@@ -642,12 +656,25 @@ impl CliOptions {
       return Ok(vec![]);
     }
 
-    let mut preload = Vec::with_capacity(self.flags.preload.len());
+    let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      preload.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
     }
 
-    Ok(preload)
+    Ok(modules)
+  }
+
+  pub fn require_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.require.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut require = Vec::with_capacity(self.flags.require.len());
+    for require_specifier in self.flags.require.iter() {
+      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+    }
+
+    Ok(require)
   }
 
   fn resolve_main_module_with_resolver_if_bare(
@@ -1155,9 +1182,11 @@ impl CliOptions {
         DenoSubcommand::Check(check_flags) => {
           Some(files_to_urls(&check_flags.files))
         }
-        DenoSubcommand::Install(InstallFlags::Global(flags)) => {
-          file_to_url(&flags.module_url).map(|url| vec![url])
-        }
+        DenoSubcommand::Install(InstallFlags::Global(flags)) => flags
+          .module_urls
+          .first()
+          .and_then(|url| file_to_url(url))
+          .map(|url| vec![url]),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1546,7 +1575,7 @@ fn flags_to_permissions_options(
     }
   }
 
-  fn handle_deny(
+  fn handle_deny_or_ignore(
     value: Option<&Vec<String>>,
     config: Option<&PermissionConfigValue>,
     parse_config_value: &impl Fn(&str) -> String,
@@ -1616,9 +1645,14 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.env.allow.as_ref()),
       &identity,
     ),
-    deny_env: handle_deny(
+    deny_env: handle_deny_or_ignore(
       flags.deny_env.as_ref(),
       config.and_then(|c| c.permissions.env.deny.as_ref()),
+      &identity,
+    ),
+    ignore_env: handle_deny_or_ignore(
+      flags.ignore_env.as_ref(),
+      config.and_then(|c| c.permissions.env.ignore.as_ref()),
       &identity,
     ),
     allow_net: handle_allow(
@@ -1628,7 +1662,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.net.allow.as_ref()),
       &identity,
     ),
-    deny_net: handle_deny(
+    deny_net: handle_deny_or_ignore(
       flags.deny_net.as_ref(),
       config.and_then(|c| c.permissions.net.deny.as_ref()),
       &identity,
@@ -1640,7 +1674,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.ffi.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_ffi: handle_deny(
+    deny_ffi: handle_deny_or_ignore(
       flags.deny_ffi.as_ref(),
       config.and_then(|c| c.permissions.ffi.deny.as_ref()),
       &make_fs_config_value_absolute,
@@ -1652,9 +1686,14 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.read.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_read: handle_deny(
+    deny_read: handle_deny_or_ignore(
       flags.deny_read.as_ref(),
       config.and_then(|c| c.permissions.read.deny.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    ignore_read: handle_deny_or_ignore(
+      flags.ignore_read.as_ref(),
+      config.and_then(|c| c.permissions.read.ignore.as_ref()),
       &make_fs_config_value_absolute,
     ),
     allow_run: handle_allow(
@@ -1664,7 +1703,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.run.allow.as_ref()),
       &make_run_config_value_absolute,
     ),
-    deny_run: handle_deny(
+    deny_run: handle_deny_or_ignore(
       flags.deny_run.as_ref(),
       config.and_then(|c| c.permissions.run.deny.as_ref()),
       &make_run_config_value_absolute,
@@ -1676,7 +1715,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.sys.allow.as_ref()),
       &identity,
     ),
-    deny_sys: handle_deny(
+    deny_sys: handle_deny_or_ignore(
       flags.deny_sys.as_ref(),
       config.and_then(|c| c.permissions.sys.deny.as_ref()),
       &identity,
@@ -1688,7 +1727,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.write.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
-    deny_write: handle_deny(
+    deny_write: handle_deny_or_ignore(
       flags.deny_write.as_ref(),
       config.and_then(|c| c.permissions.write.deny.as_ref()),
       &make_fs_config_value_absolute,
@@ -1700,7 +1739,7 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.import.allow.as_ref()),
       &identity,
     ),
-    deny_import: handle_deny(
+    deny_import: handle_deny_or_ignore(
       flags.deny_import.as_ref(),
       config.and_then(|c| c.permissions.import.deny.as_ref()),
       &identity,
@@ -1711,6 +1750,7 @@ fn flags_to_permissions_options(
 
 #[cfg(test)]
 mod test {
+  use deno_config::deno_json::AllowDenyIgnorePermissionConfig;
   use deno_config::deno_json::AllowDenyPermissionConfig;
   use deno_config::deno_json::PermissionsObject;
   use pretty_assertions::assert_eq;
@@ -1798,13 +1838,16 @@ mod test {
           .unwrap(),
         permissions: PermissionsObject {
           all: None,
-          read: AllowDenyPermissionConfig {
+          read: AllowDenyIgnorePermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
               ".".to_string(),
               "./read-allow".to_string(),
             ])),
             deny: Some(PermissionConfigValue::Some(vec![
               "./read-deny".to_string(),
+            ])),
+            ignore: Some(PermissionConfigValue::Some(vec![
+              "./read-ignore".to_string(),
             ])),
           },
           write: AllowDenyPermissionConfig {
@@ -1823,12 +1866,15 @@ mod test {
               "example.com".to_string(),
             ])),
           },
-          env: AllowDenyPermissionConfig {
+          env: AllowDenyIgnorePermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
               "env-allow".to_string(),
             ])),
             deny: Some(PermissionConfigValue::Some(vec![
               "env-deny".to_string(),
+            ])),
+            ignore: Some(PermissionConfigValue::Some(vec![
+              "env-ignore".to_string(),
             ])),
           },
           net: AllowDenyPermissionConfig {
@@ -1874,6 +1920,7 @@ mod test {
         PermissionsOptions {
           allow_env: Some(vec!["env-allow".to_string()]),
           deny_env: Some(vec!["env-deny".to_string()]),
+          ignore_env: Some(vec!["env-ignore".to_string()]),
           allow_net: Some(vec!["net-allow".to_string()]),
           deny_net: Some(vec!["net-deny".to_string()]),
           allow_ffi: Some(vec![
@@ -1901,6 +1948,13 @@ mod test {
           deny_read: Some(vec![
             base_dir
               .join("read-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          ignore_read: Some(vec![
+            base_dir
+              .join("read-ignore")
               .into_os_string()
               .into_string()
               .unwrap()
@@ -1973,12 +2027,14 @@ mod test {
         PermissionsOptions {
           allow_env: Some(vec![]),
           deny_env: None,
+          ignore_env: None,
           allow_net: Some(vec![]),
           deny_net: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
           allow_read: Some(vec!["./folder".to_string()]),
           deny_read: None,
+          ignore_read: None,
           allow_run: Some(vec![]),
           deny_run: None,
           allow_sys: Some(vec![]),
