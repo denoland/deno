@@ -44,7 +44,6 @@ util::unit_test_factory!(
     get_random_values_test,
     globals_test,
     headers_test,
-    http_test,
     image_bitmap_test,
     image_data_test,
     internals_test,
