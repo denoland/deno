@@ -90,6 +90,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -557,7 +558,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
