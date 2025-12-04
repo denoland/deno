@@ -3145,7 +3145,7 @@ fn init_subcommand() -> Command {
           Arg::new("yes")
             .short('y')
             .long("yes")
-            .help("Bypass the prompt to run with full permissions")
+            .help("Bypass the prompt and run with full permissions")
             .action(ArgAction::SetTrue),
         )
     },
