@@ -9,7 +9,7 @@ const cacheVersion = 81;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMRunner = "ubicloud-standard-16-arm";
+const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
