@@ -267,12 +267,6 @@ Deno.test(function addTest() {
   Ok(0)
 }
 
-struct InitNpmOptions<'a> {
-  name: &'a str,
-  args: Vec<String>,
-  yes: bool,
-}
-
 fn npm_name_to_create_package(name: &str) -> String {
   let mut s = "npm:".to_string();
 
@@ -309,6 +303,12 @@ fn npm_name_to_create_package(name: &str) -> String {
   }
 
   s
+}
+
+struct InitNpmOptions<'a> {
+  name: &'a str,
+  args: Vec<String>,
+  yes: bool,
 }
 
 async fn init_npm(options: InitNpmOptions<'_>) -> Result<i32, AnyError> {
