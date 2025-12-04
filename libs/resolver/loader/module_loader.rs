@@ -224,21 +224,23 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
             .map_err(LoadCodeSourceError::from)?;
           LoadedModuleOrAsset::Module(loaded_module)
         } else {
-          match requested_module_type {
-            RequestedModuleType::Text | RequestedModuleType::Bytes => {
-              LoadedModuleOrAsset::ExternalAsset {
-                specifier: Cow::Borrowed(specifier),
-                statically_analyzable: false,
-              }
+          // TODO(This PR): Pass the import phase down from deno_core.
+          let is_source_phase = true;
+          let allow_external_asset = is_source_phase
+            || matches!(
+              requested_module_type,
+              RequestedModuleType::Text | RequestedModuleType::Bytes
+            );
+          if allow_external_asset {
+            LoadedModuleOrAsset::ExternalAsset {
+              specifier: Cow::Borrowed(specifier),
+              statically_analyzable: false,
             }
-            _ => {
-              return Err(LoadCodeSourceError::from(
-                LoadUnpreparedModuleError {
-                  specifier: specifier.clone(),
-                  maybe_referrer: maybe_referrer.cloned(),
-                },
-              ));
-            }
+          } else {
+            return Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
+              specifier: specifier.clone(),
+              maybe_referrer: maybe_referrer.cloned(),
+            }));
           }
         }
       }

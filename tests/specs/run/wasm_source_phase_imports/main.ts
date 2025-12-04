@@ -1,5 +1,7 @@
 import source mathSource from "./math.wasm";
 const mathInstance = await WebAssembly.instantiate(mathSource);
+const mathInstance2 = await WebAssembly.instantiate(mathSource);
+console.log(`Duplicate instances are equal: ${mathInstance === mathInstance2}`);
 console.log(`add(1, 2): ${mathInstance.exports["add"](1, 2)}`);
 console.log(`subtract(8, 2): ${mathInstance.exports["subtract"](8, 2)}`);
 
