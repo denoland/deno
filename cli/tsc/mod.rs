@@ -1107,6 +1107,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
     media_type = MediaType::from_str(load_specifier);
+    is_cjs = media_type == MediaType::Dcts;
     maybe_source.map(T::from_static)
   } else if let Some(source) = load_raw_import_source(&specifier) {
     return Ok(Some(LoadResponse {
