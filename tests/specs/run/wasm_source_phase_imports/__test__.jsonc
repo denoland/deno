@@ -1,4 +1,4 @@
 {
-  "args": "run --allow-read=math.wasm main.ts",
+  "args": "run main.ts",
   "output": "main.out"
 }
