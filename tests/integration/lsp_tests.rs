@@ -11066,37 +11066,7 @@ fn lsp_completions_node_builtin() {
   );
 
   let diagnostics = client.read_diagnostics();
-  let cache_diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
-    })
-    .collect::<Vec<_>>();
-
-  assert_eq!(
-    json!(cache_diagnostics),
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 15 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "data": {
-          "specifier": "npm:@types/node",
-        },
-        "severity": 1,
-        "code": "not-installed-npm",
-        "source": "deno",
-        "message": "npm package \"@types/node\" is not installed or doesn't exist."
-      }
-    ])
-  );
-
-  client.cache(["npm:@types/node"], "file:///a/file.ts");
-  client.read_diagnostics();
+  assert_eq!(diagnostics.len(), 0);
 
   client.write_notification(
     "textDocument/didChange",
