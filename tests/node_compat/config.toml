@@ -766,6 +766,7 @@
 "parallel/test-module-strip-types.js" = {}
 "parallel/test-module-wrap.js" = {}
 "parallel/test-module-wrapper.js" = {}
+"parallel/test-navigator.js" = {}
 "parallel/test-net-access-byteswritten.js" = {}
 "parallel/test-net-after-close.js" = {}
 "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js" = {}
