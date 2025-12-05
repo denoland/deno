@@ -370,7 +370,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
-  // main_inspector_session_tx: std::sync::Mutex<Option<deno_core::futures::channel::mpsc::UnboundedSender<deno_core::InspectorSessionProxy>>>,
+  main_inspector_session_tx: std::sync::Mutex<Option<deno_core::futures::channel::mpsc::UnboundedSender<deno_core::InspectorSessionProxy>>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -459,7 +459,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.compiled_wasm_module_store.clone(),
         ),
         maybe_inspector_server,
-        // main_inspector_session_tx: shared.main_inspector_session_tx.lock().unwrap().clone(),
+        main_inspector_session_tx: shared.main_inspector_session_tx.lock().unwrap().clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
@@ -566,7 +566,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         fs,
         maybe_coverage_dir,
         maybe_inspector_server,
-        // main_inspector_session_tx: std::sync::Mutex::new(None),
+        main_inspector_session_tx: std::sync::Mutex::new(None),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -732,7 +732,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
     let session_tx = inspector.get_session_sender();
-    // *shared.main_inspector_session_tx.lock().unwrap() = Some(session_tx);
+    *shared.main_inspector_session_tx.lock().unwrap() = Some(session_tx);
     eprintln!("[WORKER DEBUG] Main inspector session sender registered");
 
     Ok(LibMainWorker {
