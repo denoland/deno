@@ -199,9 +199,9 @@ fn handle_ws_request(
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: true,
       },
-      worker_tx: None,
-      worker_rx: None,
-      worker_url: None,
+      // worker_tx: None,
+      // worker_rx: None,
+      // worker_url: None,
     };
 
     log::info!("Debugger session started.");
