@@ -287,6 +287,7 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub yes: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3165,6 +3166,14 @@ fn init_subcommand() -> Command {
             .conflicts_with("lib")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("yes")
+            .short('y')
+            .long("yes")
+            .requires("npm")
+            .help("Bypass the prompt and run with full permissions")
+            .action(ArgAction::SetTrue),
+        )
     },
   )
 }
@@ -5936,6 +5945,7 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
   let mut package_args = vec![];
@@ -5955,6 +5965,7 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        yes = inner_matches.get_flag("yes");
       }
     }
   }
@@ -5965,6 +5976,7 @@ fn init_parse(
     dir,
     lib,
     serve,
+    yes,
   });
 
   Ok(())
@@ -12589,6 +12601,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12604,6 +12617,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12619,6 +12633,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          yes: false,
         }),
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -12635,6 +12650,7 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12650,6 +12666,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12665,6 +12682,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12686,6 +12704,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12701,6 +12720,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12716,6 +12736,23 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "vite"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("vite".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          yes: true,
         }),
         ..Flags::default()
       }
