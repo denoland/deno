@@ -689,34 +689,8 @@ fn resolve_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
-              let reqs = managed_resolver.resolution().package_reqs();
-              if let Some((_, types_nv)) =
-                deno_resolver::npm::find_definitely_typed_package(
-                  &pkg_id.nv,
-                  reqs.iter().map(|tup| (&tup.0, &tup.1)),
-                )
-              {
-                let package_folder = managed_resolver
-                  .resolve_pkg_folder_from_deno_module(types_nv)?;
-                let res_result =
-                  npm.node_resolver.resolve_package_subpath_from_deno_module(
-                    &package_folder,
-                    req_ref.sub_path(),
-                    Some(referrer),
-                    resolution_mode,
-                    NodeResolutionKind::Types,
-                  );
-                if let Ok(res_result) = res_result {
-                  Some(res_result.into_url()?)
-                } else {
-                  None
-                }
-              } else {
-                None
-              }
-            }
-            NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -803,8 +777,8 @@ fn resolve_non_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
             _ => return Err(err.into()),
           },
         };
