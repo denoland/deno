@@ -67,11 +67,10 @@ export function isIP(ip: string) {
 }
 
 export function getIPFamily(ip: string): "IPv4" | "IPv6" | undefined {
-  const version = isIP(ip);
-  if (version === 4) {
+  if (isIPv4(ip)) {
     return "IPv4";
   }
-  if (version === 6) {
+  if (isIPv6(ip)) {
     return "IPv6";
   }
   return undefined;
