@@ -723,139 +723,42 @@ impl WebWorker {
       } else {
         eprintln!("[WORKER DEBUG] Worker inspector proxy sent to main thread");
 
-        // Create a local inspector session for this worker
-        let worker_to_main_tx_clone = worker_to_main_tx.clone();
-        let mut local_session =
-          deno_core::JsRuntimeInspector::create_local_session(
-            js_runtime.inspector(),
-            Box::new(move |msg| {
-              // Enhanced logging to see resume responses
-              let content_preview = &msg.content[..msg.content.len().min(200)];
-              let has_resume = msg.content.contains("Debugger.resume") || msg.content.contains("Debugger.resumed");
+        // PROPER ARCHITECTURE FOR WORKER DEBUGGING:
+        //
+        // The worker proxy sent to the main thread contains channels for communication.
+        // Now we need to connect those channels to a proper InspectorSession
+        // (not LocalInspectorSession which blocks when JavaScript pauses).
+        //
+        // We create a normal InspectorSessionProxy and send it to the worker's
+        // inspector, which will create a proper session that gets polled by the
+        // event loop even when JavaScript is paused.
 
-              eprintln!(
-                "[WORKER DEBUG] Worker V8 callback: kind={:?}, content={}",
-                msg.kind,
-                content_preview
-              );
+        // Create a proxy for the worker's own inspector
+        // This connects the main→worker and worker→main channels to a proper session
+        let inspector_session_proxy = deno_core::InspectorSessionProxy {
+          tx: worker_to_main_tx,      // Inspector sends responses here → main thread
+          rx: main_to_worker_rx,      // Inspector reads commands from here ← main thread
+          kind: deno_core::InspectorSessionKind::NonBlocking {
+            wait_for_disconnect: false,
+          },
+          worker_tx: None,
+          worker_rx: None,
+          worker_url: None,
+        };
 
-              // Special logging for resume responses
-              if has_resume {
-                eprintln!("[WORKER DEBUG] *** RESUME RESPONSE FROM V8: {} ***", &msg.content);
-              }
+        // Register this session with the worker's inspector
+        // This creates a proper InspectorSession that will be polled by the event loop
+        let session_sender = js_runtime.inspector().get_session_sender();
 
-              if let Err(e) = worker_to_main_tx_clone.unbounded_send(msg) {
-                eprintln!(
-                  "[WORKER DEBUG] Failed to send message to main: {}",
-                  e
-                );
-              }
-            }),
-            deno_core::InspectorSessionKind::NonBlocking {
-              wait_for_disconnect: false,
-            },
+        eprintln!("[WORKER DEBUG] Registering proper inspector session for worker");
+        if let Err(e) = session_sender.unbounded_send(inspector_session_proxy) {
+          eprintln!(
+            "[WORKER DEBUG] Failed to register inspector session: {}",
+            e
           );
-
-        // Get the V8 isolate handle before moving js_runtime
-        let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
-        let js_runtime_inspector = js_runtime.inspector();
-        let js_runtime_inspector_ptr: *mut deno_core::JsRuntimeInspector =
-          &*js_runtime_inspector as *const deno_core::JsRuntimeInspector
-            as *mut deno_core::JsRuntimeInspector;
-
-        // Create a flag to signal when to stop polling
-        let (stop_poll_tx, stop_poll_rx) =
-          deno_core::futures::channel::mpsc::unbounded::<()>();
-
-        // Spawn a dedicated task that continuously polls the inspector
-        // This is needed because when the worker is paused at a breakpoint,
-        // its event loop doesn't run, so inspector callbacks wouldn't fire
-        extern "C" fn poll_interrupt(
-          isolate: &mut v8::Isolate,
-          arg: *mut std::ffi::c_void,
-        ) {
-          unsafe {
-            let inspector = arg as *mut deno_core::JsRuntimeInspector;
-            let i = &*inspector;
-
-            // Try to poll inspector sessions - ignore errors from re-entrancy
-            let _ = i.pool_sessions_none();
-
-            // CRITICAL: Pump V8's message loop to process pending tasks
-            // This is what actually allows V8 to resume from a breakpoint
-            let mut pumped_count = 0;
-            while v8::Platform::pump_message_loop(
-              &v8::V8::get_current_platform(),
-              isolate,
-              false, // don't block
-            ) {
-              pumped_count += 1;
-            }
-
-            // Log when we actually pump messages (not every interrupt, too noisy)
-            if pumped_count > 0 {
-              eprintln!("[WORKER DEBUG] Interrupt: pumped {} V8 messages", pumped_count);
-            }
-          }
+        } else {
+          eprintln!("[WORKER DEBUG] Inspector session registered successfully");
         }
-
-        let isolate_handle_clone = isolate_handle.clone();
-        let mut stop_poll_rx_mut = stop_poll_rx;
-        let poll_task = async move {
-          use deno_core::futures::StreamExt;
-          use deno_core::futures::FutureExt;
-
-          eprintln!("[WORKER DEBUG] Starting inspector polling task");
-
-          loop {
-            // Try to receive stop signal (non-blocking)
-            if stop_poll_rx_mut.next().now_or_never().flatten().is_some() {
-              eprintln!("[WORKER DEBUG] Inspector polling task stopping");
-              break;
-            }
-
-            // Request an interrupt to poll the inspector
-            let arg: *mut std::ffi::c_void = js_runtime_inspector_ptr.cast();
-            isolate_handle_clone.request_interrupt(poll_interrupt, arg);
-
-            // Small delay to avoid busy-looping
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-          }
-        };
-
-        deno_core::unsync::spawn(poll_task);
-
-        // Spawn a task to pump messages from main thread to worker's inspector
-        let main_to_worker_pump = async move {
-          use deno_core::futures::StreamExt;
-
-          eprintln!("[WORKER DEBUG] Starting main->worker message pump");
-
-          while let Some(msg) = main_to_worker_rx.next().await {
-            eprintln!(
-              "[WORKER DEBUG] Worker received message from main: {}",
-              &msg[..msg.len().min(150)]
-            );
-
-            // Check if this is a resume command
-            if msg.contains("Debugger.resume") {
-              eprintln!("[WORKER DEBUG] *** RESUME COMMAND RECEIVED ***");
-            }
-
-            local_session.dispatch(msg);
-
-            if msg.contains("Debugger.resume") {
-              eprintln!("[WORKER DEBUG] *** RESUME COMMAND DISPATCHED TO V8 ***");
-              eprintln!("[WORKER DEBUG] Waiting for V8 to process resume...");
-            }
-          }
-
-          eprintln!("[WORKER DEBUG] Main->worker pump ended");
-          // Stop the polling task when pump ends
-          let _ = stop_poll_tx.unbounded_send(());
-        };
-
-        deno_core::unsync::spawn(main_to_worker_pump);
       }
     } else if let Some(_server) = services.maybe_inspector_server {
       // Fallback to old behavior if no main session tx available
