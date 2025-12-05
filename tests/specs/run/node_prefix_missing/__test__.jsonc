@@ -27,7 +27,8 @@
     },
     "unstable_node_globals_enabled_check": {
       "args": "check --unstable-node-globals node_globals.ts",
-      "output": "node_globals_check.out"
+      "output": "node_globals_check.out",
+      "exitCode": 1
     },
     "unstable_node_globals_enabled2": {
       "args": "run node_globals.ts",
@@ -41,7 +42,8 @@
       "envs": {
         "DENO_COMPAT": "1"
       },
-      "output": "node_globals_check.out"
+      "output": "node_globals_check.out",
+      "exitCode": 1
     },
     "unstable_bare_node_builtins_enabled_by_env": {
       "args": "run main.ts",
