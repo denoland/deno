@@ -237,17 +237,14 @@ Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
 Deno.test(function navigatorPlatformExists() {
   switch (Deno.build.os) {
     case "linux": {
-      // deno-lint-ignore no-undef
       assertEquals(navigator.platform, `Linux ${Deno.build.arch}`);
       break;
     }
     case "darwin": {
-      // deno-lint-ignore no-undef
       assertEquals(navigator.platform, "MacIntel");
       break;
     }
     case "windows": {
-      // deno-lint-ignore no-undef
       assertEquals(navigator.platform, "Win32");
       break;
     }
