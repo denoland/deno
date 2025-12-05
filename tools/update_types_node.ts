@@ -73,6 +73,13 @@ async function downloadAndExtractPackages() {
 
   await extractTarball(typesNodeVersionInfo.dist.tarball, nodeTypesDir);
   await extractTarball(undiciTypesVersionInfo.dist.tarball, undiciTypesDir);
+
+  nodeTypesDir.join("README.md").writeTextSync(
+    `# Built-in Node Type Declarations
+
+Generate this folder by running \`./tools/update_types_node.ts\`.
+`,
+  );
 }
 
 async function extractTarball(url: string, destination: Path) {
