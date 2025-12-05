@@ -727,11 +727,20 @@ where
     },
   };
 
+  // Format IPv6 addresses with brackets for CONNECT request
+  let formatted_host = if host.contains(':') && !host.starts_with('[') {
+    format!("[{}]", host)
+  } else {
+    host.to_string()
+  };
+
   let mut buf = format!(
     "\
      CONNECT {host}:{port} HTTP/1.1\r\n\
      Host: {host}:{port}\r\n\
-     "
+     ",
+    host = formatted_host,
+    port = port
   )
   .into_bytes();
 

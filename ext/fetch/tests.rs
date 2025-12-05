@@ -99,6 +99,67 @@ async fn test_socks_proxy_h2() {
   run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_2).await;
 }
 
+#[tokio::test]
+async fn test_ipv6_proxy_connect() {
+  use std::sync::{Arc, Mutex};
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  
+  // Test that IPv6 addresses are properly formatted in CONNECT requests
+  let prx_tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let prx_addr = prx_tcp.local_addr().unwrap();
+  
+  let connect_request = Arc::new(Mutex::new(String::new()));
+  let connect_request_clone = connect_request.clone();
+  
+  tokio::spawn(async move {
+    if let Ok((mut sock, _)) = prx_tcp.accept().await {
+      let mut buf = [0u8; 1024];
+      if let Ok(n) = sock.read(&mut buf).await {
+        let request = String::from_utf8_lossy(&buf[..n]);
+        *connect_request_clone.lock().unwrap() = request.to_string();
+        let _ = sock.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await;
+      }
+    }
+  });
+  
+  let client = create_http_client(
+    "fetch/test",
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: Some(deno_tls::Proxy::Http {
+        url: format!("http://{}", prx_addr),
+        basic_auth: None,
+      }),
+      unsafely_ignore_certificate_errors: Some(vec![]),
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      dns_resolver: Default::default(),
+      http1: true,
+      http2: true,
+      local_address: None,
+      client_builder_hook: None,
+    },
+  )
+  .unwrap();
+  
+  let req = http::Request::builder()
+    .uri("https://[2001:db8::1]:443/test")
+    .body(crate::ReqBody::empty())
+    .unwrap();
+    
+  let _ = client.send(req).await;
+  
+  tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+  
+  let request = connect_request.lock().unwrap().clone();
+  assert!(request.contains("CONNECT [2001:db8::1]:443 HTTP/1.1"), 
+          "IPv6 address should be formatted with brackets in CONNECT request. Got: {}", request);
+  assert!(request.contains("Host: [2001:db8::1]:443"), 
+          "IPv6 address should be formatted with brackets in Host header. Got: {}", request);
+}
+
 async fn rust_test_client_with_resolver(
   prx_addr: Option<SocketAddr>,
   src_addr: String,
