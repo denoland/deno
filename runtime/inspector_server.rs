@@ -193,6 +193,8 @@ fn handle_ws_request(
     // The 'inbound' channel carries messages received from the websocket.
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
+    // let (worker_tx, worker_rx) = mpsc::unbounded();
+
     let inspector_session_proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
@@ -425,6 +427,7 @@ async fn pump_websocket_messages(
             match msg.opcode {
                 OpCode::Text => {
                     if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
+                      // eprintln!("Debugger sent: {}", s);
                       let _ = inbound_tx.unbounded_send(s);
                     }
                 }
@@ -432,6 +435,7 @@ async fn pump_websocket_messages(
                     // Users don't care if there was an error coming from debugger,
                     // just about the fact that debugger did disconnect.
                     log::info!("Debugger session ended");
+                    // eprintln!("Debugger session ended");
                     break 'pump;
                 }
                 _ => {

@@ -679,100 +679,93 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // Create channels for bidirectional communication between worker and main thread
-    let (main_to_worker_tx, main_to_worker_rx) =
-      deno_core::futures::channel::mpsc::unbounded::<String>();
-    let (worker_to_main_tx, worker_to_main_rx) =
-      deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>();
     // Workers should connect to the main thread's inspector for debugging
+    // using the Target domain approach (like Node.js --experimental-worker-inspection)
     if let Some(main_session_tx) = services.main_inspector_session_tx {
-      if let Some(server) = services.maybe_inspector_server {
-        eprintln!(
-          "[WORKER DEBUG] Worker {} connecting to main thread inspector",
-          options.name
+      eprintln!(
+        "[WORKER DEBUG] Worker {} connecting to main thread inspector",
+        options.name
+      );
+
+      // Create channels for bidirectional communication between worker and main thread
+      let (main_to_worker_tx, mut main_to_worker_rx) =
+        deno_core::futures::channel::mpsc::unbounded::<String>();
+      let (worker_to_main_tx, worker_to_main_rx) =
+        deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
         );
 
-        // Create dummy channels for the proxy fields that won't be used
-        let (dummy_tx, _dummy_rx) =
-          deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
-          );
-        let (_dummy_str_tx, dummy_str_rx) =
-          deno_core::futures::channel::mpsc::unbounded::<String>();
+      // Create dummy channels for the proxy fields that won't be used
+      let (dummy_tx, _dummy_rx) = deno_core::futures::channel::mpsc::unbounded::<
+        deno_core::InspectorMsg,
+      >();
+      let (_dummy_str_tx, dummy_str_rx) =
+        deno_core::futures::channel::mpsc::unbounded::<String>();
 
-        let worker_url = Some(options.main_module.to_string());
+      let worker_url = Some(options.main_module.to_string());
 
-        let proxy = deno_core::InspectorSessionProxy {
-          tx: dummy_tx,
-          rx: dummy_str_rx,
+      let proxy = deno_core::InspectorSessionProxy {
+        tx: dummy_tx,
+        rx: dummy_str_rx,
+        kind: deno_core::InspectorSessionKind::NonBlocking {
+          wait_for_disconnect: false,
+        },
+        worker_rx: Some(worker_to_main_rx),
+        worker_tx: Some(main_to_worker_tx),
+        worker_url,
+      };
+
+      // Send the proxy to the main thread
+      if let Err(e) = main_session_tx.unbounded_send(proxy) {
+        eprintln!(
+          "[WORKER DEBUG] Failed to send worker inspector proxy: {}",
+          e
+        );
+      } else {
+        eprintln!("[WORKER DEBUG] Worker inspector proxy sent to main thread");
+
+        // PROPER ARCHITECTURE FOR WORKER DEBUGGING:
+        //
+        // The worker proxy sent to the main thread contains channels for communication.
+        // Now we need to connect those channels to a proper InspectorSession
+        // (not LocalInspectorSession which blocks when JavaScript pauses).
+        //
+        // We create a normal InspectorSessionProxy and send it to the worker's
+        // inspector, which will create a proper session that gets polled by the
+        // event loop even when JavaScript is paused.
+
+        // Create a proxy for the worker's own inspector
+        // This connects the main→worker and worker→main channels to a proper session
+        let inspector_session_proxy = deno_core::InspectorSessionProxy {
+          tx: worker_to_main_tx,      // Inspector sends responses here → main thread
+          rx: main_to_worker_rx,      // Inspector reads commands from here ← main thread
           kind: deno_core::InspectorSessionKind::NonBlocking {
             wait_for_disconnect: false,
           },
-          worker_rx: Some(worker_to_main_rx),
-          worker_tx: Some(main_to_worker_tx),
-          worker_url,
+          worker_tx: None,
+          worker_rx: None,
+          worker_url: None,
         };
 
-        // Send the proxy to the main thread
-        if let Err(e) = main_session_tx.unbounded_send(proxy) {
+        // Register this session with the worker's inspector
+        // This creates a proper InspectorSession that will be polled by the event loop
+        let session_sender = js_runtime.inspector().get_session_sender();
+
+        eprintln!("[WORKER DEBUG] Registering proper inspector session for worker");
+        if let Err(e) = session_sender.unbounded_send(inspector_session_proxy) {
           eprintln!(
-            "[WORKER DEBUG] Failed to send worker inspector proxy: {}",
+            "[WORKER DEBUG] Failed to register inspector session: {}",
             e
           );
         } else {
-          eprintln!(
-            "[WORKER DEBUG] Worker inspector proxy sent to main thread"
-          );
-
-          // PROPER ARCHITECTURE FOR WORKER DEBUGGING:
-          //
-          // The worker proxy sent to the main thread contains channels for communication.
-          // Now we need to connect those channels to a proper InspectorSession
-          // (not LocalInspectorSession which blocks when JavaScript pauses).
-          //
-          // We create a normal InspectorSessionProxy and send it to the worker's
-          // inspector, which will create a proper session that gets polled by the
-          // event loop even when JavaScript is paused.
-
-          // Create a proxy for the worker's own inspector
-          // This connects the main→worker and worker→main channels to a proper session
-          // let inspector_session_proxy = deno_core::InspectorSessionProxy {
-          //   tx: worker_to_main_tx, // Inspector sends responses here → main thread
-          //   rx: main_to_worker_rx, // Inspector reads commands from here ← main thread
-          //   kind: deno_core::InspectorSessionKind::NonBlocking {
-          //     wait_for_disconnect: false,
-          //   },
-          //   worker_tx: None,
-          //   worker_rx: None,
-          //   worker_url: None,
-          // };
-
-          server.register_inspector(
-            options.main_module.to_string(),
-            js_runtime.inspector(),
-            false,
-          );
-
-          // Register this session with the worker's inspector
-          // This creates a proper InspectorSession that will be polled by the event loop
-          // server.register_session(inspector_session_proxy);
-          //   let session_sender = js_runtime.inspector().get_session_sender();
-          //
-          //   eprintln!(
-          //     "[WORKER DEBUG] Registering proper inspector session for worker"
-          //   );
-          //   if let Err(e) = session_sender.unbounded_send(inspector_session_proxy)
-          //   {
-          //     eprintln!(
-          //       "[WORKER DEBUG] Failed to register inspector session: {}",
-          //       e
-          //     );
-          //   } else {
-          //     eprintln!(
-          //       "[WORKER DEBUG] Inspector session registered successfully"
-          //     );
-          //   }
+          eprintln!("[WORKER DEBUG] Inspector session registered successfully");
         }
       }
+    } else if let Some(_server) = services.maybe_inspector_server {
+      // Fallback to old behavior if no main session tx available
+      // (this shouldn't happen in our new architecture)
+      eprintln!(
+        "[WORKER DEBUG] No main inspector session tx, worker debugging disabled"
+      );
     }
 
     let (internal_handle, external_handle) = {
