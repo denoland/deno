@@ -4741,19 +4741,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
 #[op2]
 #[serde]
 fn op_libs() -> Vec<String> {
-  let mut out =
-    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
-  for (key, value) in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.iter() {
-    if !value.is_lib {
-      continue;
-    }
-    let lib = key
-      .replace("lib.", "")
-      .replace(".d.ts", "")
-      .replace("deno_", "deno.");
-    out.push(lib);
-  }
-  out
+  crate::tsc::lib_names()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

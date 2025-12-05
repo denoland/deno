@@ -25,7 +25,6 @@ use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
 use node_resolver::ResolutionMode;
 
-use super::LAZILY_LOADED_STATIC_ASSETS;
 use super::ResolveArgs;
 use super::ResolveError;
 use crate::args::TypeCheckMode;
@@ -53,18 +52,7 @@ fn op_remap_specifier(
 #[op2]
 #[serde]
 fn op_libs() -> Vec<String> {
-  let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for (key, value) in LAZILY_LOADED_STATIC_ASSETS.iter() {
-    if !value.is_lib {
-      continue;
-    }
-    let lib = key
-      .replace("lib.", "")
-      .replace(".d.ts", "")
-      .replace("deno_", "deno.");
-    out.push(lib);
-  }
-  out
+  crate::tsc::lib_names()
 }
 
 #[op2]

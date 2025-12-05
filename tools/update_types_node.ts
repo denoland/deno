@@ -1,4 +1,8 @@
 #!/usr/bin/env -S deno run -A
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import $, { Path } from "jsr:@david/dax@^0.42.0";
 import * as semver from "@std/semver";
 import { UntarStream } from "@std/tar/untar-stream";

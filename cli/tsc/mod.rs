@@ -122,15 +122,24 @@ macro_rules! maybe_compressed_source {
   }};
 }
 
-macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
+macro_rules! maybe_compressed_static_asset {
+  ($name: expr, $file: expr, $is_lib: literal) => {
     (
       $name,
       StaticAsset {
-        is_lib: true,
+        is_lib: $is_lib,
         source: maybe_compressed_source!(concat!("tsc/dts/", $file)),
       },
     )
+  };
+  ($e: expr, $is_lib: literal) => {
+    maybe_compressed_static_asset!($e, $e, $is_lib)
+  };
+}
+
+macro_rules! maybe_compressed_lib {
+  ($name: expr, $file: expr) => {
+    maybe_compressed_static_asset!($name, $file, true)
   };
   ($e: expr) => {
     maybe_compressed_lib!($e, $e)
@@ -144,6 +153,7 @@ include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   Compressed(CompressedSource),
+  #[allow(dead_code)]
   Uncompressed(&'static str),
   #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
@@ -308,6 +318,22 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
   .chain(node_type_libs!())
   .collect()
 });
+
+pub fn lib_names() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for (key, value) in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.iter() {
+    if !value.is_lib {
+      continue;
+    }
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
