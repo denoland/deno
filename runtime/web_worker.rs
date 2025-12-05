@@ -687,31 +687,42 @@ impl WebWorker {
         options.name
       );
 
-      // Create channels for bidirectional communication between worker and main thread
-      let (main_to_worker_tx, mut main_to_worker_rx) =
-        deno_core::futures::channel::mpsc::unbounded::<String>();
+      // Create ONE set of channels for bidirectional communication:
+      // - main_to_worker: main thread sends commands TO worker (SYNC for pause-safe polling)
+      // - worker_to_main: worker sends responses/events TO main thread (async is OK)
+      let (main_to_worker_sync_tx, main_to_worker_sync_rx) =
+        std::sync::mpsc::channel::<String>();
       let (worker_to_main_tx, worker_to_main_rx) =
         deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
         );
 
-      // Create dummy channels for the proxy fields that won't be used
-      let (dummy_tx, _dummy_rx) = deno_core::futures::channel::mpsc::unbounded::<
-        deno_core::InspectorMsg,
-      >();
-      let (_dummy_str_tx, dummy_str_rx) =
+      // Create an async unbounded channel that we'll bridge from the sync receiver
+      let (main_to_worker_async_tx, main_to_worker_async_rx) =
         deno_core::futures::channel::mpsc::unbounded::<String>();
 
-      let worker_url = Some(options.main_module.to_string());
+      // Spawn a bridge task that polls the sync receiver and forwards to async sender
+      let main_to_worker_sync_tx_clone = main_to_worker_sync_tx.clone();
+      std::thread::spawn(move || {
+        while let Ok(msg) = main_to_worker_sync_rx.recv() {
+          if main_to_worker_async_tx.unbounded_send(msg).is_err() {
+            break; // Async side closed
+          }
+        }
+      });
 
+      let worker_url = options.main_module.to_string();
+
+      // Create proxy to send to main thread's inspector
+      // This registers the worker as a Target that the main thread can communicate with
       let proxy = deno_core::InspectorSessionProxy {
-        tx: dummy_tx,
-        rx: dummy_str_rx,
+        channels: deno_core::InspectorSessionChannels::Worker {
+          main_to_worker_tx: main_to_worker_sync_tx_clone,  // Main sends TO worker (sync)
+          worker_to_main_rx,                                 // Main receives FROM worker
+          worker_url,
+        },
         kind: deno_core::InspectorSessionKind::NonBlocking {
           wait_for_disconnect: false,
         },
-        worker_rx: Some(worker_to_main_rx),
-        worker_tx: Some(main_to_worker_tx),
-        worker_url,
       };
 
       // Send the proxy to the main thread
@@ -736,21 +747,22 @@ impl WebWorker {
         // Create a proxy for the worker's own inspector
         // This connects the main→worker and worker→main channels to a proper session
         let inspector_session_proxy = deno_core::InspectorSessionProxy {
-          tx: worker_to_main_tx,      // Inspector sends responses here → main thread
-          rx: main_to_worker_rx,      // Inspector reads commands from here ← main thread
+          channels: deno_core::InspectorSessionChannels::Regular {
+            tx: worker_to_main_tx,       // Inspector sends responses here → main thread
+            rx: main_to_worker_async_rx, // Inspector reads commands from here ← main thread (via bridge)
+          },
           kind: deno_core::InspectorSessionKind::NonBlocking {
             wait_for_disconnect: false,
           },
-          worker_tx: None,
-          worker_rx: None,
-          worker_url: None,
         };
 
         // Register this session with the worker's inspector
         // This creates a proper InspectorSession that will be polled by the event loop
         let session_sender = js_runtime.inspector().get_session_sender();
 
-        eprintln!("[WORKER DEBUG] Registering proper inspector session for worker");
+        eprintln!(
+          "[WORKER DEBUG] Registering proper inspector session for worker"
+        );
         if let Err(e) = session_sender.unbounded_send(inspector_session_proxy) {
           eprintln!(
             "[WORKER DEBUG] Failed to register inspector session: {}",
