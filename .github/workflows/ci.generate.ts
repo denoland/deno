@@ -541,6 +541,11 @@ const ci = {
         cacheCargoHomeStep,
         installRustStep,
         {
+          if: "matrix.os == 'linux' && matrix.arch == 'aarch64'",
+          name: "Load 'vsock_loopback; kernel module",
+          run: "sudo modprobe vsock_loopback",
+        },
+        {
           if: "matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },

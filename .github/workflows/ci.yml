@@ -178,6 +178,9 @@ jobs:
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
+      - if: '!(matrix.skip) && (matrix.os == ''linux'' && matrix.arch == ''aarch64'')'
+        name: Load 'vsock_loopback; kernel module
+        run: sudo modprobe vsock_loopback
       - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v2
