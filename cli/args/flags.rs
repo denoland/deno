@@ -114,6 +114,7 @@ pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
   pub default_registry: Option<DefaultRegistry>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -131,6 +132,7 @@ pub struct AuditFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -312,8 +314,19 @@ pub enum InstallFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallFlagsLocal {
   Add(AddFlags),
-  TopLevel,
-  Entrypoints(Vec<String>),
+  TopLevel(InstallTopLevelFlags),
+  Entrypoints(InstallEntrypointsFlags),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallTopLevelFlags {
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallEntrypointsFlags {
+  pub entrypoints: Vec<String>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -538,6 +551,7 @@ pub struct BundleFlags {
 pub enum DenoSubcommand {
   Add(AddFlags),
   Audit(AuditFlags),
+  ApproveScripts(ApproveScriptsFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -597,8 +611,14 @@ impl DenoSubcommand {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
-  Update { latest: bool, interactive: bool },
-  PrintOutdated { compatible: bool },
+  Update {
+    latest: bool,
+    interactive: bool,
+    lockfile_only: bool,
+  },
+  PrintOutdated {
+    compatible: bool,
+  },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -606,6 +626,12 @@ pub struct OutdatedFlags {
   pub filters: Vec<String>,
   pub recursive: bool,
   pub kind: OutdatedKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApproveScriptsFlags {
+  pub lockfile_only: bool,
+  pub packages: Vec<String>,
 }
 
 impl DenoSubcommand {
@@ -1242,22 +1268,24 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(files))) => {
-        Some(vec![
-          files
-            .iter()
-            .filter_map(|file| {
-              resolve_single_folder_path(file, current_dir, |mut p| {
-                if p.is_dir() {
-                  return Some(p);
-                }
-                if p.pop() { Some(p) } else { None }
-              })
+      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
+        InstallEntrypointsFlags {
+          entrypoints: files, ..
+        },
+      ))) => Some(vec![
+        files
+          .iter()
+          .filter_map(|file| {
+            resolve_single_folder_path(file, current_dir, |mut p| {
+              if p.is_dir() {
+                return Some(p);
+              }
+              if p.pop() { Some(p) } else { None }
             })
-            .next()
-            .unwrap_or_else(|| current_dir.to_path_buf()),
-        ])
-      }
+          })
+          .next()
+          .unwrap_or_else(|| current_dir.to_path_buf()),
+      ]),
       _ => Some(vec![current_dir.to_path_buf()]),
     }
   }
@@ -1513,6 +1541,7 @@ static DENO_HELP: &str = cstr!(
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
+    <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
 
   <y>Tooling:</>
@@ -1704,6 +1733,7 @@ pub fn flags_from_vec_with_initial_cwd(
       match subcommand.as_str() {
         "add" => add_parse(&mut flags, &mut m)?,
         "audit" => audit_parse(&mut flags, &mut m)?,
+        "approve-scripts" => approve_scripts_parse(&mut flags, &mut m)?,
         "remove" => remove_parse(&mut flags, &mut m),
         "bench" => bench_parse(&mut flags, &mut m)?,
         "bundle" => bundle_parse(&mut flags, &mut m)?,
@@ -1985,6 +2015,7 @@ pub fn clap_root() -> Command {
         .subcommand(install_subcommand())
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
+        .subcommand(approve_scripts_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(outdated_subcommand())
         .subcommand(lsp_subcommand())
@@ -2063,8 +2094,46 @@ Or multiple dependencies at once:
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
       .args(lock_args())
+      .arg(lockfile_only_arg())
       .args(default_registry_args())
   })
+}
+
+fn approve_scripts_subcommand() -> Command {
+  command(
+    "approve-scripts",
+    cstr!("Approve npm lifecycle scripts for installed dependencies."),
+    UnstableArgsConfig::None,
+  )
+  .alias("approve-builds")
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("packages")
+        .help("Packages to approve (npm specifiers). When omitted, you will be prompted to select from installed packages with lifecycle scripts.")
+        .num_args(0..)
+        .action(ArgAction::Append),
+    )
+    .arg(lockfile_only_arg())
+  })
+}
+
+fn approve_scripts_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.subcommand = DenoSubcommand::ApproveScripts(ApproveScriptsFlags {
+    packages: matches
+      .remove_many::<String>("packages")
+      .map(|values| {
+        values
+          .flat_map(flat_escape_split_commas)
+          .collect::<Result<Vec<_>, _>>()
+      })
+      .transpose()?
+      .unwrap_or_default(),
+    lockfile_only: matches.get_flag("lockfile-only"),
+  });
+  Ok(())
 }
 
 fn audit_subcommand() -> Command {
@@ -2160,6 +2229,7 @@ You can remove multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .args(lock_args())
+      .arg(lockfile_only_arg())
   })
 }
 
@@ -3248,7 +3318,15 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
+        .arg(lockfile_only_arg().conflicts_with("global"))
     })
+}
+
+fn lockfile_only_arg() -> Arg {
+  Arg::new("lockfile-only")
+    .long("lockfile-only")
+    .action(ArgAction::SetTrue)
+    .help("Install only updating the lockfile")
 }
 
 fn json_reference_subcommand() -> Command {
@@ -3304,7 +3382,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 5] {
+fn update_and_outdated_args() -> [Arg; 6] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3329,6 +3407,7 @@ fn update_and_outdated_args() -> [Arg; 5] {
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
     min_dep_age_arg(),
+    lockfile_only_arg(),
   ]
 }
 
@@ -3466,6 +3545,7 @@ The installation root is determined, in order of precedence:
           .action(ArgAction::Append)
       )
       .args(lock_args())
+      .arg(lockfile_only_arg())
   })
 }
 
@@ -5390,6 +5470,7 @@ fn add_parse_inner(
     packages,
     dev,
     default_registry,
+    lockfile_only: matches.get_flag("lockfile-only"),
   }
 }
 
@@ -5397,6 +5478,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
   });
 }
 
@@ -5417,6 +5499,7 @@ fn outdated_parse(
     OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only: matches.get_flag("lockfile-only"),
     }
   } else {
     let compatible = matches.get_flag("compatible");
@@ -5968,10 +6051,14 @@ fn install_parse(
 
   // allow scripts only applies to local install
   allow_scripts_arg_parse(flags, matches)?;
+  let lockfile_only = matches.get_flag("lockfile-only");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::Entrypoints(entrypoints.collect()),
+      InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+        entrypoints: entrypoints.collect(),
+        lockfile_only,
+      }),
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
@@ -5988,8 +6075,9 @@ fn install_parse(
       InstallFlagsLocal::Add(add_files),
     ))
   } else {
-    flags.subcommand =
-      DenoSubcommand::Install(InstallFlags::Local(InstallFlagsLocal::TopLevel));
+    flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+    ));
   }
   Ok(())
 }
@@ -6120,7 +6208,10 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
           .unwrap_or_default(),
       )
       .collect();
-    UninstallKind::Local(RemoveFlags { packages })
+    UninstallKind::Local(RemoveFlags {
+      packages,
+      lockfile_only: matches.get_flag("lockfile-only"),
+    })
   };
 
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { kind });
@@ -10133,13 +10224,20 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "uninstall"]);
     assert!(r.is_err(),);
 
-    let r = flags_from_vec(svec!["deno", "uninstall", "--frozen", "@std/load"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "--frozen",
+      "--lockfile-only",
+      "@std/load"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["@std/load".to_string()],
+            lockfile_only: true,
           }),
         }),
         frozen_lockfile: Some(true),
@@ -10155,6 +10253,7 @@ mod tests {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["file_server".to_string(), "@std/load".to_string()],
+            lockfile_only: false,
           }),
         }),
         ..Flags::default()
@@ -12835,6 +12934,7 @@ mod tests {
             packages: svec!["@david/which"],
             dev: false, // default is false
             default_registry: None,
+            lockfile_only: false,
           })
         );
       }
@@ -12843,6 +12943,7 @@ mod tests {
           "deno",
           cmd,
           "--frozen",
+          "--lockfile-only",
           "@david/which",
           "@luca/hello"
         ]);
@@ -12850,6 +12951,7 @@ mod tests {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
           default_registry: None,
+          lockfile_only: true,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -12862,6 +12964,7 @@ mod tests {
             packages: svec!["npm:chalk"],
             dev: true,
             default_registry: None,
+            lockfile_only: false,
           }),
         );
       }
@@ -12873,6 +12976,7 @@ mod tests {
             packages: svec!["chalk"],
             dev: false,
             default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
           }),
         );
       }
@@ -12884,6 +12988,7 @@ mod tests {
             packages: svec!["@std/fs"],
             dev: false,
             default_registry: Some(DefaultRegistry::Jsr),
+            lockfile_only: false,
           }),
         );
       }
@@ -12901,6 +13006,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which"],
+          lockfile_only: false,
         }),
         ..Flags::default()
       }
@@ -12910,6 +13016,7 @@ mod tests {
       "deno",
       "remove",
       "--frozen",
+      "--lockfile-only",
       "@david/which",
       "@luca/hello"
     ]);
@@ -12918,6 +13025,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          lockfile_only: true,
         }),
         frozen_lockfile: Some(true),
         ..Flags::default()
@@ -13351,6 +13459,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13362,6 +13471,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13373,8 +13483,21 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: true,
+        },
+      ),
+      (
+        svec!["--update", "--lockfile-only"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+            lockfile_only: true,
+          },
+          recursive: false,
         },
       ),
       (
@@ -13384,6 +13507,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13403,6 +13527,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: true,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13431,6 +13556,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13442,6 +13568,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13453,8 +13580,21 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: true,
+        },
+      ),
+      (
+        svec!["--lockfile-only"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+            lockfile_only: true,
+          },
+          recursive: false,
         },
       ),
       (
@@ -13464,6 +13604,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13475,6 +13616,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: true,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13487,6 +13629,88 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       assert_eq!(
         r.subcommand,
         DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+  }
+
+  #[test]
+  fn approve_scripts_subcommand() {
+    let cases = [
+      (
+        svec![],
+        ApproveScriptsFlags {
+          packages: vec![],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg@1.0.0"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0", "npm:pkg2@2.0.0"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0,npm:pkg2@2.0.0"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec![],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["--lockfile-only", "npm:pkg@1.0.0"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["npm:pkg@1.0.0", "--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0", "npm:pkg2@2.0.0", "--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: true,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "approve-scripts"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r.subcommand,
+        DenoSubcommand::ApproveScripts(expected),
         "incorrect result for args: {:?}",
         args
       );
