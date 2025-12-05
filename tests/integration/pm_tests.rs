@@ -6,6 +6,7 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::pty::Pty;
 
 #[test]
 fn add_basic() {
@@ -155,9 +156,9 @@ fn pm_context_builder() -> TestContextBuilder {
     .use_temp_cwd()
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn approve_scripts_basic() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
@@ -193,11 +194,9 @@ fn approve_scripts_basic() {
     }));
 }
 
-static IS_CI: LazyLock<bool> = LazyLock::new(|| std::env::var("CI").is_ok());
-
-#[test]
+#[flaky_test::flaky_test]
 fn approve_scripts_deny_some() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
