@@ -835,7 +835,6 @@ impl CliOptions {
   pub fn resolve_inspector_server(
     &self,
   ) -> Result<Option<InspectorServer>, AnyError> {
-    //TODO: maybe remove it?
     let maybe_inspect_host = self
       .flags
       .inspect
