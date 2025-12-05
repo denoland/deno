@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "manual",
+  "imports": {
+    "@denotest/no-types-cjs": "npm:@denotest/no-types-cjs@1.0.0"
+  }
+}
