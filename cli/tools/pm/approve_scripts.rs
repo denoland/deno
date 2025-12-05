@@ -20,6 +20,7 @@ use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 use jsonc_parser::json;
 
+use super::CacheTopLevelDepsOptions;
 use crate::args::ApproveScriptsFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -142,7 +143,14 @@ pub async fn approve_scripts(
     );
   }
 
-  super::npm_install_after_modification(flags, None).await?;
+  super::npm_install_after_modification(
+    flags,
+    None,
+    CacheTopLevelDepsOptions {
+      lockfile_only: approve_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   for req in approvals {
     log::info!(
