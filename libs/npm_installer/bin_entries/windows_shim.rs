@@ -19,7 +19,6 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 // IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use std::fmt::Write;
 use std::io::BufRead;
 use std::path::Path;
 use std::path::PathBuf;
@@ -30,14 +29,6 @@ use sys_traits::FsWrite;
 use crate::BinEntriesError;
 use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::relative_path;
-
-macro_rules! writeln {
-  ($($arg:tt)*) => {
-    {
-      let _ = std::writeln!($($arg)*);
-    }
-  };
-}
 
 // note: parts of logic and pretty much all of the shims ported from https://github.com/npm/cmd-shim
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -52,7 +43,7 @@ fn parse_shebang(s: &str) -> Option<Shebang> {
   if !s.starts_with("#!") {
     return None;
   }
-  // lifted from npm/cmd-shimj
+  // lifted from npm/cmd-shim
   let regex = lazy_regex::regex!(
     r"^#!\s*(?:/usr/bin/env\s+(?:-S\s+)?((?:[^ \t=]+=[^ \t=]+\s+)*))?([^ \t\r\n]+)(.*)$"
   );
@@ -99,131 +90,204 @@ impl ShimData {
   }
 
   pub fn generate_cmd(&self) -> String {
-    let mut s = String::with_capacity(512);
-    s.push_str(concat!(
-      "@ECHO off\r\n",
-      "GOTO start\r\n",
-      ":find_dp0\r\n",
-      "SET dp0=%~dp0\r\n",
-      "EXIT /b\r\n",
-      ":start\r\n",
-      "SETLOCAL\r\n",
-      "CALL :find_dp0\r\n",
-    ));
-
     let target_win = self.target_win();
-    match &self.shebang {
-      None => {
-        writeln!(s, "\"%dp0%\\{}\" %*\r", target_win);
-      }
-      Some(Shebang {
-        program,
-        args,
-        vars,
-      }) => {
-        let prog = program.replace('\\', "/");
-        for var in vars.split_whitespace().filter(|v| v.contains('=')) {
-          writeln!(s, "SET {}\r", var);
+    let shebang_data = self.shebang.as_ref().map(
+      |Shebang {
+         program,
+         args,
+         vars,
+       }| (program.replace('\\', "/"), args.as_str(), vars.as_str()),
+    );
+
+    capacity_builder::StringBuilder::build(|builder| {
+      builder.append("@ECHO off\r\n");
+      builder.append("GOTO start\r\n");
+      builder.append(":find_dp0\r\n");
+      builder.append("SET dp0=%~dp0\r\n");
+      builder.append("EXIT /b\r\n");
+      builder.append(":start\r\n");
+      builder.append("SETLOCAL\r\n");
+      builder.append("CALL :find_dp0\r\n");
+
+      match &shebang_data {
+        None => {
+          builder.append("\"%dp0%\\");
+          builder.append(&target_win);
+          builder.append("\" %*\r\n");
         }
-        let long_prog = format!("%dp0%\\{}.exe", prog);
-        writeln!(s, "\r");
-        writeln!(s, "IF EXIST \"{}\" (\r", long_prog);
-        writeln!(s, "  SET \"_prog={}\"\r", long_prog);
-        writeln!(s, ") ELSE (\r");
-        writeln!(s, "  SET \"_prog={}\"\r", prog);
-        writeln!(s, "  SET PATHEXT=%PATHEXT:;.JS;=;%\r");
-        writeln!(s, ")\r");
-        writeln!(s, "\r");
-        writeln!(
-          s,
-          "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\" {} \"%dp0%\\{}\" %*\r",
-          args, target_win
-        );
+        Some((prog, args, vars)) => {
+          for var in vars.split_whitespace().filter(|v| v.contains('=')) {
+            builder.append("SET ");
+            builder.append(var);
+            builder.append("\r\n");
+          }
+          builder.append("\r\n");
+          builder.append("IF EXIST \"%dp0%\\");
+          builder.append(prog);
+          builder.append(".exe\" (\r\n");
+          builder.append("  SET \"_prog=%dp0%\\");
+          builder.append(prog);
+          builder.append(".exe\"\r\n");
+          builder.append(") ELSE (\r\n");
+          builder.append("  SET \"_prog=");
+          builder.append(prog);
+          builder.append("\"\r\n");
+          builder.append("  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n");
+          builder.append(")\r\n");
+          builder.append("\r\n");
+          builder.append("endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\" ");
+          builder.append(*args);
+          builder.append(" \"%dp0%\\");
+          builder.append(&target_win);
+          builder.append("\" %*\r\n");
+        }
       }
-    }
-    s
+    })
+    .unwrap()
   }
 
   pub fn generate_sh(&self) -> String {
-    let mut s = String::with_capacity(512);
-    s.push_str(concat!(
-      "#!/bin/sh\n",
-      "basedir=$(dirname \"$(echo \"$0\" | sed -e 's,\\\\,/,g')\")\n",
-      "\n",
-      "case `uname` in\n",
-      "    *CYGWIN*|*MINGW*|*MSYS*)\n",
-      "        if command -v cygpath > /dev/null 2>&1; then\n",
-      "            basedir=`cygpath -w \"$basedir\"`\n",
-      "        fi\n",
-      "    ;;\n",
-      "esac\n",
-      "\n",
-    ));
+    let shebang_data = self.shebang.as_ref().map(
+      |Shebang {
+         program,
+         args,
+         vars,
+       }| (program.replace('\\', "/"), args.as_str(), vars.as_str()),
+    );
 
-    let target = format!("\"$basedir/{}\"", self.target);
-    match &self.shebang {
-      None => {
-        writeln!(s, "exec {} \"$@\"", target);
+    capacity_builder::StringBuilder::build(|builder| {
+      builder.append("#!/bin/sh\n");
+      builder.append(
+        "basedir=$(dirname \"$(echo \"$0\" | sed -e 's,\\\\,/,g')\")\n",
+      );
+      builder.append("\n");
+      builder.append("case `uname` in\n");
+      builder.append("    *CYGWIN*|*MINGW*|*MSYS*)\n");
+      builder.append("        if command -v cygpath > /dev/null 2>&1; then\n");
+      builder.append("            basedir=`cygpath -w \"$basedir\"`\n");
+      builder.append("        fi\n");
+      builder.append("    ;;\n");
+      builder.append("esac\n");
+      builder.append("\n");
+
+      match &shebang_data {
+        None => {
+          builder.append("exec \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" \"$@\"\n");
+        }
+        Some((prog, args, vars)) => {
+          builder.append("if [ -x \"$basedir/");
+          builder.append(prog);
+          builder.append("\" ]; then\n");
+          builder.append("  exec ");
+          builder.append(*vars);
+          builder.append("\"$basedir/");
+          builder.append(prog);
+          builder.append("\" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" \"$@\"\n");
+          builder.append("else\n");
+          builder.append("  exec ");
+          builder.append(*vars);
+          builder.append(prog);
+          builder.append(" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" \"$@\"\n");
+          builder.append("fi\n");
+        }
       }
-      Some(Shebang {
-        program,
-        args,
-        vars,
-      }) => {
-        let prog = program.replace('\\', "/");
-        let long_prog = format!("\"$basedir/{}\"", prog);
-        writeln!(s, "if [ -x {} ]; then", long_prog);
-        writeln!(s, "  exec {}{} {} {} \"$@\"", vars, long_prog, args, target);
-        writeln!(s, "else");
-        writeln!(s, "  exec {}{} {} {} \"$@\"", vars, prog, args, target);
-        writeln!(s, "fi");
-      }
-    }
-    s
+    })
+    .unwrap()
   }
 
   pub fn generate_pwsh(&self) -> String {
-    let mut s = String::with_capacity(1024);
-    s.push_str(concat!(
-      "#!/usr/bin/env pwsh\n",
-      "$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n",
-      "\n",
-      "$exe=\"\"\n",
-      "if ($PSVersionTable.PSVersion -lt \"6.0\" -or $IsWindows) {\n",
-      "  $exe=\".exe\"\n",
-      "}\n",
-    ));
+    let shebang_data = self.shebang.as_ref().map(
+      |Shebang {
+         program,
+         args,
+         vars: _,
+       }| (program.replace('\\', "/"), args.as_str()),
+    );
 
-    let target = format!("\"$basedir/{}\"", self.target);
-    match &self.shebang {
-      None => {
-        Self::write_pwsh_exec(&mut s, &target, "", "");
-        writeln!(s, "exit $LASTEXITCODE");
-      }
-      Some(Shebang { program, args, .. }) => {
-        let prog = program.replace('\\', "/");
-        let long_prog = format!("\"$basedir/{}$exe\"", prog);
-        let short_prog = format!("\"{}$exe\"", prog);
-        writeln!(s, "$ret=0");
-        writeln!(s, "if (Test-Path {}) {{", long_prog);
-        Self::write_pwsh_exec(&mut s, &long_prog, args, &target);
-        writeln!(s, "  $ret=$LASTEXITCODE");
-        writeln!(s, "}} else {{");
-        Self::write_pwsh_exec(&mut s, &short_prog, args, &target);
-        writeln!(s, "  $ret=$LASTEXITCODE");
-        writeln!(s, "}}");
-        writeln!(s, "exit $ret");
-      }
-    }
-    s
-  }
+    capacity_builder::StringBuilder::build(|builder| {
+      builder.append("#!/usr/bin/env pwsh\n");
+      builder.append(
+        "$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n",
+      );
+      builder.append("\n");
+      builder.append("$exe=\"\"\n");
+      builder.append(
+        "if ($PSVersionTable.PSVersion -lt \"6.0\" -or $IsWindows) {\n",
+      );
+      builder.append("  $exe=\".exe\"\n");
+      builder.append("}\n");
 
-  fn write_pwsh_exec(s: &mut String, prog: &str, args: &str, target: &str) {
-    writeln!(s, "  if ($MyInvocation.ExpectingInput) {{");
-    writeln!(s, "    $input | & {} {} {} $args", prog, args, target);
-    writeln!(s, "  }} else {{");
-    writeln!(s, "    & {} {} {} $args", prog, args, target);
-    writeln!(s, "  }}");
+      match &shebang_data {
+        None => {
+          builder.append("  if ($MyInvocation.ExpectingInput) {\n");
+          builder.append("    $input | & \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\"   $args\n");
+          builder.append("  } else {\n");
+          builder.append("    & \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\"   $args\n");
+          builder.append("  }\n");
+          builder.append("exit $LASTEXITCODE\n");
+        }
+        Some((prog, args)) => {
+          builder.append("$ret=0\n");
+          builder.append("if (Test-Path \"$basedir/");
+          builder.append(prog);
+          builder.append("$exe\") {\n");
+          builder.append("  if ($MyInvocation.ExpectingInput) {\n");
+          builder.append("    $input | & \"$basedir/");
+          builder.append(prog);
+          builder.append("$exe\" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" $args\n");
+          builder.append("  } else {\n");
+          builder.append("    & \"$basedir/");
+          builder.append(prog);
+          builder.append("$exe\" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" $args\n");
+          builder.append("  }\n");
+          builder.append("  $ret=$LASTEXITCODE\n");
+          builder.append("} else {\n");
+          builder.append("  if ($MyInvocation.ExpectingInput) {\n");
+          builder.append("    $input | & \"");
+          builder.append(prog);
+          builder.append("$exe\" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" $args\n");
+          builder.append("  } else {\n");
+          builder.append("    & \"");
+          builder.append(prog);
+          builder.append("$exe\" ");
+          builder.append(*args);
+          builder.append(" \"$basedir/");
+          builder.append(&self.target);
+          builder.append("\" $args\n");
+          builder.append("  }\n");
+          builder.append("  $ret=$LASTEXITCODE\n");
+          builder.append("}\n");
+          builder.append("exit $ret\n");
+        }
+      }
+    })
+    .unwrap()
   }
 }
 
