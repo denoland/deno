@@ -231,11 +231,13 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   ModuleSpecifier::parse(path)
     .ok()
-    .and_then(|specifier| {
+    .map(|specifier| {
       state
         .maybe_npm
         .as_ref()
         .map(|n| n.node_resolver.in_npm_package(&specifier))
+        .unwrap_or(false)
+        || specifier.as_str().starts_with("asset:///node/")
     })
     .unwrap_or(false)
 }
