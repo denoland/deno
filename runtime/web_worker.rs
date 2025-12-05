@@ -693,35 +693,35 @@ impl WebWorker {
         );
 
         // Create dummy channels for the proxy fields that won't be used
-        let (dummy_tx, _dummy_rx) =
-          deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
-          );
-        let (_dummy_str_tx, dummy_str_rx) =
-          deno_core::futures::channel::mpsc::unbounded::<String>();
-
-        let worker_url = Some(options.main_module.to_string());
-
-        let proxy = deno_core::InspectorSessionProxy {
-          tx: dummy_tx,
-          rx: dummy_str_rx,
-          kind: deno_core::InspectorSessionKind::NonBlocking {
-            wait_for_disconnect: false,
-          },
-          worker_rx: Some(worker_to_main_rx),
-          worker_tx: Some(main_to_worker_tx),
-          worker_url,
-        };
-
-        // Send the proxy to the main thread
-        if let Err(e) = main_session_tx.unbounded_send(proxy) {
-          eprintln!(
-            "[WORKER DEBUG] Failed to send worker inspector proxy: {}",
-            e
-          );
-        } else {
-          eprintln!(
-            "[WORKER DEBUG] Worker inspector proxy sent to main thread"
-          );
+        // let (dummy_tx, _dummy_rx) =
+        //   deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
+        //   );
+        // let (_dummy_str_tx, dummy_str_rx) =
+        //   deno_core::futures::channel::mpsc::unbounded::<String>();
+        //
+        // let worker_url = Some(options.main_module.to_string());
+        //
+        // let proxy = deno_core::InspectorSessionProxy {
+        //   tx: dummy_tx,
+        //   rx: dummy_str_rx,
+        //   kind: deno_core::InspectorSessionKind::NonBlocking {
+        //     wait_for_disconnect: false,
+        //   },
+        //   worker_rx: Some(worker_to_main_rx),
+        //   worker_tx: Some(main_to_worker_tx),
+        //   worker_url,
+        // };
+        //
+        // // Send the proxy to the main thread
+        // if let Err(e) = main_session_tx.unbounded_send(proxy) {
+        //   eprintln!(
+        //     "[WORKER DEBUG] Failed to send worker inspector proxy: {}",
+        //     e
+        //   );
+        // } else {
+        //   eprintln!(
+        //     "[WORKER DEBUG] Worker inspector proxy sent to main thread"
+        //   );
 
           // PROPER ARCHITECTURE FOR WORKER DEBUGGING:
           //
@@ -771,7 +771,7 @@ impl WebWorker {
           //       "[WORKER DEBUG] Inspector session registered successfully"
           //     );
           //   }
-        }
+        // }
       }
     }
 
