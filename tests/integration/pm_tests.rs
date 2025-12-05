@@ -178,6 +178,7 @@ fn approve_scripts_basic() {
       pty.write_line("\r\n");
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context
     .temp_dir()
@@ -215,9 +216,10 @@ fn approve_scripts_deny_some() {
       pty.expect("@denotest/print-npm-user-agent@1.0.0");
       pty.write_line(" ");
       pty.write_line("\r\n");
-      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context.temp_dir().path().join("deno.json").assert_matches_json(json!({
     "nodeModulesDir": "manual",

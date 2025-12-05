@@ -4,6 +4,6 @@ Download [WILDCARD]
 │  Ignored build scripts for packages:
 │  npm:@denotest/node-lifecycle-scripts@1.0.0
 │
-│  Run "deno install --allow-scripts=npm:@denotest/node-lifecycle-scripts" to run build scripts.
+│  Run "deno approve-scripts" to run build scripts.
 ╰─
 value is 42
