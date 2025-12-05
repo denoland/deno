@@ -113,12 +113,12 @@ jobs:
             use_sysroot: true
           - os: linux
             arch: aarch64
-            runner: ubicloud-standard-16-arm
+            runner: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'
             job: test
             profile: debug
           - os: linux
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ubicloud-standard-16-arm'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'' }}'
             job: test
             profile: release
             use_sysroot: true
@@ -178,6 +178,9 @@ jobs:
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
+      - if: '!(matrix.skip) && (matrix.os == ''linux'' && matrix.arch == ''aarch64'')'
+        name: Load 'vsock_loopback; kernel module
+        run: sudo modprobe vsock_loopback
       - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v2
