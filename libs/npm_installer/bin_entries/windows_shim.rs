@@ -89,6 +89,7 @@ impl ShimData {
     self.target.replace('/', "\\")
   }
 
+  // these are all kinda hard to read, look at the unit tests to see what they generate
   pub fn generate_cmd(&self) -> String {
     let target_win = self.target_win();
     let shebang_data = self.shebang.as_ref().map(
@@ -146,6 +147,7 @@ impl ShimData {
     .unwrap()
   }
 
+  // these are all kinda hard to read, look at the unit tests to see what they generate
   pub fn generate_sh(&self) -> String {
     let shebang_data = self.shebang.as_ref().map(
       |Shebang {
@@ -205,6 +207,7 @@ impl ShimData {
     .unwrap()
   }
 
+  // these are all kinda hard to read, look at the unit tests to see what they generate
   pub fn generate_pwsh(&self) -> String {
     let shebang_data = self.shebang.as_ref().map(
       |Shebang {
