@@ -5,11 +5,36 @@ pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
+#[cfg(unix)]
+mod ops_unix_pipe;
+#[cfg(windows)]
+mod ops_win_pipe;
 mod quic;
 pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
 pub mod tunnel;
+#[cfg(unix)]
+mod unix_pipe;
+#[cfg(windows)]
+mod win_pipe;
+
+mod ops_pipe {
+  #[cfg(unix)]
+  use deno_core::op2;
+
+  #[cfg(unix)]
+  pub use super::ops_unix_pipe::*;
+
+  #[cfg(unix)]
+  #[op2(fast)]
+  pub fn op_pipe_windows_wait() {
+    unreachable!()
+  }
+
+  #[cfg(windows)]
+  pub use super::ops_win_pipe::*;
+}
 
 use std::sync::Arc;
 
@@ -133,8 +158,12 @@ deno_core::extension!(deno_net,
     quic::op_quic_send_stream_set_priority,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
+
+    ops_pipe::op_pipe_open<P>,
+    ops_pipe::op_pipe_connect<P>,
+    ops_pipe::op_pipe_windows_wait,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
+  esm = [ "01_net.js", "02_tls.js", "04_pipe.ts" ],
   lazy_loaded_esm = [ "03_quic.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
