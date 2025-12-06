@@ -730,40 +730,23 @@ impl<
       .unwrap_or_else(|| Cow::Borrowed("."));
     let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
     let conditions = self.condition_resolver.resolve(resolution_mode);
-    let resolve_with_resolution_kind = |resolution_kind: NodeResolutionKind| -> Result<
-      _,
-      PackageSubpathFromDenoModuleResolveError,
-    > {
-      let (resolved_url, resolved_method) = self.resolve_package_dir_subpath(
-        package_dir,
-        &package_subpath,
-        maybe_referrer.as_ref(),
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      )?;
-      let url_or_path = self.finalize_resolution(
-        resolved_url,
-        resolved_method,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-        maybe_referrer.as_ref(),
-      )?;
-      Ok(url_or_path)
-    };
-    let result = resolve_with_resolution_kind(resolution_kind);
-    // if types fail to resolve, attempt to fall back to normal resolution
-    if resolution_kind.is_types()
-      && let Err(err) = &result
-      && err.as_types_not_found().is_some()
-      && let Ok(resolved) =
-        resolve_with_resolution_kind(NodeResolutionKind::Execution)
-    {
-      Ok(resolved)
-    } else {
-      result
-    }
+    let (resolved_url, resolved_method) = self.resolve_package_dir_subpath(
+      package_dir,
+      &package_subpath,
+      maybe_referrer.as_ref(),
+      resolution_mode,
+      conditions,
+      resolution_kind,
+    )?;
+    let url_or_path = self.finalize_resolution(
+      resolved_url,
+      resolved_method,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+      maybe_referrer.as_ref(),
+    )?;
+    Ok(url_or_path)
   }
 
   pub fn resolve_binary_export(
