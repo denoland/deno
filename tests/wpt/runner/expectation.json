@@ -13138,7 +13138,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "productSub",
             "userAgent value",
@@ -13151,7 +13150,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "userAgent value"
           ],
