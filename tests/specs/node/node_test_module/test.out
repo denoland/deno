@@ -1,4 +1,3 @@
-[WILDCARD]
 running 69 tests from ./test.js
 sync pass todo ... ok ([WILDLINE])
 sync pass todo with message ... ok ([WILDLINE])

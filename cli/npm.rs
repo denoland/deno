@@ -31,7 +31,6 @@ use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
-use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
@@ -582,10 +581,4 @@ impl DenoTaskLifeCycleScriptsExecutor {
       )
       .await
   }
-}
-
-pub fn get_types_node_version_req() -> VersionReq {
-  // WARNING: When bumping this version, check if anything needs to be
-  // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-  VersionReq::parse_from_npm("24.0.4 - 24.2.0").unwrap()
 }

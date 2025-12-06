@@ -342,32 +342,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     result
   }
 
-  pub async fn inject_synthetic_types_node_package(
-    &self,
-    cache_strategy: graph::NpmCachingStrategy,
-  ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-
-    // don't inject this if it's already been added
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    if self
-      .npm_resolution
-      .any_top_level_package(|id| id.nv.name == "@types/node")
-    {
-      // ensure it's cached though
-      if let Some(caching) = cache_strategy.as_package_caching(reqs) {
-        self.maybe_cache_packages(reqs, caching).await?;
-      }
-      return Ok(());
-    }
-
-    self
-      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
-      .await?;
-
-    Ok(())
-  }
-
   pub async fn cache_package_info(
     &self,
     package_name: &str,

@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
@@ -1507,11 +1506,6 @@ impl DocumentModules {
         for dependency in module.dependencies.values() {
           let code_specifier = dependency.get_code();
           let type_specifier = dependency.get_type();
-          if let Some(dep) = code_specifier
-            && dep.scheme() == "node"
-          {
-            dep_info.has_node_specifier = true;
-          }
           if dependency.maybe_deno_types_specifier.is_some()
             && let (Some(code_specifier), Some(type_specifier)) =
               (code_specifier, type_specifier)
@@ -1591,15 +1585,6 @@ impl DocumentModules {
         )
       })
       .clone()
-  }
-
-  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
-    self
-      .dep_info_by_scope()
-      .iter()
-      .filter(|(_, i)| i.has_node_specifier)
-      .map(|(s, _)| s.clone())
-      .collect::<HashSet<_>>()
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

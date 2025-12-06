@@ -788,15 +788,6 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    if let Some(npm_installer) = &self.npm_installer
-      && graph.has_node_specifier
-      && graph.graph_kind().include_types()
-    {
-      npm_installer
-        .inject_synthetic_types_node_package(options.npm_caching)
-        .await?;
-    }
-
     Ok(())
   }
 

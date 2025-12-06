@@ -116,7 +116,6 @@ use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
-use crate::npm::get_types_node_version_req;
 use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -578,7 +577,7 @@ impl Inner {
     let npm_search_api = CliNpmSearchApi::new(
       module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: Some(get_types_node_version_req()),
+        types_node_version_req: None,
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
       }),
@@ -834,7 +833,7 @@ impl Inner {
     self.npm_search_api = CliNpmSearchApi::new(
       self.module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: Some(get_types_node_version_req()),
+        types_node_version_req: None,
         // todo(dsherret): the npm_search_api should probably be specific
         // to each workspace so that the link packages can be properly
         // hooked up

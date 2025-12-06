@@ -1,3 +1,4 @@
+Check mod.js
 TS2769 [ERROR]: No overload matches this call.
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
@@ -6,6 +7,6 @@ const _data = fs.readFileSync("./node_builtin.js", 123);
 TS2771 [ERROR]:     The last overload is declared here.
         export function readFileSync(
                         ~~~~~~~~~~~~
-        at [WILDLINE]/fs.d.ts:2925:21
+        at [WILDLINE]/fs.d.cts:2925:21
 
 error: Type checking failed.

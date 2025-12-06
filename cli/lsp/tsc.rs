@@ -4728,7 +4728,10 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
   let r = match state.specifier_map.normalize(path) {
-    Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
+    Ok(specifier) => {
+      state.state_snapshot.resolver.in_node_modules(&specifier)
+        || specifier.as_str().starts_with("asset:///node/")
+    }
     Err(_) => false,
   };
   state.performance.measure(mark);
@@ -4738,16 +4741,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
 #[op2]
 #[serde]
 fn op_libs() -> Vec<String> {
-  let mut out =
-    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
-  for key in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.keys() {
-    let lib = key
-      .replace("lib.", "")
-      .replace(".d.ts", "")
-      .replace("deno_", "deno.");
-    out.push(lib);
-  }
-  out
+  crate::tsc::lib_names()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -5101,11 +5095,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     by_notebook_uri: Default::default(),
   };
 
-  let scopes_with_node_specifier = state
-    .state_snapshot
-    .document_modules
-    .scopes_with_node_specifier();
-
   // Insert global scripts.
   for (compiler_options_key, compiler_options_data) in
     state.state_snapshot.compiler_options_resolver.entries()
@@ -5119,9 +5108,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .as_ref()
       .and_then(|s| state.state_snapshot.config.tree.scope_for_specifier(s))
       .cloned();
-    if scopes_with_node_specifier.contains(&scope) {
-      script_names.insert("asset:///node_types.d.ts".to_string());
-    }
     let scoped_resolver = state
       .state_snapshot
       .resolver
