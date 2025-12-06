@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read=math_with_import.wasm main.ts",
+  "output": "main.out"
+}

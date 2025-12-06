@@ -1888,8 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.371.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a15e1d4b16347e8164488fcfe957054ee6c9354b375f30b7727e012253e7e95"
+source = "git+https://github.com/denoland/deno_core?rev=b8852440bfbdbf254bd694b5c06f9048bf1e8538#b8852440bfbdbf254bd694b5c06f9048bf1e8538"
 dependencies = [
  "anyhow",
  "az",
@@ -2145,8 +2144,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.104.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "166b59d27d3ef8a446bece020e1d72b629250a0cb6665b0c7929cd7bae93b9a1"
+source = "git+https://github.com/denoland/deno_graph?rev=6c956c32edd3997ead239386dab795ae9909c562#6c956c32edd3997ead239386dab795ae9909c562"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2614,8 +2612,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.247.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2b016ed244d902f3843ba99af8f6f9290a364233a1337757db5305e245872af"
+source = "git+https://github.com/denoland/deno_core?rev=b8852440bfbdbf254bd694b5c06f9048bf1e8538#b8852440bfbdbf254bd694b5c06f9048bf1e8538"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8217,8 +8214,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.280.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f818e32ff8f4ccaba8f675330b29fd62cd6b073957852d606f021a9e398a8fa2"
+source = "git+https://github.com/denoland/deno_core?rev=b8852440bfbdbf254bd694b5c06f9048bf1e8538#b8852440bfbdbf254bd694b5c06f9048bf1e8538"
 dependencies = [
  "deno_error",
  "num-bigint",
