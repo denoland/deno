@@ -3143,7 +3143,7 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "empty"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3163,7 +3163,7 @@ fn init_subcommand() -> Command {
           Arg::new("empty")
             .long("empty")
             .help("Generate a minimal project with just main.ts and deno.json")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -12602,6 +12602,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12618,6 +12619,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12634,6 +12636,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         log_level: Some(Level::Error),
@@ -12651,6 +12654,7 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12667,6 +12671,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12683,6 +12688,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12705,6 +12711,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12721,6 +12728,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12737,6 +12745,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12753,6 +12762,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: true,
         }),
         ..Flags::default()

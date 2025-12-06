@@ -191,7 +191,12 @@ fn init_subcommand_empty() {
   assert_contains!(stderr, "deno task dev");
   assert!(!stderr.contains("deno test"));
 
-  assert!(cwd.join("deno.json").exists());
+  let deno_json_path = cwd.join("deno.json");
+  assert!(deno_json_path.exists());
+
+  let deno_json_content = deno_json_path.read_to_string();
+  assert!(!deno_json_content.contains("@std/assert"));
+
   assert!(cwd.join("main.ts").exists());
   assert!(!cwd.join("main_test.ts").exists());
 
