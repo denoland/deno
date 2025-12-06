@@ -1096,6 +1096,21 @@ impl DatabaseSync {
 
     Ok(filename.into())
   }
+
+  #[getter]
+  fn is_open(&self) -> bool {
+    self.conn.borrow().is_some()
+  }
+
+  #[getter]
+  fn is_transaction(&self) -> Result<bool, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let res = unsafe { libsqlite3_sys::sqlite3_get_autocommit(db.handle()) };
+    Ok(res == 0)
+  }
 }
 
 impl DatabaseSync {
