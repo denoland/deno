@@ -47,6 +47,7 @@ struct DatabaseSyncOptions {
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
+  timeout: i64,
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -76,6 +77,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       READ_ONLY_STRING = "readOnly",
       ALLOW_EXTENSION_STRING = "allowExtension",
       ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
+      TIMEOUT_STRING = "timeout",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -155,6 +157,19 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
                 .is_true();
     }
 
+    let timeout_string = TIMEOUT_STRING.v8_string(scope).unwrap();
+    if let Some(timeout) = obj.get(scope, timeout_string.into())
+      && !timeout.is_undefined()
+    {
+      options.timeout = v8::Local::<v8::Integer>::try_from(timeout)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.timeout\" argument must be an integer.",
+          )
+        })?
+        .value();
+    }
+
     Ok(options)
   }
 }
@@ -167,6 +182,7 @@ impl Default for DatabaseSyncOptions {
       read_only: false,
       allow_extension: false,
       enable_double_quoted_string_literals: false,
+      timeout: 0,
     }
   }
 }
@@ -343,9 +359,8 @@ fn set_db_config(
 
 fn open_db(
   state: &mut OpState,
-  readonly: bool,
   location: &str,
-  allow_extension: bool,
+  options: &DatabaseSyncOptions,
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
@@ -363,7 +378,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -379,7 +394,7 @@ fn open_db(
   let location = perms
     .check_open(
       Cow::Borrowed(Path::new(location)),
-      match readonly {
+      match options.read_only {
         true => OpenAccessKind::ReadNoFollow,
         false => OpenAccessKind::ReadWriteNoFollow,
       },
@@ -387,7 +402,7 @@ fn open_db(
     )?
     .into_path();
 
-  if readonly {
+  if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -401,7 +416,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -416,7 +431,12 @@ fn open_db(
 
   let conn = rusqlite::Connection::open(location)?;
 
-  if allow_extension {
+  if options.timeout != 0 {
+    conn
+      .busy_timeout(std::time::Duration::from_millis(options.timeout as u64))?;
+  }
+
+  if options.allow_extension {
     perms.check_ffi_all()?;
   } else {
     assert!(set_db_config(
@@ -482,8 +502,7 @@ impl DatabaseSync {
     let location = parse_path(scope, location_raw)?;
 
     let db = if options.open {
-      let db =
-        open_db(state, options.read_only, &location, options.allow_extension)?;
+      let db = open_db(state, &location, &options)?;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -527,12 +546,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(
-      state,
-      self.options.read_only,
-      &self.location,
-      self.options.allow_extension,
-    )?;
+    let db = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
