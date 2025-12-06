@@ -526,6 +526,19 @@ impl<
           {
             return Ok(resolved);
           }
+          // failed to find types, just fall back to normal resolution
+          debug_assert_eq!(resolution_kind, NodeResolutionKind::Types);
+          if let Ok(resolved) =
+            self.node_resolver.resolve_package_subpath_from_deno_module(
+              &package_folder,
+              sub_path,
+              Some(referrer),
+              resolution_mode,
+              NodeResolutionKind::Execution,
+            )
+          {
+            return Ok(resolved);
+          }
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
