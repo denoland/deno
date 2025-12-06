@@ -12,11 +12,11 @@ const {
   TypeError,
   Symbol,
 } = primordials;
-import { toInnerRequest } from "ext:deno_fetch/23_request.js";
+import { toInnerRequest } from "ext:deno_web/23_request.js";
 import {
   fromInnerResponse,
   newInnerResponse,
-} from "ext:deno_fetch/23_response.js";
+} from "ext:deno_web/23_response.js";
 import { setEventTargetData } from "ext:deno_web/02_event.js";
 import {
   _eventLoop,

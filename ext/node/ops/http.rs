@@ -34,9 +34,6 @@ use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
-use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchReturn;
-use deno_fetch::ResBody;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamReadHalf;
@@ -44,6 +41,9 @@ use deno_net::raw::NetworkStreamWriteHalf;
 use deno_net::raw::take_network_stream_resource;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
+use deno_web::fetch::FetchCancelHandle;
+use deno_web::fetch::FetchReturn;
+use deno_web::fetch::ResBody;
 use http::Method;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
@@ -178,7 +178,7 @@ pub async fn op_node_http_request_with_conn(
   // Create the request.
   let method = Method::from_bytes(&method)?;
   let mut url_parsed = Url::parse(&url)?;
-  let maybe_authority = deno_fetch::extract_authority(&mut url_parsed);
+  let maybe_authority = deno_web::fetch::extract_authority(&mut url_parsed);
 
   {
     let mut state_ = state.borrow_mut();
@@ -241,7 +241,7 @@ pub async fn op_node_http_request_with_conn(
   if let Some((username, password)) = maybe_authority {
     request.headers_mut().insert(
       AUTHORIZATION,
-      deno_fetch::basic_auth(&username, password.as_deref()),
+      deno_web::fetch::proxy::basic_auth(&username, password.as_deref()),
     );
   }
   if let Some(len) = con_len {

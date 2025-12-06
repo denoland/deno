@@ -41,7 +41,7 @@ import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} from "ext:deno_web/20_headers.js";
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",

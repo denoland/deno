@@ -28,7 +28,7 @@ const {
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
 import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
-import { packageData } from "ext:deno_fetch/22_body.js";
+import { packageData } from "ext:deno_web/22_body.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   ReadableStream,

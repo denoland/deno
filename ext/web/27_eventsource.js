@@ -33,13 +33,13 @@ import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 import { TransformStream } from "ext:deno_web/06_streams.js";
 import { TextDecoderStream } from "ext:deno_web/08_text_encoding.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
-import { newInnerRequest } from "ext:deno_fetch/23_request.js";
-import { mainFetch } from "ext:deno_fetch/26_fetch.js";
+import { newInnerRequest } from "ext:deno_web/23_request.js";
+import { mainFetch } from "ext:deno_web/26_fetch.js";
 import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} from "ext:deno_web/20_headers.js";
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
 export class TextLineStream extends TransformStream {
