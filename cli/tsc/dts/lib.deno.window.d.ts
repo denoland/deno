@@ -362,6 +362,12 @@ interface Navigator {
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
+  /**
+   * The **`platform`** read-only property returns a string identifying the platform on which the user's browser is running.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/platform)
+   */
+  readonly platform: string;
 }
 
 /**
