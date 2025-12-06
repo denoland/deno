@@ -49,7 +49,24 @@ pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
     cwd
   };
 
-  if init_flags.serve {
+  if init_flags.empty {
+    create_file(
+      &dir,
+      "main.ts",
+      r#"console.log('Hello world!');
+"#,
+    )?;
+
+    create_json_file(
+      &dir,
+      "deno.json",
+      &json!({
+        "tasks": {
+          "dev": "deno run --watch main.ts"
+        }
+      }),
+    )?;
+  } else if init_flags.serve {
     create_file(
       &dir,
       "main.ts",
@@ -227,7 +244,16 @@ Deno.test(function addTest() {
     info!("  cd {}", dir);
     info!("");
   }
-  if init_flags.serve {
+  if init_flags.empty {
+    info!("  {}", colors::gray("# Run the program"));
+    info!("  deno run main.ts");
+    info!("");
+    info!(
+      "  {}",
+      colors::gray("# Run the program and watch for file changes")
+    );
+    info!("  deno task dev");
+  } else if init_flags.serve {
     info!("  {}", colors::gray("# Run the server"));
     info!("  deno serve -R main.ts");
     info!("");

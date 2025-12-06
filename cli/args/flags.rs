@@ -287,6 +287,7 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub empty: bool,
   pub yes: bool,
 }
 
@@ -3159,6 +3160,13 @@ fn init_subcommand() -> Command {
             .action(ArgAction::SetTrue),
         )
         .arg(
+          Arg::new("empty")
+            .long("empty")
+            .help("Generate a minimal project with just main.ts and deno.json")
+            .conflicts_with_all(["lib", "serve"])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("yes")
             .short('y')
             .long("yes")
@@ -5935,6 +5943,7 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut empty = matches.get_flag("empty");
   let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
@@ -5955,6 +5964,7 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        empty = inner_matches.get_flag("empty");
         yes = inner_matches.get_flag("yes");
       }
     }
@@ -5966,6 +5976,7 @@ fn init_parse(
     dir,
     lib,
     serve,
+    empty,
     yes,
   });
 
