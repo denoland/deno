@@ -305,7 +305,7 @@ fn parse_path(
     if path.find('\0').is_some() {
       return false;
     }
-    return true;
+    true
   });
 
   match maybe_path {
