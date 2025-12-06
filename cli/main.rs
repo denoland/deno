@@ -257,6 +257,9 @@ async fn run_subcommand(
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
+    DenoSubcommand::X(x_flags) => spawn_subcommand(async move {
+      tools::x::run(flags, x_flags, unconfigured_runtime, roots).await
+    }),
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
         let task_flags = TaskFlags {

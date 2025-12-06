@@ -745,7 +745,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(url_from_file_path(&path)?),
+      Ok(bin_value) => Ok(url_from_file_path(bin_value.path())?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
