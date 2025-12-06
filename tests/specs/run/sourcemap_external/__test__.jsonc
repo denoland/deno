@@ -1,0 +1,5 @@
+{
+  "args": "run external.js",
+  "output": "external.js.out",
+  "exitCode": 1
+}

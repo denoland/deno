@@ -1398,7 +1398,12 @@ impl CliOptions {
     if matches!(
       self.sub_command(),
       DenoSubcommand::Install(InstallFlags::Local(
-        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+        InstallFlagsLocal::TopLevel(_)
+          | InstallFlagsLocal::Add(_)
+          | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            lockfile_only: true,
+            ..
+          })
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {
@@ -1691,6 +1696,11 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.read.deny.as_ref()),
       &make_fs_config_value_absolute,
     ),
+    ignore_read: handle_deny_or_ignore(
+      flags.ignore_read.as_ref(),
+      config.and_then(|c| c.permissions.read.ignore.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
     allow_run: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -1833,13 +1843,16 @@ mod test {
           .unwrap(),
         permissions: PermissionsObject {
           all: None,
-          read: AllowDenyPermissionConfig {
+          read: AllowDenyIgnorePermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
               ".".to_string(),
               "./read-allow".to_string(),
             ])),
             deny: Some(PermissionConfigValue::Some(vec![
               "./read-deny".to_string(),
+            ])),
+            ignore: Some(PermissionConfigValue::Some(vec![
+              "./read-ignore".to_string(),
             ])),
           },
           write: AllowDenyPermissionConfig {
@@ -1944,6 +1957,13 @@ mod test {
               .into_string()
               .unwrap()
           ]),
+          ignore_read: Some(vec![
+            base_dir
+              .join("read-ignore")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
           allow_run: Some(vec![
             "run-allow".to_string(),
             base_dir
@@ -2019,6 +2039,7 @@ mod test {
           deny_ffi: None,
           allow_read: Some(vec!["./folder".to_string()]),
           deny_read: None,
+          ignore_read: None,
           allow_run: Some(vec![]),
           deny_run: None,
           allow_sys: Some(vec![]),

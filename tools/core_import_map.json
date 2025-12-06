@@ -573,6 +573,7 @@
     "ext:deno_node/_util/std_fmt_colors.ts": "../ext/node/polyfills/_util/std_fmt_colors.ts",
     "ext:deno_node/_utils.ts": "../ext/node/polyfills/_utils.ts",
     "ext:deno_node/_zlib_binding.mjs": "../ext/node/polyfills/_zlib_binding.mjs",
+    "ext:deno_node/00_globals.js": "../ext/node/polyfills/00_globals.js",
     "ext:deno_node/inspector.ts": "../ext/node/polyfills/inspector.ts",
     "ext:deno_node/internal_binding/_libuv_winerror.ts": "../ext/node/polyfills/internal_binding/_libuv_winerror.ts",
     "ext:deno_node/internal_binding/_listen.ts": "../ext/node/polyfills/internal_binding/_listen.ts",

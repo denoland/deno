@@ -65,13 +65,13 @@ deno_core = { version = "0.371.0" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.187.0"
-deno_error = "=0.7.0"
+deno_error = "=0.7.1"
 deno_graph = { version = "=0.104.0", default-features = false }
 deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.0"
+deno_npm = "=0.42.1"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.26.0"
@@ -430,6 +430,13 @@ opt-level = 3
 # rusty-v8 needs at least -O1 to not miscompile
 [profile.dev.package.v8]
 opt-level = 1
+
+# speeds up deno compile tests a lot
+[profile.dev.package.libsui]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
 
 [profile.release.package.async-compression]
 opt-level = 3
