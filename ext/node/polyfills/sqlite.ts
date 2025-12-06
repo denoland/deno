@@ -6,7 +6,6 @@ import {
   op_node_database_backup,
   StatementSync,
 } from "ext:core/ops";
-import { Buffer } from "node:buffer";
 
 const {
   ObjectDefineProperties,
@@ -44,10 +43,6 @@ interface BackupProgressInfo {
   remainingPages: number;
 }
 
-interface BackupResult {
-  totalPages: number;
-}
-
 /**
  * This method makes a database backup. This method abstracts the
  * [`sqlite3_backup_init()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit),
@@ -78,18 +73,7 @@ interface BackupResult {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-async function backup(
-  sourceDb: DatabaseSync,
-  path: string | Buffer | URL,
-  options?: BackupOptions,
-): Promise<number> {
-  const result: BackupResult = await op_node_database_backup(
-    sourceDb,
-    path,
-    options,
-  );
-  return result.totalPages;
-}
+const backup = op_node_database_backup;
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
