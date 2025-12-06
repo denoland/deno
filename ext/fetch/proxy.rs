@@ -604,9 +604,15 @@ where
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
               let tokio_io = TokioIo::new(io);
+              let host = orig_dst.host().unwrap();
+              let server_name = if host.starts_with('[') && host.ends_with(']') {
+                &host[1..host.len() - 1]
+              } else {
+                host
+              };
               let io = tls
                 .connect(
-                  TryFrom::try_from(orig_dst.host().unwrap().to_owned())?,
+                  TryFrom::try_from(server_name.to_owned())?,
                   tokio_io,
                 )
                 .await?;
@@ -647,8 +653,13 @@ where
 
             if is_https {
               let tokio_io = TokioIo::new(io);
+              let server_name = if host.starts_with('[') && host.ends_with(']') {
+                &host[1..host.len() - 1]
+              } else {
+                host
+              };
               let io = tls
-                .connect(TryFrom::try_from(host.to_owned())?, tokio_io)
+                .connect(TryFrom::try_from(server_name.to_owned())?, tokio_io)
                 .await?;
               Ok(Proxied::SocksTls(TokioIo::new(io)))
             } else {
