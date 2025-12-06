@@ -149,7 +149,7 @@ ObjectDefineProperty(
 );
 
 if (op_geometry_get_enable_window_features()) {
-  // https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
+  // https://drafts.csswg.org/geometry/#dommatrixreadonly-stringification-behavior
   ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
     __proto__: null,
     value: function toString() {
@@ -160,7 +160,7 @@ if (op_geometry_get_enable_window_features()) {
     configurable: true,
   });
 
-  // https://drafts.fxtf.org/geometry/#dom-dommatrix-setmatrixvalue
+  // https://drafts.csswg.org/geometry/#dom-dommatrix-setmatrixvalue
   ObjectDefineProperty(DOMMatrixPrototype, "setMatrixValue", {
     __proto__: null,
     value: function setMatrixValue(transformList) {
