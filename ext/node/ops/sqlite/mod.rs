@@ -7,6 +7,7 @@ mod statement;
 mod validators;
 
 pub use backup::op_node_database_backup;
+pub use database::DatabasePath;
 pub use database::DatabaseSync;
 pub use session::Session;
 pub use statement::StatementSync;

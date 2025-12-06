@@ -41,7 +41,7 @@ const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
-pub struct DatabasePath(String);
+pub struct DatabasePath(pub String);
 impl<'a> FromV8<'a> for DatabasePath {
   type Error = validators::Error;
 

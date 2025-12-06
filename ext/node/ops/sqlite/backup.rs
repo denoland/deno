@@ -13,6 +13,7 @@ use rusqlite::backup;
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::DatabasePath;
 use super::DatabaseSync;
 use super::SqliteError;
 
@@ -36,12 +37,12 @@ struct BackupResult {
 pub fn op_node_database_backup(
   state: &mut OpState,
   #[cppgc] source_db: &DatabaseSync,
-  #[string] path: &str,
+  #[from_v8] DatabasePath(path): DatabasePath,
   #[serde] options: Option<BackupOptions>,
 ) -> Result<BackupResult, SqliteError> {
   let src_conn_ref = source_db.conn.borrow();
   let src_conn = src_conn_ref.as_ref().ok_or(SqliteError::SessionClosed)?;
-  let path = std::path::Path::new(path);
+  let path = std::path::Path::new(&path);
   let checked_path = state.borrow_mut::<PermissionsContainer>().check_open(
     Cow::Borrowed(path),
     OpenAccessKind::Write,
