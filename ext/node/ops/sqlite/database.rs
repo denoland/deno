@@ -25,6 +25,7 @@ use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
+use rusqlite::ffi::sqlite3_db_filename;
 use rusqlite::limits::Limit;
 
 use super::Session;
@@ -40,12 +41,87 @@ const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
+pub struct DatabasePath(pub String);
+impl<'a> FromV8<'a> for DatabasePath {
+  type Error = validators::Error;
+
+  fn from_v8(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    let maybe_path = if value.is_string() {
+      let path_str = value.to_rust_string_lossy(scope);
+      Some(path_str)
+    } else if value.is_uint8_array() {
+      let buffer_view = value.cast::<v8::Uint8Array>();
+      let buffer_view_data = buffer_view.data() as *mut u8;
+      // SAFETY: `buffer_view_data` is valid as long as `buffer_view` is alive,
+      let path_slice = unsafe {
+        std::slice::from_raw_parts(buffer_view_data, buffer_view.byte_length())
+      };
+
+      let path_str = str::from_utf8(path_slice).unwrap().to_string();
+      Some(path_str)
+    } else if value.is_object() {
+      v8_static_strings! {
+        HREF = "href",
+        URL = "URL"
+      }
+
+      let global = scope.get_current_context().global(scope);
+      let url_str = URL.v8_string(scope).unwrap();
+      let js_url: v8::Local<v8::Object> = {
+        global
+          .get(scope, url_str.into())
+          .unwrap()
+          .try_into()
+          .unwrap()
+      };
+
+      let path_url = v8::Local::<v8::Object>::try_from(value).unwrap();
+      if !path_url.instance_of(scope, js_url).unwrap() {
+        None
+      } else {
+        let href_str = HREF.v8_string(scope).unwrap();
+        let path_href = path_url
+          .get(scope, href_str.into())
+          .unwrap()
+          .to_rust_string_lossy(scope);
+
+        if !path_href.starts_with("file:") {
+          return Err(validators::Error::InvalidUrlScheme);
+        }
+        Some(path_href)
+      }
+    } else {
+      None
+    };
+
+    let maybe_path = maybe_path.filter(|path| {
+      if path.find('\0').is_some() {
+        return false;
+      }
+      true
+    });
+
+    match maybe_path {
+      Some(path) => return Ok(Self(path)),
+      None => {
+        return Err(validators::Error::InvalidArgType(
+          "The \"path\" argument must be a string, Uint8Array, or URL without null bytes.",
+        ));
+      }
+    }
+  }
+}
+
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
+  timeout: i64,
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -75,6 +151,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       READ_ONLY_STRING = "readOnly",
       ALLOW_EXTENSION_STRING = "allowExtension",
       ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
+      TIMEOUT_STRING = "timeout",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -154,6 +231,19 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
                 .is_true();
     }
 
+    let timeout_string = TIMEOUT_STRING.v8_string(scope).unwrap();
+    if let Some(timeout) = obj.get(scope, timeout_string.into())
+      && !timeout.is_undefined()
+    {
+      options.timeout = v8::Local::<v8::Integer>::try_from(timeout)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.timeout\" argument must be an integer.",
+          )
+        })?
+        .value();
+    }
+
     Ok(options)
   }
 }
@@ -166,6 +256,7 @@ impl Default for DatabaseSyncOptions {
       read_only: false,
       allow_extension: false,
       enable_double_quoted_string_literals: false,
+      timeout: 0,
     }
   }
 }
@@ -275,9 +366,8 @@ fn set_db_config(
 
 fn open_db(
   state: &mut OpState,
-  readonly: bool,
   location: &str,
-  allow_extension: bool,
+  options: &DatabaseSyncOptions,
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
@@ -295,7 +385,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -311,7 +401,7 @@ fn open_db(
   let location = perms
     .check_open(
       Cow::Borrowed(Path::new(location)),
-      match readonly {
+      match options.read_only {
         true => OpenAccessKind::ReadNoFollow,
         false => OpenAccessKind::ReadWriteNoFollow,
       },
@@ -319,7 +409,7 @@ fn open_db(
     )?
     .into_path();
 
-  if readonly {
+  if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -333,7 +423,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -348,7 +438,12 @@ fn open_db(
 
   let conn = rusqlite::Connection::open(location)?;
 
-  if allow_extension {
+  if options.timeout != 0 {
+    conn
+      .busy_timeout(std::time::Duration::from_millis(options.timeout as u64))?;
+  }
+
+  if options.allow_extension {
     perms.check_ffi_all()?;
   } else {
     assert!(set_db_config(
@@ -407,14 +502,11 @@ impl DatabaseSync {
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[validate(validators::path_str)]
-    #[string]
-    location: String,
+    #[from_v8] DatabasePath(location): DatabasePath,
     #[from_v8] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
-      let db =
-        open_db(state, options.read_only, &location, options.allow_extension)?;
+      let db = open_db(state, &location, &options)?;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -458,12 +550,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(
-      state,
-      self.options.read_only,
-      &self.location,
-      self.options.allow_extension,
-    )?;
+    let db = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
@@ -1046,6 +1133,69 @@ impl DatabaseSync {
       freed: Cell::new(false),
       db: Rc::downgrade(&self.conn),
     })
+  }
+
+  fn location<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    name_value: v8::Local<'a, v8::Value>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let name = if !name_value.is_undefined() {
+      if !name_value.is_string() {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"dbName\" argument must be a string.",
+          ),
+        ));
+      }
+      name_value.to_rust_string_lossy(scope)
+    } else {
+      "main".to_string()
+    };
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+    let name_cstring = CString::new(name)?;
+
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer.
+    let db_filename =
+      unsafe { sqlite3_db_filename(raw_handle, name_cstring.as_ptr()) };
+    if db_filename.is_null() {
+      return Ok(v8::null(scope).into());
+    }
+
+    // SAFETY: `db_filename` is a valid C string pointer.
+    let filename_cstr = unsafe { CStr::from_ptr(db_filename).to_bytes() };
+    if filename_cstr.is_empty() {
+      return Ok(v8::null(scope).into());
+    }
+
+    let filename = v8::String::new_from_utf8(
+      scope,
+      filename_cstr,
+      v8::NewStringType::Normal,
+    )
+    .unwrap();
+
+    Ok(filename.into())
+  }
+
+  #[getter]
+  fn is_open(&self) -> bool {
+    self.conn.borrow().is_some()
+  }
+
+  #[getter]
+  fn is_transaction(&self) -> Result<bool, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let res = unsafe { libsqlite3_sys::sqlite3_get_autocommit(db.handle()) };
+    Ok(res == 0)
   }
 }
 
