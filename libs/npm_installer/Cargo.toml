@@ -35,6 +35,7 @@ deno_terminal.workspace = true
 deno_unsync.workspace = true
 dyn-clone.workspace = true
 futures.workspace = true
+lazy-regex.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
