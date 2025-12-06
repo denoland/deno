@@ -25,6 +25,7 @@ use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
+use rusqlite::ffi::sqlite3_db_filename;
 use rusqlite::limits::Limit;
 
 use super::Session;
@@ -1046,6 +1047,54 @@ impl DatabaseSync {
       freed: Cell::new(false),
       db: Rc::downgrade(&self.conn),
     })
+  }
+
+  fn location<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    name_value: v8::Local<'a, v8::Value>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let name = if !name_value.is_undefined() {
+      if !name_value.is_string() {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"dbName\" argument must be a string.",
+          ),
+        ));
+      }
+      name_value.to_rust_string_lossy(scope)
+    } else {
+      "main".to_string()
+    };
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+    let name_cstring = CString::new(name)?;
+
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer.
+    let db_filename =
+      unsafe { sqlite3_db_filename(raw_handle, name_cstring.as_ptr()) };
+    if db_filename.is_null() {
+      return Ok(v8::null(scope).into());
+    }
+
+    // SAFETY: `db_filename` is a valid C string pointer.
+    let filename_cstr = unsafe { CStr::from_ptr(db_filename).to_bytes() };
+    if filename_cstr.is_empty() {
+      return Ok(v8::null(scope).into());
+    }
+
+    let filename = v8::String::new_from_utf8(
+      scope,
+      filename_cstr,
+      v8::NewStringType::Normal,
+    )
+    .unwrap();
+
+    Ok(filename.into())
   }
 }
 
