@@ -982,6 +982,7 @@
 "parallel/test-sqlite-custom-functions.js" = {}
 "parallel/test-sqlite-data-types.js" = {}
 "parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-database-sync.js" = {}
 "parallel/test-sqlite-named-parameters.js" = {}
 "parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-statement-sync-columns.js" = {}
