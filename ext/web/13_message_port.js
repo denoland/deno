@@ -385,6 +385,13 @@ function deserializeJsMessageData(messageData) {
           ArrayPrototypePush(hostObjects, hostObj);
           break;
         }
+        case "multiResource": {
+          const { 0: type, 1: rids } = transferable.data;
+          const hostObj = core.getTransferableResource(type).receive(rids);
+          ArrayPrototypePush(transferables, hostObj);
+          ArrayPrototypePush(hostObjects, hostObj);
+          break;
+        }
         case "arrayBuffer": {
           ArrayPrototypePush(transferredArrayBuffers, transferable.data);
           const index = ArrayPrototypePush(transferables, null);
@@ -460,10 +467,17 @@ function serializeJsMessageData(data, transferables) {
     if (transferable[core.hostObjectBrand]) {
       const type = transferable[core.hostObjectBrand];
       const rid = core.getTransferableResource(type).send(transferable);
-      ArrayPrototypePush(serializedTransferables, {
-        kind: "resource",
-        data: [type, rid],
-      });
+      if (typeof rid === "number") {
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "resource",
+          data: [type, rid],
+        });
+      } else {
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "multiResource",
+          data: [type, rid],
+        });
+      }
     } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
