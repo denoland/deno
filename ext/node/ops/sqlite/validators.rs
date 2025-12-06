@@ -11,6 +11,9 @@ pub enum Error {
   #[class(type)]
   #[error("Cannot call constructor without `new`")]
   ConstructCallRequired,
+  #[class(type)]
+  #[error("The URL must be of scheme file:")]
+  InvalidUrlScheme,
 }
 
 impl Error {
@@ -18,6 +21,7 @@ impl Error {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
       Self::ConstructCallRequired => ErrorCode::ERR_CONSTRUCT_CALL_REQUIRED,
+      Self::InvalidUrlScheme => ErrorCode::ERR_INVALID_URL_SCHEME,
     }
   }
 }
@@ -26,6 +30,7 @@ impl Error {
 pub enum ErrorCode {
   ERR_INVALID_ARG_TYPE,
   ERR_CONSTRUCT_CALL_REQUIRED,
+  ERR_INVALID_URL_SCHEME,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -39,6 +44,7 @@ impl ErrorCode {
     match self {
       Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
       Self::ERR_CONSTRUCT_CALL_REQUIRED => "ERR_CONSTRUCT_CALL_REQUIRED",
+      Self::ERR_INVALID_URL_SCHEME => "ERR_INVALID_URL_SCHEME",
     }
   }
 }

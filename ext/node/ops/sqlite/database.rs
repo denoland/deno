@@ -233,6 +233,73 @@ impl<'a> ApplyChangesetOptions<'a> {
   }
 }
 
+fn parse_path(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<String, validators::Error> {
+  let maybe_path = if value.is_string() {
+    let path_str = value.to_rust_string_lossy(scope);
+    Some(path_str)
+  } else if value.is_uint8_array() {
+    let buffer_view = value.cast::<v8::Uint8Array>();
+    let buffer_view_data = buffer_view.data() as *mut u8;
+    // SAFETY: `buffer_view_data` is valid as long as `buffer_view` is alive,
+    let path_slice = unsafe {
+      std::slice::from_raw_parts(buffer_view_data, buffer_view.byte_length())
+    };
+
+    let path_str = str::from_utf8(path_slice).unwrap().to_string();
+    Some(path_str)
+  } else if value.is_object() {
+    v8_static_strings! {
+      HREF = "href",
+      URL = "URL"
+    }
+
+    let global = scope.get_current_context().global(scope);
+    let url_str = URL.v8_string(scope).unwrap();
+    let js_url: v8::Local<v8::Object> = {
+      global
+        .get(scope, url_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap()
+    };
+
+    let path_url = v8::Local::<v8::Object>::try_from(value).unwrap();
+    if !path_url.instance_of(scope, js_url).unwrap() {
+      None
+    } else {
+      let href_str = HREF.v8_string(scope).unwrap();
+      let path_href = path_url
+        .get(scope, href_str.into())
+        .unwrap()
+        .to_rust_string_lossy(scope);
+
+      if !path_href.starts_with("file:") {
+        return Err(validators::Error::InvalidUrlScheme);
+      }
+      Some(path_href)
+    }
+  } else {
+    None
+  };
+
+  let maybe_path = maybe_path.filter(|path| {
+    if path.find('\0').is_some() {
+      return false;
+    }
+    return true;
+  });
+
+  match maybe_path {
+    Some(path) => Ok(path),
+    None => Err(validators::Error::InvalidArgType(
+      "The \"path\" argument must be a string, Uint8Array, or URL without null bytes.",
+    )),
+  }
+}
+
 pub struct DatabaseSync {
   pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
   statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
@@ -408,11 +475,12 @@ impl DatabaseSync {
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[validate(validators::path_str)]
-    #[string]
-    location: String,
+    scope: &mut v8::PinScope<'_, '_>,
+    location_raw: v8::Local<v8::Value>,
     #[from_v8] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
+    let location = parse_path(scope, location_raw)?;
+
     let db = if options.open {
       let db =
         open_db(state, options.read_only, &location, options.allow_extension)?;
