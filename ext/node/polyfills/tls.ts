@@ -97,8 +97,8 @@ export const DEFAULT_MIN_VERSION = "TLSv1.2";
 export const CLIENT_RENEG_LIMIT = 3;
 export const CLIENT_RENEG_WINDOW = 600;
 
-export class CryptoStream { }
-export class SecurePair { }
+export class CryptoStream {}
+export class SecurePair {}
 export const Server = tlsWrap.Server;
 
 export function setDefaultCACertificates(certs: string[]) {

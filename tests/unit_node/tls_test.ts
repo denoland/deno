@@ -148,7 +148,7 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
     port: 8444,
   });
   socket.on("connect", () => {
-    socket.on("data", () => { });
+    socket.on("data", () => {});
     socket.on("close", resolve);
 
     socket.removeAllListeners("data");
@@ -369,9 +369,11 @@ Deno.test({
       `
         import * as tls from "node:tls";
         
-        const key = Deno.readTextFileSync("${join(tlsTestdataDir, "localhost.key")
+        const key = Deno.readTextFileSync("${
+        join(tlsTestdataDir, "localhost.key")
       }");
-        const cert = Deno.readTextFileSync("${join(tlsTestdataDir, "localhost.crt")
+        const cert = Deno.readTextFileSync("${
+        join(tlsTestdataDir, "localhost.crt")
       }");
         
         const server = tls.createServer({ key, cert }, (socket) => {
