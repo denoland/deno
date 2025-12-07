@@ -6,6 +6,7 @@ import {
   op_node_database_backup,
   StatementSync,
 } from "ext:core/ops";
+import type { Buffer } from "node:buffer";
 
 const {
   ObjectDefineProperties,
@@ -73,7 +74,11 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-const backup = op_node_database_backup;
+const backup = op_node_database_backup as (
+  sourceDb: DatabaseSync,
+  path: string | URL | Buffer,
+  options?: BackupOptions,
+) => Promise<number>;
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
