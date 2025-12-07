@@ -29,7 +29,7 @@ pub enum NodeJsErrorCode {
   ERR_UNSUPPORTED_ESM_URL_SCHEME,
   ERR_INVALID_FILE_URL_PATH,
   ERR_UNKNOWN_BUILTIN_MODULE,
-  /// Deno specific since Node doesn't support TypeScript.
+  /// Deno specific since Node doesn't support type checking TypeScript.
   ERR_TYPES_NOT_FOUND,
 }
 
