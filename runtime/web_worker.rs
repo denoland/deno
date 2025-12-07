@@ -681,6 +681,14 @@ impl WebWorker {
 
     // Workers should connect to the main thread's inspector for debugging
     // using the Target domain approach (like Node.js --experimental-worker-inspection)
+    if let Some(ref server) = services.maybe_inspector_server {
+      server.register_inspector(
+        options.main_module.to_string(),
+        js_runtime.inspector(),
+        false,
+      );
+    }
+
     if let Some(main_session_tx) = services.main_inspector_session_tx {
       eprintln!(
         "[WORKER DEBUG] Worker {} connecting to main thread inspector",
@@ -716,8 +724,8 @@ impl WebWorker {
       // This registers the worker as a Target that the main thread can communicate with
       let proxy = deno_core::InspectorSessionProxy {
         channels: deno_core::InspectorSessionChannels::Worker {
-          main_to_worker_tx: main_to_worker_sync_tx_clone,  // Main sends TO worker (sync)
-          worker_to_main_rx,                                 // Main receives FROM worker
+          main_to_worker_tx: main_to_worker_sync_tx_clone, // Main sends TO worker (sync)
+          worker_to_main_rx, // Main receives FROM worker
           worker_url,
         },
         kind: deno_core::InspectorSessionKind::NonBlocking {
@@ -748,7 +756,7 @@ impl WebWorker {
         // This connects the main→worker and worker→main channels to a proper session
         let inspector_session_proxy = deno_core::InspectorSessionProxy {
           channels: deno_core::InspectorSessionChannels::Regular {
-            tx: worker_to_main_tx,       // Inspector sends responses here → main thread
+            tx: worker_to_main_tx, // Inspector sends responses here → main thread
             rx: main_to_worker_async_rx, // Inspector reads commands from here ← main thread (via bridge)
           },
           kind: deno_core::InspectorSessionKind::NonBlocking {
