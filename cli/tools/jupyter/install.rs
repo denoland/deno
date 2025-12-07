@@ -99,7 +99,7 @@ pub fn install(
   let json_data = json!({
       "argv": [current_exe_path, "jupyter", "--kernel", "--conn", "{connection_file}"],
       "display_name": display_name,
-      "language": "typescript",
+      "language": "typescriptreact",
   });
 
   let f = std::fs::File::create(&kernel_spec_path).with_context(|| {
