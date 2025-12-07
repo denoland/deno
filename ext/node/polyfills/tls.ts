@@ -7,7 +7,10 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
-import { op_get_root_certificates } from "ext:core/ops";
+import {
+  op_get_root_certificates,
+  op_set_default_ca_certificates,
+} from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 
 const { ObjectFreeze } = primordials;
@@ -38,6 +41,8 @@ let lazyRootCertificates: string[] | null = null;
 function ensureLazyRootCertificates(target: string[]) {
   if (lazyRootCertificates === null) {
     lazyRootCertificates = op_get_root_certificates() as string[];
+    // Clear target and repopulate
+    target.length = 0;
     lazyRootCertificates.forEach((v) => target.push(v));
     ObjectFreeze(target);
   }
@@ -92,9 +97,30 @@ export const DEFAULT_MIN_VERSION = "TLSv1.2";
 export const CLIENT_RENEG_LIMIT = 3;
 export const CLIENT_RENEG_WINDOW = 600;
 
-export class CryptoStream {}
-export class SecurePair {}
+export class CryptoStream { }
+export class SecurePair { }
 export const Server = tlsWrap.Server;
+
+export function setDefaultCACertificates(certs: string[]) {
+  if (!Array.isArray(certs)) {
+    throw new TypeError(
+      "The argument 'certs' must be an array of strings",
+    );
+  }
+
+  for (const cert of certs) {
+    if (typeof cert !== "string") {
+      throw new TypeError(
+        "Each certificate in 'certs' must be a string",
+      );
+    }
+  }
+
+  op_set_default_ca_certificates(certs);
+
+  lazyRootCertificates = null;
+}
+
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
@@ -111,6 +137,7 @@ export default {
   createServer: tlsWrap.createServer,
   getCiphers,
   rootCertificates,
+  setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
   DEFAULT_MAX_VERSION,

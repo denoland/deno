@@ -148,7 +148,7 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
     port: 8444,
   });
   socket.on("connect", () => {
-    socket.on("data", () => {});
+    socket.on("data", () => { });
     socket.on("close", resolve);
 
     socket.removeAllListeners("data");
@@ -369,11 +369,9 @@ Deno.test({
       `
         import * as tls from "node:tls";
         
-        const key = Deno.readTextFileSync("${
-        join(tlsTestdataDir, "localhost.key")
+        const key = Deno.readTextFileSync("${join(tlsTestdataDir, "localhost.key")
       }");
-        const cert = Deno.readTextFileSync("${
-        join(tlsTestdataDir, "localhost.crt")
+        const cert = Deno.readTextFileSync("${join(tlsTestdataDir, "localhost.crt")
       }");
         
         const server = tls.createServer({ key, cert }, (socket) => {
@@ -441,3 +439,38 @@ Deno.test("mTLS client certificate authentication", async () => {
   assertEquals(result, "mTLS success!");
   server.close();
 });
+
+Deno.test("tls.setDefaultCACertificates exists", () => {
+  assertEquals(typeof tls.setDefaultCACertificates, "function");
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - must be array", () => {
+  assertThrows(
+    () => {
+      (tls.setDefaultCACertificates as any)("not an array");
+    },
+    TypeError,
+    "must be an array",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
+  assertThrows(
+    () => {
+      tls.setDefaultCACertificates([123, 456] as any);
+    },
+    TypeError,
+    "must be a string",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => {
+  const testCert = `-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJAKHHCgVZU1FFMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RDQTCB
+-----END CERTIFICATE-----`;
+
+  tls.setDefaultCACertificates([testCert]);
+});
+

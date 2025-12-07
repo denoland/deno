@@ -46,9 +46,21 @@ use webpki_root_certs;
 use super::crypto::x509::Certificate;
 use super::crypto::x509::CertificateObject;
 
+#[derive(Clone)]
+struct NodeTlsState {
+  custom_ca_certs: Option<Vec<String>>,
+}
+
 #[op2]
 #[serde]
-pub fn op_get_root_certificates() -> Vec<String> {
+pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
+  if let Some(tls_state) = state.try_borrow::<NodeTlsState>() {
+    if let Some(certs) = &tls_state.custom_ca_certs {
+      return certs.clone();
+    }
+  }
+
+  // Return default root certificates if no custom ones are set
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
     .map(|cert| {
@@ -68,6 +80,20 @@ pub fn op_get_root_certificates() -> Vec<String> {
       pem
     })
     .collect::<Vec<String>>()
+}
+
+#[op2]
+pub fn op_set_default_ca_certificates(
+  state: &mut OpState,
+  #[serde] certs: Vec<String>,
+) {
+  if let Some(tls_state) = state.try_borrow_mut::<NodeTlsState>() {
+    tls_state.custom_ca_certs = Some(certs);
+  } else {
+    state.put(NodeTlsState {
+      custom_ca_certs: Some(certs),
+    });
+  }
 }
 
 #[op2]
