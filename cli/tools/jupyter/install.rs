@@ -63,18 +63,12 @@ fn install_icon(
   Ok(())
 }
 
-pub fn install(
-  maybe_name: Option<&str>,
-  maybe_display_name: Option<&str>,
+fn prepare_kernel_spec_dir(
+  kernel_spec_dir_path: &Path,
+  kernel_spec_path: &Path,
   force: bool,
 ) -> Result<(), AnyError> {
-  let user_data_dir = get_user_data_dir()?;
-
-  let kernel_name = maybe_name.unwrap_or("deno");
-  let kernel_spec_dir_path = user_data_dir.join("kernels").join(kernel_name);
-  let kernel_spec_path = kernel_spec_dir_path.join("kernel.json");
-
-  std::fs::create_dir_all(&kernel_spec_dir_path).with_context(|| {
+  std::fs::create_dir_all(kernel_spec_dir_path).with_context(|| {
     format!(
       "Failed to create kernel directory at {}",
       kernel_spec_dir_path.display()
@@ -88,21 +82,25 @@ pub fn install(
     );
   }
 
-  let display_name = maybe_display_name.unwrap_or("Deno");
-  let current_exe_path = current_exe()
-    .context("Failed to get current executable path")?
-    .to_string_lossy()
-    .into_owned();
+  Ok(())
+}
 
+fn install_kernel_spec(
+  kernel_spec_dir_path: &Path,
+  kernel_spec_path: &Path,
+  current_exe_path: &str,
+  display_name: &str,
+  language: &str,
+) -> Result<(), AnyError> {
   // TODO(bartlomieju): add remaining fields as per
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs
   let json_data = json!({
       "argv": [current_exe_path, "jupyter", "--kernel", "--conn", "{connection_file}"],
       "display_name": display_name,
-      "language": "typescriptreact",
+      "language": language,
   });
 
-  let f = std::fs::File::create(&kernel_spec_path).with_context(|| {
+  let f = std::fs::File::create(kernel_spec_path).with_context(|| {
     format!(
       "Failed to create kernelspec file at {}",
       kernel_spec_path.display()
@@ -116,16 +114,69 @@ pub fn install(
   })?;
   let failed_icon_fn =
     || format!("Failed to copy icon to {}", kernel_spec_dir_path.display());
-  install_icon(&kernel_spec_dir_path, "logo-32x32.png", DENO_ICON_32)
+  install_icon(kernel_spec_dir_path, "logo-32x32.png", DENO_ICON_32)
     .with_context(failed_icon_fn)?;
-  install_icon(&kernel_spec_dir_path, "logo-64x64.png", DENO_ICON_64)
+  install_icon(kernel_spec_dir_path, "logo-64x64.png", DENO_ICON_64)
     .with_context(failed_icon_fn)?;
-  install_icon(&kernel_spec_dir_path, "logo-svg.svg", DENO_ICON_SVG)
+  install_icon(kernel_spec_dir_path, "logo-svg.svg", DENO_ICON_SVG)
     .with_context(failed_icon_fn)?;
 
   log::info!(
     "✅ Deno kernelspec installed successfully at {}.",
     kernel_spec_dir_path.display()
   );
+  Ok(())
+}
+
+pub fn install(
+  maybe_name: Option<&str>,
+  maybe_display_name: Option<&str>,
+  force: bool,
+) -> Result<(), AnyError> {
+  let user_data_dir = get_user_data_dir()?;
+
+  let current_exe_path = current_exe()
+    .context("Failed to get current executable path")?
+    .to_string_lossy()
+    .into_owned();
+
+  let kernel_name = maybe_name.unwrap_or("deno");
+  let kernels_specs_dir_path = user_data_dir.join("kernels");
+  let kernel_spec_dir_path = kernels_specs_dir_path.join(kernel_name);
+  let kernel_spec_path = kernel_spec_dir_path.join("kernel.json");
+  let display_name = maybe_display_name.unwrap_or("Deno");
+
+  prepare_kernel_spec_dir(&kernel_spec_dir_path, &kernel_spec_path, force)?;
+
+  let maybe_kernel_spec_no_tsx_paths =
+    if maybe_name.is_none() && maybe_display_name.is_none() {
+      let dir = kernels_specs_dir_path.join("deno-no-tsx");
+      let path = dir.join("kernel.json");
+      Some((dir, path))
+    } else {
+      None
+    };
+  if let Some((dir_path, path)) = maybe_kernel_spec_no_tsx_paths.as_ref() {
+    prepare_kernel_spec_dir(dir_path, path, force)?;
+  }
+
+  install_kernel_spec(
+    &kernel_spec_dir_path,
+    &kernel_spec_path,
+    &current_exe_path,
+    display_name,
+    "typescriptreact",
+  )?;
+
+  if let Some((dir_path, path)) = maybe_kernel_spec_no_tsx_paths {
+    install_kernel_spec(
+      &dir_path,
+      &path,
+      &current_exe_path,
+      "Deno (no TSX)",
+      "typescript",
+    )?;
+  }
+
   Ok(())
 }
