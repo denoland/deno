@@ -105,12 +105,10 @@ impl<'a> FromV8<'a> for DatabasePath {
     });
 
     match maybe_path {
-      Some(path) => return Ok(Self(path)),
-      None => {
-        return Err(validators::Error::InvalidArgType(
-          "The \"path\" argument must be a string, Uint8Array, or URL without null bytes.",
-        ));
-      }
+      Some(path) => Ok(Self(path)),
+      None => Err(validators::Error::InvalidArgType(
+        "The \"path\" argument must be a string, Uint8Array, or URL without null bytes.",
+      )),
     }
   }
 }
