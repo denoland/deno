@@ -495,27 +495,35 @@ Deno.test("[node/sqlite] detailed SQLite errors", () => {
 });
 
 Deno.test("[node/sqlite] accept Buffer paths", () => {
-  const dbPath = Buffer.from(`${tempDir}/buffer_path.db`);
-  using db = new DatabaseSync(dbPath);
+  const dbPath = `${tempDir}/buffer_path.db`;
+  const backupPath = `${tempDir}/buffer_path_backup.db`;
+  const dbPathBuffer = Buffer.from(dbPath);
+  const backupPathBuffer = Buffer.from(backupPath);
+  const db = new DatabaseSync(dbPathBuffer);
 
   db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
   db.exec("INSERT INTO test (name) VALUES ('Deno')");
 
-  backup(db, Buffer.from(`${tempDir}/buffer_path_backup.db`));
+  backup(db, backupPathBuffer);
+  db.close();
 
-  Deno.removeSync(`${tempDir}/buffer_path.db`);
-  Deno.removeSync(`${tempDir}/buffer_path_backup.db`);
+  Deno.removeSync(dbPath);
+  Deno.removeSync(backupPath);
 });
 
 Deno.test("[node/sqlite] accept URL paths", () => {
-  const dbUrl = new URL(`file://${tempDir}/url_path.db`);
-  using db = new DatabaseSync(dbUrl);
+  const dbPath = `file://${tempDir}/url_path.db`;
+  const backupPath = `file://${tempDir}/url_path_backup.db`;
+  const dbPathUrl = new URL(dbPath);
+  const backupPathUrl = new URL(backupPath);
+  const db = new DatabaseSync(dbPathUrl);
 
   db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
   db.exec("INSERT INTO test (name) VALUES ('Deno')");
 
-  backup(db, new URL(`file://${tempDir}/url_path_backup.db`));
+  backup(db, backupPathUrl);
+  db.close();
 
-  Deno.removeSync(`${tempDir}/url_path.db`);
-  Deno.removeSync(`${tempDir}/url_path_backup.db`);
+  Deno.removeSync(dbPathUrl);
+  Deno.removeSync(backupPathUrl);
 });
