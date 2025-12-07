@@ -11974,7 +11974,7 @@
       "Blob-constructor-dom.window.html": false,
       "Blob-bytes.any.html": true,
       "Blob-bytes.any.worker.html": true,
-      "Blob-constructor-endings.html": false
+      "Blob-constructor-endings.html": true
     },
     "file": {
       "File-constructor.any.html": true,
@@ -11988,7 +11988,7 @@
       "send-file-formdata.any.html": true,
       "send-file-formdata.any.worker.html": true,
       "Worker-read-file-constructor.worker.html": true,
-      "File-constructor-endings.html": false,
+      "File-constructor-endings.html": true,
       "send-file-form-controls.html": false,
       "send-file-form-iso-2022-jp.html": false,
       "send-file-form-punctuation.html": false,
@@ -15138,7 +15138,7 @@
         "navigator": {
           "002.html": false,
           "003.html": false,
-          "004.html": false,
+          "004.html": true,
           "005.html": true,
           "006.html": false,
           "007.html": true,
