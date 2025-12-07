@@ -2,6 +2,7 @@
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as nodeAssert from "node:assert";
+import { Buffer } from "node:buffer";
 
 const tempDir = Deno.makeTempDirSync();
 
@@ -491,4 +492,30 @@ Deno.test("[node/sqlite] detailed SQLite errors", () => {
     errcode: 1,
     errstr: "SQL logic error",
   });
+});
+
+Deno.test("[node/sqlite] accept Buffer paths", () => {
+  const dbPath = Buffer.from(`${tempDir}/buffer_path.db`);
+  using db = new DatabaseSync(dbPath);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, Buffer.from(`${tempDir}/buffer_path_backup.db`));
+
+  Deno.removeSync(`${tempDir}/buffer_path.db`);
+  Deno.removeSync(`${tempDir}/buffer_path_backup.db`);
+});
+
+Deno.test("[node/sqlite] accept URL paths", () => {
+  const dbUrl = new URL(`file://${tempDir}/url_path.db`);
+  using db = new DatabaseSync(dbUrl);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, new URL(`file://${tempDir}/url_path_backup.db`));
+
+  Deno.removeSync(`${tempDir}/url_path.db`);
+  Deno.removeSync(`${tempDir}/url_path_backup.db`);
 });
