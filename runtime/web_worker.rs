@@ -679,36 +679,25 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
+    // if let Some(ref server) = services.maybe_inspector_server {
+    //   server.register_inspector(
+    //     options.main_module.to_string(),
+    //     js_runtime.inspector(),
+    //     false,
+    //   );
+    // }
+
     // Workers should connect to the main thread's inspector for debugging
     // using the Target domain approach (like Node.js --experimental-worker-inspection)
-    if let Some(ref server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
-    }
-
     if let Some(main_session_tx) = services.main_inspector_session_tx {
-      eprintln!(
-        "[WORKER DEBUG] Worker {} connecting to main thread inspector",
-        options.name
-      );
-
-      // Create ONE set of channels for bidirectional communication:
-      // - main_to_worker: main thread sends commands TO worker (SYNC for pause-safe polling)
-      // - worker_to_main: worker sends responses/events TO main thread (async is OK)
       let (main_to_worker_sync_tx, main_to_worker_sync_rx) =
         std::sync::mpsc::channel::<String>();
       let (worker_to_main_tx, worker_to_main_rx) =
         deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
         );
-
-      // Create an async unbounded channel that we'll bridge from the sync receiver
       let (main_to_worker_async_tx, main_to_worker_async_rx) =
         deno_core::futures::channel::mpsc::unbounded::<String>();
 
-      // Spawn a bridge task that polls the sync receiver and forwards to async sender
       let main_to_worker_sync_tx_clone = main_to_worker_sync_tx.clone();
       std::thread::spawn(move || {
         while let Ok(msg) = main_to_worker_sync_rx.recv() {
@@ -771,21 +760,10 @@ impl WebWorker {
         eprintln!(
           "[WORKER DEBUG] Registering proper inspector session for worker"
         );
-        if let Err(e) = session_sender.unbounded_send(inspector_session_proxy) {
-          eprintln!(
-            "[WORKER DEBUG] Failed to register inspector session: {}",
-            e
-          );
-        } else {
-          eprintln!("[WORKER DEBUG] Inspector session registered successfully");
-        }
+        session_sender
+          .unbounded_send(inspector_session_proxy)
+          .unwrap();
       }
-    } else if let Some(_server) = services.maybe_inspector_server {
-      // Fallback to old behavior if no main session tx available
-      // (this shouldn't happen in our new architecture)
-      eprintln!(
-        "[WORKER DEBUG] No main inspector session tx, worker debugging disabled"
-      );
     }
 
     let (internal_handle, external_handle) = {
