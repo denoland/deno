@@ -14980,6 +14980,129 @@ Deno.test({
   client.shutdown();
 }
 
+/// Tests the output of tests using `Deno.test.only()`
+#[test]
+#[timeout(30_000)]
+fn lsp_testing_test_only_pass() {
+  // TOOD: TODO: when we import std/assert from local std library: remove JSR_URL
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .env("JSR_URL", "")
+    .build();
+  let temp_dir = context.temp_dir();
+
+  // TOOD: TODO: import std/assert from local std library
+  temp_dir.write(
+    "./test.ts",
+    r#"
+import { assert } from 'jsr:@std/assert';
+
+Deno.test.only({
+  name: "test a",
+  fn() {
+  }
+});
+"#,
+  );
+
+  let specifier = temp_dir.url().join("test.ts").unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+  }));
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(
+    res.enqueued[0].text_document.uri.as_str(),
+    specifier.as_str()
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("window/showMessage");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "type": lsp::MessageType::ERROR,
+      "message": "Test failed because the \"only\" option was used",
+    }))
+  );
+
+  client.shutdown();
+}
+
+/// Tests the output of tests using `Deno.test.only()`
+#[test]
+#[timeout(30_000)]
+fn lsp_testing_test_only_fail() {
+  // TOOD: TODO: when we import std/assert from local std library: remove JSR_URL
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .env("JSR_URL", "")
+    .build();
+  let temp_dir = context.temp_dir();
+
+  // TOOD: TODO: import std/assert from local std library
+  temp_dir.write(
+    "./test.ts",
+    r#"
+import { assert } from 'jsr:@std/assert';
+
+Deno.test.only({
+  name: "test a",
+  fn() {
+    assert(false);
+  }
+});
+"#,
+  );
+
+  let specifier = temp_dir.url().join("test.ts").unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+    },
+  }));
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(
+    res.enqueued[0].text_document.uri.as_str(),
+    specifier.as_str()
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("window/showMessage");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "type": lsp::MessageType::ERROR,
+      "message": "Test failed",
+    }))
+  );
+
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_testing_api_failure() {

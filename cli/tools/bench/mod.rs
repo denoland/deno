@@ -407,14 +407,14 @@ async fn bench_specifiers(
 
       reporter.report_end(&report);
 
+      if report.failed > 0 {
+        return Err(anyhow!("Bench failed"));
+      }
+
       if used_only {
         return Err(anyhow!(
           "Bench failed because the \"only\" option was used",
         ));
-      }
-
-      if report.failed > 0 {
-        return Err(anyhow!("Bench failed"));
       }
 
       Ok(())

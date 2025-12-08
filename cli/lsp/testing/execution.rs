@@ -445,14 +445,14 @@ impl TestRun {
         let elapsed = Instant::now().duration_since(earlier);
         reporter.report_summary(&summary, &elapsed);
 
+        if summary.failed > 0 {
+          return Err(anyhow!("Test failed"));
+        }
+
         if used_only {
           return Err(anyhow!(
             "Test failed because the \"only\" option was used"
           ));
-        }
-
-        if summary.failed > 0 {
-          return Err(anyhow!("Test failed"));
         }
 
         Ok(())
