@@ -492,3 +492,348 @@ Deno.test("[node/sqlite] detailed SQLite errors", () => {
     errstr: "SQL logic error",
   });
 });
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate input validation", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error testing invalid input
+    db.aggregate("sum", {
+      result: (total) => total,
+    });
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message:
+      'The "options.start" argument must be a function or a primitive value.',
+  });
+
+  nodeAssert.throws(() => {
+    db.aggregate("sum", {
+      start: () => 0,
+      // @ts-expect-error testing invalid input
+      step: "not a function",
+      result: (total) => total,
+    });
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: 'The "options.step" argument must be a function.',
+  });
+
+  nodeAssert.throws(() => {
+    db.aggregate("sum", {
+      start: 0,
+      step: () => null,
+      // @ts-expect-error testing invalid input
+      useBigIntArguments: "",
+    });
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "options\.useBigIntArguments" argument must be a boolean/,
+  });
+
+  nodeAssert.throws(() => {
+    db.aggregate("sum", {
+      start: 0,
+      step: () => null,
+      // @ts-expect-error testing invalid input
+      varargs: "",
+    });
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "options\.varargs" argument must be a boolean/,
+  });
+
+  nodeAssert.throws(() => {
+    db.aggregate("sum", {
+      start: 0,
+      step: () => null,
+      // @ts-expect-error testing invalid input
+      directOnly: "",
+    });
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "options\.directOnly" argument must be a boolean/,
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: supports variable number of arguments when true", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("sum_int", {
+    start: 0,
+    step: (_acc, _value, var1, var2, var3) => {
+      // @ts-expect-error we know var1, var2, var3 are numbers
+      return var1 + var2 + var3;
+    },
+    varargs: true,
+  });
+
+  const result = db.prepare("SELECT sum_int(value, 1, 2, 3) as total FROM data")
+    .get();
+
+  nodeAssert.deepStrictEqual(result, { __proto__: null, total: 6 });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: uses the max between step.length and inverse.length when false", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE t3(x, y);
+    INSERT INTO t3 VALUES ('a', 1),
+                          ('b', 2),
+                          ('c', 3);
+  `);
+
+  db.aggregate("sumint", {
+    start: 0,
+    step: (acc, var1) => {
+      // @ts-expect-error we know var1 and acc are numbers
+      return var1 + acc;
+    },
+    inverse: (acc, var1, var2) => {
+      // @ts-expect-error we know var1, var2 and acc are numbers
+      return acc - var1 - var2;
+    },
+    varargs: false,
+  });
+
+  const result = db.prepare(`
+    SELECT x, sumint(y, 10) OVER (
+      ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+    ) AS sum_y
+    FROM t3 ORDER BY x;
+  `).all();
+
+  nodeAssert.deepStrictEqual(result, [
+    { __proto__: null, x: "a", sum_y: 3 },
+    { __proto__: null, x: "b", sum_y: 6 },
+    { __proto__: null, x: "c", sum_y: -5 },
+  ]);
+
+  nodeAssert.throws(() => {
+    db.prepare(`
+      SELECT x, sumint(y) OVER (
+        ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+      ) AS sum_y
+      FROM t3 ORDER BY x;
+    `);
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: "wrong number of arguments to function sumint()",
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate varargs: throws if an incorrect number of arguments is provided when false", () => {
+  using db = new DatabaseSync(":memory:");
+  db.aggregate("sum_int", {
+    start: 0,
+    step: (_acc, var1, var2, var3) => {
+      // @ts-expect-error we know var1 and var2 are numbers
+      return var1 + var2 + var3;
+    },
+    varargs: false,
+  });
+
+  nodeAssert.throws(() => {
+    db.prepare("SELECT sum_int(1, 2, 3, 4)").get();
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: "wrong number of arguments to function sum_int()",
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate: directOnly is false by default", () => {
+  using db = new DatabaseSync(":memory:");
+  db.aggregate("func", {
+    start: 0,
+    // @ts-expect-error we know acc and value are numbers
+    step: (acc, value) => acc + value,
+    // @ts-expect-error we know acc and value are numbers
+    inverse: (acc, value) => acc - value,
+  });
+  db.exec(`
+    CREATE TABLE t3(x, y);
+    INSERT INTO t3 VALUES ('a', 4),
+                          ('b', 5),
+                          ('c', 3);
+  `);
+
+  db.exec(`
+    CREATE TRIGGER test_trigger
+    AFTER INSERT ON t3
+    BEGIN
+        SELECT func(1) OVER ();
+    END;
+  `);
+
+  // TRIGGER will work fine with the window function
+  db.exec("INSERT INTO t3 VALUES('d', 6)");
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate: SQLITE_DIRECT_ONLY flag when true", () => {
+  using db = new DatabaseSync(":memory:");
+  db.aggregate("func", {
+    start: 0,
+    // @ts-expect-error we know acc and value are numbers
+    step: (acc, value) => acc + value,
+    // @ts-expect-error we know acc and value are numbers
+    inverse: (acc, value) => acc - value,
+    directOnly: true,
+  });
+  db.exec(`
+    CREATE TABLE t3(x, y);
+    INSERT INTO t3 VALUES ('a', 4),
+                          ('b', 5),
+                          ('c', 3);
+  `);
+
+  db.exec(`
+    CREATE TRIGGER test_trigger
+    AFTER INSERT ON t3
+    BEGIN
+        SELECT func(1) OVER ();
+    END;
+  `);
+
+  nodeAssert.throws(() => {
+    db.exec("INSERT INTO t3 VALUES('d', 6)");
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: /unsafe use of func\(\)/,
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate start option as a value", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("sum_int", {
+    start: 0,
+    // @ts-expect-error we know acc and value are numbers
+    step: (acc, value) => acc + value,
+  });
+
+  const result = db.prepare("SELECT sum_int(value) as total FROM data").get();
+
+  nodeAssert.deepStrictEqual(result, { __proto__: null, total: 6 });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate start option as a function", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("sum_int", {
+    start: () => 0,
+    // @ts-expect-error we know acc and value are numbers
+    step: (acc, value) => acc + value,
+  });
+
+  const result = db.prepare("SELECT sum_int(value) as total FROM data").get();
+
+  nodeAssert.deepStrictEqual(result, { __proto__: null, total: 6 });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate start: can hold any js value", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  // @ts-expect-error outdated type definition
+  db.aggregate("sum_int", {
+    start: () => [],
+    step: (acc, value) => {
+      // @ts-expect-error we know acc is an array
+      return [...acc, value];
+    },
+    // @ts-expect-error we know acc is an array
+    result: (acc) => acc.join(", "),
+  });
+
+  const result = db.prepare("SELECT sum_int(value) as total FROM data").get();
+
+  nodeAssert.deepStrictEqual(result, { __proto__: null, total: "1, 2, 3" });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate start: if start throws an error", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("agg", {
+    start: () => {
+      throw new Error("start error");
+    },
+    step: () => null,
+  });
+
+  nodeAssert.throws(() => {
+    db.prepare("SELECT agg()").get();
+  }, {
+    message: "start error",
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate throws if step throws an error", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("agg", {
+    start: 0,
+    step: () => {
+      throw new Error("step error");
+    },
+  });
+
+  nodeAssert.throws(() => {
+    db.prepare("SELECT agg()").get();
+  }, {
+    message: "step error",
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate throws if result throws an error", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data (value INTEGER)");
+  db.exec("INSERT INTO data VALUES (1), (2), (3)");
+  db.aggregate("sum_int", {
+    start: 0,
+    step: (acc, value) => {
+      // @ts-expect-error we know acc and value are numbers
+      return acc + value;
+    },
+    result: () => {
+      throw new Error("result error");
+    },
+  });
+  nodeAssert.throws(() => {
+    db.prepare("SELECT sum_int(value) as result FROM data").get();
+  }, {
+    message: "result error",
+  });
+});
+
+Deno.test("[node/sqlite] DatabaseSync.aggregate: throws an error when trying to use as window function but didn't provide options.inverse", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE t3(x, y);
+    INSERT INTO t3 VALUES ('a', 4),
+                          ('b', 5),
+                          ('c', 3);
+  `);
+
+  db.aggregate("sumint", {
+    start: 0,
+    // @ts-expect-error we know total and nextValue are numbers
+    step: (total, nextValue) => total + nextValue,
+  });
+
+  nodeAssert.throws(() => {
+    db.prepare(`
+      SELECT x, sumint(y) OVER (
+        ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+      ) AS sum_y
+      FROM t3 ORDER BY x;
+    `);
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: "sumint() may not be used as a window function",
+  });
+});

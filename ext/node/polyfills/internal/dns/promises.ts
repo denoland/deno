@@ -194,8 +194,19 @@ export function lookup(
     }
 
     if (options?.family != null) {
-      validateOneOf(options.family, "options.family", validFamilies);
-      family = options.family;
+      // Accept both numeric (0, 4, 6) and string ('IPv4', 'IPv6') family values
+      // to match Node.js behavior
+      switch (options.family) {
+        case "IPv4":
+          family = 4;
+          break;
+        case "IPv6":
+          family = 6;
+          break;
+        default:
+          validateOneOf(options.family, "options.family", validFamilies);
+          family = options.family;
+      }
     }
 
     if (options?.all != null) {

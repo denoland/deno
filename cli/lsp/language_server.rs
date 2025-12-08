@@ -2323,8 +2323,9 @@ impl Inner {
     );
 
     // Organize imports
-    if kinds.is_empty()
-      || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    if !self.config.client_provided_organize_imports_capable()
+      && (kinds.is_empty()
+        || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS))
     {
       let document_has_errors = params.context.diagnostics.iter().any(|d| {
         // Assume diagnostics without a severity are errors

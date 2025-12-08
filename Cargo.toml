@@ -51,7 +51,9 @@ members = [
   "tests/sqlite_extension_test",
   "tests/util/server",
 ]
-exclude = ["tests/util/std/hash/_wasm"]
+# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
+# feature, which is incompatible with the "session" feature used by the rest of the workspace.
+exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
 
 [workspace.package]
 authors = ["the Deno authors"]
@@ -71,7 +73,7 @@ deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.1"
+deno_npm = "=0.42.2"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.26.0"
@@ -312,7 +314,7 @@ dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
-libsui = "0.11.0"
+libsui = "0.12.2"
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"
