@@ -1,35 +1,35 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 
-[workspace]
-resolver = "2"
-members = [
-  "bench_util",
-  "cli",
-  "cli/lib",
-  "cli/rt",
-  "cli/snapshot",
-  "ext/bundle",
-  "ext/cache",
-  "ext/canvas",
-  "ext/cron",
-  "ext/crypto",
-  "ext/fetch",
-  "ext/ffi",
-  "ext/fs",
-  "ext/http",
-  "ext/io",
-  "ext/kv",
-  "ext/napi",
-  "ext/napi/sym",
-  "ext/net",
-  "ext/node",
-  "ext/rt_helper",
-  "ext/signals",
-  "ext/telemetry",
-  "ext/url",
-  "ext/web",
-  "ext/webgpu",
-  "ext/webidl",
+	[workspace]
+	resolver = "2"
+	members = [
+		"bench_util",
+		"cli",
+		"cli/lib",
+		"cli/rt",
+		"cli/snapshot",
+		"ext/bundle",
+		"ext/cache",
+		"ext/canvas",
+		"ext/cron",
+		"ext/crypto",
+		"ext/fetch",
+		"ext/ffi",
+		"ext/fs",
+		"ext/http",
+		"ext/io",
+		"ext/kv",
+		"ext/napi",
+		"ext/napi/sym",
+		"ext/net",
+		"ext/node",
+		"ext/rt_helper",
+		"ext/signals",
+		"ext/telemetry",
+		"ext/url",
+		"ext/web",
+		"ext/webgpu",
+		"ext/webidl",
   "ext/websocket",
   "ext/webstorage",
   "libs/config",
@@ -315,7 +315,7 @@ dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 # libsui = "0.12.1"
-libsui = { git = "https://github.com/denoland/sui", branch = "find_section_search_intel" }
+libsui = { git = "https://github.com/denoland/sui", branch = "main" }
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"
