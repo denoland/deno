@@ -268,6 +268,7 @@ function modifySourceFiles() {
 function handleInterface(decl: InterfaceDeclaration) {
   switch (decl.getName()) {
     case "ImportMeta": {
+      // make these align with our ImportMeta, which is optional
       decl.getPropertyOrThrow("dirname").setHasQuestionToken(true);
       decl.getPropertyOrThrow("filename").setHasQuestionToken(true);
       break;
