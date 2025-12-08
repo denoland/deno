@@ -287,6 +287,7 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub empty: bool,
   pub yes: bool,
 }
 
@@ -2646,16 +2647,8 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(env_file_arg())
       .arg(
         script_arg()
-          .num_args(0..=1)
-          .required_unless_present("help"),
-      )
-      .arg(
-        Arg::new("args")
-          .num_args(0..)
-          .help("Arguments to provide for Deno.args (must be preceded by `--`)")
-          .action(ArgAction::Append)
-          .value_name("ARGS")
-          .last(true)
+          .required_unless_present("help")
+          .trailing_var_arg(true),
       )
   })
 }
@@ -3150,7 +3143,7 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "empty"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3164,6 +3157,13 @@ fn init_subcommand() -> Command {
             .long("serve")
             .help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("empty")
+            .long("empty")
+            .help("Generate a minimal project with just main.ts and deno.json")
+            .conflicts_with_all(["lib", "serve", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -5654,11 +5654,9 @@ fn compile_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false, true)?;
 
-  let source_file = matches.remove_one::<String>("script_arg").unwrap();
-  let args = matches
-    .remove_many::<String>("args")
-    .unwrap_or_default()
-    .collect();
+  let mut script = matches.remove_many::<String>("script_arg").unwrap();
+  let source_file = script.next().unwrap();
+  let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
@@ -5945,6 +5943,7 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut empty = matches.get_flag("empty");
   let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
@@ -5965,6 +5964,7 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        empty = inner_matches.get_flag("empty");
         yes = inner_matches.get_flag("yes");
       }
     }
@@ -5976,6 +5976,7 @@ fn init_parse(
     dir,
     lib,
     serve,
+    empty,
     yes,
   });
 
@@ -11899,7 +11900,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "--", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -12601,6 +12602,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12617,6 +12619,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12633,6 +12636,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         log_level: Some(Level::Error),
@@ -12650,6 +12654,7 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12666,6 +12671,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12682,6 +12688,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12704,6 +12711,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12720,6 +12728,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12736,6 +12745,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12752,6 +12762,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: true,
         }),
         ..Flags::default()
