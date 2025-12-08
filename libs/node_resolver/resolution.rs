@@ -1036,7 +1036,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
-    if name == "#" || name.starts_with("#/") || name.ends_with('/') {
+    if name == "#" || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(
         errors::InvalidModuleSpecifierError {
