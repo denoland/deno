@@ -81,7 +81,7 @@ pub struct InstallStats {
   pub downloaded_jsr: DashSet<String>,
   pub reused_jsr: DashSet<String>,
   pub resolved_npm: DashSet<String>,
-  pub downloaded_npm: Count,
+  pub downloaded_npm: DashSet<String>,
   pub intialized_npm: DashSet<String>,
   pub reused_npm: Count,
 }
@@ -107,7 +107,7 @@ impl std::fmt::Debug for InstallStats {
       )
       .field("resolved_npm", &self.resolved_npm.len())
       .field("resolved_jsr_count", &self.resolved_jsr.len())
-      .field("downloaded_npm", &self.downloaded_npm.get())
+      .field("downloaded_npm", &self.downloaded_npm.len())
       .field("downloaded_jsr_count", &self.downloaded_jsr.len())
       .field(
         "intialized_npm",
@@ -151,18 +151,13 @@ impl InstallReporter {
 }
 
 impl deno_npm_installer::InstallProgressReporter for InstallReporter {
-  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {
-    // log::info!("initializing: {}", nv);
-  }
+  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {}
 
   fn initialized(&self, nv: &deno_semver::package::PackageNv) {
-    // log::info!("initialized: {}", nv);
     self.stats.intialized_npm.insert(nv.to_string());
   }
 
-  fn blocking(&self, _message: &str) {
-    // log::info!("blocking: {}", message);
-  }
+  fn blocking(&self, _message: &str) {}
 
   fn scripts_not_run_warning(
     &self,
@@ -217,8 +212,8 @@ impl deno_npm::resolution::Reporter for InstallReporter {
 impl deno_npm_cache::TarballCacheReporter for InstallReporter {
   fn download_started(&self, _nv: &deno_semver::package::PackageNv) {}
 
-  fn downloaded(&self, _nv: &deno_semver::package::PackageNv) {
-    self.stats.downloaded_npm.inc();
+  fn downloaded(&self, nv: &deno_semver::package::PackageNv) {
+    self.stats.downloaded_npm.insert(nv.to_string());
   }
 
   fn reused_cache(&self, _nv: &deno_semver::package::PackageNv) {
@@ -555,12 +550,13 @@ fn categorize_installed_npm_deps(
   let mut installed_normal_deps = Vec::new();
   let mut installed_dev_deps = Vec::new();
 
+  let npm_installed_set = if npm_resolver.root_node_modules_path().is_some() {
+    &install_reporter.stats.intialized_npm
+  } else {
+    &install_reporter.stats.downloaded_npm
+  };
   for pkg in top_level_packages {
-    if !install_reporter
-      .stats
-      .intialized_npm
-      .contains(&pkg.nv.to_string())
-    {
+    if !npm_installed_set.contains(&pkg.nv.to_string()) {
       continue;
     }
     if normal_deps.contains(&pkg.nv.name.to_string()) {
@@ -645,7 +641,7 @@ pub fn print_install_report(
       );
     }
 
-    let npm_download = rep.stats.downloaded_npm.get();
+    let npm_download = rep.stats.downloaded_npm.len();
     log::info!(
       "{} {} {}",
       deno_terminal::colors::gray("Downloaded"),
