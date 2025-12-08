@@ -227,6 +227,7 @@ function modifySourceFiles() {
       if (body == null) {
         continue;
       }
+      // remove any globals that conflict with our globals
       for (const statement of body.getStatements()) {
         if (Node.isVariableStatement(statement)) {
           for (const decl of statement.getDeclarations()) {
