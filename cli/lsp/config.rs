@@ -1208,6 +1208,14 @@ impl Config {
     })()
     .unwrap_or(false)
   }
+
+  pub fn client_provided_organize_imports_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("clientProvidedOrganizeImports")?.as_bool()
+    })()
+    .unwrap_or(false)
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

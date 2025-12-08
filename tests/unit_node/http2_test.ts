@@ -462,3 +462,41 @@ Deno.test("internal/http2/util exports", () => {
   assert(typeof util.kProxySocket === "symbol");
   assert(typeof util.kRequest === "symbol");
 });
+
+Deno.test("[node/http2] Server.address() includes family property", async () => {
+  // Test IPv4
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http2.createServer((_req, res) => {
+      res.end("ok");
+    });
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as net.AddressInfo;
+      assertEquals(addr.address, "127.0.0.1");
+      assertEquals(addr.family, "IPv4");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  // Test IPv6
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http2.createServer((_req, res) => {
+      res.end("ok");
+    });
+
+    server.listen(0, "::1", () => {
+      const addr = server.address() as net.AddressInfo;
+      assertEquals(addr.address, "::1");
+      assertEquals(addr.family, "IPv6");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+});

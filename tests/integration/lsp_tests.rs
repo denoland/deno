@@ -8035,6 +8035,47 @@ console.log(other, submodule);
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports_client_provided_capability() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { z, y } from "./z.ts";
+import { c, a, b } from "./b.ts";
+import { d } from "./a.ts";
+import unused from "./c.ts";
+
+console.log(b, a, c, d, y, z);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.enable_client_provided_organize_imports();
+  });
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
