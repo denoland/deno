@@ -16,5 +16,5 @@ Dependencies:
 │  Ignored build scripts for packages:
 │  npm:denotest-packagejson-missing-info@0.5.0-missingscripts
 │
-│  Run "deno install --allow-scripts=npm:denotest-packagejson-missing-info" to run build scripts.
+│  Run "deno approve-scripts" to run build scripts.
 ╰─
