@@ -758,10 +758,10 @@ impl<TGraphContainer: ModuleGraphContainer>
       RequestedModuleType::None => {
         match file.resolve_media_type_and_charset().0 {
           MediaType::Wasm => ModuleType::Wasm,
-          _ => unreachable!(),
+          t => unreachable!("{t}"),
         }
       }
-      _ => unreachable!(),
+      t => unreachable!("{t}"),
     };
 
     Ok(ModuleCodeStringSource {
