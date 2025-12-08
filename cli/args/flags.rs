@@ -287,6 +287,7 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub empty: bool,
   pub yes: bool,
 }
 
@@ -3142,7 +3143,7 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "empty"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3156,6 +3157,13 @@ fn init_subcommand() -> Command {
             .long("serve")
             .help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("empty")
+            .long("empty")
+            .help("Generate a minimal project with just main.ts and deno.json")
+            .conflicts_with_all(["lib", "serve", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -5935,6 +5943,7 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut empty = matches.get_flag("empty");
   let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
@@ -5955,6 +5964,7 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        empty = inner_matches.get_flag("empty");
         yes = inner_matches.get_flag("yes");
       }
     }
@@ -5966,6 +5976,7 @@ fn init_parse(
     dir,
     lib,
     serve,
+    empty,
     yes,
   });
 
@@ -12591,6 +12602,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12607,6 +12619,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12623,6 +12636,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         log_level: Some(Level::Error),
@@ -12640,6 +12654,7 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12656,6 +12671,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12672,6 +12688,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12694,6 +12711,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12710,6 +12728,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12726,6 +12745,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12742,6 +12762,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: true,
         }),
         ..Flags::default()
