@@ -60,6 +60,7 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  PromiseWithResolvers,
   RangeError,
   ReflectHas,
   SafeFinalizationRegistry,
@@ -5157,6 +5158,8 @@ class ReadableStream {
   /** @type {Deferred<void>} */
   [_isClosedPromise];
 
+  [core.hostObjectBrand] = "ReadableStream";
+
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
    * @param {QueuingStrategy<R>=} strategy
@@ -6164,6 +6167,8 @@ class TransformStream {
   /** @type {WritableStream<I>} */
   [_writable];
 
+  [core.hostObjectBrand] = "TransformStream";
+
   /**
    * @param {Transformer<I, O>} transformer
    * @param {QueuingStrategy<I>} writableStrategy
@@ -6174,6 +6179,10 @@ class TransformStream {
     writableStrategy = { __proto__: null },
     readableStrategy = { __proto__: null },
   ) {
+    if (transformer === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {
       transformer = webidl.converters.object(transformer, prefix, "Argument 1");
@@ -6373,6 +6382,8 @@ class WritableStream {
   [_writer];
   /** @type {Deferred<void>[]} */
   [_writeRequests];
+
+  [core.hostObjectBrand] = "WritableStream";
 
   /**
    * @param {UnderlyingSink<W>=} underlyingSink
@@ -6739,6 +6750,283 @@ const WritableStreamDefaultControllerPrototype =
 function createProxy(stream) {
   return stream.pipeThrough(new TransformStream());
 }
+
+function packAndPostMessage(port, type, value) {
+  port.postMessage({ type, value, __proto__: null });
+}
+
+function crossRealmTransformSendError(port, error) {
+  packAndPostMessage(port, "error", error);
+}
+
+function packAndPostMessageHandlingError(port, type, value) {
+  try {
+    packAndPostMessage(port, type, value);
+  } catch (e) {
+    crossRealmTransformSendError(port, e);
+    throw e;
+  }
+}
+
+/**
+ * @param stream {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformReadable(stream, port) {
+  initializeReadableStream(stream);
+  const controller = new ReadableStreamDefaultController(_brand);
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "chunk") {
+      readableStreamDefaultControllerEnqueue(controller, event.data.value);
+    } else if (event.data.type === "close") {
+      readableStreamDefaultControllerClose(controller);
+      port.close();
+    } else if (event.data.type === "error") {
+      readableStreamDefaultControllerError(controller, event.data.value);
+      port.close();
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    readableStreamDefaultControllerError(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const pullAlgorithm = () => {
+    packAndPostMessage(port, "pull", undefined);
+    return PromiseResolve(undefined);
+  };
+  const cancelAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+    } catch (e) {
+      return PromiseReject(e);
+    } finally {
+      port.close();
+    }
+    return PromiseResolve(undefined);
+  };
+  const sizeAlgorithm = () => 1;
+  setUpReadableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    pullAlgorithm,
+    cancelAlgorithm,
+    0,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param stream {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformWritable(stream, port) {
+  initializeWritableStream(stream);
+  const controller = new WritableStreamDefaultController(_brand);
+  let backpressurePromise = PromiseWithResolvers();
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "pull") {
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    } else if (event.data.type === "error") {
+      writableStreamDefaultControllerErrorIfNeeded(
+        controller,
+        event.data.value,
+      );
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    writableStreamDefaultControllerErrorIfNeeded(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const writeAlgorithm = (chunk) => {
+    if (!backpressurePromise) {
+      backpressurePromise = PromiseWithResolvers();
+      backpressurePromise.resolve();
+    }
+    return PromisePrototypeThen(backpressurePromise.promise, () => {
+      backpressurePromise = PromiseWithResolvers();
+      try {
+        packAndPostMessageHandlingError(port, "chunk", chunk);
+      } catch (e) {
+        port.close();
+        throw e;
+      }
+    });
+  };
+  const closeAlgorithm = () => {
+    packAndPostMessage(port, "close", undefined);
+    port.close();
+    return PromiseResolve(undefined);
+  };
+  const abortAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+      return PromiseResolve(undefined);
+    } catch (error) {
+      return PromiseReject(error);
+    } finally {
+      port.close();
+    }
+  };
+  const sizeAlgorithm = () => 1;
+  setUpWritableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    writeAlgorithm,
+    closeAlgorithm,
+    abortAlgorithm,
+    1,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param value {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function readableStreamTransferSteps(value, port) {
+  if (isReadableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  const writable = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(writable, port);
+  const promise = readableStreamPipeTo(value, writable, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {ReadableStream<any>}
+ */
+function readableStreamTransferReceivingSteps(port) {
+  const stream = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function writableStreamTransferSteps(value, port) {
+  if (isWritableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  const readable = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(readable, port);
+  const promise = readableStreamPipeTo(readable, value, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {WritableStream<any>}
+ */
+function writableStreamTransferReceivingSteps(port) {
+  const stream = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {TransformStream<any>}
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ */
+function transformStreamTransferSteps(value, portR, portW) {
+  if (isReadableStreamLocked(value.readable)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  if (isWritableStreamLocked(value.writable)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  readableStreamTransferSteps(value.readable, portR);
+  writableStreamTransferSteps(value.writable, portW);
+}
+
+/**
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ * @returns {TransformStream<any>}
+ */
+function transformStreamTransferReceivingSteps(portR, portW) {
+  const stream = new TransformStream(_brand);
+  stream[_readable] = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream[_readable], portR);
+  stream[_writable] = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream[_writable], portW);
+  return stream;
+}
+
+core.registerTransferableResource(
+  "ReadableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    readableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return readableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "WritableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    writableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return writableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "TransformStream",
+  (value) => {
+    const { port1: portR1, port2: portR2 } = new MessageChannel();
+    const { port1: portW1, port2: portW2 } = new MessageChannel();
+    transformStreamTransferSteps(value, portR1, portW1);
+    return [
+      core.getTransferableResource("MessagePort").send(portR2),
+      core.getTransferableResource("MessagePort").send(portW2),
+    ];
+  },
+  (rids) => {
+    const portR = core.getTransferableResource("MessagePort").receive(rids[0]);
+    const portW = core.getTransferableResource("MessagePort").receive(rids[1]);
+    return transformStreamTransferReceivingSteps(portR, portW);
+  },
+);
 
 webidl.converters.ReadableStream = webidl
   .createInterfaceConverter("ReadableStream", ReadableStream.prototype);

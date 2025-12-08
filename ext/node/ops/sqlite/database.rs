@@ -25,6 +25,7 @@ use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
+use rusqlite::ffi::sqlite3_create_window_function;
 use rusqlite::limits::Limit;
 
 use super::Session;
@@ -167,6 +168,172 @@ impl Default for DatabaseSyncOptions {
       allow_extension: false,
       enable_double_quoted_string_literals: false,
     }
+  }
+}
+
+struct AggregateFunctionOption<'a> {
+  deterministic: bool,
+  direct_only: bool,
+  use_big_int_arguments: bool,
+  varargs: bool,
+  start: v8::Local<'a, v8::Value>,
+  step: v8::Local<'a, v8::Function>,
+  result: Option<v8::Local<'a, v8::Function>>,
+  inverse: Option<v8::Local<'a, v8::Function>>,
+}
+
+impl<'a> AggregateFunctionOption<'a> {
+  fn from_value(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, validators::Error> {
+    use validators::Error;
+
+    if !value.is_object() {
+      return Err(Error::InvalidArgType(
+        "The \"options\" argument must be an object.",
+      ));
+    }
+
+    v8_static_strings! {
+      DETERMINISTIC_STRING = "deterministic",
+      DIRECT_ONLY_STRING = "directOnly",
+      USE_BIG_INT_ARGUMENTS_STRING = "useBigIntArguments",
+      VARARGS_STRING = "varargs",
+      START_STRING = "start",
+      STEP_STRING = "step",
+      RESULT_STRING = "result",
+      INVERSE_STRING = "inverse",
+    }
+
+    let start_key = START_STRING.v8_string(scope).unwrap();
+    let start_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, start_key.into())
+      .unwrap();
+    if start_value.is_undefined() {
+      return Err(Error::InvalidArgType(
+        "The \"options.start\" argument must be a function or a primitive value.",
+      ));
+    }
+
+    let step_key = STEP_STRING.v8_string(scope).unwrap();
+    let step_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, step_key.into())
+      .unwrap();
+    let step_function = v8::Local::<v8::Function>::try_from(step_value)
+      .map_err(|_| {
+        Error::InvalidArgType(
+          "The \"options.step\" argument must be a function.",
+        )
+      })?;
+
+    let result_key = RESULT_STRING.v8_string(scope).unwrap();
+    let result_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, result_key.into())
+      .unwrap();
+    let result_function = if result_value.is_undefined() {
+      None
+    } else {
+      let func =
+        v8::Local::<v8::Function>::try_from(result_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.result\" argument must be a function.",
+          )
+        })?;
+      Some(func)
+    };
+
+    let mut deterministic = false;
+    let mut use_big_int_arguments = false;
+    let mut varargs = false;
+    let mut direct_only = false;
+
+    let deterministic_key = DETERMINISTIC_STRING.v8_string(scope).unwrap();
+    let deterministic_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, deterministic_key.into())
+      .unwrap();
+    if !deterministic_value.is_undefined() {
+      if !deterministic_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.deterministic\" argument must be a boolean.",
+        ));
+      }
+      deterministic = deterministic_value.boolean_value(scope);
+    }
+
+    let use_bigint_key = USE_BIG_INT_ARGUMENTS_STRING.v8_string(scope).unwrap();
+    let bigint_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, use_bigint_key.into())
+      .unwrap();
+    if !bigint_value.is_undefined() {
+      if !bigint_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.useBigIntArguments\" argument must be a boolean.",
+        ));
+      }
+      use_big_int_arguments = bigint_value.boolean_value(scope);
+    }
+
+    let varargs_key = VARARGS_STRING.v8_string(scope).unwrap();
+    let varargs_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, varargs_key.into())
+      .unwrap();
+    if !varargs_value.is_undefined() {
+      if !varargs_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.varargs\" argument must be a boolean.",
+        ));
+      }
+      varargs = varargs_value.boolean_value(scope);
+    }
+
+    let direct_only_key = DIRECT_ONLY_STRING.v8_string(scope).unwrap();
+    let direct_only_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, direct_only_key.into())
+      .unwrap();
+    if !direct_only_value.is_undefined() {
+      if !direct_only_value.is_boolean() {
+        return Err(Error::InvalidArgType(
+          "The \"options.directOnly\" argument must be a boolean.",
+        ));
+      }
+      direct_only = direct_only_value.boolean_value(scope);
+    }
+
+    let inverse_key = INVERSE_STRING.v8_string(scope).unwrap();
+    let inverse_value = v8::Local::<v8::Object>::try_from(value)
+      .unwrap()
+      .get(scope, inverse_key.into())
+      .unwrap();
+    let inverse_function = if inverse_value.is_undefined() {
+      None
+    } else {
+      let func =
+        v8::Local::<v8::Function>::try_from(inverse_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.inverse\" argument must be a function.",
+          )
+        })?;
+      Some(func)
+    };
+
+    Ok(AggregateFunctionOption {
+      deterministic,
+      direct_only,
+      use_big_int_arguments,
+      varargs,
+      start: start_value,
+      step: step_function,
+      result: result_function,
+      inverse: inverse_function,
+    })
   }
 }
 
@@ -1046,6 +1213,453 @@ impl DatabaseSync {
       freed: Cell::new(false),
       db: Rc::downgrade(&self.conn),
     })
+  }
+
+  #[fast]
+  #[validate(is_open)]
+  fn aggregate<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    #[validate(validators::name_str)]
+    #[string]
+    name: &str,
+    options: v8::Local<'a, v8::Value>,
+  ) -> Result<(), SqliteError> {
+    use std::cmp;
+
+    let options = AggregateFunctionOption::from_value(scope, options)?;
+
+    let mut argc = -1;
+    if !options.varargs {
+      v8_static_strings! {
+        LENGTH = "length",
+      }
+      let length_key = LENGTH.v8_string(scope).unwrap();
+      let step_fn_length = options
+        .step
+        .get(scope, length_key.into())
+        .unwrap()
+        .int32_value(scope)
+        .unwrap();
+
+      // Subtract 1 because the first argument is the aggregate value.
+      argc = step_fn_length - 1;
+
+      let inverse_fn_length = if let Some(inverse_fn) = &options.inverse {
+        inverse_fn
+          .get(scope, length_key.into())
+          .unwrap()
+          .int32_value(scope)
+          .unwrap()
+      } else {
+        0
+      };
+
+      argc = cmp::max(argc, cmp::max(inverse_fn_length - 1, 0));
+    }
+
+    let mut text_rep = libsqlite3_sys::SQLITE_UTF8;
+    if options.deterministic {
+      text_rep |= libsqlite3_sys::SQLITE_DETERMINISTIC;
+    }
+    if options.direct_only {
+      text_rep |= libsqlite3_sys::SQLITE_DIRECTONLY;
+    }
+
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::InUse)?;
+
+    let context =
+      v8::Global::new(scope, scope.get_current_context()).into_raw();
+
+    let start = v8::Global::new(scope, options.start).into_raw();
+
+    let step_fn = v8::Global::new(scope, options.step).into_raw();
+
+    let inverse_fn = options
+      .inverse
+      .map(|inv| v8::Global::new(scope, inv).into_raw());
+
+    let final_fn = options
+      .result
+      .map(|res| v8::Global::new(scope, res).into_raw());
+
+    let custom_aggregate = Box::new(CustomAggregate {
+      context,
+      use_big_int_arguments: options.use_big_int_arguments,
+      start,
+      step_fn,
+      inverse_fn,
+      final_fn,
+      ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+    });
+
+    let custom_aggregate_ptr = Box::into_raw(custom_aggregate);
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+    let name_cstring = CString::new(name)?;
+
+    let (value_callback, inverse_callback) = if options.inverse.is_some() {
+      (
+        Some(
+          custom_aggregate_xvalue
+            as unsafe extern "C" fn(*mut libsqlite3_sys::sqlite3_context),
+        ),
+        Some(
+          custom_aggregate_xinverse
+            as unsafe extern "C" fn(
+              *mut libsqlite3_sys::sqlite3_context,
+              i32,
+              *mut *mut libsqlite3_sys::sqlite3_value,
+            ),
+        ),
+      )
+    } else {
+      (None, None)
+    };
+
+    // SAFETY: `raw_handle` is a valid database handle.
+    // The v8 handles stored in `CustomAggregate` are released in `custom_aggregate_xdestroy`.
+    let r = unsafe {
+      sqlite3_create_window_function(
+        raw_handle,
+        name_cstring.as_ptr(),
+        argc,
+        text_rep,
+        custom_aggregate_ptr as *mut c_void,
+        Some(custom_aggregate_xstep),
+        Some(custom_aggregate_xfinal),
+        value_callback,
+        inverse_callback,
+        Some(custom_aggregate_xdestroy),
+      )
+    };
+    check_error_code(r, raw_handle)?;
+
+    Ok(())
+  }
+}
+
+#[repr(C)]
+struct AggregateData {
+  value: Option<NonNull<v8::Value>>,
+  is_window: bool,
+  initialized: bool,
+}
+
+struct CustomAggregate {
+  context: NonNull<v8::Context>,
+  use_big_int_arguments: bool,
+  start: NonNull<v8::Value>,
+  step_fn: NonNull<v8::Function>,
+  inverse_fn: Option<NonNull<v8::Function>>,
+  final_fn: Option<NonNull<v8::Function>>,
+  ignore_next_sqlite_error: Rc<Cell<bool>>,
+}
+
+enum AggregateStepKind {
+  Step,
+  Inverse,
+}
+
+unsafe fn get_aggregate_data(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+  custom_aggregate: &CustomAggregate,
+  scope: &mut v8::PinScope<'_, '_>,
+) -> Option<*mut AggregateData> {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    let agg_ptr = libsqlite3_sys::sqlite3_aggregate_context(
+      ctx,
+      std::mem::size_of::<AggregateData>() as i32,
+    ) as *mut AggregateData;
+
+    if agg_ptr.is_null() {
+      sqlite_result_error(ctx, "Failed to allocate aggregate context");
+      return None;
+    }
+
+    let agg = &mut *agg_ptr;
+    if !agg.initialized {
+      let start_local: v8::Local<v8::Value> =
+        std::mem::transmute(custom_aggregate.start.as_ptr());
+
+      let start_value = if start_local.is_function() {
+        let start_fn: v8::Local<v8::Function> = start_local.try_into().unwrap();
+        let recv = v8::null(scope).into();
+        match start_fn.call(scope, recv, &[]) {
+          Some(val) => val,
+          None => {
+            custom_aggregate.ignore_next_sqlite_error.set(true);
+            sqlite_result_error(ctx, "");
+            return None;
+          }
+        }
+      } else {
+        start_local
+      };
+
+      let global = v8::Global::new(scope, start_value);
+      agg.value = Some(global.into_raw());
+      agg.initialized = true;
+      agg.is_window = false;
+    }
+
+    Some(agg_ptr)
+  }
+}
+
+unsafe fn custom_aggregate_step_base(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+  argc: i32,
+  argv: *mut *mut libsqlite3_sys::sqlite3_value,
+  kind: AggregateStepKind,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    let data_ptr =
+      libsqlite3_sys::sqlite3_user_data(ctx) as *mut CustomAggregate;
+
+    if data_ptr.is_null() {
+      sqlite_result_error(
+        ctx,
+        "Internal error: missing custom aggregate context",
+      );
+      return;
+    }
+
+    let data = &*data_ptr;
+    let context_local: v8::Local<v8::Context> =
+      std::mem::transmute(data.context.as_ptr());
+
+    v8::callback_scope!(unsafe cb_scope, context_local);
+    v8::scope!(scope, cb_scope);
+    v8::tc_scope!(tc_scope, scope);
+
+    let Some(agg_ptr) = get_aggregate_data(ctx, data, tc_scope) else {
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+      }
+      return;
+    };
+    let agg = &mut *agg_ptr;
+
+    let step_fn = match kind {
+      AggregateStepKind::Step => {
+        let step_fn: v8::Local<v8::Function> =
+          std::mem::transmute(data.step_fn.as_ptr());
+        step_fn
+      }
+      AggregateStepKind::Inverse => {
+        if let Some(inverse_ptr) = data.inverse_fn {
+          let inverse_fn: v8::Local<v8::Function> =
+            std::mem::transmute(inverse_ptr.as_ptr());
+          inverse_fn
+        } else {
+          sqlite_result_error(ctx, "Internal error: inverse function not set");
+          return;
+        }
+      }
+    };
+
+    let argc_len = usize::try_from(argc).unwrap_or(0);
+    let args_slice = if argc_len == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(argv, argc_len)
+    };
+
+    let current_value = if let Some(value_ptr) = agg.value {
+      let global = v8::Global::from_raw(tc_scope, value_ptr);
+      let local = v8::Local::new(tc_scope, &global);
+      std::mem::forget(global);
+      local
+    } else {
+      v8::undefined(tc_scope).into()
+    };
+
+    let mut js_args = Vec::with_capacity(args_slice.len() + 1);
+    js_args.push(current_value);
+
+    for &value_ptr in args_slice {
+      if let Some(arg) =
+        sqlite_value_to_v8(tc_scope, value_ptr, data.use_big_int_arguments)
+      {
+        js_args.push(arg);
+      } else {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+        return;
+      }
+    }
+
+    let recv = v8::undefined(tc_scope).into();
+    let result = step_fn
+      .call(tc_scope, recv, &js_args)
+      .unwrap_or_else(|| v8::undefined(tc_scope).into());
+
+    if tc_scope.has_caught() {
+      data.ignore_next_sqlite_error.set(true);
+      sqlite_result_error(ctx, "");
+      tc_scope.rethrow();
+      return;
+    }
+
+    if let Some(old_ptr) = agg.value {
+      let _ = v8::Global::from_raw(tc_scope, old_ptr);
+    }
+    let global = v8::Global::new(tc_scope, result);
+    agg.value = Some(global.into_raw());
+  }
+}
+
+unsafe fn custom_aggregate_value_base(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+  is_final: bool,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    let data_ptr =
+      libsqlite3_sys::sqlite3_user_data(ctx) as *mut CustomAggregate;
+    if data_ptr.is_null() {
+      sqlite_result_error(
+        ctx,
+        "Internal error: missing custom aggregate context",
+      );
+      return;
+    }
+
+    let data = &*data_ptr;
+    let context_local: v8::Local<v8::Context> =
+      std::mem::transmute(data.context.as_ptr());
+
+    v8::callback_scope!(unsafe cb_scope, context_local);
+    v8::scope!(scope, cb_scope);
+    v8::tc_scope!(tc_scope, scope);
+
+    let Some(agg_ptr) = get_aggregate_data(ctx, data, tc_scope) else {
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+      }
+      return;
+    };
+    let agg = &mut *agg_ptr;
+
+    if !is_final {
+      agg.is_window = true;
+    } else if agg.is_window {
+      if let Some(value_ptr) = agg.value.take() {
+        let _ = v8::Global::from_raw(tc_scope, value_ptr);
+      }
+      return;
+    }
+
+    let current_value = if let Some(value_ptr) = agg.value {
+      let global = v8::Global::from_raw(tc_scope, value_ptr);
+      let local = v8::Local::new(tc_scope, &global);
+      if is_final {
+        agg.value = None;
+      } else {
+        std::mem::forget(global);
+      }
+      local
+    } else {
+      v8::undefined(tc_scope).into()
+    };
+
+    let result = if let Some(result_fn_ptr) = data.final_fn {
+      let result_fn: v8::Local<v8::Function> =
+        std::mem::transmute(result_fn_ptr.as_ptr());
+      let ret = result_fn
+        .call(tc_scope, v8::null(tc_scope).into(), &[current_value])
+        .unwrap_or_else(|| v8::undefined(tc_scope).into());
+
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        sqlite_result_error(ctx, "");
+        tc_scope.rethrow();
+        return;
+      }
+      ret
+    } else {
+      current_value
+    };
+
+    js_value_to_sqlite(tc_scope, ctx, result);
+    if tc_scope.has_caught() {
+      data.ignore_next_sqlite_error.set(true);
+      sqlite_result_error(ctx, "");
+      tc_scope.rethrow();
+    }
+  }
+}
+
+unsafe extern "C" fn custom_aggregate_xstep(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+  argc: i32,
+  argv: *mut *mut libsqlite3_sys::sqlite3_value,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    custom_aggregate_step_base(ctx, argc, argv, AggregateStepKind::Step);
+  }
+}
+
+unsafe extern "C" fn custom_aggregate_xinverse(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+  argc: i32,
+  argv: *mut *mut libsqlite3_sys::sqlite3_value,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    custom_aggregate_step_base(ctx, argc, argv, AggregateStepKind::Inverse);
+  }
+}
+
+unsafe extern "C" fn custom_aggregate_xfinal(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    custom_aggregate_value_base(ctx, true);
+  }
+}
+
+unsafe extern "C" fn custom_aggregate_xvalue(
+  ctx: *mut libsqlite3_sys::sqlite3_context,
+) {
+  // SAFETY: `ctx` is a valid sqlite3_context pointer.
+  unsafe {
+    custom_aggregate_value_base(ctx, false);
+  }
+}
+
+unsafe extern "C" fn custom_aggregate_xdestroy(data: *mut c_void) {
+  // SAFETY: `data` is a valid pointer to CustomAggregate.
+  // The v8 handles are properly dropped here.
+  unsafe {
+    let data = Box::from_raw(data as *mut CustomAggregate);
+    let context_local: v8::Local<v8::Context> =
+      std::mem::transmute(data.context.as_ptr());
+
+    v8::callback_scope!(unsafe cb_scope, context_local);
+    v8::scope!(scope, cb_scope);
+
+    let _ = v8::Global::from_raw(scope, data.context);
+    let _ = v8::Global::from_raw(scope, data.start);
+    let _ = v8::Global::from_raw(scope, data.step_fn);
+    if let Some(inverse_ptr) = data.inverse_fn {
+      let _ = v8::Global::from_raw(scope, inverse_ptr);
+    }
+    if let Some(final_ptr) = data.final_fn {
+      let _ = v8::Global::from_raw(scope, final_ptr);
+    }
   }
 }
 

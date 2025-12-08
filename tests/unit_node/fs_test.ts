@@ -42,6 +42,7 @@ import {
   lutimes,
   open,
   stat,
+  statfs,
   writeFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -180,6 +181,13 @@ Deno.test(
         }'`,
       );
     }
+  },
+);
+
+Deno.test(
+  "[node/fs/promises statfs] export statfs function",
+  async () => {
+    await statfs(import.meta.filename!);
   },
 );
 

@@ -51,7 +51,9 @@ members = [
   "tests/sqlite_extension_test",
   "tests/util/server",
 ]
-exclude = ["tests/util/std/hash/_wasm"]
+# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
+# feature, which is incompatible with the "session" feature used by the rest of the workspace.
+exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
 
 [workspace.package]
 authors = ["the Deno authors"]
