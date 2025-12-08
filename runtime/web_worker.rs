@@ -657,6 +657,7 @@ impl WebWorker {
       skip_op_registration: false,
       v8_platform: None,
       is_main: false,
+      worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
@@ -678,6 +679,14 @@ impl WebWorker {
       // executing a CJS entrypoint.
       state.put(js_runtime.inspector());
     }
+
+    // if let Some(ref server) = services.maybe_inspector_server {
+    //   server.register_inspector(
+    //     options.main_module.to_string(),
+    //     js_runtime.inspector(),
+    //     false,
+    //   );
+    // }
 
     if let Some(main_session_tx) = services.main_inspector_session_tx {
       let (main_to_worker_sync_tx, main_to_worker_sync_rx) =

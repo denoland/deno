@@ -617,7 +617,6 @@ impl MainWorker {
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-
       server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
@@ -1121,6 +1120,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     extension_transpiler: None,
     inspector: true,
     is_main: true,
+    worker_id: None,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
