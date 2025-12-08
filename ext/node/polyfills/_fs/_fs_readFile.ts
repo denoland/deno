@@ -10,16 +10,37 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
-import { readAll, readAllSync } from "ext:deno_io/12_io.js";
+import { readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  denoErrorToNodeError,
+  ERR_FS_FILE_TOO_LARGE,
+} from "ext:deno_node/internal/errors.ts";
 import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
-import { core } from "ext:core/mod.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
+import { constants } from "ext:deno_node/internal/fs/utils.mjs";
+import { S_IFMT, S_IFREG } from "ext:deno_node/_fs/_fs_constants.ts";
+
+const {
+  kIoMaxLength,
+  kReadFileBufferLength,
+  kReadFileUnknownBufferLength,
+} = constants;
+
+const {
+  ArrayPrototypePush,
+  MathMin,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+} = primordials;
 
 const defaultOptions = {
   __proto__: null,
@@ -77,6 +98,66 @@ async function readFileAsync(
   }
 }
 
+function checkAborted(signal: AbortSignal | undefined) {
+  if (signal?.aborted) {
+    throw new AbortError(undefined, { cause: signal.reason });
+  }
+}
+
+function concatBuffers(buffers: Uint8Array[]): Uint8Array {
+  let totalLen = 0;
+  for (let i = 0; i < buffers.length; ++i) {
+    totalLen += TypedArrayPrototypeGetByteLength(buffers[i]);
+  }
+
+  const contents = new Uint8Array(totalLen);
+  let n = 0;
+  for (let i = 0; i < buffers.length; ++i) {
+    const buf = buffers[i];
+    TypedArrayPrototypeSet(contents, buf, n);
+    n += TypedArrayPrototypeGetByteLength(buf);
+  }
+
+  return contents;
+}
+
+async function fsFileReadAll(fsFile: FsFile, options?: FileOptions) {
+  const signal = options?.signal;
+  const encoding = options?.encoding;
+  checkAborted(signal);
+
+  const statFields = await fsFile.stat();
+  checkAborted(signal);
+
+  let size = 0;
+  let length = 0;
+  if ((statFields.mode & S_IFMT) === S_IFREG) {
+    size = statFields.size;
+    length = encoding ? MathMin(size, kReadFileBufferLength) : size;
+  }
+  if (length === 0) {
+    length = kReadFileUnknownBufferLength;
+  }
+
+  if (size > kIoMaxLength) {
+    throw new ERR_FS_FILE_TOO_LARGE(size);
+  }
+
+  const buffer = new Uint8Array(length);
+  const buffers: Uint8Array[] = [];
+
+  while (true) {
+    checkAborted(signal);
+    const read = await fsFile.read(buffer);
+    if (typeof read !== "number") {
+      break;
+    }
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, read));
+  }
+
+  return concatBuffers(buffers);
+}
+
 export function readFile(
   path: Path,
   options: TextOptionsArgument,
@@ -109,14 +190,12 @@ export function readFile(
   const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
 
   let p: Promise<Uint8Array>;
-  if (path instanceof FileHandle) {
-    const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
-    p = readAll(fsFile);
-  } else if (typeof path === "number") {
-    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
-    p = readAll(fsFile);
-  } else {
+  if (typeof path === "string") {
     p = readFileAsync(path, options);
+  } else {
+    const rid = path instanceof FileHandle ? path.fd : path;
+    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    p = fsFileReadAll(fsFile, options);
   }
 
   if (cb) {

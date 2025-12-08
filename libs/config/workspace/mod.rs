@@ -105,6 +105,7 @@ pub struct JsrPackageConfig {
   pub member_dir: WorkspaceDirectoryRc,
   pub config_file: ConfigFileRc,
   pub license: Option<String>,
+  pub should_publish: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -748,6 +749,7 @@ impl Workspace {
         name: c.json.name.clone()?,
         config_file: c.clone(),
         license: c.to_license(),
+        should_publish: c.should_publish(),
       })
     })
   }
@@ -1509,16 +1511,11 @@ pub struct WorkspaceDirLintConfig {
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TsTypeLib {
+  #[default]
   DenoWindow,
   DenoWorker,
-}
-
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -1690,7 +1687,11 @@ impl WorkspaceDirectory {
   ) -> Vec<JsrPackageConfig> {
     // only publish the current folder if it's a package
     if let Some(package_config) = self.maybe_package_config() {
-      return vec![package_config];
+      if package_config.should_publish {
+        return vec![package_config];
+      } else {
+        return Vec::new();
+      }
     }
     if let Some(pkg_json) = &self.pkg_json {
       let dir_path = url_to_file_path(&self.dir_url).unwrap();
@@ -1703,7 +1704,11 @@ impl WorkspaceDirectory {
       }
     }
     if self.dir_url == self.workspace.root_dir_url {
-      self.workspace.jsr_packages().collect()
+      self
+        .workspace
+        .jsr_packages()
+        .filter(|p| p.should_publish)
+        .collect()
     } else {
       // nothing to publish
       Vec::new()
@@ -1751,6 +1756,7 @@ impl WorkspaceDirectory {
       config_file: deno_json.clone(),
       member_dir: self.clone(),
       license: deno_json.to_license(),
+      should_publish: deno_json.should_publish(),
     })
   }
 
@@ -4188,7 +4194,7 @@ pub mod test {
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "workspace": ["./a", "./b", "./c", "./d"]
+        "workspace": ["./a", "./b", "./c", "./d", "./e"]
       }),
     );
     sys.fs_insert_json(
@@ -4217,6 +4223,15 @@ pub mod test {
       json!({
         "name": "pkg",
         "version": "1.0.0",
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("e/deno.json"),
+      json!({
+        "name": "@scope/e",
+        "version": "1.0.0",
+        "exports": "./main.ts",
+        "publish": false,
       }),
     );
     // root
