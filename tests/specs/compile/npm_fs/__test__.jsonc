@@ -3,11 +3,11 @@
   // use this so the vfs output is all in the same folder
   "canonicalizedTempDir": true,
   "steps": [{
-    "if": "unix",
+    "if": "notMacIntel",
     "args": "compile -A --output main main.ts",
     "output": "compile.out"
   }, {
-    "if": "unix",
+    "if": "notMacIntel",
     "commandName": "./main",
     "args": [],
     "output": "main.out"

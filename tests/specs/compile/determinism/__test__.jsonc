@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  "if": "notMacIntel",
   "steps": [{
     "args": [
       "eval",

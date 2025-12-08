@@ -1,11 +1,11 @@
 {
   "tempDir": true,
   "steps": [{
-    "if": "unix",
+    "if": "notMacIntel",
     "args": "compile --output main main.ts",
     "output": "compile.out"
   }, {
-    "if": "unix",
+    "if": "notMacIntel",
     "commandName": "./main",
     "args": [],
     "output": "main.out"

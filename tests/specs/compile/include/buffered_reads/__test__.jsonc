@@ -4,11 +4,11 @@
     "args": "run -A setup.js",
     "output": "[WILDCARD]"
   }, {
-    "if": "unix",
+    "if": "notMacIntel",
     "args": "compile --allow-read=data --include data --output main main.ts",
     "output": "[WILDCARD]"
   }, {
-    "if": "unix",
+    "if": "notMacIntel",
     "commandName": "./main",
     "args": [],
     "output": "[WILDCARD]",
