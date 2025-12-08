@@ -54,10 +54,10 @@ struct NodeTlsState {
 #[op2]
 #[serde]
 pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
-  if let Some(tls_state) = state.try_borrow::<NodeTlsState>() {
-    if let Some(certs) = &tls_state.custom_ca_certs {
-      return certs.clone();
-    }
+  if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
+    && let Some(certs) = &tls_state.custom_ca_certs
+  {
+    return certs.clone();
   }
 
   // Return default root certificates if no custom ones are set

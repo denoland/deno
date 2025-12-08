@@ -443,13 +443,15 @@ Deno.test("mTLS client certificate authentication", async () => {
 });
 
 Deno.test("tls.setDefaultCACertificates exists", () => {
-  assertEquals(typeof tls.setDefaultCACertificates, "function");
+  // deno-lint-ignore no-explicit-any
+  assertEquals(typeof (tls as any).setDefaultCACertificates, "function");
 });
 
 Deno.test("tls.setDefaultCACertificates validates input - must be array", () => {
   assertThrows(
     () => {
-      (tls.setDefaultCACertificates as any)("not an array");
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates("not an array");
     },
     TypeError,
     "must be an array",
@@ -459,7 +461,8 @@ Deno.test("tls.setDefaultCACertificates validates input - must be array", () => 
 Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
   assertThrows(
     () => {
-      tls.setDefaultCACertificates([123, 456] as any);
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates([123, 456]);
     },
     TypeError,
     "must be a string",
@@ -473,5 +476,6 @@ c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
 BnRlc3RDQTCB
 -----END CERTIFICATE-----`;
 
-  tls.setDefaultCACertificates([testCert]);
+  // deno-lint-ignore no-explicit-any
+  (tls as any).setDefaultCACertificates([testCert]);
 });
