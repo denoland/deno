@@ -297,10 +297,10 @@ pub fn resolution_error_for_tsc_diagnostic(
       | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
       | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
-      NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
+      NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
     }
   }
 

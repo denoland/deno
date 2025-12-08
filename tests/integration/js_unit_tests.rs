@@ -148,10 +148,6 @@ fn js_unit_test(test: String) {
     deno = deno.arg("--unstable-bundle");
   }
 
-  if test == "broadcast_channel_test" {
-    deno = deno.arg("--unstable-broadcast-channel");
-  }
-
   if test == "cron_test" {
     deno = deno.arg("--unstable-cron");
   }

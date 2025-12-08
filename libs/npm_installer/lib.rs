@@ -145,6 +145,14 @@ pub trait NpmInstallerSys:
 {
 }
 
+pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
+  pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  pub maybe_node_modules_path: Option<PathBuf>,
+  pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
+  pub system_info: NpmSystemInfo,
+  pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+}
+
 #[derive(Debug)]
 pub struct NpmInstaller<
   TNpmCacheHttpClient: NpmCacheHttpClient,
@@ -167,6 +175,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new<TReporter: Reporter>(
+    install_reporter: Option<Arc<dyn InstallReporter>>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -181,22 +190,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     reporter: &TReporter,
     sys: TSys,
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
-    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    maybe_node_modules_path: Option<PathBuf>,
-    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
-    system_info: NpmSystemInfo,
-    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
-    install_reporter: Option<Arc<dyn InstallReporter>>,
+    options: NpmInstallerOptions<TSys>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
-      match maybe_node_modules_path {
+      match options.maybe_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
           lifecycle_scripts_executor,
           npm_cache.clone(),
           Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
             Arc::new(sys.clone()),
-            workspace_link_packages,
+            options.workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
           dyn_clone::clone(reporter),
@@ -204,8 +208,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           sys,
           tarball_cache,
           node_modules_folder,
-          lifecycle_scripts,
-          system_info,
+          options.lifecycle_scripts,
+          options.system_info,
           install_reporter,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
@@ -213,8 +217,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           tarball_cache,
           sys,
           npm_resolution.clone(),
-          lifecycle_scripts,
-          system_info,
+          options.lifecycle_scripts,
+          options.system_info,
           install_reporter,
         )),
       };
@@ -224,7 +228,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       npm_resolution,
       npm_resolution_initializer,
       npm_resolution_installer,
-      maybe_lockfile,
+      maybe_lockfile: options.maybe_lockfile,
       top_level_install_flag: Default::default(),
       install_queue: Default::default(),
       cached_reqs: Default::default(),
@@ -419,10 +423,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   }
 
   /// Ensures that the top level `package.json` dependencies are installed.
-  /// This may set up the `node_modules` directory.
   ///
   /// Returns `true` if the top level packages are already installed. A
-  /// return value of `false` means that new packages were added to the NPM resolution.
+  /// return value of `false` means that new packages were added to the npm resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, JsErrorBox> {
@@ -458,5 +461,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     self.add_package_reqs_no_cache(&pkg_reqs).await?;
 
     Ok(false)
+  }
+
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
+  pub async fn install_resolution_if_pending(&self) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self
+      .npm_resolution_installer
+      .install_if_pending()
+      .await
+      .map_err(JsErrorBox::from_err)?;
+    Ok(())
   }
 }

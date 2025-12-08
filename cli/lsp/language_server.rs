@@ -1128,16 +1128,16 @@ impl Inner {
             | MediaType::Dmts
             | MediaType::Dcts
             | MediaType::Json
+            | MediaType::Jsonc
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
             | MediaType::Css
             | MediaType::Html
+            | MediaType::Json5
             | MediaType::Sql
             | MediaType::Unknown => {
-              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
-                continue;
-              }
+              continue;
             }
           }
           dir_files.insert(path);
@@ -2323,8 +2323,9 @@ impl Inner {
     );
 
     // Organize imports
-    if kinds.is_empty()
-      || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    if !self.config.client_provided_organize_imports_capable()
+      && (kinds.is_empty()
+        || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS))
     {
       let document_has_errors = params.context.diagnostics.iter().any(|d| {
         // Assume diagnostics without a severity are errors
@@ -2347,21 +2348,10 @@ impl Inner {
         })?;
 
       if !organize_imports_edit.is_empty() {
-        let mut changes_with_modules = IndexMap::new();
-        changes_with_modules.extend(
-          fix_ts_import_changes(&organize_imports_edit, &module, self, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!("Unable to fix import changes: {:#}", err);
-                LspError::internal_error()
-              }
-            })?
-            .into_iter()
-            .map(|c| (c, module.clone())),
-        );
-
+        let changes_with_modules = organize_imports_edit
+          .into_iter()
+          .map(|c| (c, module.clone()))
+          .collect::<IndexMap<_, _>>();
         all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
           title: "Organize imports".to_string(),
           kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),

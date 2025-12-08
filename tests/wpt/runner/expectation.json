@@ -5550,12 +5550,16 @@
         "valueOf.any.worker.html": true
       },
       "idlharness.any.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
       ],
       "idlharness.any.worker.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
@@ -5611,13 +5615,9 @@
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "moduleSource.tentative.any.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ],
         "moduleSource.tentative.any.worker.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ]
       },
@@ -6122,18 +6122,16 @@
       ],
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's getter works when called on null / undefined",
-        "Global object's operation throws when called on incompatible object",
-        "Global object's operation works when called on null / undefined",
         "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ],
       "global-object-implicit-this-value.any.worker.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's getter works when called on null / undefined",
-        "Global object's operation throws when called on incompatible object",
-        "Global object's operation works when called on null / undefined",
         "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ],
       "legacy-factor-function-subclass.window.html": false,
@@ -12920,8 +12918,8 @@
         "clearinterval-from-callback.any.worker.html": true,
         "cleartimeout-clearinterval.any.html": true,
         "cleartimeout-clearinterval.any.worker.html": true,
-        "evil-spec-example.any.html": false,
-        "evil-spec-example.any.worker.html": false,
+        "evil-spec-example.any.html": true,
+        "evil-spec-example.any.worker.html": true,
         "missing-timeout-setinterval.any.html": true,
         "missing-timeout-setinterval.any.worker.html": true,
         "negative-setinterval.any.html": true,

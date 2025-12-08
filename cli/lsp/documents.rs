@@ -1033,6 +1033,8 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
@@ -1044,6 +1046,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
+  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
 }
 
 impl DocumentModules {
@@ -1071,6 +1074,7 @@ impl DocumentModules {
         .collect(),
     );
     self.dep_info_by_scope = Default::default();
+    self.assigned_scopes = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
     NodeResolutionThreadLocalCache::clear();
@@ -1275,12 +1279,19 @@ impl DocumentModules {
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(
+    let module = self.module_inner(
       &document,
       Some(&Arc::new(specifier)),
       scope,
       compiler_options_key,
-    )
+    );
+    if let Some(module) = &module {
+      self.assigned_scopes.insert(
+        document.uri().clone(),
+        (module.scope.clone(), module.compiler_options_key.clone()),
+      );
+    }
+    module
   }
 
   pub fn primary_module(
@@ -1289,6 +1300,16 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    if let Some((scope, compiler_options_key)) =
+      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
+    {
+      return self.module_inner(
+        document,
+        None,
+        scope.as_deref(),
+        Some(&compiler_options_key),
+      );
     }
     for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {

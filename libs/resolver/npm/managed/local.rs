@@ -10,6 +10,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::url_from_directory_path;
+use deno_semver::Version;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
@@ -201,5 +202,28 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
       }
       .into(),
     )
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    if let Some(referrer) = maybe_referrer
+      && let Ok(path) =
+        self.resolve_package_folder_from_package(types_package_name, referrer)
+    {
+      Some(path)
+    } else {
+      // otherwise, try to find one in the snapshot
+      let snapshot = self.resolution.snapshot();
+      let pkg_id = super::common::find_definitely_typed_package_from_snapshot(
+        types_package_name,
+        maybe_package_version,
+        &snapshot,
+      )?;
+      self.maybe_package_folder(pkg_id)
+    }
   }
 }

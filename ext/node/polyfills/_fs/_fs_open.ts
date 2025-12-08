@@ -83,7 +83,7 @@ export function openPromise(
   return new Promise((resolve, reject) => {
     open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
-      else resolve(new FileHandle(fd, path));
+      else resolve(new FileHandle(fd as number));
     });
   });
 }

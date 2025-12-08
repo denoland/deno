@@ -7,6 +7,7 @@ use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
@@ -175,4 +176,42 @@ pub fn op_node_in_npm_package<
     TNpmPackageFolderResolver,
     TSys,
   >>().in_npm_package(&specifier)
+}
+
+#[op2]
+pub fn op_node_get_own_non_index_properties<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  #[smi] filter: u32,
+) -> Result<v8::Local<'s, v8::Array>, JsErrorBox> {
+  let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
+  if filter & 1 << 0 != 0 {
+    property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE;
+  }
+  if filter & 1 << 1 != 0 {
+    property_filter = property_filter | v8::PropertyFilter::ONLY_ENUMERABLE;
+  }
+  if filter & 1 << 2 != 0 {
+    property_filter = property_filter | v8::PropertyFilter::ONLY_CONFIGURABLE;
+  }
+  if filter & 1 << 3 != 0 {
+    property_filter = property_filter | v8::PropertyFilter::SKIP_STRINGS;
+  }
+  if filter & 1 << 4 != 0 {
+    property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS;
+  }
+
+  obj
+    .get_property_names(
+      scope,
+      v8::GetPropertyNamesArgs {
+        index_filter: v8::IndexFilter::SkipIndices,
+        property_filter,
+        key_conversion: v8::KeyConversionMode::NoNumbers,
+        mode: v8::KeyCollectionMode::OwnOnly,
+      },
+    )
+    .ok_or_else(|| {
+      JsErrorBox::type_error("Failed to get own non-index properties")
+    })
 }

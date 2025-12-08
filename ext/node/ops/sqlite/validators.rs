@@ -75,6 +75,19 @@ pub(super) fn changeset_buffer(
   ))
 }
 
+pub(super) fn name_str(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_string() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"name\" argument must be a string.",
+  ))
+}
+
 pub(super) fn path_str(
   _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
@@ -98,6 +111,19 @@ pub(super) fn allow_bare_named_params_bool(
 
   Err(Error::InvalidArgType(
     "The \"allowBareNamedParameters\" argument must be a boolean.",
+  ))
+}
+
+pub(super) fn allow_unknown_named_params_bool(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"enabled\" argument must be a boolean.",
   ))
 }
 
