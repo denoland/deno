@@ -92,6 +92,7 @@ deno_core::extension!(
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_recv_message,
+    op_update_worker_permissions,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -406,6 +407,30 @@ fn op_host_post_message(
     worker_handle.port.send(state, data)?;
   } else {
     debug!("tried to post message to non-existent worker {}", id);
+  }
+  Ok(())
+}
+
+/// Update permissions for a worker
+#[op2]
+fn op_update_worker_permissions(
+  state: &mut OpState,
+  #[serde] id: WorkerId,
+  #[serde] permissions: Option<ChildPermissionsArg>,
+) -> Result<(), deno_permissions::ChildPermissionError> {
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    debug!("updating permissions for worker {}", id);
+    let worker_handle = worker_thread.worker_handle.clone();
+
+    if let Some(new_permissions) = permissions {
+      let parent_permissions = state.borrow::<PermissionsContainer>();
+      let updated_permissions =
+        parent_permissions.create_child_permissions(new_permissions)?;
+
+      worker_handle.update_permissions(updated_permissions);
+    }
+  } else {
+    debug!("tried to update permissions for non-existent worker {}", id);
   }
   Ok(())
 }
