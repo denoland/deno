@@ -662,6 +662,33 @@ fn load_inner(
   let is_cjs = result.is_cjs;
   let media_type = result.media_type;
 
+  match media_type {
+    MediaType::JavaScript
+    | MediaType::Jsx
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts
+    | MediaType::Json
+    | MediaType::Tsx => {}
+
+    // anything you return from here will be treated as a js/ts
+    // source file and attempt to be parsed by typescript. so
+    // if it's not a js/ts source file, return None.
+    MediaType::SourceMap
+    | MediaType::Css
+    | MediaType::Jsonc
+    | MediaType::Json5
+    | MediaType::Html
+    | MediaType::Sql
+    | MediaType::Wasm
+    | MediaType::Unknown => return Ok(None),
+  }
+
   let module_kind = get_resolution_mode(is_cjs, media_type);
   let script_kind = super::as_ts_script_kind(media_type);
   log::debug!("load_inner {load_specifier} -> {:?}", module_kind);

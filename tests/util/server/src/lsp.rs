@@ -321,6 +321,19 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn enable_client_provided_organize_imports(&mut self) -> &mut Self {
+    let obj = self
+      .params
+      .capabilities
+      .experimental
+      .as_mut()
+      .unwrap()
+      .as_object_mut()
+      .unwrap();
+    obj.insert("clientProvidedOrganizeImports".to_string(), true.into());
+    self
+  }
+
   pub fn set_cache(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("cache".to_string(), value.as_ref().to_string().into());

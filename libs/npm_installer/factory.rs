@@ -21,6 +21,7 @@ use futures::FutureExt;
 
 use crate::LifecycleScriptsConfig;
 use crate::NpmInstaller;
+use crate::NpmInstallerOptions;
 use crate::Reporter;
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
@@ -354,6 +355,7 @@ impl<
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
           Ok(Arc::new(NpmInstaller::new(
+            self.install_reporter.clone(),
             self.lifecycle_scripts_executor.clone(),
             npm_cache.clone(),
             Arc::new(NpmInstallDepsProvider::from_workspace(
@@ -366,14 +368,15 @@ impl<
             &self.reporter,
             workspace_factory.sys().clone(),
             self.tarball_cache()?.clone(),
-            self.maybe_lockfile().await?.cloned(),
-            workspace_factory
-              .node_modules_dir_path()?
-              .map(|p| p.to_path_buf()),
-            self.lifecycle_scripts_config()?.clone(),
-            self.resolver_factory.npm_system_info().clone(),
-            workspace_npm_link_packages.clone(),
-            self.install_reporter.clone(),
+            NpmInstallerOptions {
+              maybe_lockfile: self.maybe_lockfile().await?.cloned(),
+              maybe_node_modules_path: workspace_factory
+                .node_modules_dir_path()?
+                .map(|p| p.to_path_buf()),
+              lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
+              system_info: self.resolver_factory.npm_system_info().clone(),
+              workspace_link_packages: workspace_npm_link_packages.clone(),
+            },
           )))
         }
         .boxed_local(),

@@ -51,7 +51,9 @@ members = [
   "tests/sqlite_extension_test",
   "tests/util/server",
 ]
-exclude = ["tests/util/std/hash/_wasm"]
+# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
+# feature, which is incompatible with the "session" feature used by the rest of the workspace.
+exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
 
 [workspace.package]
 authors = ["the Deno authors"]
@@ -61,17 +63,17 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.370.0" }
+deno_core = { version = "0.371.0" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.187.0"
-deno_error = "=0.7.0"
+deno_error = "=0.7.1"
 deno_graph = { version = "=0.104.0", default-features = false }
 deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.0"
+deno_npm = "=0.42.2"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.26.0"
@@ -427,6 +429,13 @@ opt-level = 3
 # rusty-v8 needs at least -O1 to not miscompile
 [profile.dev.package.v8]
 opt-level = 1
+
+# speeds up deno compile tests a lot
+[profile.dev.package.libsui]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
 
 [profile.release.package.async-compression]
 opt-level = 3

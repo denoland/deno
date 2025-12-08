@@ -1573,7 +1573,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "3.0.0-rc.0"
+version = "2.5.6"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1887,9 +1887,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.370.0"
+version = "0.371.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03593764555f24a3287b321c156304e8d142105631258f1fabdeac07013bb4a6"
+checksum = "9a15e1d4b16347e8164488fcfe957054ee6c9354b375f30b7727e012253e7e95"
 dependencies = [
  "anyhow",
  "az",
@@ -2021,9 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "deno_error"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dde60bd153886964234c5012d3d9caf788287f28d81fb24a884436904101ef10"
+checksum = "bfafd2219b29886a71aecbb3449e462deed1b2c474dc5b12f855f0e58c478931"
 dependencies = [
  "deno_error_macro",
  "libc",
@@ -2035,9 +2035,9 @@ dependencies = [
 
 [[package]]
 name = "deno_error_macro"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "409f265785bd946d3006756955aaf40b0e4deb25752eae6a990afe54a31cfd83"
+checksum = "1c28ede88783f14cd8aae46ca89f230c226b40e4a81ab06fa52ed72af84beb2f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2520,9 +2520,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.42.0"
+version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae246f5c39baf58dfbb8250068ec35223f4c4c19889bfad732d92a035bf74fe6"
+checksum = "7daa908c280b25d68ea59765144df488714716cc14a2dcafaa1ec3906d4abbbe"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2613,9 +2613,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.246.0"
+version = "0.247.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37eee61daa9ccfb4297389304066e91d7840f1f57bfccd305acbecc351af29c6"
+checksum = "b2b016ed244d902f3843ba99af8f6f9290a364233a1337757db5305e245872af"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -3219,7 +3219,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "3.0.0-rc.0"
+version = "2.5.6"
 dependencies = [
  "async-trait",
  "bincode",
@@ -8215,9 +8215,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.279.0"
+version = "0.280.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1cbfe7e5d583b020412ddb67af6e9fe296a93a2ca35587d38159b8a9f1c4a44"
+checksum = "f818e32ff8f4ccaba8f675330b29fd62cd6b073957852d606f021a9e398a8fa2"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -8524,6 +8524,13 @@ checksum = "a0d7b3e8a3b6f2ee93ac391a0f757c13790caa0147892e3545cd549dd5b54bc0"
 dependencies = [
  "unicode_categories",
  "winnow 0.6.26",
+]
+
+[[package]]
+name = "sqlite_extension_test"
+version = "0.1.0"
+dependencies = [
+ "test_server",
 ]
 
 [[package]]
@@ -9343,14 +9350,6 @@ dependencies = [
  "win32job",
  "winapi",
  "zip",
-]
-
-[[package]]
-name = "test_sqlite_extension"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "test_server",
 ]
 
 [[package]]
