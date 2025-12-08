@@ -765,38 +765,7 @@ fn resolve_non_graph_specifier_types(
         .ok(),
     )))
   } else {
-    match NpmPackageReqReference::from_str(raw_specifier) {
-      Ok(npm_req_ref) => {
-        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-        // todo(dsherret): add support for injecting this in the graph so
-        // we don't need this special code here.
-        // This could occur when resolving npm:@types/node when it is
-        // injected and not part of the graph
-        let package_folder =
-          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
-            npm_req_ref.req(),
-            referrer,
-          )?;
-        let res_result = node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            npm_req_ref.sub_path(),
-            Some(referrer),
-            resolution_mode,
-            NodeResolutionKind::Types,
-          );
-        let maybe_url = match res_result {
-          Ok(url_or_path) => Some(url_or_path.into_url()?),
-          Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
-            _ => return Err(err.into()),
-          },
-        };
-        Ok(Some(into_specifier_and_media_type(maybe_url)))
-      }
-      _ => Ok(None),
-    }
+    Ok(None)
   }
 }
 
