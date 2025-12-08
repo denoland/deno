@@ -484,6 +484,10 @@ fn should_run(if_cond: Option<&str>) -> bool {
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
       "notCI" => std::env::var_os("CI").is_none(),
+      "notMacIntel" => {
+        cfg!(unix)
+          && !(cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
+      }
       value => panic!("Unknown if condition: {}", value),
     }
   } else {
