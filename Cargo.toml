@@ -62,7 +62,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [patch.crates-io]
-deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "1b41e5b847a9a4efc59c715ce49206a832628f3a" }
+deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "f97387ec42f485a4968e41061ac12dee32768a17" }
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
