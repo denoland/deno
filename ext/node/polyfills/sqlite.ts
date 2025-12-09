@@ -14,12 +14,22 @@ import type { URL } from "node:url";
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectConstruct,
   StringPrototypeIncludes,
   StringPrototypeStartsWith,
   SymbolDispose,
   SymbolFor,
   TypeError,
 } = primordials;
+
+class ConstructCallRequiredError extends TypeError {
+  code: string;
+  constructor() {
+    super("Cannot call constructor without `new`");
+    this.code = "ERR_CONSTRUCT_CALL_REQUIRED";
+  }
+}
 
 class InvalidPathError extends TypeError {
   code: string;
@@ -64,11 +74,23 @@ const parsePath = (path: unknown): string => {
   return parsedPath;
 };
 
-class DatabaseSync extends DatabaseSyncOp {
-  constructor(path: string | URL | Buffer, options?: unknown) {
-    super(parsePath(path), options);
+// Using ES5 class allows custom error to be thrown
+// when called without `new`.
+function DatabaseSync(
+  path: string | URL | Buffer,
+  options?: unknown,
+): DatabaseSyncOp {
+  if (new.target === undefined) {
+    throw new ConstructCallRequiredError();
   }
+  return ReflectConstruct(
+    DatabaseSyncOp,
+    [parsePath(path), options],
+    new.target,
+  );
 }
+ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
+ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
 interface BackupOptions {
   /**

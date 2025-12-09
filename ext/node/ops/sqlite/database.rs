@@ -553,18 +553,6 @@ fn open_db(
   Ok(conn)
 }
 
-fn database_constructor(
-  _: &mut v8::PinScope<'_, '_>,
-  args: &v8::FunctionCallbackArguments,
-) -> Result<(), validators::Error> {
-  // TODO(littledivy): use `IsConstructCall()`
-  if args.new_target().is_undefined() {
-    return Err(validators::Error::ConstructCallRequired);
-  }
-
-  Ok(())
-}
-
 fn is_open(
   scope: &mut v8::PinScope<'_, '_>,
   args: &v8::FunctionCallbackArguments,
@@ -591,7 +579,6 @@ impl DatabaseSync {
   // To use an in-memory database, the `location` should be special
   // name ":memory:".
   #[constructor]
-  #[validate(database_constructor)]
   #[cppgc]
   fn new(
     state: &mut OpState,
