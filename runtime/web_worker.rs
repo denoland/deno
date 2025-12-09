@@ -678,15 +678,6 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // Do we still want an inspector per worker?
-    if let Some(ref server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
-    }
-
     if let Some(main_session_tx) = services.main_inspector_session_tx {
       let (main_proxy, worker_proxy) =
         deno_core::create_worker_inspector_session_pair(
