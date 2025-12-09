@@ -113,12 +113,12 @@ jobs:
             use_sysroot: true
           - os: linux
             arch: aarch64
-            runner: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'
+            runner: ubuntu-24.04-arm64-xl
             job: test
             profile: debug
           - os: linux
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ubuntu-24.04-arm64-xl'' }}'
             job: test
             profile: release
             use_sysroot: true
