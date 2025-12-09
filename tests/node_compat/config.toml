@@ -994,8 +994,7 @@
 "parallel/test-stdin-pipe-resume.js" = {}
 "parallel/test-stdin-resume-pause.js" = {}
 "parallel/test-stdin-script-child-option.js" = {}
-# TODO(bartlomieju): this test currently times out on macOS intel runners after 10s, consider increasing timeout.
-"parallel/test-stdio-pipe-access.js" = { darwin = false }
+"parallel/test-stdio-pipe-access.js" = {}
 "parallel/test-stdio-pipe-redirect.js" = {}
 "parallel/test-stdio-pipe-stderr.js" = { flaky = true }
 "parallel/test-stdio-undestroy.js" = { flaky = true }
