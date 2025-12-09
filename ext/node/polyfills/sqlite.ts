@@ -2,17 +2,72 @@
 
 import { primordials } from "ext:core/mod.js";
 import {
-  DatabaseSync,
+  DatabaseSync as DatabaseSyncOp,
   op_node_database_backup,
   StatementSync,
 } from "ext:core/ops";
 import type { Buffer } from "node:buffer";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import type { URL } from "node:url";
 
 const {
   ObjectDefineProperties,
-  SymbolFor,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeIncludes,
   SymbolDispose,
+  SymbolFor,
+  TypeError,
 } = primordials;
+
+class InvalidPathError extends TypeError {
+  code: string;
+  constructor() {
+    super(
+      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
+    );
+    this.code = "ERR_INVALID_ARG_TYPE";
+  }
+}
+
+class InvalidURLSchemeError extends TypeError {
+  code: string;
+  constructor() {
+    super("The URL must be of scheme file:");
+    this.code = "ERR_INVALID_URL_SCHEME";
+  }
+}
+
+const parsePath = (path: unknown): string => {
+  let parsedPath: string | undefined;
+  if (typeof path === "string") {
+    parsedPath = path;
+  } else if (isUint8Array(path)) {
+    const decoder = new TextDecoder("utf8");
+    parsedPath = decoder.decode(path);
+    // @ts-expect-error safe to check even though `path` is unknown
+  } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, path)) {
+    parsedPath = (path as URL).href;
+    if (!parsedPath.startsWith("file:")) {
+      throw new InvalidURLSchemeError();
+    }
+  }
+
+  if (
+    typeof parsedPath === "undefined" ||
+    StringPrototypeIncludes(parsedPath, "\0")
+  ) {
+    throw new InvalidPathError();
+  }
+
+  return parsedPath;
+};
+
+class DatabaseSync extends DatabaseSyncOp {
+  constructor(path: string | URL | Buffer, options?: unknown) {
+    super(parsePath(path), options);
+  }
+}
 
 interface BackupOptions {
   /**
@@ -74,11 +129,17 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-const backup = op_node_database_backup as (
+async function backup(
   sourceDb: DatabaseSync,
-  path: string | URL | Buffer,
+  path: string | Buffer | URL,
   options?: BackupOptions,
-) => Promise<number>;
+): Promise<number> {
+  return await op_node_database_backup(
+    sourceDb,
+    parsePath(path),
+    options,
+  );
+}
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
