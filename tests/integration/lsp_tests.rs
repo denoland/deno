@@ -11001,91 +11001,6 @@ fn lsp_completions_node_builtin() {
     ])
   );
 
-  // update to have fs import
-  client.write_notification(
-    "textDocument/didChange",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "version": 2
-      },
-      "contentChanges": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 16 },
-            "end": { "line": 0, "character": 33 },
-          },
-          "text": "fs"
-        }
-      ]
-    }),
-  );
-  let diagnostics = client.read_diagnostics();
-  let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String(
-          "import-node-prefix-missing".to_string(),
-        ))
-    })
-    .collect::<Vec<_>>();
-
-  // get the quick fixes
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "range": {
-        "start": { "line": 0, "character": 16 },
-        "end": { "line": 0, "character": 18 },
-      },
-      "context": {
-        "diagnostics": json!(diagnostics),
-        "only": ["quickfix"]
-      }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to node:fs",
-      "kind": "quickfix",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 }
-          },
-          "severity": 1,
-          "code": "import-node-prefix-missing",
-          "source": "deno",
-          "message": "Import \"fs\" not a dependency\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
-          "data": {
-            "specifier": "fs"
-          },
-        }
-      ],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [
-            {
-              "range": {
-                "start": { "line": 0, "character": 15 },
-                "end": { "line": 0, "character": 19 }
-              },
-              "newText": "\"node:fs\""
-            }
-          ]
-        }
-      }
-    }])
-  );
-
   // update to have node:fs import
   client.write_notification(
     "textDocument/didChange",
@@ -11097,46 +11012,14 @@ fn lsp_completions_node_builtin() {
       "contentChanges": [
         {
           "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 },
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 33 },
           },
-          "text": "\"node:fs\"",
+          "text": "node:fs",
         }
       ]
     }),
   );
-
-  let diagnostics = client.read_diagnostics();
-  let cache_diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
-    })
-    .collect::<Vec<_>>();
-
-  assert_eq!(
-    json!(cache_diagnostics),
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 15 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "data": {
-          "specifier": "npm:@types/node",
-        },
-        "severity": 1,
-        "code": "not-installed-npm",
-        "source": "deno",
-        "message": "npm package \"@types/node\" is not installed or doesn't exist."
-      }
-    ])
-  );
-
-  client.cache(["npm:@types/node"], "file:///a/file.ts");
   client.read_diagnostics();
 
   client.write_notification(
@@ -12482,6 +12365,7 @@ fn lsp_performance() {
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
+      "tsc.op.op_resolve",
       "tsc.op.op_script_names",
       "tsc.request.$getAmbientModules",
       "tsc.request.$getDiagnostics",
@@ -13914,6 +13798,24 @@ fn lsp_workspace_symbol() {
         },
         "containerName": ""
       },
+      {
+        "name": "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE",
+        "kind": 13,
+        "location": {
+            "uri": "deno:/asset/node/http2.d.cts",
+            "range": null,
+        },
+        "containerName": "constants",
+      },
+      {
+        "name": "strictFieldWhitespaceValidation",
+        "kind": 8,
+        "location": {
+            "uri": "deno:/asset/node/http2.d.cts",
+            "range": null,
+        },
+        "containerName": "SessionOptions",
+      }
     ])
   );
   client.shutdown();
@@ -15713,7 +15615,7 @@ fn lsp_node_modules_dir() {
     }
   }));
   let cache = |client: &mut LspClient| {
-    client.cache(["npm:chalk", "npm:@types/node"], &file_url);
+    client.cache(["npm:chalk"], &file_url);
     client.handle_refresh_diagnostics_request();
     client.read_diagnostics()
   };
@@ -15748,12 +15650,11 @@ fn lsp_node_modules_dir() {
   };
   refresh_config(&mut client);
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
+  assert_eq!(diagnostics.all().len(), 1, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
-  assert!(temp_dir.path().join("node_modules/@types/node").exists());
 
   // now add a lockfile and cache
   temp_dir.write(

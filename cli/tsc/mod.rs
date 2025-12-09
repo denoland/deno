@@ -120,25 +120,38 @@ macro_rules! maybe_compressed_source {
   }};
 }
 
-macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
+macro_rules! maybe_compressed_static_asset {
+  ($name: expr, $file: expr, $is_lib: literal) => {
     (
       $name,
       StaticAsset {
-        is_lib: true,
+        is_lib: $is_lib,
         source: maybe_compressed_source!(concat!("tsc/dts/", $file)),
       },
     )
+  };
+  ($e: expr, $is_lib: literal) => {
+    maybe_compressed_static_asset!($e, $e, $is_lib)
+  };
+}
+
+macro_rules! maybe_compressed_lib {
+  ($name: expr, $file: expr) => {
+    maybe_compressed_static_asset!($name, $file, true)
   };
   ($e: expr) => {
     maybe_compressed_lib!($e, $e)
   };
 }
 
+// Include the auto-generated node type libs macro
+include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
+
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   Compressed(CompressedSource),
+  #[allow(dead_code)]
   Uncompressed(&'static str),
   #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
@@ -172,7 +185,7 @@ pub struct StaticAsset {
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
   IndexMap<&'static str, StaticAsset>,
 > = Lazy::new(|| {
-  IndexMap::from([
+  Vec::from([
     // compressed in build.rs
     maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
     maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
@@ -292,24 +305,33 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
     maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
     maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
-    (
-      // Special file that can be used to inject the @types/node package.
-      // This is used for `node:` specifiers.
-      "node_types.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "/// <reference types=\"npm:@types/node\" />\n",
-        ),
-      },
-    ),
   ])
+  .into_iter()
+  .chain(node_type_libs!())
+  .collect()
 });
+
+pub fn lib_names() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for (key, value) in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.iter() {
+    if !value.is_lib {
+      continue;
+    }
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -743,38 +765,7 @@ fn resolve_non_graph_specifier_types(
         .ok(),
     )))
   } else {
-    match NpmPackageReqReference::from_str(raw_specifier) {
-      Ok(npm_req_ref) => {
-        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-        // todo(dsherret): add support for injecting this in the graph so
-        // we don't need this special code here.
-        // This could occur when resolving npm:@types/node when it is
-        // injected and not part of the graph
-        let package_folder =
-          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
-            npm_req_ref.req(),
-            referrer,
-          )?;
-        let res_result = node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &package_folder,
-            npm_req_ref.sub_path(),
-            Some(referrer),
-            resolution_mode,
-            NodeResolutionKind::Types,
-          );
-        let maybe_url = match res_result {
-          Ok(url_or_path) => Some(url_or_path.into_url()?),
-          Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
-            _ => return Err(err.into()),
-          },
-        };
-        Ok(Some(into_specifier_and_media_type(maybe_url)))
-      }
-      _ => Ok(None),
-    }
+    Ok(None)
   }
 }
 
@@ -1074,6 +1065,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
     media_type = MediaType::from_str(load_specifier);
+    is_cjs = media_type == MediaType::Dcts;
     maybe_source.map(T::from_static)
   } else if let Some(source) = load_raw_import_source(&specifier) {
     return Ok(Some(LoadResponse {
