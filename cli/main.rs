@@ -123,6 +123,11 @@ async fn run_subcommand(
     DenoSubcommand::Audit(audit_flags) => {
       spawn_subcommand(async { tools::pm::audit(flags, audit_flags).await })
     }
+    DenoSubcommand::ApproveScripts(approve_scripts_flags) => {
+      spawn_subcommand(async move {
+        tools::pm::approve_scripts(flags, approve_scripts_flags).await
+      })
+    }
     DenoSubcommand::Remove(remove_flags) => {
       spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
     }
@@ -152,8 +157,14 @@ async fn run_subcommand(
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      tools::installer::install_from_entrypoints(flags, &cache_flags.files)
-        .await
+      tools::installer::install_from_entrypoints(
+        flags,
+        self::args::InstallEntrypointsFlags {
+          entrypoints: cache_flags.files,
+          lockfile_only: false,
+        },
+      )
+      .await
     }),
     DenoSubcommand::Check(check_flags) => {
       spawn_subcommand(

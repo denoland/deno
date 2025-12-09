@@ -48,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -103,7 +104,8 @@
               "mac",
               "linux",
               "windows",
-              "unix"
+              "unix",
+              "notMacIntel"
             ]
           },
           "repeat": {

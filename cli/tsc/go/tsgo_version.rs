@@ -23,15 +23,15 @@ impl Hashes {
   }
 }
 
-pub const VERSION: &str = "0.1.9";
+pub const VERSION: &str = "0.1.11";
 pub const DOWNLOAD_BASE_URL: &str =
-  "https://github.com/denoland/typescript-go/releases/download/v0.1.9";
+  "https://github.com/denoland/typescript-go/releases/download/v0.1.11";
 pub const HASHES: Hashes = Hashes {
-  windows_x64: "sha256:11492f3a52979d92625985422a97bc72b3b25d22687d40349cbd07c70aaa9b87",
-  macos_x64: "sha256:3233c5011928c022fd1958d40d51565fec7ee485ee1d28d1836fbce4ac2dd668",
-  macos_arm64: "sha256:ca7a75c71eba9ea4cb6bd667f015fc26ceee41c0d53769e5c27ad59ba433611c",
-  linux_x64: "sha256:a87e7653f6ca82c4132c801a5299af06b802f51ba18270dc7f9fbc143adf2e03",
-  linux_arm64: "sha256:5b0f7aef634bbcad98c8947be54326d3ece6d87c450329c6cf71f7c609409803",
+  windows_x64: "sha256:63c52843d7d64ac98797d44ca6cae9fc6407562cd86e12bcc1a8ba0e64c53493",
+  macos_x64: "sha256:d166974ff5dbc4239bfe1672059b4ac4915cecd0c80ff0d56819a66a5fa057cc",
+  macos_arm64: "sha256:ae2de1ee96b62348555e6e8cff5d6f368e192a63f6f9ab3c1c842b8b43141201",
+  linux_x64: "sha256:c6b790e1169d873ac48e41f459a860be18c5cdd550563145c5414ec56adcecaa",
+  linux_arm64: "sha256:2a323209c41ccbae6cdf8702bb465c6bca2753e75291c456f878df640a9a585f",
 };
 
 const _: () = {

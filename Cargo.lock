@@ -1573,7 +1573,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "3.0.0-rc.0"
+version = "2.5.6"
 dependencies = [
  "anstream",
  "async-trait",
@@ -2520,9 +2520,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.42.0"
+version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae246f5c39baf58dfbb8250068ec35223f4c4c19889bfad732d92a035bf74fe6"
+checksum = "7daa908c280b25d68ea59765144df488714716cc14a2dcafaa1ec3906d4abbbe"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2595,6 +2595,7 @@ dependencies = [
  "deno_unsync",
  "dyn-clone",
  "futures",
+ "lazy-regex",
  "log",
  "once_cell",
  "parking_lot",
@@ -3219,7 +3220,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "3.0.0-rc.0"
+version = "2.5.6"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5794,9 +5795,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.11.0"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73ff2746d6f3ea1421944f625fd827c52e0d7e97b91976d4c940c486da38b414"
+checksum = "99dc19fe502fbaca89d5607b14a0e301a40af42a14e33afc349e73eaef2bc86f"
 dependencies = [
  "editpe",
  "image",
@@ -8528,6 +8529,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlite_extension_test"
+version = "0.1.0"
+dependencies = [
+ "test_server",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9344,14 +9352,6 @@ dependencies = [
  "win32job",
  "winapi",
  "zip",
-]
-
-[[package]]
-name = "test_sqlite_extension"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "test_server",
 ]
 
 [[package]]

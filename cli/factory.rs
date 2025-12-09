@@ -1247,7 +1247,6 @@ impl CliFactory {
               .clone(),
           })),
           bare_node_builtins: options.unstable_bare_node_builtins(),
-          types_node_version_req: Some(crate::npm::get_types_node_version_req()),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,
@@ -1317,6 +1316,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Uninstall(_)
+        | DenoSubcommand::ApproveScripts(_)
     ),
     no_lock: flags.no_lock
       || matches!(

@@ -238,21 +238,14 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
-          let reporter = reporter.clone();
-          spawn_blocking(move || {
-            let result = verify_and_extract_tarball(
+          spawn_blocking(move || verify_and_extract_tarball(
               &sys,
               &package_nv,
               &bytes,
               &dist,
               &package_folder,
               extraction_mode,
-            );
-            if let Some(reporter) = reporter {
-              reporter.downloaded(&package_nv);
-            }
-            result
-          })
+            ))
           .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
         }
         None => {
