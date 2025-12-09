@@ -524,6 +524,9 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         media_type: MediaType::Wasm,
       }))),
       Some(deno_graph::Module::External(module)) => {
+        if module.specifier.as_str().contains("/node_modules/") {
+          return Ok(None);
+        }
         Ok(Some(CodeOrDeferredEmit::ExternalAsset {
           specifier: &module.specifier,
         }))
