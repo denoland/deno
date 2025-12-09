@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+mod windows_shim;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -378,14 +380,20 @@ pub trait SetupBinEntrySys:
 pub fn set_up_bin_entry<'a>(
   sys: &impl SetupBinEntrySys,
   package: &'a NpmResolutionPackage,
-  #[allow(unused_variables)] extra: &'a NpmPackageExtraInfo,
+  extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
-  #[allow(unused_variables)] bin_script: &str,
-  #[allow(unused_variables)] package_path: &'a Path,
+  bin_script: &str,
+  package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
   if sys_traits::impls::is_windows() {
-    set_up_bin_shim(sys, package, bin_name, bin_node_modules_dir_path)?;
+    windows_shim::set_up_bin_shim(
+      sys,
+      bin_name,
+      bin_script,
+      package_path,
+      bin_node_modules_dir_path,
+    )?;
     Ok(EntrySetupOutcome::Success)
   } else {
     symlink_bin_entry(
@@ -398,27 +406,6 @@ pub fn set_up_bin_entry<'a>(
       bin_node_modules_dir_path,
     )
   }
-}
-
-fn set_up_bin_shim(
-  sys: &impl FsWrite,
-  package: &NpmResolutionPackage,
-  bin_name: &str,
-  bin_node_modules_dir_path: &Path,
-) -> Result<(), BinEntriesError> {
-  let mut cmd_shim = bin_node_modules_dir_path.join(bin_name);
-
-  cmd_shim.set_extension("cmd");
-  let shim = format!("@deno run -A npm:{}/{bin_name} %*", package.id.nv);
-  sys
-    .fs_write(&cmd_shim, shim)
-    .map_err(|err| BinEntriesError::SetUpBin {
-      name: bin_name.to_string(),
-      path: cmd_shim.clone(),
-      source: Box::new(err.into()),
-    })?;
-
-  Ok(())
 }
 
 /// Make the file at `path` executable if it exists.
@@ -479,6 +466,10 @@ impl EntrySetupOutcome<'_> {
   }
 }
 
+fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+  pathdiff::diff_paths(to, from)
+}
+
 fn symlink_bin_entry<'a>(
   sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile + FsReadLink),
   package: &'a NpmResolutionPackage,
@@ -490,10 +481,6 @@ fn symlink_bin_entry<'a>(
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
-
-  fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-    pathdiff::diff_paths(to, from)
-  }
 
   let original_relative = relative_path(bin_node_modules_dir_path, &original)
     .map(Cow::Owned)
