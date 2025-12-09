@@ -2520,9 +2520,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.42.1"
+version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7676aeffeeefb7ef4343a5f5c04e6bf97d5b24038d04c119fb3891fa56a1d146"
+checksum = "7daa908c280b25d68ea59765144df488714716cc14a2dcafaa1ec3906d4abbbe"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -8528,6 +8528,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlite_extension_test"
+version = "0.1.0"
+dependencies = [
+ "test_server",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9344,14 +9351,6 @@ dependencies = [
  "win32job",
  "winapi",
  "zip",
-]
-
-[[package]]
-name = "test_sqlite_extension"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "test_server",
 ]
 
 [[package]]

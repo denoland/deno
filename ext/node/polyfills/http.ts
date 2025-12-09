@@ -68,6 +68,7 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
+import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -2232,10 +2233,10 @@ export class ServerImpl extends EventEmitter {
 
   address() {
     if (this.#addr === null) return null;
-    return {
-      port: this.#addr.port,
-      address: this.#addr.hostname,
-    };
+    const addr = this.#addr.hostname;
+    // Match Node.js: family is undefined for non-IP addresses (isIP returns 0)
+    const family = getIPFamily(addr);
+    return { port: this.#addr.port, address: addr, family };
   }
 }
 
