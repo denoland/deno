@@ -2,6 +2,7 @@
 
 // NB(bartlomieju): a bunch of code is not used on Mac Intel
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 use test_util as util;
 use util::TestContext;
