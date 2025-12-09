@@ -18,6 +18,7 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
+use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -29,6 +30,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -377,11 +379,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub main_inspector_session_tx: Option<
-    deno_core::futures::channel::mpsc::UnboundedSender<
-      deno_core::InspectorSessionProxy,
-    >,
-  >,
+  pub main_inspector_session_tx: Option<UnboundedSender<InspectorSessionProxy>>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -680,41 +678,29 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
+    // Do we still want an inspector per worker?
+    if let Some(ref server) = services.maybe_inspector_server {
+      server.register_inspector(
+        options.main_module.to_string(),
+        js_runtime.inspector(),
+        false,
+      );
+    }
+
     if let Some(main_session_tx) = services.main_inspector_session_tx {
-      let (worker_to_main_tx, worker_to_main_rx) =
-        deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
         );
-      let (main_to_worker_tx, main_to_worker_rx) =
-        deno_core::futures::channel::mpsc::unbounded::<String>();
 
-      let worker_url = options.main_module.to_string();
+      // Send worker proxy to the main runtime
+      main_session_tx.unbounded_send(main_proxy).unwrap();
 
-      let proxy = deno_core::InspectorSessionProxy {
-        channels: deno_core::InspectorSessionChannels::Worker {
-          main_to_worker_tx,
-          worker_to_main_rx,
-          worker_url,
-        },
-        kind: deno_core::InspectorSessionKind::NonBlocking {
-          wait_for_disconnect: false,
-        },
-      };
-
-      main_session_tx.unbounded_send(proxy).unwrap();
-      let inspector_session_proxy = deno_core::InspectorSessionProxy {
-        channels: deno_core::InspectorSessionChannels::Regular {
-          tx: worker_to_main_tx,
-          rx: main_to_worker_rx,
-        },
-        kind: deno_core::InspectorSessionKind::NonBlocking {
-          wait_for_disconnect: false,
-        },
-      };
-
-      let session_sender = js_runtime.inspector().get_session_sender();
-
-      session_sender
-        .unbounded_send(inspector_session_proxy)
+      // Send worker proxy to the worker runtime
+      js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
         .unwrap();
     }
 
