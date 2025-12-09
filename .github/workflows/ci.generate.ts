@@ -732,7 +732,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets --features=panic-trace -j 4",
+            "cargo build --release --locked --all-targets --features=panic-trace -j 2",
             "df -h",
           ].join("\n"),
         },
