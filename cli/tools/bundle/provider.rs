@@ -173,7 +173,9 @@ impl BundleProvider for CliBundleProvider {
           super::process_result(
             &result,
             &bundler.cwd,
-            true,
+            crate::tools::bundle::should_replace_require_shim(
+              bundle_flags.platform,
+            ),
             bundle_flags.minify,
             bundler.input,
             bundle_flags.output_dir.as_ref().map(Path::new),
