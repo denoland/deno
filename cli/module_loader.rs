@@ -752,14 +752,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?;
 
+    let module_type = match requested_module_type {
+      RequestedModuleType::Text => ModuleType::Text,
+      RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::None => {
+        match file.resolve_media_type_and_charset().0 {
+          MediaType::Wasm => ModuleType::Wasm,
+          _ => ModuleType::JavaScript,
+        }
+      }
+      t => unreachable!("{t}"),
+    };
+
     Ok(ModuleCodeStringSource {
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
-      module_type: match requested_module_type {
-        RequestedModuleType::Text => ModuleType::Text,
-        RequestedModuleType::Bytes => ModuleType::Bytes,
-        _ => unreachable!(),
-      },
+      module_type,
     })
   }
 

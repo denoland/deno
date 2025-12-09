@@ -80,7 +80,6 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::get_types_node_version_req;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -567,16 +566,6 @@ impl LspResolver {
         .cloned()
         .unwrap_or_default();
       {
-        if resolver.npm_installer.is_some() && dep_info.has_node_specifier {
-          let has_types_node = {
-            let npm_installer_reqs = resolver.npm_installer_reqs.lock();
-            npm_installer_reqs.iter().any(|r| r.name == "@types/node")
-          };
-          if !has_types_node {
-            resolver
-              .add_npm_reqs(vec![PackageReq::from_str("@types/node").unwrap()]);
-          }
-        }
         let mut resolver_dep_info = resolver.dep_info.lock();
         *resolver_dep_info = dep_info.clone();
       }
@@ -613,7 +602,6 @@ impl LspResolver {
 #[derive(Debug, Default, Clone)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
-  pub has_node_specifier: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -953,7 +941,7 @@ impl<'a> ResolverFactory<'a> {
         None,
       ));
       let npm_version_resolver = Arc::new(NpmVersionResolver {
-        types_node_version_req: Some(get_types_node_version_req()),
+        types_node_version_req: None,
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
       });
@@ -966,6 +954,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_lockfile.clone(),
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
+        None,
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
@@ -976,12 +965,13 @@ impl<'a> ResolverFactory<'a> {
         &pb,
         sys.clone(),
         tarball_cache.clone(),
-        maybe_lockfile,
-        maybe_node_modules_path.clone(),
-        Arc::new(LifecycleScriptsConfig::default()),
-        NpmSystemInfo::default(),
-        link_packages,
-        None,
+        deno_npm_installer::NpmInstallerOptions {
+          maybe_lockfile,
+          maybe_node_modules_path: maybe_node_modules_path.clone(),
+          lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
+          system_info: NpmSystemInfo::default(),
+          workspace_link_packages: link_packages,
+        },
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {

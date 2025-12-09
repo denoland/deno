@@ -1036,7 +1036,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
-    if name == "#" || name.starts_with("#/") || name.ends_with('/') {
+    if name == "#" || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(
         errors::InvalidModuleSpecifierError {
@@ -1637,69 +1637,37 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let result = self.resolve_package_subpath_for_package_inner(
-      package_name,
-      package_subpath,
-      referrer,
-      resolution_mode,
-      conditions,
-      resolution_kind,
-    );
-    if resolution_kind.is_types() && result.is_err() {
-      // try to resolve with the @types package
-      let package_name = types_package_name(package_name);
-      if let Ok(result) = self.resolve_package_subpath_for_package_inner(
-        &package_name,
-        package_subpath,
-        referrer,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      ) {
-        return Ok(result);
-      }
-    }
-    result
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  fn resolve_package_subpath_for_package_inner(
-    &self,
-    package_name: &str,
-    package_subpath: &str,
-    referrer: &UrlOrPathRef,
-    resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
-    resolution_kind: NodeResolutionKind,
-  ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let package_dir_path = self
-      .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(package_name, referrer)?;
-
-    // todo: error with this instead when can't find package
-    // Err(errors::err_module_not_found(
-    //   &package_json_url
-    //     .join(".")
-    //     .unwrap()
-    //     .to_file_path()
-    //     .unwrap()
-    //     .display()
-    //     .to_string(),
-    //   &to_file_path_string(referrer),
-    //   "package",
-    // ))
-
-    // Package match.
-    self
-      .resolve_package_dir_subpath(
-        &package_dir_path,
+    let resolve = |package_dir: &Path| {
+      self.resolve_package_dir_subpath(
+        package_dir,
         package_subpath,
         Some(referrer),
         resolution_mode,
         conditions,
         resolution_kind,
       )
+    };
+    let result: Result<_, PackageResolveError> = self
+      .npm_pkg_folder_resolver
+      .resolve_package_folder_from_package(package_name, referrer)
       .map_err(|err| err.into())
+      .and_then(|package_dir| resolve(&package_dir).map_err(|e| e.into()));
+
+    if resolution_kind.is_types() && result.is_err() {
+      // try to resolve with the @types package based on the package name
+      let maybe_types_package_dir = self
+        .resolve_types_package_folder_with_name_and_version(
+          package_name,
+          None,
+          Some(referrer),
+        );
+      if let Some(types_package_dir) = maybe_types_package_dir
+        && let Ok(result) = resolve(&types_package_dir)
+      {
+        return Ok(result);
+      }
+    }
+    result
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -1718,14 +1686,36 @@ impl<
       .pkg_json_resolver
       .load_package_json(&package_json_path)?
     {
-      Some(pkg_json) => self.resolve_package_subpath(
-        &pkg_json,
-        package_subpath,
-        maybe_referrer,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      ),
+      Some(pkg_json) => {
+        let result = self.resolve_package_subpath(
+          &pkg_json,
+          package_subpath,
+          maybe_referrer,
+          resolution_mode,
+          conditions,
+          resolution_kind,
+        );
+        if resolution_kind.is_types()
+          && result.is_err()
+          && let Some(types_pkg_dir) = self
+            .resolve_types_package_folder_from_package_json(
+              &pkg_json,
+              maybe_referrer,
+            )
+          && let Ok(result) = self.resolve_package_dir_subpath(
+            &types_pkg_dir,
+            package_subpath,
+            maybe_referrer,
+            resolution_mode,
+            conditions,
+            resolution_kind,
+          )
+        {
+          Ok(result)
+        } else {
+          result
+        }
+      }
       None => self
         .resolve_package_subpath_no_pkg_json(
           package_dir_path,
@@ -2084,6 +2074,46 @@ impl<
         .into(),
       )
     }
+  }
+
+  fn resolve_types_package_folder_from_package_json(
+    &self,
+    pkg_json: &PackageJson,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    let package_name = pkg_json.name.as_deref()?;
+    let maybe_version = pkg_json
+      .version
+      .as_ref()
+      .and_then(|v| Version::parse_from_npm(v).ok());
+    self.resolve_types_package_folder_with_name_and_version(
+      package_name,
+      maybe_version.as_ref(),
+      maybe_referrer,
+    )
+  }
+
+  fn resolve_types_package_folder_with_name_and_version(
+    &self,
+    package_name: &str,
+    maybe_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    let types_package_name = types_package_name(package_name)?;
+    log::debug!(
+      "Attempting to resolve types package '{}@{}'.",
+      types_package_name,
+      maybe_version
+        .as_ref()
+        .map(|s| s.to_string())
+        .as_deref()
+        .unwrap_or("*")
+    );
+    self.npm_pkg_folder_resolver.resolve_types_package_folder(
+      &types_package_name,
+      maybe_version,
+      maybe_referrer,
+    )
   }
 
   /// Resolves a specifier that is pointing into a node_modules folder by canonicalizing it.
@@ -2510,15 +2540,29 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-/// Gets the corresponding @types package for the provided package name.
-pub fn types_package_name(package_name: &str) -> String {
-  debug_assert!(!package_name.starts_with("@types/"));
+/// Gets the corresponding @types package for the provided package name
+/// returning `None` when the package is already a @types package.
+fn types_package_name(package_name: &str) -> Option<String> {
+  if package_name.starts_with("@types/") {
+    return None;
+  }
   // Scoped packages will get two underscores for each slash
   // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
-  format!(
-    "@types/{}",
-    package_name.trim_start_matches('@').replace('/', "__")
-  )
+  capacity_builder::StringBuilder::build(|builder| {
+    builder.append("@types/");
+    for (i, c) in package_name.chars().enumerate() {
+      match c {
+        '@' if i == 0 => {
+          // ignore
+        }
+        '/' => {
+          builder.append("__");
+        }
+        c => builder.append(c),
+      }
+    }
+  })
+  .ok()
 }
 
 /// Node is more lenient joining paths than the url crate is,
@@ -2873,11 +2917,12 @@ mod tests {
 
   #[test]
   fn test_types_package_name() {
-    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(types_package_name("name").unwrap(), "@types/name");
     assert_eq!(
-      types_package_name("@scoped/package"),
+      types_package_name("@scoped/package").unwrap(),
       "@types/scoped__package"
     );
+    assert_eq!(types_package_name("@types/node"), None);
   }
 
   #[test]

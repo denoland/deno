@@ -32,18 +32,16 @@ import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
 import {
   clearTimeout as clearTimeout_,
-  kTimerId,
   setInterval as setInterval_,
   setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
 import { runNextTicks } from "ext:deno_node/_next_tick.ts";
 
-export { kTimerId } from "ext:deno_web/02_timers.js";
-
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
 
 export const kDestroy = Symbol("destroy");
+export const kTimerId = Symbol("timerId");
 export const kTimeout = Symbol("timeout");
 export const kRefed = Symbol("refed");
 const createTimer = Symbol("createTimer");

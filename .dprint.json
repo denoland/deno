@@ -35,6 +35,7 @@
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/node",
     "cli/tsc/dts/typescript.d.ts",
     "cli/tools/doc/prism.css",
     "cli/tools/doc/prism.js",

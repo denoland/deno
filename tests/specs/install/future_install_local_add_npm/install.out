@@ -5,8 +5,8 @@ Initialize @denotest/esm-basic@1.0.0
 Installed 1 package in [WILDCARD]
 Reused 0 packages from cache
 Downloaded 0 packages from JSR
-Downloaded 2 packages from npm
-++
+Downloaded 1 package from npm
++
 
 Dependencies:
 + npm:@denotest/esm-basic 1.0.0

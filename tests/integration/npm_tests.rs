@@ -1359,8 +1359,8 @@ fn top_level_install_package_json_explicit_opt_in() {
     "Installed 1 package in [WILDCARD]\n",
     "Reused 0 packages from cache\n",
     "Downloaded 0 packages from JSR\n",
-    "Downloaded 2 packages from npm\n",
-    "++\n",
+    "Downloaded 1 package from npm\n",
+    "+\n",
     "\n",
     "Dependencies:\n",
     "+ npm:@denotest/esm-basic 1.0.0\n",
@@ -1444,7 +1444,7 @@ console.log(getKind());
     r#"import { expect } from "chai";
 
     const timeout = setTimeout(() => {}, 0);
-    expect(timeout).to.be.a("object");
+    expect(timeout).to.be.a("number");
     clearTimeout(timeout);"#,
   );
   test_context.new_command().args("run chai.ts").run();
@@ -1607,7 +1607,7 @@ fn byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("object");
+expect(timeout).to.be.a("number");
 clearTimeout(timeout);
 
 export function add(a, b) {
@@ -1706,7 +1706,7 @@ fn future_byonm_npm_workspaces() {
 import { expect } from "chai";
 
 const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("object");
+expect(timeout).to.be.a("number");
 clearTimeout(timeout);
 
 export function add(a, b) {
