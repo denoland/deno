@@ -25,6 +25,7 @@ use crate::args::XFlagsKind;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
@@ -494,7 +495,14 @@ async fn autoinstall_package(
         }
       }
 
-      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
+      crate::tools::pm::cache_top_level_deps(
+        &new_factory,
+        None,
+        CacheTopLevelDepsOptions {
+          lockfile_only: false,
+        },
+      )
+      .await?;
 
       if let Some(lockfile) = new_factory.maybe_lockfile().await? {
         lockfile.write_if_changed()?;
