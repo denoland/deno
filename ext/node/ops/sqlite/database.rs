@@ -47,7 +47,7 @@ struct DatabaseSyncOptions {
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
-  timeout: i64,
+  timeout: u64,
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -161,13 +161,17 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
     if let Some(timeout) = obj.get(scope, timeout_string.into())
       && !timeout.is_undefined()
     {
-      options.timeout = v8::Local::<v8::Integer>::try_from(timeout)
+      let timeout = v8::Local::<v8::Integer>::try_from(timeout)
         .map_err(|_| {
           Error::InvalidArgType(
             "The \"options.timeout\" argument must be an integer.",
           )
         })?
         .value();
+
+      if timeout > 0 {
+        options.timeout = timeout as u64;
+      }
     }
 
     Ok(options)
@@ -363,11 +367,7 @@ fn open_db(
   }
 
   let conn = rusqlite::Connection::open(location)?;
-
-  if options.timeout != 0 {
-    conn
-      .busy_timeout(std::time::Duration::from_millis(options.timeout as u64))?;
-  }
+  conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
   if options.allow_extension {
     perms.check_ffi_all()?;
