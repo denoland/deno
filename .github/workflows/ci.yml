@@ -400,10 +400,19 @@ jobs:
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
-          github.repository == 'denoland/deno'))
+          github.repository == 'denoland/deno') && !(matrix.arch == 'aarch64' && matrix.os == 'linux'))
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
+          df -h
+      - name: Build release (aarch64-linux)
+        if: |-
+          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          matrix.profile == 'release' && (matrix.use_sysroot ||
+          github.repository == 'denoland/deno') && matrix.arch == 'aarch64' && matrix.os == 'linux')
+        run: |-
+          df -h
+          cargo build --release --locked --all-targets --features=panic-trace -j 4
           df -h
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'

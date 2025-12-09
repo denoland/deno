@@ -713,12 +713,26 @@ const ci = {
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "github.repository == 'denoland/deno')",
+            "github.repository == 'denoland/deno') && !(matrix.arch == 'aarch64' && matrix.os == 'linux')",
           ].join("\n"),
           run: [
             // output fs space before and after building
             "df -h",
             "cargo build --release --locked --all-targets --features=panic-trace",
+            "df -h",
+          ].join("\n"),
+        },
+        {
+          name: "Build release (aarch64-linux)",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno') && matrix.arch == 'aarch64' && matrix.os == 'linux'",
+          ].join("\n"),
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets --features=panic-trace -j 4",
             "df -h",
           ].join("\n"),
         },
