@@ -412,7 +412,7 @@ jobs:
           github.repository == 'denoland/deno') && matrix.arch == 'aarch64' && matrix.os == 'linux')
         run: |-
           df -h
-          cargo build --release --locked --all-targets --features=panic-trace -j 2
+          cargo build --release --locked --all-targets --features=panic-trace -j 1
           df -h
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'
