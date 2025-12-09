@@ -16,26 +16,11 @@ const BUILD_VARIANT: &str = "debug";
 const BUILD_VARIANT: &str = "release";
 
 fn build_extension() {
-  // The extension is in a separate standalone package (excluded from workspace)
-  // because it requires rusqlite's "loadable_extension" feature which is
-  // incompatible with the "session" feature used by the rest of the workspace.
-  let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-  let extension_manifest =
-    tests_dir.join("sqlite_extension").join("Cargo.toml");
-  // Output to the repo's target directory so the Deno tests can find it
-  let target_dir = tests_dir.parent().unwrap().join("target");
-
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin = build_plugin_base
     .arg("build")
-    .arg("--manifest-path")
-    .arg(&extension_manifest)
-    .arg("--target-dir")
-    .arg(&target_dir)
-    // Don't inherit RUSTFLAGS from the test environment - the sysroot
-    // configuration used for main Deno builds doesn't have libsqlite3
-    .env_remove("RUSTFLAGS")
-    .env_remove("RUSTDOCFLAGS");
+    .arg("-p")
+    .arg("test_sqlite_extension");
 
   if BUILD_VARIANT == "release" {
     build_plugin = build_plugin.arg("--release");
@@ -50,10 +35,7 @@ fn build_extension() {
     "cargo build error: {}",
     String::from_utf8_lossy(&build_plugin_output.stderr)
   );
-  assert!(
-    build_plugin_output.status.success(),
-    "Extension build failed. Check that rusqlite features are compatible."
-  );
+  assert!(build_plugin_output.status.success());
 }
 
 #[test]
