@@ -1887,9 +1887,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.371.0"
+version = "0.372.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a15e1d4b16347e8164488fcfe957054ee6c9354b375f30b7727e012253e7e95"
+checksum = "e24cc349b258a9825f0dc29e986b33093fabb33f2e332991d35b0641c680b2fb"
 dependencies = [
  "anyhow",
  "az",
@@ -1991,9 +1991,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.187.0"
+version = "0.188.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b76ea8ad99ec75f94c9fbfc5acfdf4803408dbe9c6563c1691970a768f6398f6"
+checksum = "132e04b64a78cfa36b4e78ac06e12fdf662661ced50eb483fae513d868305d5b"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2144,9 +2144,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.104.0"
+version = "0.105.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "166b59d27d3ef8a446bece020e1d72b629250a0cb6665b0c7929cd7bae93b9a1"
+checksum = "7fd6d3843cfbbd8803b6ef81025af98519651880e6ffd50ee01bb7251afbd6f5"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2595,6 +2595,7 @@ dependencies = [
  "deno_unsync",
  "dyn-clone",
  "futures",
+ "lazy-regex",
  "log",
  "once_cell",
  "parking_lot",
@@ -2613,9 +2614,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.247.0"
+version = "0.248.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2b016ed244d902f3843ba99af8f6f9290a364233a1337757db5305e245872af"
+checksum = "9b1fd01b849fc60fb1206255877d7a183f2e7ee5329e75c389c8470a63437eab"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -3914,9 +3915,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.105.0"
+version = "0.106.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d70ac1a894658d4841901d4548020c97baa339cc1289ed28622cdd04b440091"
+checksum = "f4f0d4fe2e739b7c47344077694e4dcf6f6141d5d125da6328e7b7a1b1ad7eb3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8216,9 +8217,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.280.0"
+version = "0.281.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f818e32ff8f4ccaba8f675330b29fd62cd6b073957852d606f021a9e398a8fa2"
+checksum = "55b7d3cf62efe5c68ec52873f3c737dfd76ded33474cf8b928e6a1fb2cd33158"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -8525,13 +8526,6 @@ checksum = "a0d7b3e8a3b6f2ee93ac391a0f757c13790caa0147892e3545cd549dd5b54bc0"
 dependencies = [
  "unicode_categories",
  "winnow 0.6.26",
-]
-
-[[package]]
-name = "sqlite_extension_test"
-version = "0.1.0"
-dependencies = [
- "test_server",
 ]
 
 [[package]]
@@ -9351,6 +9345,14 @@ dependencies = [
  "win32job",
  "winapi",
  "zip",
+]
+
+[[package]]
+name = "test_sqlite_extension"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "test_server",
 ]
 
 [[package]]

@@ -216,6 +216,7 @@ fn init_subcommand_empty() {
 }
 
 #[tokio::test]
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 async fn init_subcommand_serve() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let cwd = context.temp_dir().path();

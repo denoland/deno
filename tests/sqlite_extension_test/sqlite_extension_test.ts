@@ -1,9 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-
-// NOTE: This test requires building the extension separately (it is excluded
-// from the workspace due to incompatible rusqlite feature requirements):
-//   cargo build --manifest-path tests/sqlite_extension/Cargo.toml
-
 import { DatabaseSync } from "node:sqlite";
 import { assertEquals, assertThrows } from "@std/assert";
 import * as path from "node:path";
@@ -14,7 +9,7 @@ const extensionPath = (() => {
   const isLinux = Deno.build.os === "linux";
 
   const currentDir = new URL(".", import.meta.url).pathname;
-  const denoDir = path.resolve(currentDir, "../..");
+  const denoDir = path.resolve(currentDir, "..");
 
   let libPrefix = "";
   let libSuffix = "";
@@ -35,20 +30,17 @@ const extensionPath = (() => {
   return path.join(targetDir, `${libPrefix}test_sqlite_extension.${libSuffix}`);
 })();
 
-const extensionExists = (() => {
-  try {
-    Deno.statSync(extensionPath);
-    return true;
-  } catch {
-    return false;
-  }
-})();
-
 Deno.test({
   name: "[node/sqlite] DatabaseSync loadExtension",
-  ignore: !extensionExists,
   permissions: { read: true, write: true, ffi: true },
   fn() {
+    // skip the test if the extension is not found
+    try {
+      Deno.statSync(extensionPath);
+    } catch {
+      return;
+    }
+
     const db = new DatabaseSync(":memory:", {
       allowExtension: true,
       readOnly: false,

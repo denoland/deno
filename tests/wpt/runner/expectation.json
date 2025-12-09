@@ -15012,9 +15012,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,

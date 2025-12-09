@@ -643,7 +643,6 @@ struct GraphWalker<'a> {
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
-  has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
 }
@@ -683,7 +682,6 @@ impl<'a> GraphWalker<'a> {
         graph.imports.len() + graph.specifiers_count(),
       ),
       pending: VecDeque::new(),
-      has_seen_node_builtin: false,
       roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
       missing_diagnostics: Default::default(),
     }
@@ -783,22 +781,12 @@ impl<'a> GraphWalker<'a> {
         Module::Wasm(module) => {
           maybe_module_dependencies = Some(&module.dependencies);
         }
-        Module::Json(_) | Module::Npm(_) => {}
+        Module::Json(_) | Module::Node(_) | Module::Npm(_) => {}
         Module::External(module) => {
           // NPM files for `"nodeModulesDir": "manual"`.
           let media_type = MediaType::from_specifier(&module.specifier);
           if media_type.is_declaration() {
             self.roots.push((module.specifier.clone(), media_type));
-          }
-        }
-        Module::Node(_) => {
-          if !self.has_seen_node_builtin {
-            self.has_seen_node_builtin = true;
-            // inject a specifier that will resolve node types
-            self.roots.push((
-              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-              MediaType::Dts,
-            ));
           }
         }
       }
