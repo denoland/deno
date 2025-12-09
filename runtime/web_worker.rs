@@ -680,37 +680,18 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // if let Some(ref server) = services.maybe_inspector_server {
-    //   server.register_inspector(
-    //     options.main_module.to_string(),
-    //     js_runtime.inspector(),
-    //     false,
-    //   );
-    // }
-
     if let Some(main_session_tx) = services.main_inspector_session_tx {
-      let (main_to_worker_sync_tx, main_to_worker_sync_rx) =
-        std::sync::mpsc::channel::<String>();
       let (worker_to_main_tx, worker_to_main_rx) =
         deno_core::futures::channel::mpsc::unbounded::<deno_core::InspectorMsg>(
         );
-      let (main_to_worker_async_tx, main_to_worker_async_rx) =
+      let (main_to_worker_tx, main_to_worker_rx) =
         deno_core::futures::channel::mpsc::unbounded::<String>();
-
-      let main_to_worker_sync_tx_clone = main_to_worker_sync_tx.clone();
-      std::thread::spawn(move || {
-        while let Ok(msg) = main_to_worker_sync_rx.recv() {
-          if main_to_worker_async_tx.unbounded_send(msg).is_err() {
-            break;
-          }
-        }
-      });
 
       let worker_url = options.main_module.to_string();
 
       let proxy = deno_core::InspectorSessionProxy {
         channels: deno_core::InspectorSessionChannels::Worker {
-          main_to_worker_tx: main_to_worker_sync_tx_clone,
+          main_to_worker_tx,
           worker_to_main_rx,
           worker_url,
         },
@@ -723,7 +704,7 @@ impl WebWorker {
       let inspector_session_proxy = deno_core::InspectorSessionProxy {
         channels: deno_core::InspectorSessionChannels::Regular {
           tx: worker_to_main_tx,
-          rx: main_to_worker_async_rx,
+          rx: main_to_worker_rx,
         },
         kind: deno_core::InspectorSessionKind::NonBlocking {
           wait_for_disconnect: false,
