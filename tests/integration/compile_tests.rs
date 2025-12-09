@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// NB(bartlomieju): a bunch of code is not used on Mac Intel
+#![allow(dead_code)]
+
 use test_util as util;
 use util::TestContext;
 use util::TestContextBuilder;
