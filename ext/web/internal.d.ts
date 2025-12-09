@@ -120,8 +120,9 @@ declare module "ext:deno_web/13_message_port.js" {
 }
 
 declare module "ext:deno_web/00_url.js" {
-  const URL: typeof URL;
-  const URLSearchParams: typeof URLSearchParams;
+  const URL: typeof globalThis.URL;
+  const URLPrototype: typeof globalThis.URL.prototype;
+  const URLSearchParams: typeof globalThis.URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
 }
 
