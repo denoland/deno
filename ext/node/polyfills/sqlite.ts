@@ -17,7 +17,6 @@ const {
   ObjectSetPrototypeOf,
   ReflectConstruct,
   StringPrototypeIncludes,
-  StringPrototypeStartsWith,
   SymbolDispose,
   SymbolFor,
   TypeError,
@@ -58,10 +57,10 @@ const parsePath = (path: unknown): string => {
     parsedPath = decoder.decode(path);
     // @ts-expect-error safe to check even though `path` is unknown
   } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, path)) {
-    parsedPath = (path as URL).href;
-    if (!StringPrototypeStartsWith(parsedPath, "file:")) {
+    if ((path as URL).protocol !== "file:") {
       throw new InvalidURLSchemeError();
     }
+    parsedPath = (path as URL).href;
   }
 
   if (
