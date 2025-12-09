@@ -138,7 +138,7 @@ const denoNs = {
   permissions: permissions.permissions,
   Permissions: permissions.Permissions,
   PermissionStatus: permissions.PermissionStatus,
-  serveHttp: http.serveHttp,
+  // serveHttp: http.serveHttp,
   serve: serve.serve,
   resolveDns: net.resolveDns,
   upgradeWebSocket: websocket.upgradeWebSocket,
