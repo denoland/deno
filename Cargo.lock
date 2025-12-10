@@ -8529,6 +8529,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlite_extension_test"
+version = "0.1.0"
+dependencies = [
+ "test_server",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9345,14 +9352,6 @@ dependencies = [
  "win32job",
  "winapi",
  "zip",
-]
-
-[[package]]
-name = "test_sqlite_extension"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "test_server",
 ]
 
 [[package]]
