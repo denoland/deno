@@ -25,6 +25,7 @@ Deno.test(
 
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
+    const now = Date.now();
     assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 10000);
     assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 10000);
     assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 10000);
