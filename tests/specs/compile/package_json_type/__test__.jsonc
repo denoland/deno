@@ -4,11 +4,11 @@
     "args": "install",
     "output": "[WILDCARD]"
   }, {
-    "if": "notMacIntel",
+    "if": "unix",
     "args": "compile --output main main.js",
     "output": "compile.out"
   }, {
-    "if": "notMacIntel",
+    "if": "unix",
     "commandName": "./main",
     "args": [],
     "output": "output.out",
