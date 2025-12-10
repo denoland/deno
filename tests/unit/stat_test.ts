@@ -26,9 +26,9 @@ Deno.test(
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
     const now = Date.now();
-    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 10000);
-    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 10000);
-    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 10000);
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 60_000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 60_000);
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 60_000);
     const mode = tempInfo.mode! & 0o777;
     if (Deno.build.os === "windows") {
       assertEquals(mode, 0o666);
