@@ -54,7 +54,7 @@ mod tests {
 
   #[test]
   fn test_find_root() {
-    let urls = [
+    let urls = vec![
       Url::parse("file:///a/b/c/d/e.ts").unwrap(),
       Url::parse("file:///a/b/c/d/f.ts").unwrap(),
       Url::parse("file:///a/b/c/d/g.ts").unwrap(),
@@ -71,7 +71,7 @@ mod tests {
 
   #[test]
   fn test_find_root_with_similar_filenames() {
-    let urls = [
+    let urls = vec![
       Url::parse("file:///a/b/c/d/foo0.ts").unwrap(),
       Url::parse("file:///a/b/c/d/foo1.ts").unwrap(),
       Url::parse("file:///a/b/c/d/foo2.ts").unwrap(),
@@ -82,7 +82,7 @@ mod tests {
 
   #[test]
   fn test_find_root_with_similar_dirnames() {
-    let urls = [
+    let urls = vec![
       Url::parse("file:///a/b/c/foo0/mod.ts").unwrap(),
       Url::parse("file:///a/b/c/foo1/mod.ts").unwrap(),
       Url::parse("file:///a/b/c/foo2/mod.ts").unwrap(),

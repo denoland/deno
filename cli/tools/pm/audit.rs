@@ -499,16 +499,15 @@ mod npm {
           .iter()
           .any(|action_resolve| action_resolve.id == self.id)
         {
-          let target = if let Some(target) = &action.target {
-            format!("@{}", target)
-          } else {
-            String::new()
-          };
           acts.push(format!(
             "{} {}{}{}",
             action.action,
             action.module,
-            target,
+            if let Some(target) = &action.target {
+              &format!("@{}", target)
+            } else {
+              ""
+            },
             if action.is_major {
               " (major upgrade)"
             } else {
