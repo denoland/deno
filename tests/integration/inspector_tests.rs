@@ -1086,35 +1086,53 @@ async fn inspector_memory() {
 
   tester.assert_stderr_for_inspect_brk();
 
+  // Send all setup commands at once
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
-    ])
-    .await;
-  tester.assert_received_messages(
-      &[
-        r#"{"id":1,"result":{}}"#,
-        r#"{"id":2,"result":{"debuggerId":"#,
-      ],
-      &[
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ],
-    )
-    .await;
-
-  tester
-    .send_many(&[
       json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
       json!({"id":4,"method":"HeapProfiler.enable"}),
     ])
     .await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+
+  // Collect responses - CDP messages can arrive in any order
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_run = false;
+  let mut got_heap = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_heap = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime && got_debugger && got_run && got_heap && got_context && got_paused {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_heap, "Expected HeapProfiler.enable response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
 
   tester
     .send(json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}}))
@@ -1186,35 +1204,53 @@ async fn inspector_profile() {
 
   tester.assert_stderr_for_inspect_brk();
 
+  // Send all setup commands at once
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
-    ])
-    .await;
-  tester.assert_received_messages(
-      &[
-        r#"{"id":1,"result":{}}"#,
-        r#"{"id":2,"result":{"debuggerId":"#,
-      ],
-      &[
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ],
-    )
-    .await;
-
-  tester
-    .send_many(&[
       json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
       json!({"id":4,"method":"Profiler.enable"}),
     ])
     .await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+
+  // Collect responses - CDP messages can arrive in any order
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_run = false;
+  let mut got_profiler = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_profiler = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime && got_debugger && got_run && got_profiler && got_context && got_paused {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_profiler, "Expected Profiler.enable response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
 
   tester.send_many(
       &[
@@ -1222,12 +1258,24 @@ async fn inspector_profile() {
         json!({"id":6,"method":"Profiler.start","params":{}}),
       ],
     ).await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
-      &[],
-    )
-    .await;
+
+  // Collect profiler responses - may get other notifications in between
+  let mut got_sampling = false;
+  let mut got_start = false;
+  for _ in 0..10 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":5,"result":{}}"#) {
+      got_sampling = true;
+    }
+    if msg.starts_with(r#"{"id":6,"result":{}}"#) {
+      got_start = true;
+    }
+    if got_sampling && got_start {
+      break;
+    }
+  }
+  assert!(got_sampling, "Expected setSamplingInterval response");
+  assert!(got_start, "Expected Profiler.start response");
 
   tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
