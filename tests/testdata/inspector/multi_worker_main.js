@@ -1,13 +1,19 @@
 // Main script that spawns multiple workers for inspector testing
-const worker1 = new Worker(new URL("./worker_target.js", import.meta.url).href, {
-  type: "module",
-  name: "Worker1",
-});
+const worker1 = new Worker(
+  new URL("./worker_target.js", import.meta.url).href,
+  {
+    type: "module",
+    name: "Worker1",
+  },
+);
 
-const worker2 = new Worker(new URL("./worker_target.js", import.meta.url).href, {
-  type: "module",
-  name: "Worker2",
-});
+const worker2 = new Worker(
+  new URL("./worker_target.js", import.meta.url).href,
+  {
+    type: "module",
+    name: "Worker2",
+  },
+);
 
 let readyCount = 0;
 
