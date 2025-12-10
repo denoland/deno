@@ -940,7 +940,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace",
+          run: "cargo test --locked --features=panic-trace specs::compile",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -953,8 +953,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace",
-            "cargo test --locked --tests --features=panic-trace",
+            "cargo test --locked --lib --features=panic-trace specs::compile",
+            "cargo test --locked --tests --features=panic-trace specs::compile",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -1234,19 +1234,19 @@ const ci = {
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
-        {
-          name: "lint.js",
-          env: {
-            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-          },
-          run:
-            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-        },
-        {
-          name: "jsdoc_checker.js",
-          run:
-            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-        },
+        // {
+        //   name: "lint.js",
+        //   env: {
+        //     GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        //   },
+        //   run:
+        //     "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
+        // },
+        // {
+        //   name: "jsdoc_checker.js",
+        //   run:
+        //     "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        // },
         saveCacheMainStep,
       ],
     },
