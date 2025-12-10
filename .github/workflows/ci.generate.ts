@@ -1207,11 +1207,13 @@ const ci = {
             //   ...Runners.linuxX86,
             //   profile: "debug",
             //   job: "lint",
-            // }, {
-            //   ...Runners.macosX86,
-            //   profile: "debug",
-            //   job: "lint",
-            // }, {
+            // },
+            {
+              ...Runners.macosX86,
+              profile: "debug",
+              job: "lint",
+            },
+            // {
             //   ...Runners.windowsX86,
             //   profile: "debug",
             //   job: "lint",

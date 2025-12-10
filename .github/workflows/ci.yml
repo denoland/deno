@@ -703,7 +703,12 @@ jobs:
         shell: bash
     strategy:
       matrix:
-        include: []
+        include:
+          - os: macos
+            arch: x86_64
+            runner: macos-15-intel
+            profile: debug
+            job: lint
     steps:
       - name: Configure git
         run: |-
