@@ -130,6 +130,14 @@ async fn maybe_run_local_npm_bin(
         .map(Some);
     }
     BinValue::Executable(mut path_buf) => {
+      if cfg!(windows) && path_buf.extension().is_none() {
+        // prefer cmd shim over sh
+        path_buf.set_extension("cmd");
+        if !path_buf.exists() {
+          //  just fall back to original path
+          path_buf.set_extension("");
+        }
+      }
       permissions.check_run(
         &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
           PathQueryDescriptor::new(
@@ -139,14 +147,6 @@ async fn maybe_run_local_npm_bin(
         ),
         "entrypoint",
       )?;
-      if cfg!(windows) && path_buf.extension().is_none() {
-        // prefer cmd shim over sh
-        path_buf.set_extension("cmd");
-        if !path_buf.exists() {
-          //  just fall back to original path
-          path_buf.set_extension("");
-        }
-      }
       let mut child = std::process::Command::new(path_buf)
         .args(&flags.argv)
         .spawn()
