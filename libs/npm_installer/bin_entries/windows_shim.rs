@@ -307,9 +307,9 @@ pub fn set_up_bin_shim<'a>(
   let shim_path = bin_node_modules_dir_path.join(bin_name);
   let target_file = package_path.join(bin_script);
 
-  let target_file = if sys.fs_exists_no_err(&target_file) {
-    let target_file = target_file.with_extension("exe");
-    if !sys.fs_exists_no_err(&target_file) {
+  let target_file = if !sys.fs_exists_no_err(&target_file) {
+    let target_file_exe = target_file.with_extension("exe");
+    if !sys.fs_exists_no_err(&target_file_exe) {
       return Ok(EntrySetupOutcome::MissingEntrypoint {
         bin_name,
         package_path,
@@ -318,7 +318,7 @@ pub fn set_up_bin_shim<'a>(
         extra,
       });
     }
-    target_file
+    target_file_exe
   } else {
     target_file
   };
