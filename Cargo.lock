@@ -1888,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.372.0"
-source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#c8c173a8364019290b091c64b86b48dfee4f58aa"
+source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#56fe1d17df82e94848ad93160ad2d7efadc8e562"
 dependencies = [
  "anyhow",
  "az",
@@ -2614,7 +2614,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.248.0"
-source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#c8c173a8364019290b091c64b86b48dfee4f58aa"
+source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#56fe1d17df82e94848ad93160ad2d7efadc8e562"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8216,7 +8216,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.281.0"
-source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#c8c173a8364019290b091c64b86b48dfee4f58aa"
+source = "git+https://github.com/fraidev/deno_core.git?branch=debug_worker#56fe1d17df82e94848ad93160ad2d7efadc8e562"
 dependencies = [
  "deno_error",
  "num-bigint",
