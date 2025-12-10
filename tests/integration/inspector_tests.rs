@@ -887,7 +887,7 @@ async fn inspector_break_on_first_line_in_test() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let child = util::deno_cmd()
@@ -1070,7 +1070,7 @@ async fn inspector_with_ts_files() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_memory() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
