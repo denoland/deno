@@ -106,11 +106,6 @@ async fn maybe_run_local_npm_bin(
   let permissions = factory.root_permissions_container()?;
 
   let mut bins = resolve_local_bins(node_resolver, npm_resolver)?;
-  let command = if command.starts_with("@") && command.contains("/") {
-    command.split("/").last().unwrap()
-  } else {
-    command
-  };
   let bin_value = if let Some(bin_value) = bins.remove(command) {
     bin_value
   } else if let Some(bin_value) = {

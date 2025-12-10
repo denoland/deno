@@ -2217,7 +2217,20 @@ fn bin_value_from_file<TSys: FsOpen>(
   path: &Path,
   sys: &NodeResolutionSys<TSys>,
 ) -> Option<BinValue> {
-  let mut file = sys.fs_open(path, OpenOptions::new().read()).ok()?;
+  let mut file = match sys.fs_open(path, OpenOptions::new().read()) {
+    Ok(file) => file,
+    Err(err) => {
+      if err.kind() == std::io::ErrorKind::NotFound {
+        return None;
+      }
+      log::debug!(
+        "Failed to open bin file '{}': {:#}; treating as executable",
+        path.display(),
+        err,
+      );
+      return Some(BinValue::Executable(path.to_path_buf()));
+    }
+  };
   let mut buf = [0; 4];
   let (is_binary, buf): (bool, &[u8]) = {
     let result = file.read_exact(&mut buf);
