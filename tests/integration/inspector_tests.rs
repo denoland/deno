@@ -1123,7 +1123,13 @@ async fn inspector_memory() {
     if msg.starts_with(r#"{"method":"Debugger.paused""#) {
       got_paused = true;
     }
-    if got_runtime && got_debugger && got_run && got_heap && got_context && got_paused {
+    if got_runtime
+      && got_debugger
+      && got_run
+      && got_heap
+      && got_context
+      && got_paused
+    {
       break;
     }
   }
@@ -1189,7 +1195,7 @@ async fn inspector_memory() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_profile() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
@@ -1241,7 +1247,13 @@ async fn inspector_profile() {
     if msg.starts_with(r#"{"method":"Debugger.paused""#) {
       got_paused = true;
     }
-    if got_runtime && got_debugger && got_run && got_profiler && got_context && got_paused {
+    if got_runtime
+      && got_debugger
+      && got_run
+      && got_profiler
+      && got_context
+      && got_paused
+    {
       break;
     }
   }

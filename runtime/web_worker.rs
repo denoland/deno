@@ -685,14 +685,19 @@ impl WebWorker {
         );
 
       // Send worker proxy to the main runtime
-      main_session_tx.unbounded_send(main_proxy).unwrap();
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::warn!("Failed to send inspector session proxy to main runtime");
+      }
 
       // Send worker proxy to the worker runtime
-      js_runtime
+      if js_runtime
         .inspector()
         .get_session_sender()
         .unbounded_send(worker_proxy)
-        .unwrap();
+        .is_err()
+      {
+        log::warn!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {
