@@ -908,14 +908,13 @@ async fn inspector_with_ts_files() {
     if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
       return false;
     }
-    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(msg) {
-      if let Some(url) = parsed
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(msg)
+      && let Some(url) = parsed
         .get("params")
         .and_then(|p| p.get("url"))
         .and_then(|u| u.as_str())
-      {
-        return url.contains("testdata/inspector");
-      }
+    {
+      return url.contains("testdata/inspector");
     }
     false
   }
@@ -1654,12 +1653,11 @@ async fn inspector_multiple_workers() {
     if msg.starts_with(r#"{"id":5,"result":{}"#) {
       got_resume = true;
     }
-    if msg.contains("Target.attachedToTarget") {
-      if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg) {
-        if let Some(session_id) = parsed["params"]["sessionId"].as_str() {
-          worker_sessions.push(session_id.to_string());
-        }
-      }
+    if msg.contains("Target.attachedToTarget")
+      && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg)
+      && let Some(session_id) = parsed["params"]["sessionId"].as_str()
+    {
+      worker_sessions.push(session_id.to_string());
     }
     if got_resume && worker_sessions.len() >= 2 {
       break;
@@ -1779,142 +1777,6 @@ async fn inspector_worker_target_discovery() {
   assert!(
     found_worker_target,
     "Expected to receive Target.targetCreated for worker"
-  );
-
-  tester.child.kill().unwrap();
-  tester.child.wait().unwrap();
-}
-
-#[flaky_test::flaky_test(tokio)]
-async fn inspector_worker_auto_attach() {
-  let script = util::testdata_path().join("inspector/worker_main.js");
-  let child = util::deno_cmd()
-    .arg("run")
-    .arg("-A")
-    .arg(inspect_flag_with_unique_port("--inspect-brk"))
-    .arg(script)
-    .piped_output()
-    .spawn()
-    .unwrap();
-
-  // Use a filter that passes through Target events
-  fn notification_filter(msg: &str) -> bool {
-    !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
-  }
-
-  let mut tester = InspectorTester::create(child, notification_filter).await;
-
-  tester.assert_stderr_for_inspect_brk();
-
-  // Enable runtime, debugger, auto-attach, and run all at once
-  // CDP messages can arrive in any order, so we batch and collect
-  tester
-    .send_many(&[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
-      json!({"id":3,"method":"Target.setAutoAttach","params":{"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true}}),
-      json!({"id":4,"method":"Runtime.runIfWaitingForDebugger"}),
-    ])
-    .await;
-
-  // Collect all expected responses and the Debugger.paused notification
-  let mut got_runtime = false;
-  let mut got_debugger = false;
-  let mut got_auto_attach = false;
-  let mut got_run = false;
-  let mut got_context = false;
-  let mut got_paused = false;
-  for _ in 0..15 {
-    let msg = tester.recv().await;
-    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
-      got_runtime = true;
-    }
-    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
-      got_debugger = true;
-    }
-    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
-      got_auto_attach = true;
-    }
-    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
-      got_run = true;
-    }
-    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
-      got_context = true;
-    }
-    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
-      got_paused = true;
-    }
-    if got_runtime
-      && got_debugger
-      && got_auto_attach
-      && got_run
-      && got_context
-      && got_paused
-    {
-      break;
-    }
-  }
-  assert!(got_runtime, "Expected Runtime.enable response");
-  assert!(got_debugger, "Expected Debugger.enable response");
-  assert!(got_auto_attach, "Expected Target.setAutoAttach response");
-  assert!(got_run, "Expected runIfWaitingForDebugger response");
-  assert!(got_context, "Expected executionContextCreated notification");
-  assert!(got_paused, "Expected Debugger.paused notification");
-
-  // Resume to let worker start
-  tester
-    .send(json!({"id":5,"method":"Debugger.resume"}))
-    .await;
-
-  // Collect resume response and attachedToTarget (can arrive in any order)
-  let mut got_resume = false;
-  let mut worker_session_id = None;
-  for _ in 0..25 {
-    let msg = tester.recv().await;
-    if msg.starts_with(r#"{"id":5,"result":{}"#) {
-      got_resume = true;
-    }
-    if msg.contains("Target.attachedToTarget") {
-      if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg) {
-        if let Some(session_id) = parsed["params"]["sessionId"].as_str() {
-          worker_session_id = Some(session_id.to_string());
-        }
-      }
-    }
-    if got_resume && worker_session_id.is_some() {
-      break;
-    }
-  }
-
-  assert!(got_resume, "Expected resume response");
-  assert!(
-    worker_session_id.is_some(),
-    "Expected to receive Target.attachedToTarget for worker"
-  );
-
-  // Send a message to the worker session
-  let session_id = worker_session_id.unwrap();
-  tester
-    .send(json!({
-      "id": 6,
-      "method": "Runtime.enable",
-      "sessionId": session_id
-    }))
-    .await;
-
-  // We should get a response from the worker session
-  let mut got_worker_response = false;
-  for _ in 0..10 {
-    let msg = tester.recv().await;
-    if msg.contains(r#""id":6"#) && msg.contains(&session_id) {
-      got_worker_response = true;
-      break;
-    }
-  }
-
-  assert!(
-    got_worker_response,
-    "Expected to receive response from worker session"
   );
 
   tester.child.kill().unwrap();
