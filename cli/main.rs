@@ -147,8 +147,8 @@ async fn run_subcommand(
       );
       tools::bundle::bundle(flags, bundle_flags).await
     }),
-    DenoSubcommand::Deploy => spawn_subcommand(async {
-      tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await
+    DenoSubcommand::Deploy(subcommand) => spawn_subcommand(async move {
+      tools::deploy::deploy(Arc::unwrap_or_clone(flags), subcommand).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
@@ -734,7 +734,7 @@ async fn resolve_flags_and_init(
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy) {
+  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy(_)) {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(
         err.context("Failed to start with tunnel"),
