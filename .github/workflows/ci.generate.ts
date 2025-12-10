@@ -8,13 +8,13 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 const cacheVersion = 82;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
-const windowsX86Runner = "windows-2022";
-const windowsX86XlRunner = "windows-2022-xl";
+// const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
+// const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
+// const windowsX86Runner = "windows-2022";
+// const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-15-intel";
-const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
+// const macosArmRunner = "macos-14";
+// const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
   // linuxX86: {
