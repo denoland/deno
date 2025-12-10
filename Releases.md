@@ -10,17 +10,6 @@ https://github.com/denoland/deno_install
 
 Read more: http://deno.com/blog/v2.6
 
-- Revert "chore: Rust 1.91.1 (#31165)" (#31548)
-- Revert "ci: use macos-15-intel image (#31259)" (#31266)
-- Revert "feat(BREAKING/compile): require providing `--` for script arguments"
-  (#31505)
-- Revert "feat: use Node.js timers by default (#31272)" (#31490)
-- Revert "fix(ext/node): fix sqlite extension used for testing; ensure …
-  (#31539)
-- Revert "fix(resolver): fall back to execution if can't resolve types" (#31513)
-- Revert "refactor: merge `deno_cache` into `deno_web` (#31183)" (#31205)
-- Revert "refactor: remove 'managed globals' infra (#31318)" (#31491)
-- feat(BREAKING/compile): require providing `--` for script arguments (#31296)
 - feat(BREAKING/install): require `--` for script arg in `deno install -g` and
   support installing multiple packages (#31292)
 - feat(cli): add approve-scripts AKA "approve-builds" subcommand (#31472)
