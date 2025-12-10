@@ -296,6 +296,8 @@ impl ShimData {
 
 pub fn set_up_bin_shim<'a>(
   sys: &(impl FsOpen + FsWrite),
+  package: &'a deno_npm::NpmResolutionPackage,
+  extra: &'a deno_npm::NpmPackageExtraInfo,
   bin_name: &'a str,
   bin_script: &'a str,
   package_path: &'a Path,
@@ -303,6 +305,22 @@ pub fn set_up_bin_shim<'a>(
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
   let shim_path = bin_node_modules_dir_path.join(bin_name);
   let target_file = package_path.join(bin_script);
+
+  let target_file = if !target_file.exists() {
+    let target_file = target_file.with_extension("exe");
+    if !target_file.exists() {
+      return Ok(EntrySetupOutcome::MissingEntrypoint {
+        bin_name,
+        package_path,
+        entrypoint: target_file,
+        package,
+        extra,
+      });
+    }
+    target_file
+  } else {
+    target_file
+  };
 
   let rel_target =
     relative_path(bin_node_modules_dir_path, &target_file).unwrap();

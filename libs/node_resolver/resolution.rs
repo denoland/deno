@@ -2224,9 +2224,12 @@ fn bin_value_from_file<TSys: FsOpen>(
     if let Err(err) = result {
       log::debug!("Failed to read binary file '{}': {:#}", path.display(), err);
       // safer fallback to assume it's a binary
-      (false, &[])
+      (true, &[])
     } else {
-      (is_binary(&buf), &buf[..])
+      (
+        is_binary(&buf) || (!(buf[0] == b'#' && buf[1] == b'!')),
+        &buf[..],
+      )
     }
   };
 
@@ -2255,7 +2258,7 @@ fn resolve_execution_path_from_npx_shim(
   text: &str,
 ) -> Option<PathBuf> {
   static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
+    lazy_regex::lazy_regex!(r#"exec\s+node\s+"\$basedir\/([^"]+)" "\$@""#);
 
   let maybe_first_line = {
     let index = text.find("\n")?;
