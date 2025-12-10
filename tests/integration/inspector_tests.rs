@@ -203,6 +203,7 @@ impl InspectorTester {
         let stdout = stdout.join("\n");
         let stderr = stderr.join("\n");
         self.child.kill().unwrap();
+        self.child.wait().unwrap();
 
         panic!(
           "Inspector test failed with error: {err:?}.\nstdout:\n{stdout}\nstderr:\n{stderr}"
@@ -426,6 +427,7 @@ async fn inspector_pause() {
     .await;
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
@@ -755,6 +757,7 @@ async fn inspector_json() {
   }
 
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[tokio::test]
@@ -1559,6 +1562,7 @@ async fn inspector_wait() {
   assert_eq!(&tester.stderr_line(), "did run");
   assert!(temp_dir.path().join("hello.txt").exists());
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[flaky_test::flaky_test(tokio)]
@@ -1671,6 +1675,7 @@ async fn inspector_multiple_workers() {
   );
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[flaky_test::flaky_test(tokio)]
@@ -1777,6 +1782,7 @@ async fn inspector_worker_target_discovery() {
   );
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[flaky_test::flaky_test(tokio)]
@@ -1912,6 +1918,7 @@ async fn inspector_worker_auto_attach() {
   );
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 /// Test NodeWorker.enable - the Node.js inspector protocol for worker debugging.
@@ -2004,4 +2011,5 @@ async fn inspector_node_worker_enable() {
   );
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
