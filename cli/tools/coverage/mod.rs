@@ -555,7 +555,9 @@ pub fn cover_files(
       | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => None,
+      | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5 => None,
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx

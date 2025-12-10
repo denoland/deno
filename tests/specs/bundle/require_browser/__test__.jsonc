@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "tests": {
+    "api": {
+      "steps": [
+        {
+          "args": "run --unstable-bundle bundle.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A has-createrequire.ts bundle.js",
+          "output": "false\n"
+        }
+      ]
+    },
+    "cli": {
+      "steps": [
+        {
+          "args": "bundle --platform browser --output bundle.js foo.cjs",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A has-createrequire.ts bundle.js",
+          "output": "false\n"
+        }
+      ]
+    }
+  }
+}

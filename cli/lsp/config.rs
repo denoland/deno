@@ -265,18 +265,13 @@ impl Default for InlayHintsParamNamesOptions {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum InlayHintsParamNamesEnabled {
+  #[default]
   None,
   Literals,
   All,
-}
-
-impl Default for InlayHintsParamNamesEnabled {
-  fn default() -> Self {
-    Self::None
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -379,47 +374,38 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ImportModuleSpecifier {
   NonRelative,
   ProjectRelative,
   Relative,
+  #[default]
   Shortest,
 }
 
-impl Default for ImportModuleSpecifier {
-  fn default() -> Self {
-    Self::Shortest
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum JsxAttributeCompletionStyle {
+  #[default]
   Auto,
   Braces,
   None,
 }
 
-impl Default for JsxAttributeCompletionStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuoteStyle {
+  #[default]
   Auto,
   Double,
   Single,
-}
-
-impl Default for QuoteStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
 }
 
 impl From<&FmtOptionsConfig> for QuoteStyle {
@@ -481,18 +467,15 @@ pub struct UpdateImportsOnFileMoveOptions {
   pub enabled: UpdateImportsOnFileMoveEnabled,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
+  #[default]
   Prompt,
   Never,
-}
-
-impl Default for UpdateImportsOnFileMoveEnabled {
-  fn default() -> Self {
-    Self::Prompt
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1053,6 +1036,8 @@ impl Config {
       | MediaType::Dcts
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
@@ -1220,6 +1205,14 @@ impl Config {
     (|| {
       let experimental = self.client_capabilities.experimental.as_ref()?;
       experimental.get("testingApi")?.as_bool()
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn client_provided_organize_imports_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("clientProvidedOrganizeImports")?.as_bool()
     })()
     .unwrap_or(false)
   }
@@ -1467,7 +1460,6 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
         require_modules: vec![],
       },

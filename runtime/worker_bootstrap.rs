@@ -5,6 +5,7 @@ use std::thread;
 
 use deno_core::ModuleSpecifier;
 use deno_core::v8;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use serde::Serialize;
@@ -109,7 +110,7 @@ pub struct BootstrapOptions {
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
-  pub node_ipc_fd: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub mode: WorkerExecutionMode,
   pub no_legacy_abort: bool,
   // Used by `deno serve`
@@ -149,7 +150,7 @@ impl Default for BootstrapOptions {
       has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
-      node_ipc_fd: None,
+      node_ipc_init: None,
       mode: WorkerExecutionMode::None,
       no_legacy_abort: false,
       serve_port: Default::default(),

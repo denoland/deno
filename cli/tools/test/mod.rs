@@ -306,6 +306,7 @@ impl From<&TestDescription> for TestFailureDescription {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
+  pub strip_ascii_color: bool,
   pub initial_cwd: Option<Url>,
 }
 
@@ -606,6 +607,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let failure_format_options = TestFailureFormatOptions {
     hide_stacktraces: options.hide_stacktraces,
+    strip_ascii_color: false,
     initial_cwd: Some(options.cwd.clone()),
   };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
@@ -624,7 +626,10 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       "-".to_string(),
-      failure_format_options,
+      TestFailureFormatOptions {
+        strip_ascii_color: true,
+        ..failure_format_options
+      },
     )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
@@ -639,6 +644,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       junit_path.to_string(),
       TestFailureFormatOptions {
         hide_stacktraces: options.hide_stacktraces,
+        strip_ascii_color: true,
         initial_cwd: Some(options.cwd.clone()),
       },
     ));

@@ -28,7 +28,9 @@ const testSuitePath = new URL(import.meta.resolve("./runner/suite/"));
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
-const TIMEOUT = IS_CI ? 10_000 : 5000;
+const TIMEOUT = IS_CI
+  ? Deno.build.os === "darwin" && Deno.build.arch === "x86_64" ? 20_000 : 10_000
+  : 5000;
 
 // The metadata of the test report
 export type TestReportMetadata = {

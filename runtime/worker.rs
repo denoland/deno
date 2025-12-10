@@ -108,9 +108,7 @@ pub fn create_validate_import_attributes_callback(
       for (key, value) in attributes {
         let msg = if key != "type" {
           Some(format!("\"{key}\" attribute is not supported."))
-        } else if !valid_attribute(value.as_str())
-          && value != "$$deno-core-internal-wasm-module"
-        {
+        } else if !valid_attribute(value.as_str()) {
           Some(format!("\"{value}\" is not a valid module type."))
         } else {
           None
@@ -741,8 +739,8 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       let mut state = op_state.borrow_mut();
       state.put(options.clone());
-      if let Some(node_ipc_fd) = options.node_ipc_fd {
-        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      if let Some((fd, serialization)) = options.node_ipc_init {
+        state.put(deno_node::ChildPipeFd(fd, serialization));
       }
     }
 

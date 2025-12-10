@@ -809,6 +809,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
                 deno_resolver::workspace::ResolutionKind::Execution
@@ -979,7 +980,7 @@ impl Visit for ImportMetaResolveCollector {
         self.specifiers.push((
           // remove quotes
           SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.clone(),
+          arg.value.to_atom_lossy().into_owned(),
         ));
       } else {
         self.diagnostic_ranges.push(first_arg.expr.range());

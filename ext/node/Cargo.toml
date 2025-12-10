@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.159.0"
+version = "0.160.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -62,6 +62,7 @@ ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true

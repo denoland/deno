@@ -4,6 +4,7 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::pty::Pty;
 
 #[test]
 fn add_basic() {
@@ -151,4 +152,84 @@ fn pm_context_builder() -> TestContextBuilder {
     .use_http_server()
     .envs(env_vars_for_jsr_npm_tests())
     .use_temp_cwd()
+}
+
+#[flaky_test::flaky_test]
+fn approve_scripts_basic() {
+  if !Pty::is_supported() {
+    return;
+  }
+  let context = pm_context_builder().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{"nodeModulesDir": "manual"}"#);
+  context
+    .new_command()
+    .args("install npm:@denotest/node-lifecycle-scripts@1.0.0")
+    .run()
+    .skip_output_check();
+  context
+    .new_command()
+    .args("approve-scripts")
+    .with_pty(|mut pty| {
+      pty.expect("Select which packages to approve lifecycle scripts for");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0");
+      pty.write_line(" ");
+      pty.write_line("\r\n");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
+    });
+  context
+    .temp_dir()
+    .path()
+    .join("deno.json")
+    .assert_matches_json(json!({
+      "nodeModulesDir": "manual",
+      "imports": {
+        "@denotest/node-lifecycle-scripts": "npm:@denotest/node-lifecycle-scripts@1.0.0"
+      },
+      "allowScripts": ["npm:@denotest/node-lifecycle-scripts@1.0.0"],
+    }));
+}
+
+#[flaky_test::flaky_test]
+fn approve_scripts_deny_some() {
+  if !Pty::is_supported() {
+    return;
+  }
+  let context = pm_context_builder().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{"nodeModulesDir": "manual"}"#);
+  context
+    .new_command()
+    .args("install npm:@denotest/node-lifecycle-scripts@1.0.0 npm:@denotest/print-npm-user-agent@1.0.0")
+    .run()
+    .skip_output_check();
+  context
+    .new_command()
+    .args("approve-scripts")
+    .with_pty(|mut pty| {
+      pty.expect("Select which packages to approve lifecycle scripts for");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0");
+      pty.expect("@denotest/print-npm-user-agent@1.0.0");
+      pty.write_line(" ");
+      pty.write_line("\r\n");
+      pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
+    });
+  context.temp_dir().path().join("deno.json").assert_matches_json(json!({
+    "nodeModulesDir": "manual",
+    "imports": {
+      "@denotest/node-lifecycle-scripts": "npm:@denotest/node-lifecycle-scripts@1.0.0",
+      "@denotest/print-npm-user-agent": "npm:@denotest/print-npm-user-agent@1.0.0"
+    },
+    "allowScripts": {
+      "allow": ["npm:@denotest/node-lifecycle-scripts@1.0.0"],
+      "deny": ["npm:@denotest/print-npm-user-agent@1.0.0"]
+    },
+  }));
 }

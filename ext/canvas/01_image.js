@@ -12,7 +12,11 @@ const {
   Symbol,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
+  Uint8ClampedArray,
   PromiseReject,
   RangeError,
   ArrayPrototypeJoin,
@@ -152,6 +156,15 @@ class ImageBitmap {
   }
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;
+
+function float16ToUnorm8(data) {
+  const length = TypedArrayPrototypeGetLength(data);
+  const result = new Uint8ClampedArray(length);
+  for (let i = 0; i < length; i++) {
+    result[i] = data[i] * 255;
+  }
+  return result;
+}
 
 function createImageBitmap(
   image,
@@ -296,7 +309,17 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       width = image[_width];
       height = image[_height];
       imageBitmapSource = 1;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+      let data = image[_data];
+      switch (TypedArrayPrototypeGetSymbolToStringTag(data)) {
+        case "Float16Array":
+          data = float16ToUnorm8(data);
+          break;
+      }
+      buf = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(data),
+        TypedArrayPrototypeGetByteOffset(data),
+        TypedArrayPrototypeGetLength(data),
+      );
     } else if (isImageBitmap) {
       width = image[_width];
       height = image[_height];

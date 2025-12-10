@@ -3,27 +3,16 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
-use std::io;
 
-use console_static_text::ConsoleSize;
 use console_static_text::TextItem;
-use crossterm::ExecutableCommand;
-use crossterm::cursor;
-use crossterm::event::KeyCode;
-use crossterm::event::KeyEvent;
-use crossterm::event::KeyEventKind;
-use crossterm::event::KeyModifiers;
-use crossterm::terminal;
 use deno_core::anyhow;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
-use unicode_width::UnicodeWidthStr;
 
 use crate::tools::pm::deps::DepId;
 use crate::tools::pm::deps::DepKind;
-use crate::util::console::HideCursorGuard;
-use crate::util::console::RawMode;
+use crate::tools::pm::interactive_picker;
 
 #[derive(Debug)]
 pub struct PackageInfo {
@@ -47,9 +36,6 @@ struct FormattedPackageInfo {
 #[derive(Debug)]
 struct State {
   packages: Vec<FormattedPackageInfo>,
-  currently_selected: usize,
-  checked: HashSet<usize>,
-
   name_width: usize,
   current_width: usize,
 }
@@ -127,9 +113,6 @@ impl State {
 
     Ok(Self {
       packages,
-      currently_selected: 0,
-      checked: HashSet::new(),
-
       name_width,
       current_width,
     })
@@ -137,52 +120,6 @@ impl State {
 
   fn instructions_line() -> &'static str {
     "Select which packages to update (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)"
-  }
-
-  fn render(&self) -> anyhow::Result<Vec<TextItem<'_>>> {
-    let mut items = Vec::with_capacity(self.packages.len() + 1);
-
-    items.push(TextItem::new_owned(format!(
-      "{} {}",
-      colors::intense_blue("?"),
-      Self::instructions_line()
-    )));
-
-    for (i, package) in self.packages.iter().enumerate() {
-      let mut line = String::new();
-      let f = &mut line;
-
-      let checked = self.checked.contains(&i);
-      write!(
-        f,
-        "{} {} ",
-        if self.currently_selected == i {
-          colors::intense_blue("❯").to_string()
-        } else {
-          " ".to_string()
-        },
-        if checked { "●" } else { "○" }
-      )?;
-
-      let name_pad =
-        " ".repeat(self.name_width + 2 - package.formatted_name_len);
-      write!(
-        f,
-        "{formatted_name}{name_pad} {:<current_width$} -> {}",
-        package
-          .current_version_string
-          .as_deref()
-          .unwrap_or_default(),
-        &package.new_version_highlighted,
-        name_pad = name_pad,
-        formatted_name = package.formatted_name,
-        current_width = self.current_width
-      )?;
-
-      items.push(TextItem::with_hanging_indent_owned(line, 1));
-    }
-
-    Ok(items)
   }
 }
 
@@ -251,152 +188,72 @@ fn highlight_new_version(current: &Version, new: &Version) -> String {
   }
 }
 
+fn render_package(
+  package: &FormattedPackageInfo,
+  name_width: usize,
+  current_width: usize,
+  is_selected: bool,
+  is_checked: bool,
+) -> anyhow::Result<TextItem<'static>> {
+  let mut line = String::new();
+  let f = &mut line;
+
+  write!(
+    f,
+    "{} {} ",
+    if is_selected {
+      colors::intense_blue("❯").to_string()
+    } else {
+      " ".to_string()
+    },
+    if is_checked { "●" } else { "○" }
+  )?;
+
+  let name_pad = " ".repeat(name_width + 2 - package.formatted_name_len);
+  write!(
+    f,
+    "{formatted_name}{name_pad} {:<current_width$} -> {}",
+    package
+      .current_version_string
+      .as_deref()
+      .unwrap_or_default(),
+    &package.new_version_highlighted,
+    name_pad = name_pad,
+    formatted_name = package.formatted_name,
+    current_width = current_width
+  )?;
+
+  Ok(TextItem::with_hanging_indent_owned(line, 1))
+}
+
 pub fn select_interactive(
   packages: Vec<PackageInfo>,
 ) -> anyhow::Result<Option<HashSet<DepId>>> {
-  let mut stderr = io::stderr();
+  let state = State::new(packages)?;
+  let name_width = state.name_width;
+  let current_width = state.current_width;
+  let packages = state.packages;
 
-  let raw_mode = RawMode::enable()?;
-  let mut static_text =
-    console_static_text::ConsoleStaticText::new(move || {
-      if let Ok((cols, rows)) = terminal::size() {
-        ConsoleSize {
-          cols: Some(cols),
-          rows: Some(rows),
-        }
-      } else {
-        ConsoleSize {
-          cols: None,
-          rows: None,
-        }
-      }
-    });
-  static_text.keep_cursor_zero_column(true);
+  let selected = interactive_picker::select_items(
+    State::instructions_line(),
+    &packages,
+    HashSet::new(),
+    |_idx, is_selected, is_checked, package| {
+      render_package(
+        package,
+        name_width,
+        current_width,
+        is_selected,
+        is_checked,
+      )
+    },
+  )?;
 
-  let (_, start_row) = cursor::position().unwrap_or_default();
-  let (_, rows) = terminal::size()?;
-  if rows - start_row < (packages.len() + 2) as u16 {
-    let pad = ((packages.len() + 2) as u16) - (rows - start_row);
-    stderr.execute(terminal::ScrollUp(pad.min(rows)))?;
-    stderr.execute(cursor::MoveUp(pad.min(rows)))?;
-  }
-
-  let mut state = State::new(packages)?;
-  let hide_cursor_guard = HideCursorGuard::hide()?;
-
-  let instructions_width = format!("? {}", State::instructions_line()).width();
-
-  let mut do_it = false;
-  let mut scroll_offset = 0;
-  loop {
-    let mut items = state.render()?;
-    let size = static_text.console_size();
-    let first_line_rows = size
-      .cols
-      .map(|cols| (instructions_width / cols as usize) + 1)
-      .unwrap_or(1);
-    if let Some(rows) = size.rows
-      && items.len() + first_line_rows >= rows as usize
-    {
-      let adj = if scroll_offset == 0 {
-        first_line_rows.saturating_sub(1)
-      } else {
-        0
-      };
-      if state.currently_selected < scroll_offset {
-        scroll_offset = state.currently_selected;
-      } else if state.currently_selected + 1
-        >= scroll_offset + (rows as usize).saturating_sub(adj)
-      {
-        scroll_offset =
-          (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
-      }
-      let adj = if scroll_offset == 0 {
-        first_line_rows.saturating_sub(1)
-      } else {
-        0
-      };
-      let mut new_items = Vec::with_capacity(rows as usize);
-
-      scroll_offset = scroll_offset.clamp(0, items.len() - 1);
-      new_items.extend(
-        items.drain(
-          scroll_offset
-            ..(scroll_offset + (rows as usize).saturating_sub(adj))
-              .min(items.len()),
-        ),
-      );
-      items = new_items;
-    }
-    static_text.eprint_items(items.iter());
-
-    let event = crossterm::event::read()?;
-    #[allow(clippy::single_match)]
-    match event {
-      crossterm::event::Event::Key(KeyEvent {
-        kind: KeyEventKind::Press,
-        code,
-        modifiers,
-        ..
-      }) => match (code, modifiers) {
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
-        (KeyCode::Up | KeyCode::Char('k'), KeyModifiers::NONE) => {
-          state.currently_selected = if state.currently_selected == 0 {
-            state.packages.len() - 1
-          } else {
-            state.currently_selected - 1
-          };
-        }
-        (KeyCode::Down | KeyCode::Char('j'), KeyModifiers::NONE) => {
-          state.currently_selected =
-            (state.currently_selected + 1) % state.packages.len();
-        }
-        (KeyCode::Char(' '), _) => {
-          if !state.checked.insert(state.currently_selected) {
-            state.checked.remove(&state.currently_selected);
-          }
-        }
-        (KeyCode::Char('a'), _) => {
-          if (0..state.packages.len()).all(|idx| state.checked.contains(&idx)) {
-            state.checked.clear();
-          } else {
-            state.checked.extend(0..state.packages.len());
-          }
-        }
-        (KeyCode::Char('i'), _) => {
-          for idx in 0..state.packages.len() {
-            if state.checked.contains(&idx) {
-              state.checked.remove(&idx);
-            } else {
-              state.checked.insert(idx);
-            }
-          }
-        }
-        (KeyCode::Enter, _) => {
-          do_it = true;
-          break;
-        }
-        _ => {}
-      },
-      _ => {}
-    }
-  }
-
-  static_text.eprint_clear();
-
-  hide_cursor_guard.show()?;
-  raw_mode.disable()?;
-
-  if do_it {
-    Ok(Some(
-      state
-        .checked
-        .into_iter()
-        .flat_map(|idx| &state.packages[idx].dep_ids)
-        .copied()
-        .collect(),
-    ))
-  } else {
-    Ok(None)
-  }
+  Ok(selected.map(|indices| {
+    indices
+      .into_iter()
+      .flat_map(|idx| &packages[idx].dep_ids)
+      .copied()
+      .collect()
+  }))
 }

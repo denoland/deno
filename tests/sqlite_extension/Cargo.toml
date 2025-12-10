@@ -1,0 +1,23 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+# This crate is excluded from the workspace because it requires rusqlite's
+# "loadable_extension" feature, which is incompatible with the "session" feature
+# used by the rest of the workspace. Build with:
+#   cargo build --manifest-path tests/sqlite_extension/Cargo.toml
+
+[package]
+name = "test_sqlite_extension"
+version = "0.1.0"
+authors = ["the Deno authors"]
+edition = "2024"
+license = "MIT"
+publish = false
+repository = "https://github.com/denoland/deno"
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+
+[dependencies]
+rusqlite = { version = "0.37.0", default-features = false, features = ["loadable_extension", "functions"] }
