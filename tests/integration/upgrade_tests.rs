@@ -7,9 +7,10 @@ use std::time::Instant;
 use test_util as util;
 use test_util::TestContext;
 use test_util::assert_starts_with;
+use test_util::flaky_test;
 use util::TestContextBuilder;
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn upgrade_invalid_lockfile() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();
@@ -43,7 +44,7 @@ fn upgrade_invalid_lockfile() {
   );
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn upgrade_prompt() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();
@@ -72,7 +73,7 @@ fn upgrade_prompt() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn upgrade_lsp_repl_sleeps() {
   let context = TestContextBuilder::new()
     .use_http_server()

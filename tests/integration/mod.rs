@@ -1,7 +1,45 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
+
+use file_test_runner::RunOptions;
+use file_test_runner::TestResult;
+use file_test_runner::collection::CollectedTestCategory;
+use test_util::TestMacroCase;
+use test_util::flaky_test::Parallelism;
+use test_util::flaky_test::flaky_test_ci;
+
+pub fn main() {
+  let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
+    CollectedTestCategory {
+      name: module_path!().to_string(),
+      path: PathBuf::from(file!()),
+      children: Default::default(),
+    };
+  test_util::collect_and_filter_tests(&mut main_category);
+  if main_category.is_empty() {
+    return; // no tests to run for the filter
+  }
+
+  let parallelism = Parallelism::default();
+  let _g = test_util::http_server();
+  file_test_runner::run_tests(
+    &main_category,
+    RunOptions {
+      parallelism: parallelism.for_run_options(),
+      ..Default::default()
+    },
+    move |test| {
+      flaky_test_ci(&test.name, Some(&parallelism), || {
+        TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+          (test.data.func)();
+          TestResult::Passed
+        }))
+      })
+    },
+  )
+}
 
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)

@@ -14,6 +14,7 @@ use test_util::assertions::assert_json_subset;
 use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
+use test_util::test;
 use test_util::testdata_path;
 use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;

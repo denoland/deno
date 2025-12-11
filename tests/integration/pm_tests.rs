@@ -4,7 +4,9 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::flaky_test;
 use test_util::pty::Pty;
+use test_util::test;
 
 #[test]
 fn add_basic() {
@@ -154,7 +156,7 @@ fn pm_context_builder() -> TestContextBuilder {
     .use_temp_cwd()
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn approve_scripts_basic() {
   if !Pty::is_supported() {
     return;
@@ -193,7 +195,7 @@ fn approve_scripts_basic() {
     }));
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn approve_scripts_deny_some() {
   if !Pty::is_supported() {
     return;

@@ -957,7 +957,6 @@ dependencies = [
  "deno_unsync",
  "fastwebsockets",
  "file_test_runner",
- "flaky_test",
  "hickory-proto",
  "hickory-server",
  "http 1.1.0",
@@ -4057,8 +4056,6 @@ checksum = "c007b1ae3abe1cb6f85a16305acd418b7ca6343b953633fee2b76d8f108b830f"
 [[package]]
 name = "file_test_runner"
 version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d52261f5bf1222386dc4539a59e35169242dbe4794b320795cc50802bb7a9db"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -4092,27 +4089,6 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
-
-[[package]]
-name = "flaky_test"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "046caa1f23d7f751fc4ead3d6669a77fa5fc6cf6074960ddeb6a0b0a5b83c8da"
-dependencies = [
- "flaky_test_impl",
- "futures-util",
-]
-
-[[package]]
-name = "flaky_test_impl"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85e35909c2f0552fdae5b40f1e95a7da12afb58c1f2f455a12c216c58d869abe"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "flate2"
@@ -5376,6 +5352,15 @@ checksum = "a0c10553d664a4d0bcff9f4215d0aac67a639cc68ef660840afe309b807bc9f5"
 dependencies = [
  "block-padding",
  "generic-array",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc61209c082fbeb19919bee74b176221b27223e27b65d781eb91af24eb1fb46e"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -9282,6 +9267,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
 name = "test_napi"
 version = "0.1.0"
 dependencies = [
@@ -9314,6 +9308,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "indexmap 2.9.0",
+ "inventory",
  "jsonc-parser",
  "lazy-regex",
  "libc",
@@ -9339,6 +9334,7 @@ dependencies = [
  "tar",
  "tempfile",
  "termcolor",
+ "test_macro",
  "tokio",
  "url",
  "win32job",

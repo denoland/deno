@@ -2,7 +2,9 @@
 
 use serde_json::json;
 use test_util as util;
+use test_util::flaky_test;
 use test_util::itest;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -422,7 +424,7 @@ fn opt_out_top_level_exclude_via_fmt_unexclude() {
   assert_not_contains!(output, "actually_excluded.ts");
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn test_tty_non_workspace_directory() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();

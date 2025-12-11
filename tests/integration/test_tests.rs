@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::flaky_test;
+use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_contains;
@@ -24,7 +26,7 @@ fn junit_path() {
     .assert_matches_text("<?xml [WILDCARD]");
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 // todo(#18480): re-enable
 #[ignore]
 fn sigint_with_hanging_test() {

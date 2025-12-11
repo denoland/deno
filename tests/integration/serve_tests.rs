@@ -12,6 +12,7 @@ use regex::Regex;
 use reqwest::RequestBuilder;
 use test_util as util;
 use test_util::DenoChild;
+use test_util::async_test;
 use tokio::time::timeout;
 
 struct ServeClient {
@@ -175,7 +176,7 @@ impl ServeClient {
   }
 }
 
-#[tokio::test]
+#[async_test]
 async fn deno_serve_port_0() {
   let client = ServeClient::builder()
     .entry_point("./serve/port_0.ts")
@@ -188,7 +189,7 @@ async fn deno_serve_port_0() {
   client.kill();
 }
 
-#[tokio::test]
+#[async_test]
 async fn deno_serve_no_args() {
   let client = ServeClient::builder()
     .entry_point("./serve/no_args.ts")
@@ -200,7 +201,7 @@ async fn deno_serve_no_args() {
   assert_eq!(body, "deno serve with no args in fetch() works!");
 }
 
-#[tokio::test]
+#[async_test]
 async fn deno_serve_parallel() {
   let client = ServeClient::builder()
     .entry_point("./serve/parallel.ts")
@@ -270,7 +271,7 @@ async fn deno_serve_parallel() {
   );
 }
 
-#[tokio::test]
+#[async_test]
 async fn deno_run_serve_with_tcp_from_env() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -305,7 +306,7 @@ async fn deno_run_serve_with_tcp_from_env() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[async_test]
 #[cfg(unix)]
 async fn deno_run_serve_with_unix_socket_from_env() {
   use tokio::io::AsyncReadExt;
@@ -341,7 +342,7 @@ async fn deno_run_serve_with_unix_socket_from_env() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[async_test]
 #[cfg(unix)]
 async fn deno_run_serve_with_duplicate_env_addr() {
   use tokio::io::AsyncReadExt;

@@ -4,6 +4,7 @@
 // These tests are intended to only test integration.
 
 use test_util as util;
+use test_util::flaky_test;
 use util::TestContextBuilder;
 
 // use test_util::env_vars_for_npm_tests;
@@ -32,7 +33,7 @@ use util::TestContextBuilder;
 //   http_server: true,
 // });
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn deno_task_ansi_escape_codes() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -56,7 +57,7 @@ fn deno_task_ansi_escape_codes() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[flaky_test]
 fn deno_task_control_chars() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

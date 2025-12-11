@@ -2,6 +2,7 @@
 
 use test_util as util;
 use test_util::TempDir;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
