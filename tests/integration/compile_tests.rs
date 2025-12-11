@@ -5,6 +5,7 @@
 #![allow(unused_imports)]
 
 use test_util as util;
+use test_util::eprintln;
 use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;

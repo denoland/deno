@@ -4,12 +4,10 @@
 // These tests are intended to only test integration.
 
 use test_util as util;
-use test_util::flaky_test;
-use test_util::test_runner;
 use util::TestContextBuilder;
+use util::test;
 
 // use test_util::env_vars_for_npm_tests;
-// use test_util::itest;
 // use test_util::TestContext;
 
 // TODO(2.0): this should first run `deno install`
@@ -34,7 +32,7 @@ use util::TestContextBuilder;
 //   http_server: true,
 // });
 
-#[flaky_test]
+#[test(flaky)]
 fn deno_task_ansi_escape_codes() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -58,7 +56,7 @@ fn deno_task_ansi_escape_codes() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn deno_task_control_chars() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

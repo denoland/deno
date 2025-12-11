@@ -1,9 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::flaky_test;
 use test_util::test;
-use test_util::test_runner;
 use util::TestContextBuilder;
 use util::assert_contains;
 
@@ -273,7 +271,7 @@ async fn init_subcommand_serve() {
   output.skip_output_check();
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn init_npm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let cwd = context.temp_dir().path();

@@ -28,6 +28,7 @@ pub mod lsp;
 mod macros;
 mod npm;
 mod parsers;
+pub mod print;
 pub mod pty;
 pub mod servers;
 pub mod spawn;
@@ -49,7 +50,6 @@ pub use parsers::WrkOutput;
 pub use parsers::parse_max_mem;
 pub use parsers::parse_strace_output;
 pub use parsers::parse_wrk_output;
-pub use test_macro::flaky_test;
 pub use test_macro::test;
 pub use wildcard::WildcardMatchResult;
 pub use wildcard::wildcard_match;
@@ -334,10 +334,7 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  #[allow(clippy::print_stdout)]
-  {
-    println!("ready: {name} on {:?}", addresses);
-  }
+  println!("ready: {name} on {:?}", addresses);
 
   futures::stream::select_all(listeners)
 }
@@ -380,10 +377,7 @@ struct HttpServerStarter {
 
 impl Default for HttpServerStarter {
   fn default() -> Self {
-    #[allow(clippy::print_stdout)]
-    {
-      println!("test_server starting...");
-    }
+    println!("test_server starting...");
     let mut test_server = Command::new(test_server_path())
       .current_dir(testdata_path())
       .stdout(Stdio::piped())
@@ -518,7 +512,6 @@ pub fn run_collect(
   } = prog.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
-  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -579,7 +572,6 @@ pub fn run_and_collect_output_with_args(
   } = deno.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
-  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -605,7 +597,6 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
     .env("JSR_URL", jsr_registry_unset_url())
 }
 
-#[allow(clippy::print_stdout)]
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,
@@ -762,7 +753,7 @@ pub(crate) mod colors {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TestMacroCase {
   pub name: &'static str,
   pub module_name: &'static str,

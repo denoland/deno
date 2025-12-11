@@ -50,6 +50,7 @@ use url::Url;
 use super::TempDir;
 use crate::PathRef;
 use crate::deno_exe_path;
+use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
 
@@ -151,7 +152,6 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
-  #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
     eprintln!("{:?}", messages);
@@ -573,10 +573,7 @@ impl LspClientBuilder {
           for line in stderr.lines() {
             match line {
               Ok(line) => {
-                #[allow(clippy::print_stderr)]
-                {
-                  eprintln!("{}", line);
-                }
+                eprintln!("{}", line);
                 if let Some(tx) = perf_tx.as_ref() {
                   // look for perf records
                   if line.starts_with('{') && line.ends_with("},") {
@@ -588,10 +585,7 @@ impl LspClientBuilder {
                         continue;
                       }
                       Err(err) => {
-                        #[allow(clippy::print_stderr)]
-                        {
-                          eprintln!("failed to parse perf record: {:#}", err);
-                        }
+                        eprintln!("failed to parse perf record: {:#}", err);
                       }
                     }
                   }
@@ -792,14 +786,11 @@ impl LspClient {
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("==== STDERR OUTPUT ====");
-      for line in found_lines {
-        eprintln!("{}", line)
-      }
-      eprintln!("== END STDERR OUTPUT ==");
+    eprintln!("==== STDERR OUTPUT ====");
+    for line in found_lines {
+      eprintln!("{}", line)
     }
+    eprintln!("== END STDERR OUTPUT ==");
 
     panic!("Timed out waiting on condition.")
   }

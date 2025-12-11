@@ -33,12 +33,14 @@ use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
+use crate::eprintln;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
+use crate::println;
 use crate::pty::Pty;
 use crate::servers::tsgo_prebuilt_path;
 use crate::strip_ansi_codes;
@@ -88,7 +90,6 @@ impl DiagnosticLogger {
   pub fn writeln(&self, text: impl AsRef<str>) {
     match self {
       DiagnosticLogger::Null => {}
-      #[allow(clippy::print_stderr)]
       DiagnosticLogger::Stderr => {
         eprintln!("{}", text.as_ref());
       }
@@ -954,7 +955,6 @@ impl DenoChild {
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
           if let Ok(line) = line {
-            #[allow(clippy::print_stdout)]
             if no_capture {
               println!(
                 "[{test_name} {:0>6.2}] {line}",
@@ -979,7 +979,6 @@ impl DenoChild {
         let reader = BufReader::new(stderr);
         for line in reader.lines() {
           if let Ok(line) = line {
-            #[allow(clippy::print_stderr)]
             if no_capture {
               eprintln!(
                 "[{test_name} {:0>6.2}] {line}",

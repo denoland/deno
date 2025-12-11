@@ -4,9 +4,10 @@ use deno_lockfile::NewLockfileOptions;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::println;
+use util::test;
 
 #[test]
 fn cache_switching_config_then_no_config() {

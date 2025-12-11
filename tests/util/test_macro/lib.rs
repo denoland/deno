@@ -7,13 +7,10 @@ use syn::ReturnType;
 use syn::parse_macro_input;
 
 #[proc_macro_attribute]
-pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, false)
-}
-
-#[proc_macro_attribute]
-pub fn flaky_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, true)
+pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
+  // Parse the attribute to check if it's "flaky"
+  let is_flaky = attr.to_string().trim() == "flaky";
+  generate_test_macro(item, is_flaky)
 }
 
 fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {

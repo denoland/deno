@@ -11,6 +11,7 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
+use test_util::eprintln;
 use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;

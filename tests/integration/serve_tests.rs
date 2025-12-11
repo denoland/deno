@@ -12,6 +12,8 @@ use regex::Regex;
 use reqwest::RequestBuilder;
 use test_util as util;
 use test_util::DenoChild;
+use test_util::eprintln;
+use test_util::test;
 use tokio::time::timeout;
 
 struct ServeClient {

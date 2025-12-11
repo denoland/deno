@@ -17,10 +17,10 @@ use rustls_tokio_stream::TlsStream;
 use serde_json::json;
 use test_util as util;
 use test_util::TempDir;
-use test_util::flaky_test;
+use test_util::eprintln;
 use test_util::itest;
+use test_util::println;
 use test_util::test;
-use test_util::test_runner;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -170,7 +170,7 @@ itest!(_089_run_allow_list {
   output: "run/089_run_allow_list.ts.out",
 });
 
-#[flaky_test]
+#[test(flaky)]
 fn _090_run_permissions_request() {
   TestContext::default()
     .new_command()
@@ -203,7 +203,7 @@ fn _090_run_permissions_request() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn _090_run_permissions_request_sync() {
   TestContext::default()
     .new_command()
@@ -236,7 +236,7 @@ fn _090_run_permissions_request_sync() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all() {
   TestContext::default()
     .new_command()
@@ -330,7 +330,7 @@ fn permissions_prompt_allow_all() {
   );
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -378,7 +378,7 @@ fn permissions_prompt_allow_all_2() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_lowercase_a() {
   TestContext::default()
     .new_command()
@@ -399,7 +399,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
     .new_command()
@@ -413,7 +413,7 @@ fn permission_request_long() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permissions_cache() {
   TestContext::default()
     .new_command()
@@ -436,7 +436,7 @@ fn permissions_cache() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permissions_trace() {
   TestContext::default()
     .new_command()
@@ -1253,8 +1253,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
-  use test_util::flaky_test;
-  use test_util::test_runner;
+  use test_util::test;
   use util::TestContext;
 
   #[test]
@@ -1631,7 +1630,7 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[flaky_test]
+  #[test(flaky)]
   fn _061_permissions_request() {
     TestContext::default()
       .new_command()
@@ -1663,7 +1662,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test]
+  #[test(flaky)]
   fn _061_permissions_request_sync() {
     TestContext::default()
       .new_command()
@@ -1695,7 +1694,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test]
+  #[test(flaky)]
   fn _062_permissions_request_global() {
     TestContext::default()
       .new_command()
@@ -1720,7 +1719,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test]
+  #[test(flaky)]
   fn _062_permissions_request_global_sync() {
     TestContext::default()
       .new_command()
@@ -1745,7 +1744,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test]
+  #[test(flaky)]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1782,7 +1781,7 @@ mod permissions {
   }
 }
 
-#[flaky_test]
+#[test(flaky)]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()
@@ -1796,7 +1795,7 @@ fn process_stdin_read_unblock() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -2024,7 +2023,7 @@ fn check_local_then_remote() {
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permission_request_with_no_prompt() {
   TestContext::default()
     .new_command()
@@ -2817,7 +2816,7 @@ async fn websocket_server_idletimeout() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/16772
-#[flaky_test]
+#[test(flaky)]
 fn file_fetcher_preserves_permissions() {
   let context = TestContext::with_http_server();
   context
@@ -2834,7 +2833,7 @@ fn file_fetcher_preserves_permissions() {
     });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn stdio_streams_are_locked_in_permission_prompt() {
   if !util::pty::Pty::is_supported() {
     // Don't deal with the logic below if the with_pty
@@ -2895,7 +2894,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -3336,7 +3335,7 @@ fn node_process_stdin_pause() {
     .unwrap();
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
@@ -3519,7 +3518,7 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
   let socket_path = if cfg!(windows) {
@@ -3539,7 +3538,7 @@ fn test_permission_broker_doesnt_exit() {
   );
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn test_permission_broker() {
   use std::io::BufRead;
   use std::io::BufReader;

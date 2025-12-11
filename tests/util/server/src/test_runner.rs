@@ -5,11 +5,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use file_test_runner::NO_CAPTURE;
 use file_test_runner::TestResult;
 
 use crate::IS_CI;
 use crate::colors;
+use crate::eprintln;
 
 pub fn flaky_test_ci(
   test_name: &str,
@@ -30,11 +30,7 @@ pub struct Parallelism {
 
 impl Default for Parallelism {
   fn default() -> Self {
-    let parallelism = if *NO_CAPTURE {
-      file_test_runner::parallelism::Parallelism::none()
-    } else {
-      file_test_runner::parallelism::Parallelism::from_env()
-    };
+    let parallelism = file_test_runner::parallelism::Parallelism::from_env();
     Self {
       parallelism: Arc::new(parallelism),
       has_raised: Default::default(),
@@ -74,7 +70,6 @@ pub fn run_flaky_test(
     if !result.is_failed() {
       return result;
     }
-    #[allow(clippy::print_stderr)]
     if *IS_CI {
       eprintln!(
         "{} {} was flaky on run {}",
@@ -88,7 +83,6 @@ pub fn run_flaky_test(
 
   // if we got here, it means the CI is very flaky at the moment
   // so reduce concurrency down to 1
-  #[allow(clippy::print_stderr)]
   if let Some(parallelism) = parallelism
     && parallelism.limit_to_one()
   {

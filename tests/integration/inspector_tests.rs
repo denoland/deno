@@ -17,7 +17,8 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use serde_json::json;
 use test_util as util;
-use test_util::flaky_test;
+use test_util::eprintln;
+use test_util::test;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
@@ -315,7 +316,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[flaky_test]
+#[test(flaky)]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let child = util::deno_cmd()
@@ -429,7 +430,7 @@ async fn inspector_pause() {
   tester.child.kill().unwrap();
 }
 
-#[flaky_test]
+#[test(flaky)]
 fn inspector_port_collision() {
   // Skip this test on WSL, which allows multiple processes to listen on the
   // same port, rather than making `bind()` fail with `EADDRINUSE`. We also
@@ -478,7 +479,7 @@ fn inspector_port_collision() {
   child2.wait().unwrap();
 }
 
-#[flaky_test]
+#[test(flaky)]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let child = util::deno_cmd()
@@ -574,7 +575,7 @@ async fn inspector_does_not_hang() {
 }
 
 #[test]
-async fn inspector_without_brk_runs_code() {
+fn inspector_without_brk_runs_code() {
   let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
@@ -811,7 +812,7 @@ async fn inspector_connect_non_ws() {
   child.wait().unwrap();
 }
 
-#[flaky_test]
+#[test(flaky)]
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
@@ -1205,7 +1206,7 @@ async fn inspector_profile() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[flaky_test]
+#[test(flaky)]
 async fn inspector_break_on_first_line_npm_esm() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1272,7 +1273,7 @@ async fn inspector_break_on_first_line_npm_esm() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[flaky_test]
+#[test(flaky)]
 async fn inspector_break_on_first_line_npm_cjs() {
   let context = TestContextBuilder::for_npm().build();
   let child = context

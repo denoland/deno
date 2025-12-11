@@ -4,6 +4,7 @@ use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
+use test_util::eprintln;
 use test_util::itest;
 use test_util::test;
 use url::Url;

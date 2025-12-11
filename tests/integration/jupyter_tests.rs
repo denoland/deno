@@ -16,6 +16,8 @@ use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 use test_util::assertions::assert_json_subset;
+use test_util::eprintln;
+use test_util::test;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;

@@ -2,11 +2,11 @@
 
 use serde_json::json;
 use test_util as util;
-use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::test;
 
 #[test]
 fn recursive_permissions_pledge() {

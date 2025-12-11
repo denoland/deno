@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use crate::colors;
+use crate::eprintln;
 
 pub fn wildcard_match(pattern: &str, text: &str) -> bool {
-  #[allow(clippy::print_stderr)]
   match wildcard_match_detailed(pattern, text) {
     WildcardMatchResult::Success => true,
     WildcardMatchResult::Fail(debug_output) => {

@@ -8,11 +8,11 @@ use deno_semver::package::PackageNv;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
-use test_util::test;
 use url::Url;
 use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::test;
 
 #[test]
 fn fast_check_cache() {
