@@ -592,20 +592,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
     Some(Cow::Owned(data.data.to_vec()))
   }
 
-  fn source_map_source_exists(&self, source_url: &str) -> bool {
-    let Ok(url) = Url::parse(source_url) else {
-      return false;
-    };
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let url = Url::parse(source_url).ok()?;
 
     // For file:// URLs, check if the file exists on disk
     if url.scheme() == "file" {
       if let Ok(path) = url.to_file_path() {
-        return path.exists();
+        return Some(path.exists());
       }
     }
 
     // For embedded modules, check if it's in the modules store
-    self.shared.modules.read(&url).ok().flatten().is_some()
+    Some(self.shared.modules.read(&url).ok().flatten().is_some())
   }
 
   fn get_source_mapped_source_line(
