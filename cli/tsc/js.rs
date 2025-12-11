@@ -23,11 +23,18 @@ use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::worker::WorkerOptions;
+use deno_runtime::worker::WorkerServiceOptions;
 use node_resolver::ResolutionMode;
 
 use super::ResolveArgs;
 use super::ResolveError;
 use crate::args::TypeCheckMode;
+use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::tsc::Diagnostics;
 use crate::tsc::ExecError;
 use crate::tsc::LoadError;
@@ -163,7 +170,7 @@ deno_core::extension!(deno_cli_tsc,
     ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.as_str().into()));
     ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.as_str().into()));
     ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.as_str().into()));
-    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.as_str().into()));
     ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
   }
 );
@@ -328,23 +335,64 @@ pub fn exec_request(
   });
   let exec_source = format!("globalThis.exec({request_value})");
 
-  let mut extensions =
-    deno_runtime::snapshot_info::get_extensions_in_snapshot();
+  let mut extensions = vec![];
   extensions.push(deno_cli_tsc::init(request, root_map, remapped_specifiers));
   let extension_code_cache = code_cache.map(|cache| {
     Rc::new(TscExtCodeCache::new(cache)) as Rc<dyn deno_core::ExtCodeCache>
   });
-  let mut runtime = JsRuntime::new(RuntimeOptions {
+  let mut main_worker =
+    deno_runtime::worker::MainWorker::bootstrap_from_options(
+      &ModuleSpecifier::parse("file:///main.ts").unwrap(),
+      WorkerServiceOptions::<DenoInNpmPackageChecker, CliNpmResolver, CliSys> {
+        blob_store: Default::default(),
+        broadcast_channel: Default::default(),
+        deno_rt_native_addon_loader: None,
+        feature_checker: Default::default(),
+        fs: Arc::new(deno_runtime::deno_fs::RealFs),
+        module_loader: Rc::new(deno_core::NoopModuleLoader),
+        node_services: None,
+        npm_process_state_provider: None,
+        permissions: PermissionsContainer::allow_all(Arc::new(
+          RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
+        )),
+        root_cert_store_provider: None,
+        fetch_dns_resolver: Default::default(),
+        shared_array_buffer_store: None,
+        compiled_wasm_module_store: None,
+        v8_code_cache: None,
+        bundle_provider: None,
+      },
+      WorkerOptions {
+        startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+        extensions,
+        ..Default::default()
+      },
+    );
+  eprintln!("HERE");
+  /*   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     extension_code_cache,
     ..Default::default()
-  });
+  }); */
+  let runtime = &mut main_worker.js_runtime;
 
+  eprintln!("HERE2");
+  runtime
+    .op_state()
+    .borrow_mut()
+    .put(deno_runtime::snapshot_info::AllowAll);
+  runtime
+    .op_state()
+    .borrow_mut()
+    .put(crate::sys::CliSys::default());
+
+  eprintln!("HERE3");
   runtime
     .execute_script(located_script_name!(), exec_source)
     .map_err(ExecError::Js)?;
+  eprintln!("HERE4");
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
