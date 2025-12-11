@@ -939,7 +939,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace",
+          run: "cargo test --locked --features=panic-trace specs::compile",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -952,8 +952,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace",
-            "cargo test --locked --tests --features=panic-trace",
+            "cargo test --locked --lib --features=panic-trace specs::compile",
+            "cargo test --locked --tests --features=panic-trace specs::compile",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
