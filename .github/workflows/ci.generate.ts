@@ -698,15 +698,6 @@ const ci = {
           run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
-        {
-          name: "Setup tmate session",
-          if: [
-            "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.profile == 'debug' && (matrix.os == 'macos' ||",
-            "github.repository == 'denoland/deno')",
-          ].join("\n"),
-          uses: "mxschmitt/action-tmate@v3",
-        },
         // Uncomment for remote debugging
         // {
         //   name: "Setup tmate session",

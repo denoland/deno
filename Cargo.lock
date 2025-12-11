@@ -5796,7 +5796,7 @@ dependencies = [
 [[package]]
 name = "libsui"
 version = "0.12.2"
-source = "git+https://github.com/denoland/sui?rev=c2fb71d897ba727058218cce90b6f439780bbe4e#c2fb71d897ba727058218cce90b6f439780bbe4e"
+source = "git+https://github.com/denoland/sui?branch=fix-intel-mac-fr#ad454091778df9b1b4833382a22575ed82705ab0"
 dependencies = [
  "editpe",
  "image",
