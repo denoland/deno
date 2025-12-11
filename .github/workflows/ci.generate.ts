@@ -5,62 +5,62 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 83;
+const cacheVersion = 82;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-// const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-// const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
-// const windowsX86Runner = "windows-2022";
-// const windowsX86XlRunner = "windows-2022-xl";
+const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
+const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
+const windowsX86Runner = "windows-2022";
+const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-15-intel";
-// const macosArmRunner = "macos-14";
-// const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
+const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
-  // linuxX86: {
-  //   os: "linux",
-  //   arch: "x86_64",
-  //   runner: ubuntuX86Runner,
-  // },
-  // linuxX86Xl: {
-  //   os: "linux",
-  //   arch: "x86_64",
-  //   runner:
-  //     `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
-  // },
-  // linuxArm: {
-  //   os: "linux",
-  //   arch: "aarch64",
-  //   runner: ubuntuARMRunner,
-  // },
+  linuxX86: {
+    os: "linux",
+    arch: "x86_64",
+    runner: ubuntuX86Runner,
+  },
+  linuxX86Xl: {
+    os: "linux",
+    arch: "x86_64",
+    runner:
+      `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
+  },
+  linuxArm: {
+    os: "linux",
+    arch: "aarch64",
+    runner: ubuntuARMRunner,
+  },
   macosX86: {
     os: "macos",
     arch: "x86_64",
     runner: macosX86Runner,
   },
-  // macosArm: {
-  //   os: "macos",
-  //   arch: "aarch64",
-  //   runner: macosArmRunner,
-  // },
-  // macosArmSelfHosted: {
-  //   os: "macos",
-  //   arch: "aarch64",
-  //   // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
-  //   runner:
-  //     `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
-  // },
-  // windowsX86: {
-  //   os: "windows",
-  //   arch: "x86_64",
-  //   runner: windowsX86Runner,
-  // },
-  // windowsX86Xl: {
-  //   os: "windows",
-  //   arch: "x86_64",
-  //   runner:
-  //     `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
-  // },
+  macosArm: {
+    os: "macos",
+    arch: "aarch64",
+    runner: macosArmRunner,
+  },
+  macosArmSelfHosted: {
+    os: "macos",
+    arch: "aarch64",
+    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
+    runner:
+      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+  },
+  windowsX86: {
+    os: "windows",
+    arch: "x86_64",
+    runner: windowsX86Runner,
+  },
+  windowsX86Xl: {
+    os: "windows",
+    arch: "x86_64",
+    runner:
+      `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+  },
 } as const;
 
 const prCacheKeyPrefix =
@@ -444,56 +444,55 @@ const ci = {
             job: "test",
             profile: "release",
             skip_pr: true,
-          } // {
-            //   ...Runners.macosArm,
-            //   job: "test",
-            //   profile: "debug",
-            // }, {
-            //   ...Runners.macosArmSelfHosted,
-            //   job: "test",
-            //   profile: "release",
-            //   skip_pr: true,
-            // }, {
-            //   ...Runners.windowsX86,
-            //   job: "test",
-            //   profile: "debug",
-            // }, {
-            //   ...Runners.windowsX86Xl,
-            //   job: "test",
-            //   profile: "release",
-            //   skip_pr: true,
-            // }, {
-            //   ...Runners.linuxX86Xl,
-            //   job: "test",
-            //   profile: "release",
-            //   use_sysroot: true,
-            //   // TODO(ry): Because CI is so slow on for OSX and Windows, we
-            //   // currently run the Web Platform tests only on Linux.
-            //   wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-            // }, {
-            //   ...Runners.linuxX86Xl,
-            //   job: "bench",
-            //   profile: "release",
-            //   use_sysroot: true,
-            //   skip_pr:
-            //     "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
-            // }, {
-            //   ...Runners.linuxX86,
-            //   job: "test",
-            //   profile: "debug",
-            //   use_sysroot: true,
-            // }, {
-            //   ...Runners.linuxArm,
-            //   job: "test",
-            //   profile: "debug",
-            // }, {
-            //   ...Runners.linuxArm,
-            //   job: "test",
-            //   profile: "release",
-            //   use_sysroot: true,
-            // skip_pr: true,
-            // }
-          ]),
+          }, {
+            ...Runners.macosArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.macosArmSelfHosted,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            ...Runners.windowsX86,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.windowsX86Xl,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            ...Runners.linuxX86Xl,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+            // TODO(ry): Because CI is so slow on for OSX and Windows, we
+            // currently run the Web Platform tests only on Linux.
+            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+          }, {
+            ...Runners.linuxX86Xl,
+            job: "bench",
+            profile: "release",
+            use_sysroot: true,
+            skip_pr:
+              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+          }, {
+            ...Runners.linuxX86,
+            job: "test",
+            profile: "debug",
+            use_sysroot: true,
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.linuxArm,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+            skip_pr: true,
+          }]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -723,17 +722,17 @@ const ci = {
             "df -h",
           ].join("\n"),
         },
-        // {
-        //   // Run a minimal check to ensure that binary is not corrupted, regardless
-        //   // of our build mode
-        //   name: "Check deno binary",
-        //   if: "matrix.job == 'test'",
-        //   run:
-        //     'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
-        //   env: {
-        //     NO_COLOR: 1,
-        //   },
-        // },
+        {
+          // Run a minimal check to ensure that binary is not corrupted, regardless
+          // of our build mode
+          name: "Check deno binary",
+          if: "matrix.job == 'test'",
+          run:
+            'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+          env: {
+            NO_COLOR: 1,
+          },
+        },
         {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
           name: "Check deno binary (in sysroot)",
@@ -940,7 +939,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace specs::compile",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -953,8 +952,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace specs::compile",
-            "cargo test --locked --tests --features=panic-trace specs::compile",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -1202,23 +1201,19 @@ const ci = {
       },
       strategy: {
         matrix: {
-          include: [
-            //   {
-            //   ...Runners.linuxX86,
-            //   profile: "debug",
-            //   job: "lint",
-            // },
-            {
-              ...Runners.macosX86,
-              profile: "debug",
-              job: "lint",
-            },
-            // {
-            //   ...Runners.windowsX86,
-            //   profile: "debug",
-            //   job: "lint",
-            // }
-          ],
+          include: [{
+            ...Runners.linuxX86,
+            profile: "debug",
+            job: "lint",
+          }, {
+            ...Runners.macosX86,
+            profile: "debug",
+            job: "lint",
+          }, {
+            ...Runners.windowsX86,
+            profile: "debug",
+            job: "lint",
+          }],
         },
       },
       steps: [
@@ -1234,19 +1229,19 @@ const ci = {
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
-        // {
-        //   name: "lint.js",
-        //   env: {
-        //     GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-        //   },
-        //   run:
-        //     "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-        // },
-        // {
-        //   name: "jsdoc_checker.js",
-        //   run:
-        //     "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-        // },
+        {
+          name: "lint.js",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
+          run:
+            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
+        },
+        {
+          name: "jsdoc_checker.js",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        },
         saveCacheMainStep,
       ],
     },

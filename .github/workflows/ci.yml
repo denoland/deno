@@ -69,6 +69,60 @@ jobs:
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: macos
+            arch: aarch64
+            runner: macos-14
+            job: test
+            profile: debug
+          - os: macos
+            arch: aarch64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+            job: test
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
+            job: test
+            profile: debug
+          - os: windows
+            arch: x86_64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            job: test
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: linux
+            arch: x86_64
+            runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+            job: test
+            profile: release
+            use_sysroot: true
+            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
+          - os: linux
+            arch: x86_64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+            job: bench
+            profile: release
+            use_sysroot: true
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) }}'
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            job: test
+            profile: debug
+            use_sysroot: true
+          - os: linux
+            arch: aarch64
+            runner: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'
+            job: test
+            profile: debug
+          - os: linux
+            arch: aarch64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04'' }}'
+            job: test
+            profile: release
+            use_sysroot: true
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
@@ -119,8 +173,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '83-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '83-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '82-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '82-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -325,7 +379,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '83-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '82-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -351,6 +405,11 @@ jobs:
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
+      - name: Check deno binary
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        env:
+          NO_COLOR: 1
       - name: Check deno binary (in sysroot)
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
@@ -500,7 +559,7 @@ jobs:
           matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') &&
           matrix.os == 'linux')
-        run: 'cargo test --locked --features=panic-trace specs::compile'
+        run: cargo test --locked --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: 'Test (fast, debug)'
@@ -509,8 +568,8 @@ jobs:
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
-          cargo test --locked --lib --features=panic-trace specs::compile
-          cargo test --locked --tests --features=panic-trace specs::compile
+          cargo test --locked --lib --features=panic-trace
+          cargo test --locked --tests --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)
@@ -685,7 +744,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '83-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '82-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
@@ -699,9 +758,19 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            profile: debug
+            job: lint
           - os: macos
             arch: x86_64
             runner: macos-15-intel
+            profile: debug
+            job: lint
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
             profile: debug
             job: lint
     steps:
@@ -726,8 +795,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '83-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '83-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '82-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '82-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2
@@ -744,10 +813,16 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '83-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '82-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: test_format.js
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+      - name: lint.js
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
+      - name: jsdoc_checker.js
+        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
         if: matrix.job == 'test' && github.ref == 'refs/heads/main'
@@ -758,7 +833,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '83-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '82-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:
