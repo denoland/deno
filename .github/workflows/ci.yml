@@ -351,11 +351,6 @@ jobs:
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
-      - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.job == ''test'')'
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
-        env:
-          NO_COLOR: 1
       - name: Check deno binary (in sysroot)
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'

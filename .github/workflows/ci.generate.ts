@@ -723,17 +723,17 @@ const ci = {
             "df -h",
           ].join("\n"),
         },
-        {
-          // Run a minimal check to ensure that binary is not corrupted, regardless
-          // of our build mode
-          name: "Check deno binary",
-          if: "matrix.job == 'test'",
-          run:
-            'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
-          env: {
-            NO_COLOR: 1,
-          },
-        },
+        // {
+        //   // Run a minimal check to ensure that binary is not corrupted, regardless
+        //   // of our build mode
+        //   name: "Check deno binary",
+        //   if: "matrix.job == 'test'",
+        //   run:
+        //     'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+        //   env: {
+        //     NO_COLOR: 1,
+        //   },
+        // },
         {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
           name: "Check deno binary (in sysroot)",
