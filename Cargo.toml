@@ -170,7 +170,7 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.3"
+file_test_runner = "0.8.2"
 filetime = "0.2.16"
 flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
@@ -229,7 +229,7 @@ prost-build = "0.13"
 quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
-rayon = "1.8.0"
+rayon = "1.11.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits", "backup"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
