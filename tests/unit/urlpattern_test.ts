@@ -63,3 +63,13 @@ Deno.test(function urlPatternWithPrototypePollution() {
     RegExp.prototype.exec = originalExec;
   }
 });
+
+Deno.test(function urlPatternFlagsRegression() {
+  new URLPattern({ pathname: "/install(\.sh|\.ps1)" });
+});
+
+Deno.test(function urlPatternIgnoreCase() {
+  const p = new URLPattern({ pathname: "/test" }, { ignoreCase: true });
+  assert(p.test("/test", "http://localhost"));
+  assert(p.test("/TeSt", "http://localhost"));
+});
