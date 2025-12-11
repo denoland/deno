@@ -7,8 +7,9 @@ use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
 use file_test_runner::collection::CollectedTestCategory;
 use test_util::TestMacroCase;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::flaky_test_ci;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::flaky_test_ci;
+use test_util::test_runner::run_flaky_test;
 
 pub fn main() {
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
@@ -31,12 +32,17 @@ pub fn main() {
       ..Default::default()
     },
     move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || {
+      let run_test = || {
         TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
           (test.data.func)();
           TestResult::Passed
         }))
-      })
+      };
+      if test.data.flaky {
+        run_flaky_test(&test.name, Some(&parallelism), run_test)
+      } else {
+        flaky_test_ci(&test.name, Some(&parallelism), run_test)
+      }
     },
   )
 }

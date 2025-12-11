@@ -4,7 +4,7 @@
 // These tests are intended to only test integration.
 
 use test_util as util;
-use test_util::flaky_test;
+use test_util::test_runner;
 use util::TestContextBuilder;
 
 // use test_util::env_vars_for_npm_tests;

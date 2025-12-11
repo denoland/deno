@@ -22,7 +22,6 @@ use url::Url;
 
 pub mod assertions;
 mod builders;
-pub mod flaky_test;
 mod fs;
 mod https;
 pub mod lsp;
@@ -32,6 +31,7 @@ mod parsers;
 pub mod pty;
 pub mod servers;
 pub mod spawn;
+pub mod test_runner;
 mod wildcard;
 
 pub use builders::DenoChild;

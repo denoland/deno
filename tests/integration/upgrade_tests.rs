@@ -7,7 +7,7 @@ use std::time::Instant;
 use test_util as util;
 use test_util::TestContext;
 use test_util::assert_starts_with;
-use test_util::flaky_test;
+use test_util::test_runner;
 use util::TestContextBuilder;
 
 #[flaky_test]

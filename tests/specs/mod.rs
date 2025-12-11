@@ -25,8 +25,8 @@ use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::run_flaky_test;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::run_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";

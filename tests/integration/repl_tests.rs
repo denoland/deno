@@ -4,7 +4,7 @@ use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
 use test_util::assert_not_contains;
-use test_util::flaky_test;
+use test_util::test_runner;
 use util::TempDir;
 use util::TestContext;
 use util::TestContextBuilder;
