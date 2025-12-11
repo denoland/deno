@@ -21,9 +21,10 @@ fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {
   let is_async = input.sig.asyncness.is_some();
 
   // Check for #[ignore] attribute
-  let is_ignored = input.attrs.iter().any(|attr| {
-    attr.path().is_ident("ignore")
-  });
+  let is_ignored = input
+    .attrs
+    .iter()
+    .any(|attr| attr.path().is_ident("ignore"));
 
   let expanded = if is_async {
     let wrapper_name =
