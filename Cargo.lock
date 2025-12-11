@@ -3099,11 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.222.0"
-dependencies = [
- "deno_bench_util",
- "deno_core",
-]
+version = "0.223.0"
 
 [[package]]
 name = "deno_websocket"
