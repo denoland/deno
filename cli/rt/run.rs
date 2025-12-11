@@ -594,15 +594,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
     let url = Url::parse(source_url).ok()?;
-
-    // For file:// URLs, check if the file exists on disk
-    if url.scheme() == "file" {
-      if let Ok(path) = url.to_file_path() {
-        return Some(path.exists());
-      }
-    }
-
-    // For embedded modules, check if it's in the modules store
     Some(self.shared.modules.read(&url).ok().flatten().is_some())
   }
 

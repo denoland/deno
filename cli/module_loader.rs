@@ -1260,10 +1260,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let specifier = resolve_url(source_url).ok()?;
 
     // For file:// URLs, check if the file exists on disk
-    if specifier.scheme() == "file" {
-      if let Ok(path) = specifier.to_file_path() {
-        return Some(path.exists());
-      }
+    if specifier.scheme() == "file"
+      && let Ok(path) = specifier.to_file_path()
+    {
+      return Some(path.exists());
     }
 
     // For other URLs, check if it's in the module graph
