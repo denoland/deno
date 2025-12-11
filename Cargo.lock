@@ -5795,8 +5795,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.12.2"
-source = "git+https://github.com/denoland/sui?branch=intel-mac-lol#2f49dfac444af65e32d247a5213d97b75d0e5146"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c238ae4b3e1467d748ad42f1ffa68618ee40b901bcee0296b0ecea07306b1f5"
 dependencies = [
  "editpe",
  "image",
