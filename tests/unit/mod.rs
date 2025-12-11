@@ -2,9 +2,9 @@
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
-use file_test_runner::collect_and_run_tests;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectedTest;
+use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::TestContextBuilder;
@@ -13,21 +13,27 @@ use test_util::flaky_test::flaky_test_ci;
 use test_util::tests_path;
 
 fn main() {
-  let _g = util::http_server();
+  let category = collect_tests_or_exit(CollectOptions {
+    base: tests_path().join("unit").to_path_buf(),
+    strategy: Box::new(TestPerFileCollectionStrategy {
+      file_pattern: Some(".*_test\\.ts$".to_string()),
+    }),
+    filter_override: None,
+  });
+  if category.is_empty() {
+    return; // no tests to run for the filter
+  }
   let parallelism = Parallelism::default();
-  collect_and_run_tests(
-    CollectOptions {
-      base: tests_path().join("unit").to_path_buf(),
-      strategy: Box::new(TestPerFileCollectionStrategy {
-        file_pattern: Some(".*_test\\.ts$".to_string()),
-      }),
-      filter_override: None,
-    },
+  let _g = util::http_server();
+  file_test_runner::run_tests(
+    &category,
     RunOptions {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| flaky_test_ci(&test.name, &parallelism, || run_test(test)),
+    move |test| {
+      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
+    },
   )
 }
 

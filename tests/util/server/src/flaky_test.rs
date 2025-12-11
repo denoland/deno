@@ -13,11 +13,11 @@ use crate::colors;
 
 pub fn flaky_test_ci(
   test_name: &str,
-  parallelism: &Parallelism,
+  parallelism: Option<&Parallelism>,
   run_test: impl Fn() -> TestResult,
 ) -> TestResult {
   if *IS_CI {
-    run_flaky_test(test_name, Some(parallelism), run_test)
+    run_flaky_test(test_name, parallelism, run_test)
   } else {
     run_test()
   }

@@ -1,10 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
-use file_test_runner::collect_and_run_tests;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectedTest;
+use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::flaky_test::Parallelism;
@@ -14,22 +17,41 @@ use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 fn main() {
-  let _g = util::http_server();
+  let category = collect_tests_or_exit(CollectOptions {
+    base: tests_path().join("unit_node").to_path_buf(),
+    strategy: Box::new(TestPerFileCollectionStrategy {
+      file_pattern: Some(".*_test\\.ts$".to_string()),
+    }),
+    filter_override: None,
+  });
+  if category.is_empty() {
+    return;
+  }
   let parallelism = Parallelism::default();
-  collect_and_run_tests(
-    CollectOptions {
-      base: tests_path().join("unit_node").to_path_buf(),
-      strategy: Box::new(TestPerFileCollectionStrategy {
-        file_pattern: Some(".*_test\\.ts$".to_string()),
-      }),
-      filter_override: None,
-    },
+  let _g = util::http_server();
+  // Run the crypto category tests separately without concurrency because they run in Deno with --parallel
+  let (crypto_category, category) =
+    category.partition(|test| test.name.contains("::crypto::"));
+  file_test_runner::run_tests(
+    &category,
     RunOptions {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| flaky_test_ci(&test.name, &parallelism, || run_test(test)),
-  )
+    move |test| {
+      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
+    },
+  );
+  file_test_runner::run_tests(
+    &crypto_category,
+    RunOptions {
+      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::new(
+        NonZeroUsize::new(1).unwrap(),
+      )),
+      ..Default::default()
+    },
+    move |test| flaky_test_ci(&test.name, None, || run_test(test)),
+  );
 }
 
 fn run_test(test: &CollectedTest) -> TestResult {
