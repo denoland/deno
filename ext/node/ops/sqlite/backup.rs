@@ -25,20 +25,14 @@ struct BackupOptions {
   rate: Option<c_int>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct BackupResult {
-  #[serde(rename = "totalPages")]
-  total_pages: c_int,
-}
-
 #[op2(stack_trace)]
-#[serde]
+#[smi]
 pub fn op_node_database_backup(
   state: &mut OpState,
   #[cppgc] source_db: &DatabaseSync,
   #[string] path: &str,
   #[serde] options: Option<BackupOptions>,
-) -> Result<BackupResult, SqliteError> {
+) -> Result<i32, SqliteError> {
   let src_conn_ref = source_db.conn.borrow();
   let src_conn = src_conn_ref.as_ref().ok_or(SqliteError::SessionClosed)?;
   let path = std::path::Path::new(path);
@@ -53,7 +47,5 @@ pub fn op_node_database_backup(
     .unwrap_or(DEFAULT_BACKUP_RATE);
   let backup = backup::Backup::new(src_conn, &mut dst_conn)?;
   backup.run_to_completion(rate, time::Duration::from_millis(250), None)?;
-  Ok(BackupResult {
-    total_pages: backup.progress().pagecount,
-  })
+  Ok(backup.progress().pagecount)
 }
