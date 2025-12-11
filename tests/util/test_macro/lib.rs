@@ -8,31 +8,25 @@ use syn::parse_macro_input;
 
 #[proc_macro_attribute]
 pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, false, false)
+  generate_test_macro(item, false)
 }
 
 #[proc_macro_attribute]
 pub fn flaky_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, true, false)
+  generate_test_macro(item, true)
 }
 
-#[proc_macro_attribute]
-pub fn async_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, false, true)
-}
-
-#[proc_macro_attribute]
-pub fn async_flaky_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-  generate_test_macro(item, true, true)
-}
-
-fn generate_test_macro(
-  item: TokenStream,
-  is_flaky: bool,
-  is_async: bool,
-) -> TokenStream {
+fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {
   let input = parse_macro_input!(item as ItemFn);
   let fn_name = &input.sig.ident;
+
+  // Detect if the function is async
+  let is_async = input.sig.asyncness.is_some();
+
+  // Check for #[ignore] attribute
+  let is_ignored = input.attrs.iter().any(|attr| {
+    attr.path().is_ident("ignore")
+  });
 
   let expanded = if is_async {
     let wrapper_name =
@@ -79,6 +73,7 @@ fn generate_test_macro(
                 func: #wrapper_name,
                 flaky: #is_flaky,
                 file: file!(),
+                ignore: #is_ignored,
             }
         }
     }
@@ -93,6 +88,7 @@ fn generate_test_macro(
                 func: #fn_name,
                 flaky: #is_flaky,
                 file: file!(),
+                ignore: #is_ignored,
             }
         }
     }

@@ -4,7 +4,6 @@ use deno_lockfile::NewLockfileOptions;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::async_test;
 use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -201,7 +200,7 @@ impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
   }
 }
 
-#[async_test]
+#[test]
 async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()

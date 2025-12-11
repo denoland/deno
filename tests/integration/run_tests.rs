@@ -17,7 +17,7 @@ use rustls_tokio_stream::TlsStream;
 use serde_json::json;
 use test_util as util;
 use test_util::TempDir;
-use test_util::async_test;
+use test_util::flaky_test;
 use test_util::itest;
 use test_util::test;
 use test_util::test_runner;
@@ -1253,6 +1253,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use test_util::flaky_test;
   use test_util::test_runner;
   use util::TestContext;
 
@@ -2471,7 +2472,7 @@ fn test_resolve_dns() {
   });
 }
 
-#[async_test]
+#[test]
 async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -2715,7 +2716,7 @@ where
   }
 }
 
-#[async_test]
+#[test]
 async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
@@ -2766,7 +2767,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[async_test]
+#[test]
 async fn websocket_server_idletimeout() {
   test_util::timeout!(60);
   let script =
@@ -3364,7 +3365,7 @@ fn node_process_stdin_unref_with_pty() {
     });
 }
 
-#[async_test]
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3419,7 +3420,7 @@ async fn listen_tls_alpn() {
   assert!(status.success());
 }
 
-#[async_test]
+#[test]
 async fn listen_tls_alpn_fail() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 

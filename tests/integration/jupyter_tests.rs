@@ -16,7 +16,6 @@ use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 use test_util::assertions::assert_json_subset;
-use test_util::async_test;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -487,7 +486,7 @@ async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   (context, client, process)
 }
 
-#[async_test]
+#[test]
 async fn jupyter_heartbeat_echoes() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client.send_heartbeat(b"ping").await?;
@@ -497,7 +496,7 @@ async fn jupyter_heartbeat_echoes() -> Result<()> {
   Ok(())
 }
 
-#[async_test]
+#[test]
 async fn jupyter_kernel_info() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
@@ -523,7 +522,7 @@ async fn jupyter_kernel_info() -> Result<()> {
   Ok(())
 }
 
-#[async_test]
+#[test]
 async fn jupyter_execute_request() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   let request = client
@@ -600,7 +599,7 @@ async fn jupyter_execute_request() -> Result<()> {
   Ok(())
 }
 
-#[async_test]
+#[test]
 async fn jupyter_store_history_false() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
@@ -628,7 +627,7 @@ async fn jupyter_store_history_false() -> Result<()> {
   Ok(())
 }
 
-#[async_test]
+#[test]
 async fn jupyter_http_server() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client

@@ -4,7 +4,6 @@ use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
-use test_util::async_test;
 use test_util::itest;
 use test_util::test;
 use url::Url;
@@ -1977,7 +1976,7 @@ fn run_cjs_in_node_modules_folder() {
     .assert_matches_text("hi\n");
 }
 
-#[async_test]
+#[test]
 async fn test_private_npm_registry() {
   let _server = http_server();
 

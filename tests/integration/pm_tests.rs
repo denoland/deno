@@ -4,6 +4,7 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::flaky_test;
 use test_util::pty::Pty;
 use test_util::test;
 use test_util::test_runner;

@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::flaky_test;
 use test_util::test;
 use test_util::test_runner;
 use util::TestContext;

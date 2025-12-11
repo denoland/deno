@@ -17,8 +17,7 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use serde_json::json;
 use test_util as util;
-use test_util::async_flaky_test;
-use test_util::async_test;
+use test_util::flaky_test;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
@@ -295,7 +294,7 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   format!("{flag_prefix}=127.0.0.1:{port}")
 }
 
-#[async_test]
+#[test]
 async fn inspector_connect() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -316,7 +315,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[async_flaky_test]
+#[flaky_test]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let child = util::deno_cmd()
@@ -399,7 +398,7 @@ async fn inspector_break_on_first_line() {
   tester.child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_pause() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let child = util::deno_cmd()
@@ -430,8 +429,8 @@ async fn inspector_pause() {
   tester.child.kill().unwrap();
 }
 
-#[async_test]
-async fn inspector_port_collision() {
+#[flaky_test]
+fn inspector_port_collision() {
   // Skip this test on WSL, which allows multiple processes to listen on the
   // same port, rather than making `bind()` fail with `EADDRINUSE`. We also
   // skip this test on Windows because it will occasionally flake, possibly
@@ -479,7 +478,7 @@ async fn inspector_port_collision() {
   child2.wait().unwrap();
 }
 
-#[async_flaky_test]
+#[flaky_test]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let child = util::deno_cmd()
@@ -574,7 +573,7 @@ async fn inspector_does_not_hang() {
   // assert!(tester.child.wait().unwrap().success());
 }
 
-#[async_test]
+#[test]
 async fn inspector_without_brk_runs_code() {
   let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
@@ -601,7 +600,7 @@ async fn inspector_without_brk_runs_code() {
   child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_runtime_evaluate_does_not_crash() {
   let child = util::deno_cmd()
     .arg("repl")
@@ -710,7 +709,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   tester.child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_json() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -759,7 +758,7 @@ async fn inspector_json() {
   child.kill().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_json_list() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -787,7 +786,7 @@ async fn inspector_json_list() {
   child.kill().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_connect_non_ws() {
   // https://github.com/denoland/deno/issues/11449
   // Verify we don't panic if non-WS connection is being established
@@ -812,7 +811,7 @@ async fn inspector_connect_non_ws() {
   child.wait().unwrap();
 }
 
-#[async_flaky_test]
+#[flaky_test]
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
@@ -889,7 +888,7 @@ async fn inspector_break_on_first_line_in_test() {
   tester.child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let child = util::deno_cmd()
@@ -1023,7 +1022,7 @@ async fn inspector_with_ts_files() {
   tester.child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_memory() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
@@ -1124,7 +1123,7 @@ async fn inspector_memory() {
   tester.child.wait().unwrap();
 }
 
-#[async_test]
+#[test]
 async fn inspector_profile() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
@@ -1206,7 +1205,7 @@ async fn inspector_profile() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[async_flaky_test]
+#[flaky_test]
 async fn inspector_break_on_first_line_npm_esm() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1273,7 +1272,7 @@ async fn inspector_break_on_first_line_npm_esm() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[async_flaky_test]
+#[flaky_test]
 async fn inspector_break_on_first_line_npm_cjs() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1340,7 +1339,7 @@ async fn inspector_break_on_first_line_npm_cjs() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[async_test]
+#[test]
 async fn inspector_error_with_npm_import() {
   let script = util::testdata_path().join("inspector/error_with_npm_import.js");
   let context = TestContextBuilder::for_npm().build();
@@ -1400,7 +1399,7 @@ async fn inspector_error_with_npm_import() {
   assert_eq!(tester.child.wait().unwrap().code(), Some(1));
 }
 
-#[async_test]
+#[test]
 async fn inspector_wait() {
   let script = util::testdata_path().join("inspector/inspect_wait.js");
   let test_context = TestContextBuilder::new().use_temp_cwd().build();

@@ -32,6 +32,9 @@ pub fn main() {
       ..Default::default()
     },
     move |test| {
+      if test.data.ignore {
+        return TestResult::Ignored;
+      }
       let run_test = || {
         TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
           (test.data.func)();

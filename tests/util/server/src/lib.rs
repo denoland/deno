@@ -49,8 +49,6 @@ pub use parsers::WrkOutput;
 pub use parsers::parse_max_mem;
 pub use parsers::parse_strace_output;
 pub use parsers::parse_wrk_output;
-pub use test_macro::async_flaky_test;
-pub use test_macro::async_test;
 pub use test_macro::flaky_test;
 pub use test_macro::test;
 pub use wildcard::WildcardMatchResult;
@@ -771,6 +769,7 @@ pub struct TestMacroCase {
   pub file: &'static str,
   pub func: fn(),
   pub flaky: bool,
+  pub ignore: bool,
 }
 
 inventory::collect!(TestMacroCase);

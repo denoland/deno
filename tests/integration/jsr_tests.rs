@@ -8,7 +8,6 @@ use deno_semver::package::PackageNv;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
-use test_util::async_test;
 use test_util::test;
 use url::Url;
 use util::TestContextBuilder;
@@ -143,7 +142,7 @@ impl deno_lockfile::NpmPackageInfoProvider for TestNpmPackageInfoProvider {
   }
 }
 
-#[async_test]
+#[test]
 async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
@@ -317,7 +316,7 @@ fn install_cache_busts_if_version_not_found() {
   output.assert_exit_code(0);
 }
 
-#[async_test]
+#[test]
 async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
