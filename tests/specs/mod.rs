@@ -7,8 +7,10 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Context;
+use file_test_runner::NO_CAPTURE;
 use file_test_runner::TestResult;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectTestsError;
@@ -18,17 +20,16 @@ use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
-use once_cell::sync::Lazy;
+use file_test_runner::reporter::LogReporter;
 use serde::Deserialize;
+use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
+use test_util::flaky_test::Parallelism;
+use test_util::flaky_test::run_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
-
-static NO_CAPTURE: Lazy<bool> = Lazy::new(|| {
-  std::env::args().any(|arg| arg == "--no-capture" || arg == "--nocapture")
-});
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -260,85 +261,21 @@ pub fn main() {
   }
 
   let _http_guard = test_util::http_server();
+  let parallelism = Parallelism::default();
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
-      parallel: !*NO_CAPTURE,
+      parallelism: parallelism.for_run_options(),
+      reporter: Arc::new(LogReporter),
     },
-    run_test,
+    move |test| run_test(test, &parallelism),
   );
 }
 
-fn map_variants<'a, I>(
-  test_data: &serde_json::Value,
-  test_path: &Path,
-  test_name: &str,
-  variants: I,
-) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError>
-where
-  I: IntoIterator<Item = (&'a String, &'a serde_json::Value)>,
-{
-  let mut children = Vec::with_capacity(2);
-  for (variant_name, variant_data) in variants {
-    let mut child_data = test_data.clone();
-    let child_obj = child_data
-      .as_object_mut()
-      .unwrap()
-      .get_mut("variants")
-      .unwrap()
-      .as_object_mut()
-      .unwrap();
-    child_obj.clear();
-    child_obj.insert(variant_name.clone(), variant_data.clone());
-    children.push(CollectedCategoryOrTest::Test(CollectedTest {
-      name: format!("{}::{}", test_name, variant_name),
-      path: test_path.to_path_buf(),
-      data: child_data,
-    }));
-  }
-  Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
-    children,
-    name: test_name.to_string(),
-    path: test_path.to_path_buf(),
-  }))
-}
-
-/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
-fn map_test_within_file(
-  test: CollectedTest,
-) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
-  let test_path = PathRef::new(&test.path);
-  let metadata_value = test_path.read_jsonc_value();
-  if metadata_value
-    .as_object()
-    .map(|o| o.contains_key("tests"))
-    .unwrap_or(false)
-  {
-    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
-      .with_context(|| format!("Failed deserializing {}", test_path))
-      .map_err(CollectTestsError::Other)?;
-    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
-      children: data.into_collected_tests(&test),
-      name: test.name,
-      path: test.path,
-    }))
-  } else if let Some(variants) = metadata_value
-    .as_object()
-    .and_then(|o| o.get("variants"))
-    .and_then(|v| v.as_object())
-    && !variants.is_empty()
-  {
-    map_variants(&metadata_value, &test.path, &test.name, variants.iter())
-  } else {
-    Ok(CollectedCategoryOrTest::Test(CollectedTest {
-      name: test.name,
-      path: test.path,
-      data: metadata_value,
-    }))
-  }
-}
-
-fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
+fn run_test(
+  test: &CollectedTest<serde_json::Value>,
+  parallelism: &Parallelism,
+) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -348,11 +285,23 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
-        run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+        run_test_inner(
+          test,
+          &metadata,
+          &cwd,
+          diagnostic_logger.clone(),
+          parallelism,
+        );
       }
       TestResult::Passed
     } else {
-      run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+      run_test_inner(
+        test,
+        &metadata,
+        &cwd,
+        diagnostic_logger.clone(),
+        parallelism,
+      );
       TestResult::Passed
     }
   }));
@@ -372,10 +321,12 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
 }
 
 fn run_test_inner(
+  test: &CollectedTest<serde_json::Value>,
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-) {
+  parallelism: &Parallelism,
+) -> TestResult {
   let run_fn = || {
     let context =
       test_context_from_metadata(metadata, cwd, diagnostic_logger.clone());
@@ -384,18 +335,27 @@ fn run_test_inner(
       .iter()
       .filter(|s| should_run(s.if_cond.as_deref()))
     {
-      let run_func = || run_step(step, metadata, cwd, &context);
+      let run_func = || {
+        TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+          run_step(step, metadata, cwd, &context);
+          TestResult::Passed
+        }))
+      };
       if step.flaky {
-        run_flaky(run_func);
+        let result = run_flaky_test(&test.name, None, run_func);
+        if result.is_failed() {
+          return result;
+        }
       } else {
         run_func();
       }
     }
+    TestResult::Passed
   };
-  if metadata.flaky {
-    run_flaky(run_fn);
+  if metadata.flaky || *IS_CI {
+    run_flaky_test(&test.name, Some(parallelism), run_fn)
   } else {
-    run_fn();
+    run_fn()
   }
 }
 
@@ -488,72 +448,6 @@ fn should_run(if_cond: Option<&str>) -> bool {
     }
   } else {
     true
-  }
-}
-
-fn run_flaky(action: impl Fn()) {
-  for _ in 0..2 {
-    let result = std::panic::catch_unwind(AssertUnwindSafe(&action));
-    if result.is_ok() {
-      return;
-    }
-  }
-
-  // surface error on third try
-  action();
-}
-
-// in the future we could consider using https://docs.rs/aho_corasick to do multiple replacements at once
-// in practice, though, i suspect the numbers here will be small enough that the naive approach is fast enough
-fn variant_substitutions(
-  variants: &BTreeMap<String, JsonMap>,
-  multi_step_variants: &BTreeMap<String, JsonMap>,
-) -> Vec<(String, String)> {
-  if variants.is_empty() && multi_step_variants.is_empty() {
-    return Vec::new();
-  }
-  let mut variant = variants.values().next().cloned().unwrap_or_default();
-  let multi_step_variant = multi_step_variants
-    .values()
-    .next()
-    .cloned()
-    .unwrap_or_default();
-
-  for (name, value) in multi_step_variant {
-    if !variant.contains_key(&name) {
-      variant.insert(name, value.clone());
-    }
-  }
-
-  let mut pairs = variant
-    .into_iter()
-    .filter_map(|(name, value)| {
-      value
-        .as_str()
-        .map(|value| (format!("${{{}}}", name), value.to_string()))
-    })
-    .collect::<Vec<_>>();
-  pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
-  pairs
-}
-
-fn substitute_variants_into_envs(
-  pairs: &Vec<(String, String)>,
-  envs: &mut HashMap<String, String>,
-) {
-  let mut to_remove = Vec::new();
-  for (key, value) in pairs {
-    for (k, v) in envs.iter_mut() {
-      let replaced = v.replace(key.as_str(), value);
-      if replaced.is_empty() && &replaced != v {
-        to_remove.push(k.clone());
-        continue;
-      }
-      *v = replaced;
-    }
-  }
-  for key in to_remove {
-    envs.remove(&key);
   }
 }
 
@@ -669,4 +563,127 @@ fn resolve_test_and_assertion_files(
   result.insert(dir.join(MANIFEST_FILE_NAME));
   result.extend(metadata.steps.iter().map(|step| dir.join(&step.output)));
   result
+}
+
+fn map_variants<'a, I>(
+  test_data: &serde_json::Value,
+  test_path: &Path,
+  test_name: &str,
+  variants: I,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError>
+where
+  I: IntoIterator<Item = (&'a String, &'a serde_json::Value)>,
+{
+  let mut children = Vec::with_capacity(2);
+  for (variant_name, variant_data) in variants {
+    let mut child_data = test_data.clone();
+    let child_obj = child_data
+      .as_object_mut()
+      .unwrap()
+      .get_mut("variants")
+      .unwrap()
+      .as_object_mut()
+      .unwrap();
+    child_obj.clear();
+    child_obj.insert(variant_name.clone(), variant_data.clone());
+    children.push(CollectedCategoryOrTest::Test(CollectedTest {
+      name: format!("{}::{}", test_name, variant_name),
+      path: test_path.to_path_buf(),
+      data: child_data,
+    }));
+  }
+  Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+    children,
+    name: test_name.to_string(),
+    path: test_path.to_path_buf(),
+  }))
+}
+
+/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
+fn map_test_within_file(
+  test: CollectedTest,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
+  let test_path = PathRef::new(&test.path);
+  let metadata_value = test_path.read_jsonc_value();
+  if metadata_value
+    .as_object()
+    .map(|o| o.contains_key("tests"))
+    .unwrap_or(false)
+  {
+    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
+      .with_context(|| format!("Failed deserializing {}", test_path))
+      .map_err(CollectTestsError::Other)?;
+    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+      children: data.into_collected_tests(&test),
+      name: test.name,
+      path: test.path,
+    }))
+  } else if let Some(variants) = metadata_value
+    .as_object()
+    .and_then(|o| o.get("variants"))
+    .and_then(|v| v.as_object())
+    && !variants.is_empty()
+  {
+    map_variants(&metadata_value, &test.path, &test.name, variants.iter())
+  } else {
+    Ok(CollectedCategoryOrTest::Test(CollectedTest {
+      name: test.name,
+      path: test.path,
+      data: metadata_value,
+    }))
+  }
+}
+
+// in the future we could consider using https://docs.rs/aho_corasick to do multiple replacements at once
+// in practice, though, i suspect the numbers here will be small enough that the naive approach is fast enough
+fn variant_substitutions(
+  variants: &BTreeMap<String, JsonMap>,
+  multi_step_variants: &BTreeMap<String, JsonMap>,
+) -> Vec<(String, String)> {
+  if variants.is_empty() && multi_step_variants.is_empty() {
+    return Vec::new();
+  }
+  let mut variant = variants.values().next().cloned().unwrap_or_default();
+  let multi_step_variant = multi_step_variants
+    .values()
+    .next()
+    .cloned()
+    .unwrap_or_default();
+
+  for (name, value) in multi_step_variant {
+    if !variant.contains_key(&name) {
+      variant.insert(name, value.clone());
+    }
+  }
+
+  let mut pairs = variant
+    .into_iter()
+    .filter_map(|(name, value)| {
+      value
+        .as_str()
+        .map(|value| (format!("${{{}}}", name), value.to_string()))
+    })
+    .collect::<Vec<_>>();
+  pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
+  pairs
+}
+
+fn substitute_variants_into_envs(
+  pairs: &Vec<(String, String)>,
+  envs: &mut HashMap<String, String>,
+) {
+  let mut to_remove = Vec::new();
+  for (key, value) in pairs {
+    for (k, v) in envs.iter_mut() {
+      let replaced = v.replace(key.as_str(), value);
+      if replaced.is_empty() && &replaced != v {
+        to_remove.push(k.clone());
+        continue;
+      }
+      *v = replaced;
+    }
+  }
+  for key in to_remove {
+    envs.remove(&key);
+  }
 }
