@@ -2217,16 +2217,32 @@ fn bin_value_from_file<TSys: FsOpen>(
   path: &Path,
   sys: &NodeResolutionSys<TSys>,
 ) -> Option<BinValue> {
-  let mut file = sys.fs_open(path, OpenOptions::new().read()).ok()?;
+  let mut file = match sys.fs_open(path, OpenOptions::new().read()) {
+    Ok(file) => file,
+    Err(err) => {
+      if err.kind() == std::io::ErrorKind::NotFound {
+        return None;
+      }
+      log::debug!(
+        "Failed to open bin file '{}': {:#}; treating as executable",
+        path.display(),
+        err,
+      );
+      return Some(BinValue::Executable(path.to_path_buf()));
+    }
+  };
   let mut buf = [0; 4];
   let (is_binary, buf): (bool, &[u8]) = {
     let result = file.read_exact(&mut buf);
     if let Err(err) = result {
       log::debug!("Failed to read binary file '{}': {:#}", path.display(), err);
       // safer fallback to assume it's a binary
-      (false, &[])
+      (true, &[])
     } else {
-      (is_binary(&buf), &buf[..])
+      (
+        is_binary(&buf) || (!(buf[0] == b'#' && buf[1] == b'!')),
+        &buf[..],
+      )
     }
   };
 
@@ -2255,7 +2271,7 @@ fn resolve_execution_path_from_npx_shim(
   text: &str,
 ) -> Option<PathBuf> {
   static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
+    lazy_regex::lazy_regex!(r#"exec\s+node\s+"\$basedir\/([^"]+)" "\$@""#);
 
   let maybe_first_line = {
     let index = text.find("\n")?;
