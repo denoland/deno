@@ -396,6 +396,12 @@ jobs:
         run: cargo build --locked --all-targets --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+      - name: Setup tmate session
+        if: |-
+          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          matrix.profile == 'debug' && (matrix.os == 'macos' ||
+          github.repository == 'denoland/deno'))
+        uses: mxschmitt/action-tmate@v3
       - name: Build release
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
