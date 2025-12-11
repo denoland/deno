@@ -251,7 +251,7 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
     std::fs::write(
       out_path,
       r##"@echo off
-./deno.exe x %*
+"%~dp0deno.exe" x %*
 exit /b %ERRORLEVEL%
 "##,
     )?;
