@@ -74,6 +74,7 @@ pub fn run_flaky_test(
     if !result.is_failed() {
       return result;
     }
+    #[allow(clippy::print_stderr)]
     if *IS_CI {
       eprintln!(
         "{} {} was flaky on run {}",
