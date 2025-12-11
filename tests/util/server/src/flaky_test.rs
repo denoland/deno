@@ -69,10 +69,18 @@ pub fn run_flaky_test(
   parallelism: Option<&Parallelism>,
   action: impl Fn() -> TestResult,
 ) -> TestResult {
-  for _ in 0..2 {
+  for i in 0..2 {
     let result = action();
     if !result.is_failed() {
       return result;
+    }
+    if IS_CI {
+      eprintln!(
+        "{} {} was flaky on run {}",
+        colors::bold_red("Warning"),
+        colors::gray(test_name),
+        i,
+      );
     }
     std::thread::sleep(Duration::from_millis(100));
   }
