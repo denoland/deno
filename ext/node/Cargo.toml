@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.159.0"
+version = "0.160.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -63,6 +63,7 @@ libc.workspace = true
 # h2.workspace = true
 libnghttp2-sys = { git = "https://github.com/littledivy/nghttp2-rs", branch = "main" }
 libz-sys.workspace = true
+log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
@@ -90,6 +91,7 @@ sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
+socket2.workspace = true
 spki.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true

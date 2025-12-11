@@ -25,7 +25,7 @@ use url::Url;
 
 pub mod assertions;
 mod builders;
-pub mod factory;
+pub mod flaky_test;
 mod fs;
 mod https;
 pub mod lsp;
@@ -51,11 +51,14 @@ pub const PERMISSION_DENIED_PATTERN: &str = "NotCapable";
 
 static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 
+pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
+
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
+    ("SOCKET_DEV_URL".to_string(), socket_dev_api_url()),
   ]
 }
 
@@ -216,6 +219,10 @@ pub fn gha_token_url() -> String {
   )
 }
 
+pub fn socket_dev_api_url() -> String {
+  format!("http://localhost:{}/", servers::SOCKET_DEV_API_PORT)
+}
+
 pub fn jsr_registry_unset_url() -> String {
   "http://JSR_URL.is.unset".to_string()
 }
@@ -325,7 +332,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 34;
+pub const TEST_SERVERS_COUNT: usize = 35;
 
 #[derive(Default)]
 struct HttpServerCount {

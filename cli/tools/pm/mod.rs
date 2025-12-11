@@ -35,12 +35,16 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
+mod approve_scripts;
 mod audit;
 mod cache_deps;
 pub(crate) mod deps;
+pub(crate) mod interactive_picker;
 mod outdated;
 
+pub use approve_scripts::approve_scripts;
 pub use audit::audit;
+pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
@@ -249,6 +253,19 @@ impl ConfigUpdater {
       self.modified = true;
     }
     removed
+  }
+
+  fn set_allow_scripts_value(
+    &mut self,
+    value: jsonc_parser::cst::CstInputValue,
+  ) {
+    if let Some(prop) = self.root_object.get("allowScripts") {
+      prop.set_value(value);
+    } else {
+      let index = self.root_object.properties().len();
+      self.root_object.insert(index, "allowScripts", value);
+    }
+    self.modified = true;
   }
 
   fn commit(&self) -> Result<(), AnyError> {
@@ -582,7 +599,14 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
+  npm_install_after_modification(
+    flags,
+    Some(jsr_resolver),
+    CacheTopLevelDepsOptions {
+      lockfile_only: add_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   Ok(())
 }
@@ -905,7 +929,14 @@ pub async fn remove(
       config.commit()?;
     }
 
-    npm_install_after_modification(flags, None).await?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: remove_flags.lockfile_only,
+      },
+    )
+    .await?;
   }
 
   Ok(())
@@ -915,6 +946,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
@@ -926,7 +958,8 @@ async fn npm_install_after_modification(
   let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
-  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver, cache_options)
+    .await?;
 
   if let Some(install_reporter) = cli_factory.install_reporter()? {
     let workspace = cli_factory.workspace_resolver().await?;

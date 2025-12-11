@@ -1,15 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// NB(bartlomieju): a bunch of code is not used on Mac Intel
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use test_util as util;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_not_contains;
 use util::testdata_path;
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn compile_basic() {
   let context = TestContextBuilder::new().build();
@@ -61,10 +63,8 @@ fn compile_basic() {
   output.assert_matches_text("Welcome to Deno!\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_args() {
   let context = TestContextBuilder::new().build();
@@ -96,10 +96,8 @@ fn standalone_args() {
     .assert_matches_text("a\nb\nfoo\n--bar\n--unstable\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_load_datauri() {
   let context = TestContextBuilder::new().build();
@@ -128,11 +126,8 @@ fn standalone_load_datauri() {
     .assert_matches_text("Hello Deno!\n");
 }
 
-// https://github.com/denoland/deno/issues/13704
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_follow_redirects() {
   let context = TestContextBuilder::new().build();
@@ -278,10 +273,8 @@ fn compile_and_overwrite_file() {
   }
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_runtime_flags() {
   let context = TestContextBuilder::new().build();
@@ -318,10 +311,8 @@ fn standalone_runtime_flags() {
     );
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_ext_flag_ts() {
   let context = TestContextBuilder::new().build();
@@ -353,10 +344,8 @@ fn standalone_ext_flag_ts() {
     .assert_matches_text("executing typescript with no extension\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_ext_flag_js() {
   let context = TestContextBuilder::new().build();
@@ -387,10 +376,8 @@ fn standalone_ext_flag_js() {
     .assert_matches_text("executing javascript with no extension\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_import_map() {
   let context = TestContextBuilder::new().build();
@@ -422,10 +409,8 @@ fn standalone_import_map() {
     .assert_exit_code(0);
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn standalone_import_map_config_file() {
   let context = TestContextBuilder::new().build();
@@ -457,10 +442,8 @@ fn standalone_import_map_config_file() {
     .assert_exit_code(0);
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
@@ -540,10 +523,8 @@ fn check_local_by_default2() {
     );
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn workers_basic() {
   let context = TestContext::with_http_server();
@@ -574,10 +555,8 @@ fn workers_basic() {
     .assert_matches_file("./compile/workers/basic.out");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn workers_not_in_module_map() {
   let context = TestContext::with_http_server();
@@ -607,10 +586,8 @@ fn workers_not_in_module_map() {
   ));
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn workers_with_include_flag() {
   let context = TestContext::with_http_server();
@@ -642,10 +619,8 @@ fn workers_with_include_flag() {
     .assert_matches_text("Hello from worker!\nReceived 42\nClosing\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn dynamic_import() {
   let context = TestContext::with_http_server();
@@ -676,10 +651,8 @@ fn dynamic_import() {
     .assert_exit_code(0);
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn dynamic_import_unanalyzable() {
   let context = TestContext::with_http_server();
@@ -834,10 +807,8 @@ testing[WILDCARD]this
     .assert_matches_text("2\n");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn compile_npm_bin_esm() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
@@ -854,10 +825,8 @@ fn compile_npm_bin_esm() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn compile_npm_bin_cjs() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-cjs",
@@ -873,10 +842,8 @@ fn compile_npm_bin_cjs() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn compile_npm_cowsay_main() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0",
@@ -892,10 +859,8 @@ fn compile_npm_cowsay_main() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn compile_npm_no_permissions() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/cli-with-permissions@1.0.0",
@@ -911,10 +876,8 @@ fn compile_npm_no_permissions() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",
@@ -930,10 +893,8 @@ fn compile_npm_cowsay_explicit() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn compile_npm_cowthink() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
@@ -1007,10 +968,8 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   output.assert_matches_file(opts.output_file);
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn compile_node_modules_symlink_outside() {
   // this code is using a canonicalized temp dir because otherwise
@@ -1079,10 +1038,8 @@ fn compile_node_modules_symlink_outside() {
   output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
 }
 
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 #[test]
 fn compile_node_modules_symlink_non_existent() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -1127,10 +1084,8 @@ Embedded Files
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn dynamic_imports_tmp_lit() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
@@ -1155,10 +1110,8 @@ fn dynamic_imports_tmp_lit() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn granular_unstable_features() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
@@ -1186,10 +1139,8 @@ fn granular_unstable_features() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn granular_unstable_features_config_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let dir = context.temp_dir();
@@ -1227,10 +1178,8 @@ fn granular_unstable_features_config_file() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn dynamic_import_bad_data_uri() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
@@ -1260,10 +1209,8 @@ fn dynamic_import_bad_data_uri() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn standalone_config_file_respects_compiler_options() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
@@ -1293,10 +1240,8 @@ fn standalone_config_file_respects_compiler_options() {
 }
 
 #[test]
-#[cfg_attr(
-  all(target_os = "macos", target_arch = "x86_64", debug_assertions),
-  ignore // TODO: fix this, see https://github.com/denoland/sui/issues/43
-)]
+// TODO: fix this, see https://github.com/denoland/sui/issues/43
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 fn standalone_jsr_dynamic_import() {
   let context = TestContextBuilder::for_jsr().build();
   let dir = context.temp_dir();

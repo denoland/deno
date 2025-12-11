@@ -180,10 +180,10 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(data) = std::fs::read(exe_path) else {
     return false;
   };
-
   libsui::utils::is_elf(&data)
     || libsui::utils::is_pe(&data)
     || libsui::utils::is_macho(&data)
+    || data.is_empty()
 }
 
 pub struct WriteBinOptions<'a> {
@@ -723,6 +723,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .map(|s| root_dir_url.specifier_key(&s).into_owned())
       .collect::<Vec<_>>();
 
+    let require_modules = self
+      .cli_options
+      .require_modules()?
+      .into_iter()
+      .map(|s| root_dir_url.specifier_key(&s).into_owned())
+      .collect::<Vec<_>>();
+
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: self.cli_options.seed(),
@@ -744,6 +751,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       preload_modules,
+      require_modules,
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {

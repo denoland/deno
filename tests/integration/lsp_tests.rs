@@ -8035,6 +8035,47 @@ console.log(other, submodule);
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports_client_provided_capability() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { z, y } from "./z.ts";
+import { c, a, b } from "./b.ts";
+import { d } from "./a.ts";
+import unused from "./c.ts";
+
+console.log(b, a, c, d, y, z);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.enable_client_provided_organize_imports();
+  });
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -10960,91 +11001,6 @@ fn lsp_completions_node_builtin() {
     ])
   );
 
-  // update to have fs import
-  client.write_notification(
-    "textDocument/didChange",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "version": 2
-      },
-      "contentChanges": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 16 },
-            "end": { "line": 0, "character": 33 },
-          },
-          "text": "fs"
-        }
-      ]
-    }),
-  );
-  let diagnostics = client.read_diagnostics();
-  let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String(
-          "import-node-prefix-missing".to_string(),
-        ))
-    })
-    .collect::<Vec<_>>();
-
-  // get the quick fixes
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "range": {
-        "start": { "line": 0, "character": 16 },
-        "end": { "line": 0, "character": 18 },
-      },
-      "context": {
-        "diagnostics": json!(diagnostics),
-        "only": ["quickfix"]
-      }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to node:fs",
-      "kind": "quickfix",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 }
-          },
-          "severity": 1,
-          "code": "import-node-prefix-missing",
-          "source": "deno",
-          "message": "Import \"fs\" not a dependency\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
-          "data": {
-            "specifier": "fs"
-          },
-        }
-      ],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [
-            {
-              "range": {
-                "start": { "line": 0, "character": 15 },
-                "end": { "line": 0, "character": 19 }
-              },
-              "newText": "\"node:fs\""
-            }
-          ]
-        }
-      }
-    }])
-  );
-
   // update to have node:fs import
   client.write_notification(
     "textDocument/didChange",
@@ -11056,46 +11012,14 @@ fn lsp_completions_node_builtin() {
       "contentChanges": [
         {
           "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 },
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 33 },
           },
-          "text": "\"node:fs\"",
+          "text": "node:fs",
         }
       ]
     }),
   );
-
-  let diagnostics = client.read_diagnostics();
-  let cache_diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/file.ts", "deno")
-    .diagnostics
-    .into_iter()
-    .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String("not-installed-npm".to_string()))
-    })
-    .collect::<Vec<_>>();
-
-  assert_eq!(
-    json!(cache_diagnostics),
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 15 },
-          "end": { "line": 0, "character": 24 }
-        },
-        "data": {
-          "specifier": "npm:@types/node",
-        },
-        "severity": 1,
-        "code": "not-installed-npm",
-        "source": "deno",
-        "message": "npm package \"@types/node\" is not installed or doesn't exist."
-      }
-    ])
-  );
-
-  client.cache(["npm:@types/node"], "file:///a/file.ts");
   client.read_diagnostics();
 
   client.write_notification(
@@ -12441,6 +12365,7 @@ fn lsp_performance() {
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
+      "tsc.op.op_resolve",
       "tsc.op.op_script_names",
       "tsc.request.$getAmbientModules",
       "tsc.request.$getDiagnostics",
@@ -13873,6 +13798,24 @@ fn lsp_workspace_symbol() {
         },
         "containerName": ""
       },
+      {
+        "name": "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE",
+        "kind": 13,
+        "location": {
+            "uri": "deno:/asset/node/http2.d.cts",
+            "range": null,
+        },
+        "containerName": "constants",
+      },
+      {
+        "name": "strictFieldWhitespaceValidation",
+        "kind": 8,
+        "location": {
+            "uri": "deno:/asset/node/http2.d.cts",
+            "range": null,
+        },
+        "containerName": "SessionOptions",
+      }
     ])
   );
   client.shutdown();
@@ -15672,7 +15615,7 @@ fn lsp_node_modules_dir() {
     }
   }));
   let cache = |client: &mut LspClient| {
-    client.cache(["npm:chalk", "npm:@types/node"], &file_url);
+    client.cache(["npm:chalk"], &file_url);
     client.handle_refresh_diagnostics_request();
     client.read_diagnostics()
   };
@@ -15707,12 +15650,11 @@ fn lsp_node_modules_dir() {
   };
   refresh_config(&mut client);
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
+  assert_eq!(diagnostics.all().len(), 1, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
-  assert!(temp_dir.path().join("node_modules/@types/node").exists());
 
   // now add a lockfile and cache
   temp_dir.write(
@@ -15957,6 +15899,77 @@ fn lsp_vendor_dir() {
     ]),
   );
 
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_global_cache_hover() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file("main.ts", "import \"npm:chalk@5.0.1\";\n");
+  context.run_deno("check main.ts");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  let npm_cache_file_path = context
+    .deno_dir()
+    .path()
+    .canonicalize()
+    .join("npm/localhost_4260/chalk/5.0.1/source/index.d.ts");
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": npm_cache_file_path.uri_file(),
+      "targetRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+      "targetSelectionRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+    }]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": npm_cache_file_path.uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": npm_cache_file_path.read_to_string(),
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": npm_cache_file_path.uri_file() },
+      "position": { "line": 2, "character": 43 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Types**: file&#8203;{}\n", context.deno_dir().path().canonicalize().join("npm/localhost_4260/chalk/5.0.1/source/vendor/supports-color/index.d.ts").url_file().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 2, "character": 43 },
+        "end": { "line": 2, "character": 77 },
+      },
+    }),
+  );
   client.shutdown();
 }
 

@@ -28,7 +28,6 @@ use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_semver::VersionReq;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -163,7 +162,7 @@ pub enum ConfigDiscoveryOption {
   Disabled,
 }
 
-/// Resolves the JSR regsitry URL to use for the given system.
+/// Resolves the JSR registry URL to use for the given system.
 pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
   let env_var_name = "JSR_URL";
   if let Ok(registry_url) = sys.env_var(env_var_name) {
@@ -210,7 +209,7 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_lock: bool,
   pub no_npm: bool,
-  /// The process sate if using ext/node and the current process was "forked".
+  /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub npm_process_state: Option<NpmProcessStateOptions>,
@@ -679,9 +678,8 @@ pub struct ResolverFactoryOptions {
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
   pub allow_json_imports: AllowJsonImports,
-  /// Known good version requirement to use for the `@types/node` package
-  /// when the version is unspecified or "latest".
-  pub types_node_version_req: Option<VersionReq>,
+  /// Modules loaded via --require flag that should always be treated as CommonJS
+  pub require_modules: Vec<Url>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -848,6 +846,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.in_npm_package_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         self.options.is_cjs_resolution_mode,
+        self.options.require_modules.clone(),
       )))
     })
   }
@@ -1092,7 +1091,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
       Ok(new_rc(NpmVersionResolver {
-        types_node_version_req: self.options.types_node_version_req.clone(),
+        types_node_version_req: None,
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config

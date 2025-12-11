@@ -108,9 +108,7 @@ pub fn create_validate_import_attributes_callback(
       for (key, value) in attributes {
         let msg = if key != "type" {
           Some(format!("\"{key}\" attribute is not supported."))
-        } else if !valid_attribute(value.as_str())
-          && value != "$$deno-core-internal-wasm-module"
-        {
+        } else if !valid_attribute(value.as_str()) {
           Some(format!("\"{value}\" is not a valid module type."))
         } else {
           None
@@ -530,7 +528,7 @@ impl MainWorker {
 
     js_runtime
       .lazy_init_extensions(vec![
-        deno_web::deno_web::args::<InMemoryBroadcastChannel>(
+        deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
           services.broadcast_channel.clone(),
@@ -739,8 +737,8 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       let mut state = op_state.borrow_mut();
       state.put(options.clone());
-      if let Some(node_ipc_fd) = options.node_ipc_fd {
-        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      if let Some((fd, serialization)) = options.node_ipc_init {
+        state.put(deno_node::ChildPipeFd(fd, serialization));
       }
     }
 
@@ -1043,7 +1041,7 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::lazy_init::<InMemoryBroadcastChannel>(),
+    deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),

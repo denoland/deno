@@ -569,3 +569,88 @@ Deno.test({
     assertEquals(decryptedText, text);
   },
 });
+
+Deno.test({
+  name: "createCipheriv - setAutoPadding behavior",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.alloc(32, 0);
+    const iv = Buffer.alloc(16, 0);
+
+    const cipherWithAutoPadding = crypto
+      .createCipheriv(algorithm, key, iv)
+      .setAutoPadding(true);
+    let encrypted = cipherWithAutoPadding.update("", "utf8", "binary");
+    encrypted += cipherWithAutoPadding.final("binary");
+    assertEquals(encrypted.length, 16);
+
+    const cipherWithoutAutoPadding = crypto
+      .createCipheriv(algorithm, key, iv)
+      .setAutoPadding(false);
+    let otherEncrypted = cipherWithoutAutoPadding.update("", "utf8", "binary");
+    otherEncrypted += cipherWithoutAutoPadding.final("binary");
+    assertEquals(otherEncrypted.length, 0);
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - cipher lockdown after final()",
+  fn() {
+    const key = crypto.randomBytes(32);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+
+    // Call final() to lock down the cipher
+    cipher.final();
+
+    assertThrows(
+      () => {
+        cipher.update("test data");
+      },
+      Error,
+      "Invalid state for operation update",
+    );
+
+    assertThrows(
+      () => {
+        cipher.final();
+      },
+      Error,
+      "Invalid state for operation final",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - decipher lockdown after final()",
+  fn() {
+    const key = crypto.randomBytes(32);
+    const iv = crypto.randomBytes(16);
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    const encrypted = Buffer.concat([
+      cipher.update("test data"),
+      cipher.final(),
+    ]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.update(encrypted);
+    decipher.final();
+
+    assertThrows(
+      () => {
+        decipher.update(encrypted);
+      },
+      Error,
+      "Invalid state for operation update",
+    );
+
+    assertThrows(
+      () => {
+        decipher.final();
+      },
+      Error,
+      "Invalid state for operation final",
+    );
+  },
+});

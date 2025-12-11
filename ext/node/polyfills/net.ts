@@ -1531,9 +1531,7 @@ Object.defineProperty(Socket.prototype, "remoteAddress", {
 
 Object.defineProperty(Socket.prototype, "remoteFamily", {
   get: function () {
-    const { family } = this._getpeername();
-
-    return family ? `IPv${family}` : family;
+    return this._getpeername().family;
   },
 });
 
