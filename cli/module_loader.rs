@@ -1256,6 +1256,23 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     None
   }
 
+  fn source_map_source_exists(&self, source_url: &str) -> bool {
+    let Ok(specifier) = resolve_url(source_url) else {
+      return false;
+    };
+
+    // For file:// URLs, check if the file exists on disk
+    if specifier.scheme() == "file" {
+      if let Ok(path) = specifier.to_file_path() {
+        return path.exists();
+      }
+    }
+
+    // For other URLs, check if it's in the module graph
+    let graph = self.0.graph_container.graph();
+    graph.get(&specifier).is_some()
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
