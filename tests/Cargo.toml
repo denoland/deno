@@ -25,6 +25,16 @@ path = "specs/mod.rs"
 harness = false
 
 [[test]]
+name = "unit"
+path = "unit/mod.rs"
+harness = false
+
+[[test]]
+name = "unit_node"
+path = "unit_node/mod.rs"
+harness = false
+
+[[test]]
 name = "node_compat_tests"
 path = "node_compat/test_runner.rs"
 
