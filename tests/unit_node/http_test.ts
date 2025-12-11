@@ -2224,3 +2224,39 @@ Deno.test("[node/http] client request with empty write in chunked POST completes
   await promise;
   assertEquals(requestBody, "");
 });
+
+Deno.test("[node/http] Server.address() includes family property", async () => {
+  // Test IPv4
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "127.0.0.1");
+      assertEquals(addr.family, "IPv4");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  // Test IPv6
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "::1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "::1");
+      assertEquals(addr.family, "IPv6");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+});

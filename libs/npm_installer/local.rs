@@ -1085,20 +1085,11 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
 
       _ = writeln!(&mut output, "{}", colors::yellow("│"));
 
-      let packages_comma_separated = packages
-        .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
-        .collect::<Vec<_>>()
-        .join(",");
-
       _ = writeln!(
         &mut output,
         "{}  Run \"{}\" to run build scripts.",
         colors::yellow("│"),
-        colors::bold(format!(
-          "deno install --allow-scripts={}",
-          packages_comma_separated
-        ))
+        colors::bold("deno approve-scripts")
       );
       _ = write!(&mut output, "{}", colors::yellow("╰─"));
 

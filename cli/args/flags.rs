@@ -114,6 +114,7 @@ pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
   pub default_registry: Option<DefaultRegistry>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -131,6 +132,7 @@ pub struct AuditFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -285,6 +287,8 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub empty: bool,
+  pub yes: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -311,8 +315,19 @@ pub enum InstallFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallFlagsLocal {
   Add(AddFlags),
-  TopLevel,
-  Entrypoints(Vec<String>),
+  TopLevel(InstallTopLevelFlags),
+  Entrypoints(InstallEntrypointsFlags),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallTopLevelFlags {
+  pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstallEntrypointsFlags {
+  pub entrypoints: Vec<String>,
+  pub lockfile_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -400,6 +415,42 @@ impl RunFlags {
   pub fn is_stdin(&self) -> bool {
     self.script == "-"
   }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub enum DenoXShimName {
+  #[default]
+  Dx,
+  Denox,
+  Other(String),
+}
+
+impl DenoXShimName {
+  pub fn name(&self) -> &str {
+    match self {
+      Self::Dx => "dx",
+      Self::Denox => "denox",
+      Self::Other(name) => name,
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum XFlagsKind {
+  InstallAlias(DenoXShimName),
+  Command(XCommandFlags),
+  Print,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XCommandFlags {
+  pub yes: bool,
+  pub command: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XFlags {
+  pub kind: XFlagsKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -570,6 +621,7 @@ pub enum DenoSubcommand {
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
+  X(XFlags),
 }
 
 impl DenoSubcommand {
@@ -597,8 +649,14 @@ impl DenoSubcommand {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
-  Update { latest: bool, interactive: bool },
-  PrintOutdated { compatible: bool },
+  Update {
+    latest: bool,
+    interactive: bool,
+    lockfile_only: bool,
+  },
+  PrintOutdated {
+    compatible: bool,
+  },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -610,6 +668,7 @@ pub struct OutdatedFlags {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApproveScriptsFlags {
+  pub lockfile_only: bool,
   pub packages: Vec<String>,
 }
 
@@ -1247,22 +1306,24 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(files))) => {
-        Some(vec![
-          files
-            .iter()
-            .filter_map(|file| {
-              resolve_single_folder_path(file, current_dir, |mut p| {
-                if p.is_dir() {
-                  return Some(p);
-                }
-                if p.pop() { Some(p) } else { None }
-              })
+      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
+        InstallEntrypointsFlags {
+          entrypoints: files, ..
+        },
+      ))) => Some(vec![
+        files
+          .iter()
+          .filter_map(|file| {
+            resolve_single_folder_path(file, current_dir, |mut p| {
+              if p.is_dir() {
+                return Some(p);
+              }
+              if p.pop() { Some(p) } else { None }
             })
-            .next()
-            .unwrap_or_else(|| current_dir.to_path_buf()),
-        ])
-      }
+          })
+          .next()
+          .unwrap_or_else(|| current_dir.to_path_buf()),
+      ]),
       _ => Some(vec![current_dir.to_path_buf()]),
     }
   }
@@ -1560,6 +1621,20 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  let args = if !args.is_empty()
+    && (args[0].as_encoded_bytes().ends_with(b"dx")
+      || args[0].as_encoded_bytes().ends_with(b"denox"))
+  {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    if args.len() >= 2 {
+      new_args.extend(args.into_iter().skip(1));
+    }
+    new_args
+  } else {
+    args
+  };
   let mut app = clap_root();
   let mut matches =
     app
@@ -1742,6 +1817,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "upgrade" => upgrade_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
+        "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
       }
     }
@@ -2004,7 +2080,8 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
-        .subcommand(vendor_subcommand());
+        .subcommand(vendor_subcommand())
+        .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -2071,6 +2148,7 @@ Or multiple dependencies at once:
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
       .args(lock_args())
+      .arg(lockfile_only_arg())
       .args(default_registry_args())
   })
 }
@@ -2083,13 +2161,13 @@ fn approve_scripts_subcommand() -> Command {
   )
   .alias("approve-builds")
   .defer(|cmd| {
-
     cmd.arg(
       Arg::new("packages")
         .help("Packages to approve (npm specifiers). When omitted, you will be prompted to select from installed packages with lifecycle scripts.")
         .num_args(0..)
         .action(ArgAction::Append),
     )
+    .arg(lockfile_only_arg())
   })
 }
 
@@ -2107,6 +2185,7 @@ fn approve_scripts_parse(
       })
       .transpose()?
       .unwrap_or_default(),
+    lockfile_only: matches.get_flag("lockfile-only"),
   });
   Ok(())
 }
@@ -2204,6 +2283,7 @@ You can remove multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .args(lock_args())
+      .arg(lockfile_only_arg())
   })
 }
 
@@ -2620,16 +2700,8 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(env_file_arg())
       .arg(
         script_arg()
-          .num_args(0..=1)
-          .required_unless_present("help"),
-      )
-      .arg(
-        Arg::new("args")
-          .num_args(0..)
-          .help("Arguments to provide for Deno.args (must be preceded by `--`)")
-          .action(ArgAction::Append)
-          .value_name("ARGS")
-          .last(true)
+          .required_unless_present("help")
+          .trailing_var_arg(true),
       )
   })
 }
@@ -3124,7 +3196,7 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "empty"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3138,6 +3210,21 @@ fn init_subcommand() -> Command {
             .long("serve")
             .help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("empty")
+            .long("empty")
+            .help("Generate a minimal project with just main.ts and deno.json")
+            .conflicts_with_all(["lib", "serve", "npm"])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("yes")
+            .short('y')
+            .long("yes")
+            .requires("npm")
+            .help("Bypass the prompt and run with full permissions")
             .action(ArgAction::SetTrue),
         )
     },
@@ -3283,7 +3370,15 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
+        .arg(lockfile_only_arg().conflicts_with("global"))
     })
+}
+
+fn lockfile_only_arg() -> Arg {
+  Arg::new("lockfile-only")
+    .long("lockfile-only")
+    .action(ArgAction::SetTrue)
+    .help("Install only updating the lockfile")
 }
 
 fn json_reference_subcommand() -> Command {
@@ -3339,7 +3434,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 5] {
+fn update_and_outdated_args() -> [Arg; 6] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3364,6 +3459,7 @@ fn update_and_outdated_args() -> [Arg; 5] {
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
     min_dep_age_arg(),
+    lockfile_only_arg(),
   ]
 }
 
@@ -3501,6 +3597,47 @@ The installation root is determined, in order of precedence:
           .action(ArgAction::Append)
       )
       .args(lock_args())
+      .arg(lockfile_only_arg())
+  })
+}
+
+fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
+  match value {
+    "dx" => Ok(DenoXShimName::Dx),
+    "denox" => Ok(DenoXShimName::Denox),
+    _ => Ok(DenoXShimName::Other(value.to_string())),
+  }
+}
+
+fn x_subcommand() -> Command {
+  command(
+    "x",
+    cstr!("Execute a binary from npm or jsr, like npx"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, true, true, true)
+      .arg(script_arg().trailing_var_arg(true))
+      .arg(
+        Arg::new("yes")
+          .long("yes")
+          .short('y')
+          .help("Assume confirmation for all prompts")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("install-alias"),
+      )
+      .arg(check_arg(false))
+      .arg(env_file_arg())
+      .arg(
+        Arg::new("install-alias")
+          .long("install-alias")
+          .num_args(0..=1)
+          .default_missing_value("dx")
+          .require_equals(true)
+          .value_parser(deno_x_shim_name_parser)
+          .action(ArgAction::Set)
+          .conflicts_with("script_arg"),
+      )
   })
 }
 
@@ -5425,6 +5562,7 @@ fn add_parse_inner(
     packages,
     dev,
     default_registry,
+    lockfile_only: matches.get_flag("lockfile-only"),
   }
 }
 
@@ -5432,6 +5570,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
+    lockfile_only: matches.get_flag("lockfile-only"),
   });
 }
 
@@ -5452,6 +5591,7 @@ fn outdated_parse(
     OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only: matches.get_flag("lockfile-only"),
     }
   } else {
     let compatible = matches.get_flag("compatible");
@@ -5607,11 +5747,9 @@ fn compile_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false, true)?;
 
-  let source_file = matches.remove_one::<String>("script_arg").unwrap();
-  let args = matches
-    .remove_many::<String>("args")
-    .unwrap_or_default()
-    .collect();
+  let mut script = matches.remove_many::<String>("script_arg").unwrap();
+  let source_file = script.next().unwrap();
+  let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
@@ -5898,6 +6036,8 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut empty = matches.get_flag("empty");
+  let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
   let mut package_args = vec![];
@@ -5917,6 +6057,8 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        empty = inner_matches.get_flag("empty");
+        yes = inner_matches.get_flag("yes");
       }
     }
   }
@@ -5927,6 +6069,8 @@ fn init_parse(
     dir,
     lib,
     serve,
+    empty,
+    yes,
   });
 
   Ok(())
@@ -6002,10 +6146,14 @@ fn install_parse(
 
   // allow scripts only applies to local install
   allow_scripts_arg_parse(flags, matches)?;
+  let lockfile_only = matches.get_flag("lockfile-only");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::Entrypoints(entrypoints.collect()),
+      InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+        entrypoints: entrypoints.collect(),
+        lockfile_only,
+      }),
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
@@ -6022,8 +6170,9 @@ fn install_parse(
       InstallFlagsLocal::Add(add_files),
     ))
   } else {
-    flags.subcommand =
-      DenoSubcommand::Install(InstallFlags::Local(InstallFlagsLocal::TopLevel));
+    flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+    ));
   }
   Ok(())
 }
@@ -6154,7 +6303,10 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
           .unwrap_or_default(),
       )
       .collect();
-    UninstallKind::Local(RemoveFlags { packages })
+    UninstallKind::Local(RemoveFlags {
+      packages,
+      lockfile_only: matches.get_flag("lockfile-only"),
+    })
   };
 
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { kind });
@@ -6698,6 +6850,35 @@ fn compile_args_without_check_parse(
   preload_arg_parse(flags, matches);
   require_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
+  Ok(())
+}
+
+fn x_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let kind = if let Some(shim_name) =
+    matches.remove_one::<DenoXShimName>("install-alias")
+  {
+    XFlagsKind::InstallAlias(shim_name)
+  } else if let Some(mut script_arg) =
+    matches.remove_many::<String>("script_arg")
+  {
+    if let Some(command) = script_arg.next() {
+      let yes = matches.get_flag("yes");
+      flags.argv.extend(script_arg);
+      runtime_args_parse(flags, matches, true, true, true)?;
+      XFlagsKind::Command(XCommandFlags { yes, command })
+    } else {
+      XFlagsKind::Print
+    }
+  } else {
+    XFlagsKind::Print
+  };
+  if !flags.permissions.has_permission() && flags.permission_set.is_none() {
+    flags.permissions.allow_all = true;
+  }
+  flags.subcommand = DenoSubcommand::X(XFlags { kind });
   Ok(())
 }
 
@@ -10156,13 +10337,20 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "uninstall"]);
     assert!(r.is_err(),);
 
-    let r = flags_from_vec(svec!["deno", "uninstall", "--frozen", "@std/load"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "uninstall",
+      "--frozen",
+      "--lockfile-only",
+      "@std/load"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["@std/load".to_string()],
+            lockfile_only: true,
           }),
         }),
         frozen_lockfile: Some(true),
@@ -10178,6 +10366,7 @@ mod tests {
         subcommand: DenoSubcommand::Uninstall(UninstallFlags {
           kind: UninstallKind::Local(RemoveFlags {
             packages: vec!["file_server".to_string(), "@std/load".to_string()],
+            lockfile_only: false,
           }),
         }),
         ..Flags::default()
@@ -11833,7 +12022,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "--", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -12535,6 +12724,8 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12550,6 +12741,8 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12565,6 +12758,8 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -12581,6 +12776,8 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12596,6 +12793,8 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12611,6 +12810,8 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12632,6 +12833,8 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12647,6 +12850,8 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
         }),
         ..Flags::default()
       }
@@ -12662,6 +12867,25 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "vite"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("vite".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
         }),
         ..Flags::default()
       }
@@ -12858,6 +13082,7 @@ mod tests {
             packages: svec!["@david/which"],
             dev: false, // default is false
             default_registry: None,
+            lockfile_only: false,
           })
         );
       }
@@ -12866,6 +13091,7 @@ mod tests {
           "deno",
           cmd,
           "--frozen",
+          "--lockfile-only",
           "@david/which",
           "@luca/hello"
         ]);
@@ -12873,6 +13099,7 @@ mod tests {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
           default_registry: None,
+          lockfile_only: true,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -12885,6 +13112,7 @@ mod tests {
             packages: svec!["npm:chalk"],
             dev: true,
             default_registry: None,
+            lockfile_only: false,
           }),
         );
       }
@@ -12896,6 +13124,7 @@ mod tests {
             packages: svec!["chalk"],
             dev: false,
             default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
           }),
         );
       }
@@ -12907,6 +13136,7 @@ mod tests {
             packages: svec!["@std/fs"],
             dev: false,
             default_registry: Some(DefaultRegistry::Jsr),
+            lockfile_only: false,
           }),
         );
       }
@@ -12924,6 +13154,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which"],
+          lockfile_only: false,
         }),
         ..Flags::default()
       }
@@ -12933,6 +13164,7 @@ mod tests {
       "deno",
       "remove",
       "--frozen",
+      "--lockfile-only",
       "@david/which",
       "@luca/hello"
     ]);
@@ -12941,6 +13173,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
+          lockfile_only: true,
         }),
         frozen_lockfile: Some(true),
         ..Flags::default()
@@ -13374,6 +13607,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13385,6 +13619,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13396,8 +13631,21 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: true,
+        },
+      ),
+      (
+        svec!["--update", "--lockfile-only"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+            lockfile_only: true,
+          },
+          recursive: false,
         },
       ),
       (
@@ -13407,6 +13655,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13426,6 +13675,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: true,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13454,6 +13704,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13465,6 +13716,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13476,8 +13728,21 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: true,
+        },
+      ),
+      (
+        svec!["--lockfile-only"],
+        OutdatedFlags {
+          filters: vec![],
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+            lockfile_only: true,
+          },
+          recursive: false,
         },
       ),
       (
@@ -13487,6 +13752,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: false,
             interactive: false,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13498,6 +13764,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           kind: OutdatedKind::Update {
             latest: true,
             interactive: true,
+            lockfile_only: false,
           },
           recursive: false,
         },
@@ -13510,6 +13777,88 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       assert_eq!(
         r.subcommand,
         DenoSubcommand::Outdated(expected),
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+  }
+
+  #[test]
+  fn approve_scripts_subcommand() {
+    let cases = [
+      (
+        svec![],
+        ApproveScriptsFlags {
+          packages: vec![],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg@1.0.0"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0", "npm:pkg2@2.0.0"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0,npm:pkg2@2.0.0"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: false,
+        },
+      ),
+      (
+        svec!["--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec![],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["--lockfile-only", "npm:pkg@1.0.0"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["npm:pkg@1.0.0", "--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec!["npm:pkg@1.0.0".to_string()],
+          lockfile_only: true,
+        },
+      ),
+      (
+        svec!["npm:pkg1@1.0.0", "npm:pkg2@2.0.0", "--lockfile-only"],
+        ApproveScriptsFlags {
+          packages: vec![
+            "npm:pkg1@1.0.0".to_string(),
+            "npm:pkg2@2.0.0".to_string(),
+          ],
+          lockfile_only: true,
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "approve-scripts"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r.subcommand,
+        DenoSubcommand::ApproveScripts(expected),
         "incorrect result for args: {:?}",
         args
       );

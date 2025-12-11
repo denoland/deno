@@ -25,7 +25,7 @@ use url::Url;
 
 pub mod assertions;
 mod builders;
-pub mod factory;
+pub mod flaky_test;
 mod fs;
 mod https;
 pub mod lsp;
@@ -50,6 +50,8 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
 pub const PERMISSION_DENIED_PATTERN: &str = "NotCapable";
 
 static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
+
+pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![

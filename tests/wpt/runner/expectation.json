@@ -5371,17 +5371,27 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false,
-      "readable-stream.html": false,
-      "reason.html": false,
+      "transfer-with-messageport.window.html": true,
+      "readable-stream.html": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()",
+        "transferring a non-serializable chunk should error both sides"
+      ],
+      "reason.html": [
+        "DOMException errors should be preserved"
+      ],
       "service-worker.https.html": false,
       "shared-worker.html": false,
       "transform-stream-members.any.html": true,
       "transform-stream-members.any.worker.html": true,
-      "transform-stream.html": false,
-      "window.html": false,
-      "worker.html": false,
-      "writable-stream.html": false
+      "transform-stream.html": true,
+      "window.html": [
+        "transfer to and from an iframe should work"
+      ],
+      "worker.html": true,
+      "writable-stream.html": [
+        "writing a unclonable object should error the stream"
+      ]
     }
   },
   "user-timing": {
@@ -13093,7 +13103,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone.any.worker.html": [
@@ -13121,7 +13130,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone-cross-realm-method.html": false
@@ -15004,9 +15012,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,

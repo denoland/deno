@@ -5,14 +5,14 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 80;
+const cacheVersion = 82;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMRunner = "ubicloud-standard-16-arm";
+const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
-const macosX86Runner = "macos-13";
+const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
@@ -540,6 +540,11 @@ const ci = {
         },
         cacheCargoHomeStep,
         installRustStep,
+        {
+          if: "matrix.os == 'linux' && matrix.arch == 'aarch64'",
+          name: "Load 'vsock_loopback; kernel module",
+          run: "sudo modprobe vsock_loopback",
+        },
         {
           if: "matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,

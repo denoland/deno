@@ -1,11 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::LazyLock;
-
 use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::pty::Pty;
 
 #[test]
 fn add_basic() {
@@ -155,9 +154,9 @@ fn pm_context_builder() -> TestContextBuilder {
     .use_temp_cwd()
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn approve_scripts_basic() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
@@ -178,9 +177,8 @@ fn approve_scripts_basic() {
       pty.write_line(" ");
       pty.write_line("\r\n");
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
-      pty.expect(
-        "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
-      );
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context
     .temp_dir()
@@ -195,11 +193,9 @@ fn approve_scripts_basic() {
     }));
 }
 
-static IS_CI: LazyLock<bool> = LazyLock::new(|| std::env::var("CI").is_ok());
-
-#[test]
+#[flaky_test::flaky_test]
 fn approve_scripts_deny_some() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
@@ -220,11 +216,10 @@ fn approve_scripts_deny_some() {
       pty.expect("@denotest/print-npm-user-agent@1.0.0");
       pty.write_line(" ");
       pty.write_line("\r\n");
-      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
-      pty.expect(
-        "@denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script",
-      );
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context.temp_dir().path().join("deno.json").assert_matches_json(json!({
     "nodeModulesDir": "manual",

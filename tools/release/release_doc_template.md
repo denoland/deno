@@ -117,6 +117,18 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       changes in this release. If in doubt message @bartlomieju and skip this
       step.
 
+## Add `deno upgrade` banner
+
+- [ ] You can optionally add a banner that will be printed when users run
+      `deno
+      upgrade`. This is useful in situation when you want to inform
+      users about a need to run a command to enjoy a new feature or a breaking
+      change.
+  - Create `banner.txt` file with the content you want to print - _it must be
+    plaintext_.
+  - Run
+    `gsutil -h "Cache-Control: public, max-age=3600" cp banner.txt gs://dl.deno.land/release/v$VERSION/banner.txt`
+
 ## All done!
 
 - [ ] Write a message in company's #cli channel:

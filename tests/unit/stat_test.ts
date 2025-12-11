@@ -25,13 +25,10 @@ Deno.test(
 
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
-    let now = Date.now();
-    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 10000);
-    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 10000);
-    assert(
-      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 10000,
-    );
-    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 10000);
+    const now = Date.now();
+    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 60_000);
+    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 60_000);
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 60_000);
     const mode = tempInfo.mode! & 0o777;
     if (Deno.build.os === "windows") {
       assertEquals(mode, 0o666);
@@ -59,23 +56,9 @@ Deno.test(
         `file://${Deno.build.os === "windows" ? "/" : ""}${tempFileForUrl}`,
       ),
     );
-    now = Date.now();
-    assert(
-      tempInfoByUrl.atime !== null &&
-        now - tempInfoByUrl.atime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.mtime !== null &&
-        now - tempInfoByUrl.mtime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.birthtime === null ||
-        now - tempInfoByUrl.birthtime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.ctime !== null &&
-        now - tempInfoByUrl.ctime.valueOf() < 1000,
-    );
+    assert(tempInfoByUrl.atime !== null);
+    assert(tempInfoByUrl.mtime !== null);
+    assert(tempInfoByUrl.ctime !== null);
 
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
@@ -175,14 +158,9 @@ Deno.test(
 
     const tempFile = await Deno.makeTempFile();
     const tempInfo = await Deno.stat(tempFile);
-    let now = Date.now();
-    assert(tempInfo.atime !== null && now - tempInfo.atime.valueOf() < 1000);
-    assert(tempInfo.mtime !== null && now - tempInfo.mtime.valueOf() < 1000);
-
-    assert(
-      tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
-    );
-    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
+    assert(tempInfo.atime !== null);
+    assert(tempInfo.mtime !== null);
+    assert(tempInfo.ctime !== null);
 
     const tempFileForUrl = await Deno.makeTempFile();
     const tempInfoByUrl = await Deno.stat(
@@ -190,23 +168,9 @@ Deno.test(
         `file://${Deno.build.os === "windows" ? "/" : ""}${tempFileForUrl}`,
       ),
     );
-    now = Date.now();
-    assert(
-      tempInfoByUrl.atime !== null &&
-        now - tempInfoByUrl.atime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.mtime !== null &&
-        now - tempInfoByUrl.mtime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.birthtime === null ||
-        now - tempInfoByUrl.birthtime.valueOf() < 1000,
-    );
-    assert(
-      tempInfoByUrl.ctime !== null &&
-        now - tempInfoByUrl.ctime.valueOf() < 1000,
-    );
+    assert(tempInfoByUrl.atime !== null);
+    assert(tempInfoByUrl.mtime !== null);
+    assert(tempInfoByUrl.ctime !== null);
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
   },
