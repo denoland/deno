@@ -1040,7 +1040,6 @@ fn common_extensions<
   vec![
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
-    deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),

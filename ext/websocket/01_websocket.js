@@ -50,7 +50,7 @@ const {
 } = primordials;
 
 import { URL } from "ext:deno_web/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_web/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";

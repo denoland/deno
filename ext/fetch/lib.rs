@@ -145,7 +145,7 @@ impl Default for Options {
 }
 
 deno_core::extension!(deno_fetch,
-  deps = [ deno_webidl, deno_web ],
+  deps = [ deno_web ],
   ops = [
     op_fetch,
     op_fetch_send,
