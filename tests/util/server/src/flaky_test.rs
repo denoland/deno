@@ -74,7 +74,7 @@ pub fn run_flaky_test(
     if !result.is_failed() {
       return result;
     }
-    if IS_CI {
+    if *IS_CI {
       eprintln!(
         "{} {} was flaky on run {}",
         colors::bold_red("Warning"),
