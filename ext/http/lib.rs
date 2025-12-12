@@ -142,7 +142,7 @@ pub struct Options {
 #[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,
-  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  deps = [deno_web, deno_net, deno_websocket],
   parameters = [ HTTP: HttpPropertyExtractor ],
   ops = [
     op_http_accept,
@@ -192,7 +192,7 @@ deno_core::extension!(
 #[cfg(feature = "default_property_extractor")]
 deno_core::extension!(
   deno_http,
-  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  deps = [deno_web, deno_net, deno_websocket],
   ops = [
     op_http_accept,
     op_http_headers,

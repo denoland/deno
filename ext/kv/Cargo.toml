@@ -23,10 +23,10 @@ chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
-deno_fetch.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
+deno_web.workspace = true
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true

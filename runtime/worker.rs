@@ -195,7 +195,7 @@ pub struct WorkerServiceOptions<
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  pub fetch_dns_resolver: deno_fetch::dns::Resolver,
+  pub fetch_dns_resolver: deno_web::fetch::dns::Resolver,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
@@ -532,17 +532,19 @@ impl MainWorker {
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
           services.broadcast_channel.clone(),
+          deno_web::fetch::Options {
+            user_agent: options.bootstrap.user_agent.clone(),
+            root_cert_store_provider: services.root_cert_store_provider.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            file_fetch_handler: Rc::new(
+              deno_web::fetch::fs_fetch_handler::FsFetchHandler,
+            ),
+            resolver: services.fetch_dns_resolver,
+            ..Default::default()
+          },
         ),
-        deno_fetch::deno_fetch::args(deno_fetch::Options {
-          user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: services.root_cert_store_provider.clone(),
-          unsafely_ignore_certificate_errors: options
-            .unsafely_ignore_certificate_errors
-            .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          resolver: services.fetch_dns_resolver,
-          ..Default::default()
-        }),
         deno_cache::deno_cache::args(create_cache),
         deno_websocket::deno_websocket::args(),
         deno_webstorage::deno_webstorage::args(
@@ -1044,7 +1046,6 @@ fn common_extensions<
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),

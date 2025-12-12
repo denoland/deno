@@ -20,7 +20,7 @@ import {
 } from "ext:core/ops";
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-import { toInnerRequest } from "ext:deno_fetch/23_request.js";
+import { toInnerRequest } from "ext:deno_web/23_request.js";
 import { Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";

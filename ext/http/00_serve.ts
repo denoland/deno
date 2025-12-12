@@ -55,18 +55,18 @@ const {
   Number,
 } = primordials;
 
-import { InnerBody } from "ext:deno_fetch/22_body.js";
+import { InnerBody } from "ext:deno_web/22_body.js";
 import {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
+} from "ext:deno_web/23_response.js";
 import {
   abortRequest,
   fromInnerRequest,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} from "ext:deno_web/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
