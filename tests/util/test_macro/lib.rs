@@ -61,7 +61,10 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
   result
 }
 
-fn generate_test_macro(item: TokenStream, attrs: TestAttributes) -> TokenStream {
+fn generate_test_macro(
+  item: TokenStream,
+  attrs: TestAttributes,
+) -> TokenStream {
   let input = parse_macro_input!(item as ItemFn);
   let fn_name = &input.sig.ident;
 
@@ -82,77 +85,78 @@ fn generate_test_macro(item: TokenStream, attrs: TestAttributes) -> TokenStream 
 
   let is_flaky = attrs.flaky;
 
-  let expanded = if is_async {
+  // Check if the function returns a Result
+  let returns_result = match &input.sig.output {
+    ReturnType::Type(_, ty) => {
+      if let syn::Type::Path(type_path) = &**ty {
+        type_path
+          .path
+          .segments
+          .last()
+          .is_some_and(|seg| seg.ident == "Result")
+      } else {
+        false
+      }
+    }
+    _ => false,
+  };
+
+  // Determine if we need a wrapper function
+  let needs_wrapper = is_async || returns_result;
+
+  let (test_func, func_def) = if needs_wrapper {
     let wrapper_name =
       syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
-    // Check if the function returns a Result
-    let returns_result = match &input.sig.output {
-      ReturnType::Type(_, ty) => {
-        if let syn::Type::Path(type_path) = &**ty {
-          type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|seg| seg.ident == "Result")
-        } else {
-          false
-        }
+    let wrapper_body = if is_async {
+      let call = if returns_result {
+        quote! { #fn_name().await.unwrap(); }
+      } else {
+        quote! { #fn_name().await; }
+      };
+      quote! {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            #call
+        });
       }
-      _ => false,
-    };
-
-    let await_call = if returns_result {
-      quote! { #fn_name().await.unwrap(); }
     } else {
-      quote! { #fn_name().await; }
+      // Non-async, but returns Result
+      quote! {
+        #fn_name().unwrap();
+      }
     };
 
-    quote! {
-        // Keep the original async function
-        #input
+    let wrapper = quote! {
+      fn #wrapper_name() {
+        #wrapper_body
+      }
+    };
 
-        // Create a sync wrapper that runs the async function
-        fn #wrapper_name() {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async {
-                #await_call
-            });
-        }
-
-        test_util::submit! {
-            test_util::TestMacroCase {
-                name: stringify!(#fn_name),
-                module_name: module_path!(),
-                func: #wrapper_name,
-                flaky: #is_flaky,
-                file: file!(),
-                line: line!(),
-                col: column!(),
-                ignore: #is_ignored,
-                timeout: #timeout_expr,
-            }
-        }
-    }
+    (quote! { #wrapper_name }, wrapper)
   } else {
-    quote! {
-        #input
+    (quote! { #fn_name }, quote! {})
+  };
 
-        test_util::submit! {
-            test_util::TestMacroCase {
-                name: stringify!(#fn_name),
-                module_name: module_path!(),
-                func: #fn_name,
-                flaky: #is_flaky,
-                file: file!(),
-                line: line!(),
-                col: column!(),
-                ignore: #is_ignored,
-                timeout: #timeout_expr,
-            }
+  let expanded = quote! {
+    #input
+
+    #func_def
+
+    test_util::submit! {
+        test_util::TestMacroCase {
+            name: stringify!(#fn_name),
+            module_name: module_path!(),
+            func: #test_func,
+            flaky: #is_flaky,
+            file: file!(),
+            line: line!(),
+            col: column!(),
+            ignore: #is_ignored,
+            timeout: #timeout_expr,
         }
     }
   };
