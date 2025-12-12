@@ -382,6 +382,9 @@ impl Default for HttpServerStarter {
       .current_dir(testdata_path())
       .stdout(Stdio::piped())
       .spawn()
+      .inspect_err(|_| {
+        ensure_test_server_built();
+      })
       .expect("failed to execute test_server");
     let stdout = test_server.stdout.as_mut().unwrap();
     use std::io::BufRead;
@@ -438,7 +441,6 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
-  ensure_test_server_built();
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut g = lock_http_server();
   g.inc();
@@ -758,6 +760,10 @@ pub struct TestMacroCase {
   pub name: &'static str,
   pub module_name: &'static str,
   pub file: &'static str,
+  /// 1-indexed
+  pub line: u32,
+  /// 1-indexed
+  pub col: u32,
   pub func: fn(),
   pub flaky: bool,
   pub ignore: bool,
@@ -828,6 +834,11 @@ pub fn collect_and_filter_tests(
         file_test_runner::collection::CollectedTest {
           name: format!("{}::{}", test.module_name, test.name),
           path: PathBuf::from(test.file),
+          // line and col are 1-indexed, but file_test_runner uses
+          // 0-indexed numbers, so keep as-is for line to put it on
+          // probably the function name and then do col - 1 to make
+          // the column 0-indexed
+          line_and_column: Some((test.line, test.col - 1)),
           data: test,
         },
       ),

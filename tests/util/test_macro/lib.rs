@@ -58,7 +58,10 @@ fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {
 
         // Create a sync wrapper that runs the async function
         fn #wrapper_name() {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             rt.block_on(async {
                 #await_call
             });
@@ -71,6 +74,8 @@ fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {
                 func: #wrapper_name,
                 flaky: #is_flaky,
                 file: file!(),
+                line: line!(),
+                col: column!(),
                 ignore: #is_ignored,
             }
         }
@@ -86,6 +91,8 @@ fn generate_test_macro(item: TokenStream, is_flaky: bool) -> TokenStream {
                 func: #fn_name,
                 flaky: #is_flaky,
                 file: file!(),
+                line: line!(),
+                col: column!(),
                 ignore: #is_ignored,
             }
         }
