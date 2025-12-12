@@ -25,7 +25,6 @@ use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
 use node_resolver::ResolutionMode;
 
-use super::LAZILY_LOADED_STATIC_ASSETS;
 use super::ResolveArgs;
 use super::ResolveError;
 use crate::args::TypeCheckMode;
@@ -53,18 +52,7 @@ fn op_remap_specifier(
 #[op2]
 #[serde]
 fn op_libs() -> Vec<String> {
-  let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for (key, value) in LAZILY_LOADED_STATIC_ASSETS.iter() {
-    if !value.is_lib {
-      continue;
-    }
-    let lib = key
-      .replace("lib.", "")
-      .replace(".d.ts", "")
-      .replace("deno_", "deno.");
-    out.push(lib);
-  }
-  out
+  crate::tsc::lib_names()
 }
 
 #[op2]
@@ -243,11 +231,13 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   ModuleSpecifier::parse(path)
     .ok()
-    .and_then(|specifier| {
+    .map(|specifier| {
       state
         .maybe_npm
         .as_ref()
         .map(|n| n.node_resolver.in_npm_package(&specifier))
+        .unwrap_or(false)
+        || specifier.as_str().starts_with("asset:///node/")
     })
     .unwrap_or(false)
 }
@@ -601,6 +591,7 @@ mod tests {
   ) -> Result<Response, ExecError> {
     test_exec_with_cache(specifier, None).await
   }
+
   async fn test_exec_with_cache(
     specifier: &ModuleSpecifier,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,

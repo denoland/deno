@@ -287,6 +287,7 @@ pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
   pub serve: bool,
+  pub empty: bool,
   pub yes: bool,
 }
 
@@ -414,6 +415,42 @@ impl RunFlags {
   pub fn is_stdin(&self) -> bool {
     self.script == "-"
   }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub enum DenoXShimName {
+  #[default]
+  Dx,
+  Denox,
+  Other(String),
+}
+
+impl DenoXShimName {
+  pub fn name(&self) -> &str {
+    match self {
+      Self::Dx => "dx",
+      Self::Denox => "denox",
+      Self::Other(name) => name,
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum XFlagsKind {
+  InstallAlias(DenoXShimName),
+  Command(XCommandFlags),
+  Print,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XCommandFlags {
+  pub yes: bool,
+  pub command: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XFlags {
+  pub kind: XFlagsKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -584,6 +621,7 @@ pub enum DenoSubcommand {
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
+  X(XFlags),
 }
 
 impl DenoSubcommand {
@@ -1583,6 +1621,20 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  let args = if !args.is_empty()
+    && (args[0].as_encoded_bytes().ends_with(b"dx")
+      || args[0].as_encoded_bytes().ends_with(b"denox"))
+  {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    if args.len() >= 2 {
+      new_args.extend(args.into_iter().skip(1));
+    }
+    new_args
+  } else {
+    args
+  };
   let mut app = clap_root();
   let mut matches =
     app
@@ -1765,6 +1817,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "upgrade" => upgrade_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
+        "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
       }
     }
@@ -2027,7 +2080,8 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
-        .subcommand(vendor_subcommand());
+        .subcommand(vendor_subcommand())
+        .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -3142,7 +3196,7 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve"])
+            .conflicts_with_all(["lib", "serve", "empty"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3156,6 +3210,13 @@ fn init_subcommand() -> Command {
             .long("serve")
             .help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("empty")
+            .long("empty")
+            .help("Generate a minimal project with just main.ts and deno.json")
+            .conflicts_with_all(["lib", "serve", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3537,6 +3598,46 @@ The installation root is determined, in order of precedence:
       )
       .args(lock_args())
       .arg(lockfile_only_arg())
+  })
+}
+
+fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
+  match value {
+    "dx" => Ok(DenoXShimName::Dx),
+    "denox" => Ok(DenoXShimName::Denox),
+    _ => Ok(DenoXShimName::Other(value.to_string())),
+  }
+}
+
+fn x_subcommand() -> Command {
+  command(
+    "x",
+    cstr!("Execute a binary from npm or jsr, like npx"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, true, true, true)
+      .arg(script_arg().trailing_var_arg(true))
+      .arg(
+        Arg::new("yes")
+          .long("yes")
+          .short('y')
+          .help("Assume confirmation for all prompts")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("install-alias"),
+      )
+      .arg(check_arg(false))
+      .arg(env_file_arg())
+      .arg(
+        Arg::new("install-alias")
+          .long("install-alias")
+          .num_args(0..=1)
+          .default_missing_value("dx")
+          .require_equals(true)
+          .value_parser(deno_x_shim_name_parser)
+          .action(ArgAction::Set)
+          .conflicts_with("script_arg"),
+      )
   })
 }
 
@@ -5935,6 +6036,7 @@ fn init_parse(
 ) -> Result<(), clap::Error> {
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
+  let mut empty = matches.get_flag("empty");
   let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
@@ -5955,6 +6057,7 @@ fn init_parse(
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
+        empty = inner_matches.get_flag("empty");
         yes = inner_matches.get_flag("yes");
       }
     }
@@ -5966,6 +6069,7 @@ fn init_parse(
     dir,
     lib,
     serve,
+    empty,
     yes,
   });
 
@@ -6746,6 +6850,35 @@ fn compile_args_without_check_parse(
   preload_arg_parse(flags, matches);
   require_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
+  Ok(())
+}
+
+fn x_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let kind = if let Some(shim_name) =
+    matches.remove_one::<DenoXShimName>("install-alias")
+  {
+    XFlagsKind::InstallAlias(shim_name)
+  } else if let Some(mut script_arg) =
+    matches.remove_many::<String>("script_arg")
+  {
+    if let Some(command) = script_arg.next() {
+      let yes = matches.get_flag("yes");
+      flags.argv.extend(script_arg);
+      runtime_args_parse(flags, matches, true, true, true)?;
+      XFlagsKind::Command(XCommandFlags { yes, command })
+    } else {
+      XFlagsKind::Print
+    }
+  } else {
+    XFlagsKind::Print
+  };
+  if !flags.permissions.has_permission() && flags.permission_set.is_none() {
+    flags.permissions.allow_all = true;
+  }
+  flags.subcommand = DenoSubcommand::X(XFlags { kind });
   Ok(())
 }
 
@@ -12591,6 +12724,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12607,6 +12741,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12623,6 +12758,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         log_level: Some(Level::Error),
@@ -12640,6 +12776,7 @@ mod tests {
           dir: None,
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12656,6 +12793,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: true,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12672,6 +12810,7 @@ mod tests {
           dir: Some(String::from("foo")),
           lib: true,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12694,6 +12833,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12710,6 +12850,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12726,6 +12867,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: false,
         }),
         ..Flags::default()
@@ -12742,6 +12884,7 @@ mod tests {
           dir: None,
           lib: false,
           serve: false,
+          empty: false,
           yes: true,
         }),
         ..Flags::default()

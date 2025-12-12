@@ -241,7 +241,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window"],
+          "default": ["deno.window", "deno.unstable", "node"],
           "items": {
             "type": "string",
             "examples": [
@@ -270,7 +270,8 @@
               "es2022",
               "es2023",
               "es2024",
-              "esnext"
+              "esnext",
+              "node"
             ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"

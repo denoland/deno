@@ -809,6 +809,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
                 deno_resolver::workspace::ResolutionKind::Execution

@@ -9,11 +9,8 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
-use once_cell::sync::Lazy;
-
+use crate::IS_CI;
 use crate::strip_ansi_codes;
-
-static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 
 const PTY_ROWS_COLS: (u16, u16) = (500, 800);
 
