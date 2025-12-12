@@ -315,7 +315,7 @@ dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 # libsui = "0.12.3"
-libsui = { git = "https://github.com/denoland/sui", rev = "e103ea0c6461664b59b4b224ff0f526898efe536" }
+libsui = { git = "https://github.com/denoland/sui", rev = "40e0ca8ca687c8578add68fa9abfa8b01fdb76ac" }
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"
