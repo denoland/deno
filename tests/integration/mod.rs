@@ -123,7 +123,7 @@ pub fn main() {
 
   let parallelism = CpuMonitorParallelism::default();
   file_test_runner::run_tests(
-    &main_tests,
+    &main_category,
     RunOptions {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
