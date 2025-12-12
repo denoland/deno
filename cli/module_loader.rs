@@ -1259,16 +1259,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
     let specifier = resolve_url(source_url).ok()?;
 
-    // For file:// URLs, check if the file exists on disk
-    if specifier.scheme() == "file"
-      && let Ok(path) = specifier.to_file_path()
-    {
+    let graph = self.0.graph_container.graph();
+
+    if graph.get(&specifier).is_some() {
+      return Some(true);
+    }
+
+    if let Ok(path) = deno_path_util::url_to_file_path(&specifier) {
       return Some(path.exists());
     }
 
-    // For other URLs, check if it's in the module graph
-    let graph = self.0.graph_container.graph();
-    Some(graph.get(&specifier).is_some())
+    None
   }
 
   fn get_source_mapped_source_line(
