@@ -743,6 +743,11 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleErrorKind::UnsupportedImportAttributeType { .. } => {
         self.build_error_msg(specifier, "(unsupported import attribute)")
       }
+      ModuleErrorKind::UnsupportedModuleTypeForSourcePhaseImport { .. } => self
+        .build_error_msg(
+          specifier,
+          "(unsupported module type for source phase import)",
+        ),
       ModuleErrorKind::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }

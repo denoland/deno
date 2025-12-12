@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::io::BufReader;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -22,8 +24,10 @@ use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
+use sys_traits::OpenOptions;
 use url::Url;
 
 use crate::InNpmPackageChecker;
@@ -265,7 +269,7 @@ struct ResolutionConfig {
 
 #[sys_traits::auto_impl]
 pub trait NodeResolverSys:
-  FsCanonicalize + FsMetadata + FsRead + FsReadDir
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir + FsOpen
 {
 }
 
@@ -753,7 +757,7 @@ impl<
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<PathBuf, ResolvePkgJsonBinExportError> {
+  ) -> Result<BinValue, ResolvePkgJsonBinExportError> {
     let (pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
     let path =
@@ -762,13 +766,13 @@ impl<
           message: err.to_string(),
         }
       })?;
-    Ok(path.to_path_buf())
+    Ok(path.clone())
   }
 
   pub fn resolve_npm_binary_commands_for_package(
     &self,
     package_folder: &Path,
-  ) -> Result<BTreeMap<String, PathBuf>, ResolvePkgNpmBinaryCommandsError> {
+  ) -> Result<BTreeMap<String, BinValue>, ResolvePkgNpmBinaryCommandsError> {
     let (_pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
     Ok(items)
@@ -778,7 +782,7 @@ impl<
     &self,
     package_folder: &Path,
   ) -> Result<
-    (PackageJsonRc, BTreeMap<String, PathBuf>),
+    (PackageJsonRc, BTreeMap<String, BinValue>),
     ResolvePkgNpmBinaryCommandsError,
   > {
     let pkg_json_path = package_folder.join("package.json");
@@ -796,7 +800,13 @@ impl<
       deno_package_json::PackageJsonBins::Directory(path_buf) => {
         self.resolve_npm_commands_from_bin_dir(&path_buf)
       }
-      deno_package_json::PackageJsonBins::Bins(items) => items,
+      deno_package_json::PackageJsonBins::Bins(items) => items
+        .into_iter()
+        .filter_map(|(command, path)| {
+          let bin_value = bin_value_from_file(&path, &self.sys)?;
+          Some((command, bin_value))
+        })
+        .collect(),
     };
     Ok((package_json, items))
   }
@@ -804,7 +814,7 @@ impl<
   pub fn resolve_npm_commands_from_bin_dir(
     &self,
     bin_dir: &Path,
-  ) -> BTreeMap<String, PathBuf> {
+  ) -> BTreeMap<String, BinValue> {
     log::debug!("Resolving npm commands in '{}'.", bin_dir.display());
     let mut result = BTreeMap::new();
     match self.sys.fs_read_dir(bin_dir) {
@@ -813,10 +823,10 @@ impl<
           let Ok(entry) = entry else {
             continue;
           };
-          if let Some((command, path)) =
+          if let Some((command, bin_value)) =
             self.resolve_bin_dir_entry_command(entry)
           {
-            result.insert(command, path);
+            result.insert(command, bin_value);
           }
         }
       }
@@ -830,7 +840,7 @@ impl<
   fn resolve_bin_dir_entry_command(
     &self,
     entry: TSys::ReadDirEntry,
-  ) -> Option<(String, PathBuf)> {
+  ) -> Option<(String, BinValue)> {
     if entry.path().extension().is_some() {
       return None; // only look at files without extensions (even on Windows)
     }
@@ -842,19 +852,9 @@ impl<
     } else {
       return None;
     };
-    let text = self.sys.fs_read_to_string_lossy(&path).ok()?;
     let command_name = entry.file_name().to_string_lossy().into_owned();
-    if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
-      log::debug!(
-        "Resolved npx command '{}' to '{}'.",
-        command_name,
-        path.display()
-      );
-      Some((command_name, path))
-    } else {
-      log::debug!("Failed resolving npx command '{}'.", command_name);
-      None
-    }
+    let bin_value = bin_value_from_file(&path, &self.sys)?;
+    Some((command_name, bin_value))
   }
 
   /// Resolves an npm package folder path from the specified referrer.
@@ -1036,7 +1036,7 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageImportsResolveError> {
-    if name == "#" || name.starts_with("#/") || name.ends_with('/') {
+    if name == "#" || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(
         errors::InvalidModuleSpecifierError {
@@ -1637,69 +1637,37 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let result = self.resolve_package_subpath_for_package_inner(
-      package_name,
-      package_subpath,
-      referrer,
-      resolution_mode,
-      conditions,
-      resolution_kind,
-    );
-    if resolution_kind.is_types() && result.is_err() {
-      // try to resolve with the @types package
-      let package_name = types_package_name(package_name);
-      if let Ok(result) = self.resolve_package_subpath_for_package_inner(
-        &package_name,
-        package_subpath,
-        referrer,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      ) {
-        return Ok(result);
-      }
-    }
-    result
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  fn resolve_package_subpath_for_package_inner(
-    &self,
-    package_name: &str,
-    package_subpath: &str,
-    referrer: &UrlOrPathRef,
-    resolution_mode: ResolutionMode,
-    conditions: &[Cow<'static, str>],
-    resolution_kind: NodeResolutionKind,
-  ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let package_dir_path = self
-      .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(package_name, referrer)?;
-
-    // todo: error with this instead when can't find package
-    // Err(errors::err_module_not_found(
-    //   &package_json_url
-    //     .join(".")
-    //     .unwrap()
-    //     .to_file_path()
-    //     .unwrap()
-    //     .display()
-    //     .to_string(),
-    //   &to_file_path_string(referrer),
-    //   "package",
-    // ))
-
-    // Package match.
-    self
-      .resolve_package_dir_subpath(
-        &package_dir_path,
+    let resolve = |package_dir: &Path| {
+      self.resolve_package_dir_subpath(
+        package_dir,
         package_subpath,
         Some(referrer),
         resolution_mode,
         conditions,
         resolution_kind,
       )
+    };
+    let result: Result<_, PackageResolveError> = self
+      .npm_pkg_folder_resolver
+      .resolve_package_folder_from_package(package_name, referrer)
       .map_err(|err| err.into())
+      .and_then(|package_dir| resolve(&package_dir).map_err(|e| e.into()));
+
+    if resolution_kind.is_types() && result.is_err() {
+      // try to resolve with the @types package based on the package name
+      let maybe_types_package_dir = self
+        .resolve_types_package_folder_with_name_and_version(
+          package_name,
+          None,
+          Some(referrer),
+        );
+      if let Some(types_package_dir) = maybe_types_package_dir
+        && let Ok(result) = resolve(&types_package_dir)
+      {
+        return Ok(result);
+      }
+    }
+    result
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -1718,14 +1686,36 @@ impl<
       .pkg_json_resolver
       .load_package_json(&package_json_path)?
     {
-      Some(pkg_json) => self.resolve_package_subpath(
-        &pkg_json,
-        package_subpath,
-        maybe_referrer,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      ),
+      Some(pkg_json) => {
+        let result = self.resolve_package_subpath(
+          &pkg_json,
+          package_subpath,
+          maybe_referrer,
+          resolution_mode,
+          conditions,
+          resolution_kind,
+        );
+        if resolution_kind.is_types()
+          && result.is_err()
+          && let Some(types_pkg_dir) = self
+            .resolve_types_package_folder_from_package_json(
+              &pkg_json,
+              maybe_referrer,
+            )
+          && let Ok(result) = self.resolve_package_dir_subpath(
+            &types_pkg_dir,
+            package_subpath,
+            maybe_referrer,
+            resolution_mode,
+            conditions,
+            resolution_kind,
+          )
+        {
+          Ok(result)
+        } else {
+          result
+        }
+      }
       None => self
         .resolve_package_subpath_no_pkg_json(
           package_dir_path,
@@ -2086,6 +2076,46 @@ impl<
     }
   }
 
+  fn resolve_types_package_folder_from_package_json(
+    &self,
+    pkg_json: &PackageJson,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    let package_name = pkg_json.name.as_deref()?;
+    let maybe_version = pkg_json
+      .version
+      .as_ref()
+      .and_then(|v| Version::parse_from_npm(v).ok());
+    self.resolve_types_package_folder_with_name_and_version(
+      package_name,
+      maybe_version.as_ref(),
+      maybe_referrer,
+    )
+  }
+
+  fn resolve_types_package_folder_with_name_and_version(
+    &self,
+    package_name: &str,
+    maybe_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    let types_package_name = types_package_name(package_name)?;
+    log::debug!(
+      "Attempting to resolve types package '{}@{}'.",
+      types_package_name,
+      maybe_version
+        .as_ref()
+        .map(|s| s.to_string())
+        .as_deref()
+        .unwrap_or("*")
+    );
+    self.npm_pkg_folder_resolver.resolve_types_package_folder(
+      &types_package_name,
+      maybe_version,
+      maybe_referrer,
+    )
+  }
+
   /// Resolves a specifier that is pointing into a node_modules folder by canonicalizing it.
   ///
   /// Returns `None` when the specifier is not in a node_modules folder.
@@ -2183,6 +2213,57 @@ fn resolve_pkg_json_import<'a>(
   }
 }
 
+fn bin_value_from_file<TSys: FsOpen>(
+  path: &Path,
+  sys: &NodeResolutionSys<TSys>,
+) -> Option<BinValue> {
+  let mut file = match sys.fs_open(path, OpenOptions::new().read()) {
+    Ok(file) => file,
+    Err(err) => {
+      if err.kind() == std::io::ErrorKind::NotFound {
+        return None;
+      }
+      log::debug!(
+        "Failed to open bin file '{}': {:#}; treating as executable",
+        path.display(),
+        err,
+      );
+      return Some(BinValue::Executable(path.to_path_buf()));
+    }
+  };
+  let mut buf = [0; 4];
+  let (is_binary, buf): (bool, &[u8]) = {
+    let result = file.read_exact(&mut buf);
+    if let Err(err) = result {
+      log::debug!("Failed to read binary file '{}': {:#}", path.display(), err);
+      // safer fallback to assume it's a binary
+      (true, &[])
+    } else {
+      (
+        is_binary(&buf) || (!(buf[0] == b'#' && buf[1] == b'!')),
+        &buf[..],
+      )
+    }
+  };
+
+  if is_binary {
+    return Some(BinValue::Executable(path.to_path_buf()));
+  }
+  let mut buf_read = BufReader::new(file);
+  let mut contents = Vec::new();
+  contents.extend_from_slice(buf);
+  if let Ok(len) = buf_read.read_to_end(&mut contents)
+    && len > 0
+    && let Ok(contents) = String::from_utf8(contents)
+    && let Some(path) =
+      resolve_execution_path_from_npx_shim(Cow::Borrowed(path), &contents)
+  {
+    return Some(BinValue::JsFile(path));
+  }
+
+  Some(BinValue::Executable(path.to_path_buf()))
+}
+
 /// This is not ideal, but it works ok because it allows us to bypass
 /// the shebang and execute the script directly with Deno.
 fn resolve_execution_path_from_npx_shim(
@@ -2190,7 +2271,7 @@ fn resolve_execution_path_from_npx_shim(
   text: &str,
 ) -> Option<PathBuf> {
   static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
+    lazy_regex::lazy_regex!(r#"exec\s+node\s+"\$basedir\/([^"]+)" "\$@""#);
 
   let maybe_first_line = {
     let index = text.find("\n")?;
@@ -2221,9 +2302,9 @@ fn resolve_execution_path_from_npx_shim(
 
 fn resolve_bin_entry_value<'a>(
   package_json: &PackageJson,
-  bins: &'a BTreeMap<String, PathBuf>,
+  bins: &'a BTreeMap<String, BinValue>,
   bin_name: Option<&str>,
-) -> Result<&'a Path, AnyError> {
+) -> Result<&'a BinValue, AnyError> {
   if bins.is_empty() {
     bail!(
       "'{}' did not have a bin property with a string or non-empty object value",
@@ -2233,11 +2314,11 @@ fn resolve_bin_entry_value<'a>(
   let default_bin = package_json.resolve_default_bin_name().ok();
   let searching_bin = bin_name.or(default_bin);
   match searching_bin.and_then(|bin_name| bins.get(bin_name)) {
-    Some(e) => Ok(e),
-    None => {
+    Some(bin) => Ok(bin),
+    _ => {
       if bins.len() > 1
         && let Some(first) = bins.values().next()
-        && bins.values().all(|path| path == first)
+        && bins.values().all(|bin| bin == first)
       {
         return Ok(first);
       }
@@ -2475,15 +2556,29 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-/// Gets the corresponding @types package for the provided package name.
-pub fn types_package_name(package_name: &str) -> String {
-  debug_assert!(!package_name.starts_with("@types/"));
+/// Gets the corresponding @types package for the provided package name
+/// returning `None` when the package is already a @types package.
+fn types_package_name(package_name: &str) -> Option<String> {
+  if package_name.starts_with("@types/") {
+    return None;
+  }
   // Scoped packages will get two underscores for each slash
   // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
-  format!(
-    "@types/{}",
-    package_name.trim_start_matches('@').replace('/', "__")
-  )
+  capacity_builder::StringBuilder::build(|builder| {
+    builder.append("@types/");
+    for (i, c) in package_name.chars().enumerate() {
+      match c {
+        '@' if i == 0 => {
+          // ignore
+        }
+        '/' => {
+          builder.append("__");
+        }
+        c => builder.append(c),
+      }
+    }
+  })
+  .ok()
 }
 
 /// Node is more lenient joining paths than the url crate is,
@@ -2549,6 +2644,52 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
   }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinValue {
+  JsFile(PathBuf),
+  Executable(PathBuf),
+}
+
+impl BinValue {
+  pub fn path(&self) -> &Path {
+    match self {
+      BinValue::JsFile(path) => path,
+      BinValue::Executable(path) => path,
+    }
+  }
+}
+fn is_binary(data: &[u8]) -> bool {
+  is_elf(data) || is_macho(data) || is_pe(data)
+}
+
+// vendored from libsui because they're super small
+/// Check if the given data is an ELF64 binary
+fn is_elf(data: &[u8]) -> bool {
+  if data.len() < 4 {
+    return false;
+  }
+  let magic = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+  magic == 0x7f454c46
+}
+
+/// Check if the given data is a 64-bit Mach-O binary
+fn is_macho(data: &[u8]) -> bool {
+  if data.len() < 4 {
+    return false;
+  }
+  let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+  magic == 0xfeedfacf
+}
+
+/// Check if the given data is a PE32+ binary
+fn is_pe(data: &[u8]) -> bool {
+  if data.len() < 2 {
+    return false;
+  }
+  let magic = u16::from_le_bytes([data[0], data[1]]);
+  magic == 0x5a4d
+}
+
 #[cfg(test)]
 mod tests {
   use deno_package_json::PackageJsonBins;
@@ -2561,6 +2702,16 @@ mod tests {
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
+  }
+
+  fn resolve_bins(package_json: &PackageJson) -> BTreeMap<String, BinValue> {
+    match package_json.resolve_bins().unwrap() {
+      PackageJsonBins::Directory(_) => unreachable!(),
+      PackageJsonBins::Bins(bins) => bins
+        .into_iter()
+        .map(|(k, v)| (k, BinValue::JsFile(v)))
+        .collect(),
+    }
   }
 
   #[test]
@@ -2576,16 +2727,17 @@ mod tests {
           "pkg": "./value3",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("bin1")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("bin1"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value1")
       );
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value3")
       );
 
@@ -2616,10 +2768,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
@@ -2645,12 +2794,11 @@ mod tests {
           "bin2": "./value",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value")
       );
     }
@@ -2664,12 +2812,11 @@ mod tests {
           "something": "./value",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, None).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, None)
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value")
       );
     }
@@ -2681,10 +2828,7 @@ mod tests {
         "version": "1.2.3",
         "bin": "./value",
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("path"))
           .err()
@@ -2708,10 +2852,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
@@ -2735,10 +2876,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("bin"))
           .err()
@@ -2795,11 +2933,12 @@ mod tests {
 
   #[test]
   fn test_types_package_name() {
-    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(types_package_name("name").unwrap(), "@types/name");
     assert_eq!(
-      types_package_name("@scoped/package"),
+      types_package_name("@scoped/package").unwrap(),
       "@types/scoped__package"
     );
+    assert_eq!(types_package_name("@types/node"), None);
   }
 
   #[test]

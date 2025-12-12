@@ -437,6 +437,17 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       .into()
     })
   }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    _maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    self
+      .resolve_package_folder_from_package(types_package_name, maybe_referrer?)
+      .ok()
+  }
 }
 
 #[derive(Debug, Clone)]

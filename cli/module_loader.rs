@@ -752,14 +752,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?;
 
+    let module_type = match requested_module_type {
+      RequestedModuleType::Text => ModuleType::Text,
+      RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::None => {
+        match file.resolve_media_type_and_charset().0 {
+          MediaType::Wasm => ModuleType::Wasm,
+          _ => ModuleType::JavaScript,
+        }
+      }
+      t => unreachable!("{t}"),
+    };
+
     Ok(ModuleCodeStringSource {
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
-      module_type: match requested_module_type {
-        RequestedModuleType::Text => ModuleType::Text,
-        RequestedModuleType::Bytes => ModuleType::Bytes,
-        _ => unreachable!(),
-      },
+      module_type,
     })
   }
 
@@ -1243,6 +1251,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       .get_cached_source_or_local(&specifier)
     {
       return Some(Cow::Owned(file.source.to_vec()));
+    }
+
+    None
+  }
+
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let specifier = resolve_url(source_url).ok()?;
+
+    // For npm packages, we can check the file system directly
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return Some(path.is_file());
     }
 
     None

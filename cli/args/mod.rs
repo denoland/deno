@@ -542,6 +542,7 @@ impl CliOptions {
 
   pub fn graph_kind(&self) -> GraphKind {
     match self.sub_command() {
+      DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
       DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,

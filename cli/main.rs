@@ -39,6 +39,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -257,6 +258,9 @@ async fn run_subcommand(
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
+    DenoSubcommand::X(x_flags) => spawn_subcommand(async move {
+      tools::x::run(flags, x_flags, unconfigured_runtime, roots).await
+    }),
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
         let task_flags = TaskFlags {
@@ -1043,7 +1047,11 @@ async fn initialize_tunnel(
       .to_deploy_config()?
       .expect("auth to be called");
 
-    (deploy_config.org, deploy_config.app)
+    let Some(app) = deploy_config.app else {
+      anyhow::bail!("The 'app' key is missing from the 'deploy' configuration");
+    };
+
+    (deploy_config.org, app)
   };
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {

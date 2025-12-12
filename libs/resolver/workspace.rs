@@ -1835,6 +1835,15 @@ mod test {
         }),
       )))
     }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
+    }
   }
 
   #[allow(clippy::disallowed_types)]
