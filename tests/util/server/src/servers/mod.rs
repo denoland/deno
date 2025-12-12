@@ -56,7 +56,9 @@ use super::https::get_tls_listener_stream;
 use super::testdata_path;
 use crate::PathRef;
 use crate::TEST_SERVERS_COUNT;
+use crate::eprintln;
 use crate::prebuilt_path;
+use crate::println;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -161,10 +163,7 @@ pub async fn run_all_servers() {
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
   if let Err(e) = ensure_tsgo_prebuilt().await {
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("failed to ensure tsgo prebuilt: {e}");
-    }
+    eprintln!("failed to ensure tsgo prebuilt: {e}");
   }
 
   let mut futures = vec![
@@ -362,10 +361,7 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  #[allow(clippy::print_stdout)]
-  {
-    println!("ready: {name} on {:?}", addresses);
-  }
+  println!("ready: {name} on {:?}", addresses);
 
   futures::stream::select_all(listeners)
 }
@@ -381,10 +377,7 @@ async fn run_tls_client_auth_server(port: u16) {
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
-        #[allow(clippy::print_stderr)]
-        {
-          eprintln!("Failed to handshake");
-        }
+        eprintln!("Failed to handshake");
         return;
       };
       // We only need to check for the presence of client certificates
@@ -1376,7 +1369,6 @@ async fn wrap_client_auth_https_server(port: u16) {
       // here. Rusttls ensures that they are valid and signed by the CA.
       match handshake.has_peer_certificates {
         true => { yield Ok(tls); },
-        #[allow(clippy::print_stderr)]
         false => { eprintln!("https_client_auth: no valid client certificate"); },
       };
     }
