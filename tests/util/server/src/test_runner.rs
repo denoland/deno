@@ -48,23 +48,26 @@ impl Default for CpuMonitorParallelism {
         // Lower parallelism uses wider bounds to avoid thrashing
         let (upper_bound, lower_bound) = if max_parallelism >= 50 {
           // High parallelism: tight bounds for quick response
-          (97, 95)
+          (97.0, 95.0)
         } else {
           // Low parallelism: calculate adaptive bounds
           // Upper bound: leave headroom inversely proportional to parallelism
           // e.g., parallelism=10 -> upper=90%, parallelism=30 -> upper=~97%
-          let upper = ((100.0 - 100.0 / max_parallelism as f64) as u8).max(50);
+          let upper = (100.0 - 100.0 / max_parallelism as f32).max(50.0);
 
           // Lower bound: scale down from upper bound
           // More parallelism -> tighter bounds (smaller gap)
           // Less parallelism -> wider bounds (larger gap)
-          let gap = (100.0 / max_parallelism as f64).min(20.0) as u8;
-          let lower = upper.saturating_sub(gap).max(30);
+          let gap = (100.0 / max_parallelism as f32).min(20.0);
+          let lower = (upper - gap).max(30.0);
 
           (upper, lower)
         };
+        // Buffer to store recent CPU utilization measurements
+        const SAMPLE_SIZE: usize = 10;
+        let mut cpu_samples: Vec<f32> = Vec::with_capacity(SAMPLE_SIZE);
         loop {
-          match rx.recv_timeout(Duration::from_millis(500)) {
+          match rx.recv_timeout(Duration::from_millis(250)) {
             Err(RecvTimeoutError::Timeout) => {
               // the documentation recommends calling this twice in order
               // to get a more accurate cpu reading
@@ -74,24 +77,38 @@ impl Default for CpuMonitorParallelism {
               let utilization =
                 system.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>()
                   / system.cpus().len() as f32;
-              if utilization > 101f32 {
+              if utilization > 101.0 {
                 // something wrong, ignore
                 continue;
               }
-              let utilization = utilization as u8;
-              if utilization > upper_bound {
+
+              // Collect samples for averaging
+              cpu_samples.push(utilization);
+              if cpu_samples.len() < SAMPLE_SIZE {
+                // Wait until we have enough samples before making decisions
+                continue;
+              }
+
+              // Calculate average CPU utilization over recent samples
+              let avg_utilization =
+                cpu_samples.iter().sum::<f32>() / cpu_samples.len() as f32;
+
+              if avg_utilization > upper_bound {
                 if current_cpus > 2 {
                   current_cpus -= 1;
                   parallelism
                     .set_parallelism(NonZeroUsize::new(current_cpus).unwrap());
                 }
-              } else if utilization < lower_bound
+              } else if avg_utilization < lower_bound
                 && current_cpus < max_parallelism
               {
                 current_cpus += 1;
                 parallelism
                   .set_parallelism(NonZeroUsize::new(current_cpus).unwrap());
               }
+
+              // clear the samples and re-evaluate after a period of time
+              cpu_samples.clear();
             }
             _ => {
               return;
