@@ -36,16 +36,18 @@ pub fn maybe_auth_header_value_for_npm_registry(
     return Err(AuthHeaderForNpmRegistryError::Both);
   }
 
-  if username.is_some() && password.is_some() {
+  if let Some(username) = username
+    && let Some(password) = password
+  {
     // The npm client does some double encoding when generating the
     // bearer token value, see
     // https://github.com/npm/cli/blob/780afc50e3a345feb1871a28e33fa48235bc3bd5/workspaces/config/lib/index.js#L846-L851
     let pw_base64 = BASE64_STANDARD
-      .decode(password.unwrap())
+      .decode(password)
       .map_err(AuthHeaderForNpmRegistryError::Base64)?;
     let bearer = BASE64_STANDARD.encode(format!(
       "{}:{}",
-      username.unwrap(),
+      username,
       String::from_utf8_lossy(&pw_base64)
     ));
 
