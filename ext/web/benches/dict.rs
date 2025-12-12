@@ -13,7 +13,10 @@ fn setup() -> Vec<Extension> {
     esm = ["ext:deno_webidl_bench/setup.js" = "benches/dict.js"]
   );
 
-  vec![deno_web::deno_web::init(Default::default(), None, Default::default()), deno_webidl_bench::init()]
+  vec![
+    deno_web::deno_web::init(Default::default(), None, Default::default()),
+    deno_webidl_bench::init(),
+  ]
 }
 
 fn converter_undefined(b: &mut Bencher) {
