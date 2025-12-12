@@ -594,7 +594,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
     let url = Url::parse(source_url).ok()?;
-    Some(self.shared.modules.has_file(&url))
+    if let Ok(path) = deno_path_util::url_to_file_path(&url) {
+      return Some(self.shared.modules.has_file(&path));
+    }
+
+    None
   }
 
   fn get_source_mapped_source_line(
