@@ -64,7 +64,7 @@ impl Default for CpuMonitorParallelism {
           (upper, lower)
         };
         loop {
-          match rx.recv_timeout(Duration::from_millis(250)) {
+          match rx.recv_timeout(Duration::from_millis(500)) {
             Err(RecvTimeoutError::Timeout) => {
               // the documentation recommends calling this twice in order
               // to get a more accurate cpu reading
