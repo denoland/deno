@@ -2,7 +2,6 @@
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
