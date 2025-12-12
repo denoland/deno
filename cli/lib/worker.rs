@@ -6,7 +6,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_bundle_runtime::BundleProvider;
+use deno_core::InspectorSessionProxy;
 use deno_core::error::JsError;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::parking_lot::Mutex;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
@@ -370,6 +373,8 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  main_inspector_session_tx:
+    Mutex<Option<UnboundedSender<InspectorSessionProxy>>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -458,6 +463,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.compiled_wasm_module_store.clone(),
         ),
         maybe_inspector_server,
+        main_inspector_session_tx: shared
+          .main_inspector_session_tx
+          .lock()
+          .clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
@@ -564,6 +573,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         fs,
         maybe_coverage_dir,
         maybe_inspector_server,
+        main_inspector_session_tx: Mutex::new(None),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -725,6 +735,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Store the main inspector session sender for worker debugging
+    let inspector = worker.js_runtime.inspector();
+    let session_tx = inspector.get_session_sender();
+    *shared.main_inspector_session_tx.lock() = Some(session_tx);
 
     Ok(LibMainWorker {
       main_module,

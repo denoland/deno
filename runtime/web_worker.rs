@@ -18,6 +18,7 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
+use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -29,6 +30,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -377,6 +379,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: Option<UnboundedSender<InspectorSessionProxy>>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -652,6 +655,7 @@ impl WebWorker {
       skip_op_registration: false,
       v8_platform: None,
       is_main: false,
+      worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
@@ -674,12 +678,26 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
+    if let Some(main_session_tx) = services.main_inspector_session_tx {
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
+        );
+
+      // Send worker proxy to the main runtime
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::warn!("Failed to send inspector session proxy to main runtime");
+      }
+
+      // Send worker proxy to the worker runtime
+      if js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
+        .is_err()
+      {
+        log::warn!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {

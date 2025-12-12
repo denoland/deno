@@ -1120,6 +1120,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     extension_transpiler: None,
     inspector: true,
     is_main: true,
+    worker_id: None,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),

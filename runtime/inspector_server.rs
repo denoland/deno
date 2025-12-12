@@ -12,6 +12,7 @@ use std::task::Poll;
 use std::thread;
 
 use deno_core::InspectorMsg;
+use deno_core::InspectorSessionChannels;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntimeInspector;
@@ -194,8 +195,10 @@ fn handle_ws_request(
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
     let inspector_session_proxy = InspectorSessionProxy {
-      tx: outbound_tx,
-      rx: inbound_rx,
+      channels: InspectorSessionChannels::Regular {
+        tx: outbound_tx,
+        rx: inbound_rx,
+      },
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: true,
       },
@@ -422,6 +425,7 @@ async fn pump_websocket_messages(
             match msg.opcode {
                 OpCode::Text => {
                     if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
+                      // eprintln!("Debugger sent: {}", s);
                       let _ = inbound_tx.unbounded_send(s);
                     }
                 }
@@ -429,6 +433,7 @@ async fn pump_websocket_messages(
                     // Users don't care if there was an error coming from debugger,
                     // just about the fact that debugger did disconnect.
                     log::info!("Debugger session ended");
+                    // eprintln!("Debugger session ended");
                     break 'pump;
                 }
                 _ => {
