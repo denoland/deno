@@ -9274,6 +9274,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "console_static_text",
+ "crossterm",
  "deno_unsync",
  "denokv_proto",
  "faster-hex",

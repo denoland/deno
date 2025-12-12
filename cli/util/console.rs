@@ -3,6 +3,7 @@
 use std::io;
 use std::sync::Arc;
 
+use console_static_text::ConsoleStaticText;
 use crossterm::ExecutableCommand;
 use crossterm::cursor;
 use crossterm::event::KeyCode;
@@ -19,6 +20,17 @@ use super::draw_thread::DrawThread;
 pub fn console_size() -> Option<ConsoleSize> {
   let stderr = &deno_runtime::deno_io::STDERR_HANDLE;
   deno_runtime::ops::tty::console_size(stderr).ok()
+}
+
+pub fn new_console_static_text() -> ConsoleStaticText {
+  ConsoleStaticText::new(move || {
+    let size = console_size();
+    let to_u16 = |value: u32| value.min(u16::MAX as u32) as u16;
+    console_static_text::ConsoleSize {
+      cols: size.map(|size| size.cols).map(to_u16),
+      rows: size.map(|size| size.rows).map(to_u16),
+    }
+  })
 }
 
 pub struct RawMode {

@@ -24,6 +24,7 @@ async-stream.workspace = true
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
+crossterm.workspace = true
 deno_unsync = "0"
 denokv_proto.workspace = true
 faster-hex.workspace = true

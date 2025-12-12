@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 use std::io;
 
-use console_static_text::ConsoleSize;
 use console_static_text::TextItem;
 use crossterm::ExecutableCommand;
 use crossterm::cursor;
@@ -18,6 +17,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::util::console::HideCursorGuard;
 use crate::util::console::RawMode;
+use crate::util::console::new_console_static_text;
 
 pub fn select_items<T, TRender>(
   instructions_line: &str,
@@ -35,20 +35,7 @@ where
   let mut stderr = io::stderr();
 
   let raw_mode = RawMode::enable()?;
-  let mut static_text =
-    console_static_text::ConsoleStaticText::new(move || {
-      if let Ok((cols, rows)) = terminal::size() {
-        ConsoleSize {
-          cols: Some(cols),
-          rows: Some(rows),
-        }
-      } else {
-        ConsoleSize {
-          cols: None,
-          rows: None,
-        }
-      }
-    });
+  let mut static_text = new_console_static_text();
   static_text.keep_cursor_zero_column(true);
 
   let (_, start_row) = cursor::position().unwrap_or_default();
