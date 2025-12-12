@@ -9,7 +9,7 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
-use test_util::test_runner::Parallelism;
+use test_util::test_runner::CpuMonitorParallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 use util::deno_config_path;
@@ -26,7 +26,7 @@ fn main() {
   if category.is_empty() {
     return;
   }
-  let parallelism = Parallelism::default();
+  let parallelism = CpuMonitorParallelism::default();
   let _g = util::http_server();
   // Run the crypto category tests separately without concurrency because they run in Deno with --parallel
   let (crypto_category, category) =
@@ -37,9 +37,7 @@ fn main() {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
-    },
+    move |test| flaky_test_ci(&test.name, || run_test(test)),
   );
   file_test_runner::run_tests(
     &crypto_category,
@@ -47,7 +45,7 @@ fn main() {
       parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
       ..Default::default()
     },
-    move |test| flaky_test_ci(&test.name, None, || run_test(test)),
+    move |test| flaky_test_ci(&test.name, || run_test(test)),
   );
 }
 

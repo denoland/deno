@@ -257,6 +257,7 @@ slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
 sys_traits = "=0.1.17"
+sysinfo = { version = "=0.37.2", features = ["system"], default-features = false }
 tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"

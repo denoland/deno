@@ -8,7 +8,7 @@ use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::TestContextBuilder;
-use test_util::test_runner::Parallelism;
+use test_util::test_runner::CpuMonitorParallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 
@@ -23,7 +23,7 @@ fn main() {
   if category.is_empty() {
     return; // no tests to run for the filter
   }
-  let parallelism = Parallelism::default();
+  let parallelism = CpuMonitorParallelism::default();
   let _g = util::http_server();
   file_test_runner::run_tests(
     &category,
@@ -31,9 +31,7 @@ fn main() {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
-    },
+    move |test| flaky_test_ci(&test.name, || run_test(test)),
   )
 }
 
