@@ -40,7 +40,7 @@ impl Default for CpuMonitorParallelism {
         let mut system = sysinfo::System::default();
         let max_parallelism = parallelism.max_parallelism().get();
         let mut current_cpus = max_parallelism;
-        if max_parallelism < 3 {
+        if max_parallelism < 3 || system.cpus().len() < 3 {
           return; // never decrease parallelism
         }
         // CPU thresholds for throttling test parallelism

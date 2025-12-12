@@ -269,7 +269,7 @@ pub fn main() {
       parallelism: parallelism.for_run_options(),
       reporter: Arc::new(LogReporter),
     },
-    move |test| run_test(test),
+    run_test,
   );
 }
 

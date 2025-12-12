@@ -127,6 +127,6 @@ pub fn main() {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| run_test(test),
+    run_test,
   );
 }
