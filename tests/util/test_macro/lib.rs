@@ -2,8 +2,13 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
+use quote::ToTokens;
+use syn::parse::Parser;
+use syn::punctuated::Punctuated;
 use syn::ItemFn;
+use syn::Meta;
 use syn::ReturnType;
+use syn::Token;
 use syn::parse_macro_input;
 
 #[derive(Default)]
@@ -19,42 +24,83 @@ pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
-  let attr_str = attr.to_string();
-  let attr_str = attr_str.trim();
-
-  if attr_str.is_empty() {
-    return TestAttributes::default();
-  }
+  // Parse as a comma-separated list of Meta items
+  let parser = Punctuated::<Meta, Token![,]>::parse_terminated;
+  let metas = match parser.parse(attr.clone()) {
+    Ok(metas) => metas,
+    Err(e) => {
+      panic!(
+        "Failed to parse test attributes: {}. Expected format: #[test], #[test(flaky)], or #[test(timeout = 60_000)]",
+        e
+      );
+    }
+  };
 
   let mut result = TestAttributes::default();
 
-  // Split by commas to handle multiple attributes
-  for part in attr_str.split(',') {
-    let part = part.trim();
-
-    if part == "flaky" {
-      result.flaky = true;
-    } else if let Some(timeout_value) = part.strip_prefix("timeout") {
-      // Parse "timeout = 60_000" or "timeout=60_000"
-      let timeout_value = timeout_value.trim();
-      if let Some(value_str) = timeout_value.strip_prefix('=') {
-        let value_str = value_str.trim();
-        // Remove underscores from the number (e.g., "60_000" -> "60000")
-        let value_str = value_str.replace('_', "");
-        match value_str.parse::<usize>() {
-          Ok(value) => result.timeout = Some(value),
-          Err(_) => {
-            panic!("Invalid timeout value: {}. Expected a number.", value_str);
-          }
+  for meta in metas {
+    match meta {
+      // Handle simple path like `flaky`
+      Meta::Path(path) => {
+        if path.is_ident("flaky") {
+          result.flaky = true;
+        } else {
+          let ident = path.get_ident().map(|i| i.to_string()).unwrap_or_else(|| path.to_token_stream().to_string());
+          panic!(
+            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
+            ident
+          );
         }
-      } else {
-        panic!("Invalid timeout syntax. Expected: timeout = <number>");
       }
-    } else {
-      panic!(
-        "Unknown test attribute: '{}'. Valid attributes are: flaky, timeout = <number>",
-        part
-      );
+      // Handle name-value pairs like `timeout = 60_000`
+      Meta::NameValue(name_value) => {
+        if name_value.path.is_ident("timeout") {
+          // Extract the literal value
+          match &name_value.value {
+            syn::Expr::Lit(expr_lit) => {
+              match &expr_lit.lit {
+                syn::Lit::Int(lit_int) => {
+                  // Use base10_parse to automatically handle underscores
+                  match lit_int.base10_parse::<usize>() {
+                    Ok(value) => result.timeout = Some(value),
+                    Err(e) => {
+                      panic!(
+                        "Invalid timeout value: '{}'. Error: {}. Expected a positive integer (e.g., timeout = 60_000).",
+                        lit_int, e
+                      );
+                    }
+                  }
+                }
+                _ => {
+                  panic!(
+                    "Invalid timeout value type. Expected an integer literal (e.g., timeout = 60_000), got: {:?}",
+                    expr_lit.lit
+                  );
+                }
+              }
+            }
+            _ => {
+              panic!(
+                "Invalid timeout value. Expected an integer literal (e.g., timeout = 60_000), got: {}",
+                quote::quote!(#name_value.value)
+              );
+            }
+          }
+        } else {
+          let ident = name_value.path.get_ident().map(|i| i.to_string()).unwrap_or_else(|| name_value.path.to_token_stream().to_string());
+          panic!(
+            "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
+            ident
+          );
+        }
+      }
+      // Handle other meta types (List, etc.)
+      _ => {
+        panic!(
+          "Invalid test attribute format: '{}'. Expected format:\n  - flaky\n  - timeout = <number>",
+          quote::quote!(#meta)
+        );
+      }
     }
   }
 

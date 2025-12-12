@@ -63,9 +63,31 @@ pub fn with_captured_output<F, R>(f: F) -> (Vec<u8>, R)
 where
   F: FnOnce() -> R,
 {
-  if !*file_test_runner::NO_CAPTURE {
-    set_buffer(true);
+  /// RAII guard that ensures the output buffer is cleaned up even on panic
+  struct CaptureGuard {
+    enabled: bool,
   }
+
+  impl CaptureGuard {
+    fn new(enabled: bool) -> Self {
+      if enabled {
+        set_buffer(true);
+      }
+      Self { enabled }
+    }
+  }
+
+  impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+      if self.enabled {
+        // Ensure buffer is disabled even on panic
+        set_buffer(false);
+      }
+    }
+  }
+
+  let should_capture = !*file_test_runner::NO_CAPTURE;
+  let _guard = CaptureGuard::new(should_capture);
   let result = f();
   let output = take_buffer();
   (output, result)
