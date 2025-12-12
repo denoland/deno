@@ -444,10 +444,12 @@ impl MainWorker {
     }
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
