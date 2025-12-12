@@ -1263,7 +1263,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
       && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
     {
-      return Some(path.exists());
+      return Some(path.is_file());
     }
 
     None
