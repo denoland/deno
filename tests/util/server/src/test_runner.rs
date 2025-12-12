@@ -157,29 +157,54 @@ struct PtyReporterPendingTest {
   start_time: Instant,
 }
 
+struct PtyReporterFailedTest {
+  name: String,
+  path: String,
+}
+
 struct PtyReporterData {
   static_text: ConsoleStaticText,
   pending_tests: Vec<PtyReporterPendingTest>,
-  failed_tests: Vec<String>,
+  failed_tests: Vec<PtyReporterFailedTest>,
   passed_tests: usize,
+  ignored_tests: usize,
 }
 
 impl PtyReporterData {
   pub fn render(&mut self) -> Option<String> {
-    let items: Vec<_> = self
-      .pending_tests
-      .iter()
-      .map(|item| {
+    let mut items = Vec::new();
+    if !self.pending_tests.is_empty() {
+      items.push(console_static_text::TextItem::Text(
+        colors::yellow("pending:").into(),
+      ));
+      items.extend(self.pending_tests.iter().map(|item| {
         console_static_text::TextItem::Text(
-          format!(
-            "test {} ... ({}s)",
-            item.name,
-            item.start_time.elapsed().as_secs()
-          )
-          .into(),
+          format!("- {} ({}s)", item.name, item.start_time.elapsed().as_secs())
+            .into(),
         )
-      })
-      .collect();
+      }));
+    }
+    if !self.failed_tests.is_empty() {
+      items.push(console_static_text::TextItem::Text(
+        colors::red("failed:").to_string().into(),
+      ));
+      for item in &self.failed_tests {
+        items.push(console_static_text::TextItem::Text(
+          format!("- {} ({})", item.name, colors::gray(&item.path)).into(),
+        ));
+      }
+    }
+
+    items.push(console_static_text::TextItem::Text(
+      format!(
+        "{} Passed - {} Failed - {} Ignored",
+        self.passed_tests,
+        self.failed_tests.len(),
+        self.ignored_tests
+      )
+      .into(),
+    ));
+
     self.static_text.render_items(items.iter())
   }
 }
@@ -202,6 +227,7 @@ impl PtyReporter {
         pending_tests: Default::default(),
         failed_tests: Default::default(),
         passed_tests: Default::default(),
+        ignored_tests: Default::default(),
       }),
     }
   }
@@ -278,10 +304,27 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       {
         data.pending_tests.remove(index);
       }
-      if result.is_failed() {
-        data.failed_tests.push(test.name.clone());
-      } else if matches!(result, TestResult::Passed) {
-        data.passed_tests += 1;
+      match result {
+        TestResult::Passed => {
+          data.passed_tests += 1;
+        }
+        TestResult::Ignored => {
+          data.ignored_tests += 1;
+        }
+        TestResult::Failed { .. } => {
+          data.failed_tests.push(PtyReporterFailedTest {
+            name: test.name.to_string(),
+            path: match test.line_and_column {
+              Some((line, col)) => {
+                format!("{}:{}:{}", test.path.display(), line + 1, col + 1)
+              }
+              None => test.path.display().to_string(),
+            },
+          });
+        }
+        TestResult::SubTests(..) => {
+          // ignore
+        }
       }
       data.render()
     };

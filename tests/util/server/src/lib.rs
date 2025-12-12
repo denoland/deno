@@ -732,6 +732,10 @@ pub(crate) mod colors {
     fg_color(s, Color::Ansi256(245))
   }
 
+  pub fn yellow<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Yellow)
+  }
+
   fn bold_fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
     let mut style_spec = ColorSpec::new();
     style_spec.set_bold(true);
