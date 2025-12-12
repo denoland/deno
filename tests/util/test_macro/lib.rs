@@ -1,15 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use proc_macro::TokenStream;
-use quote::quote;
 use quote::ToTokens;
-use syn::parse::Parser;
-use syn::punctuated::Punctuated;
+use quote::quote;
 use syn::ItemFn;
 use syn::Meta;
 use syn::ReturnType;
 use syn::Token;
+use syn::parse::Parser;
 use syn::parse_macro_input;
+use syn::punctuated::Punctuated;
 
 #[derive(Default)]
 struct TestAttributes {
@@ -45,7 +45,10 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
         if path.is_ident("flaky") {
           result.flaky = true;
         } else {
-          let ident = path.get_ident().map(|i| i.to_string()).unwrap_or_else(|| path.to_token_stream().to_string());
+          let ident = path
+            .get_ident()
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| path.to_token_stream().to_string());
           panic!(
             "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
             ident
@@ -87,7 +90,11 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
             }
           }
         } else {
-          let ident = name_value.path.get_ident().map(|i| i.to_string()).unwrap_or_else(|| name_value.path.to_token_stream().to_string());
+          let ident = name_value
+            .path
+            .get_ident()
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| name_value.path.to_token_stream().to_string());
           panic!(
             "Unknown test attribute: '{}'. Valid attributes are:\n  - flaky\n  - timeout = <number>",
             ident
