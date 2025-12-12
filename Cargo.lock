@@ -2406,6 +2406,7 @@ dependencies = [
  "deno_tunnel",
  "hickory-proto",
  "hickory-resolver",
+ "nix 0.27.1",
  "log",
  "pin-project",
  "quinn",
