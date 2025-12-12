@@ -43,21 +43,25 @@ impl Default for CpuMonitorParallelism {
         if max_parallelism < 3 {
           return; // never decrease parallelism
         }
-        // lifted from https://github.com/dprint/dprint/blob/8cbb2acc99ebea08d0dc5be77a965c77ee970792/crates/dprint/src/format.rs#L329
-        let upper_bound = if max_parallelism >= 50 {
-          97
+        // CPU thresholds for throttling test parallelism
+        // Higher parallelism uses tighter bounds (95-97%) to be more responsive
+        // Lower parallelism uses wider bounds to avoid thrashing
+        let (upper_bound, lower_bound) = if max_parallelism >= 50 {
+          // High parallelism: tight bounds for quick response
+          (97, 95)
         } else {
-          std::cmp::max((100f64 - 100f64 / (max_parallelism as f64)) as u8, 50)
-        };
-        let lower_bound = if max_parallelism >= 50 {
-          95
-        } else {
-          let target_cpu = upper_bound;
-          let ratio = max_parallelism as f64 / 60f64;
-          let target_cpu = target_cpu
-            - std::cmp::min((5f64 * (1f64 - ratio)) as u8, target_cpu);
-          target_cpu
-            - std::cmp::min(target_cpu, (100f64 / max_parallelism as f64) as u8)
+          // Low parallelism: calculate adaptive bounds
+          // Upper bound: leave headroom inversely proportional to parallelism
+          // e.g., parallelism=10 -> upper=90%, parallelism=30 -> upper=~97%
+          let upper = ((100.0 - 100.0 / max_parallelism as f64) as u8).max(50);
+
+          // Lower bound: scale down from upper bound
+          // More parallelism -> tighter bounds (smaller gap)
+          // Less parallelism -> wider bounds (larger gap)
+          let gap = (100.0 / max_parallelism as f64).min(20.0) as u8;
+          let lower = upper.saturating_sub(gap).max(30);
+
+          (upper, lower)
         };
         loop {
           match rx.recv_timeout(Duration::from_millis(250)) {
