@@ -778,59 +778,7 @@ pub fn collect_and_filter_tests(
   >,
 ) {
   for test in inventory::iter::<TestMacroCase>() {
-    // Split the module path into parts (e.g., "integration::bench::test_name" -> ["integration", "bench"])
-    let module_parts: Vec<&str> = test.module_name.split("::").collect();
-
-    // Navigate/create the category hierarchy based on module path
-    let mut current_category: &mut file_test_runner::collection::CollectedTestCategory<
-      &'static TestMacroCase,
-    > = main_category;
-
-    for part in module_parts.iter() {
-      // Find or create the child category
-      let child_index = current_category.children.iter().position(|child| {
-        if let file_test_runner::collection::CollectedCategoryOrTest::Category(
-          cat,
-        ) = child
-        {
-          cat.name == *part
-        } else {
-          false
-        }
-      });
-
-      let child_index = if let Some(idx) = child_index {
-        idx
-      } else {
-        // Create new category
-        let new_category =
-          file_test_runner::collection::CollectedTestCategory {
-            name: part.to_string(),
-            path: PathBuf::from(test.file)
-              .parent()
-              .unwrap_or(std::path::Path::new(""))
-              .to_path_buf(),
-            children: vec![],
-          };
-        current_category.children.push(
-          file_test_runner::collection::CollectedCategoryOrTest::Category(
-            new_category,
-          ),
-        );
-        current_category.children.len() - 1
-      };
-
-      // Move to the child category
-      current_category = match &mut current_category.children[child_index] {
-        file_test_runner::collection::CollectedCategoryOrTest::Category(
-          cat,
-        ) => cat,
-        _ => unreachable!("Expected category"),
-      };
-    }
-
-    // Add the test to the current category
-    current_category.children.push(
+    main_category.children.push(
       file_test_runner::collection::CollectedCategoryOrTest::Test(
         file_test_runner::collection::CollectedTest {
           name: format!("{}::{}", test.module_name, test.name),
