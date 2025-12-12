@@ -5787,8 +5787,7 @@ dependencies = [
 [[package]]
 name = "libsui"
 version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c238ae4b3e1467d748ad42f1ffa68618ee40b901bcee0296b0ecea07306b1f5"
+source = "git+https://github.com/denoland/sui?branch=intel-mac-sentinal-conflict#58c505dc0ff7f26ce76f4e9709e2ef0feaddaf8c"
 dependencies = [
  "editpe",
  "image",
