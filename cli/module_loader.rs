@@ -1256,6 +1256,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     None
   }
 
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let specifier = resolve_url(source_url).ok()?;
+
+    // For npm packages, we can check the file system directly
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return Some(path.is_file());
+    }
+
+    None
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,

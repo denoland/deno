@@ -2172,6 +2172,8 @@ console.log("---");
   wait_contains("FOO: initial_value", &mut stdout_lines).await;
   wait_contains("BAR: test_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
 
   // Change the .env file
   std::fs::write(
@@ -2180,16 +2182,14 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
-
+  // Wait for actual restart (not the initial "Restarting on file change..." message)
+  wait_contains("Restarting!", &mut stderr_lines).await;
   // Check that new values are reflected
   wait_contains("FOO: updated_value", &mut stdout_lines).await;
   wait_contains("BAR: test_value", &mut stdout_lines).await;
   // This test should fail if NEW_VAR isn't being loaded - but the script doesn't read NEW_VAR
   // so we can't test for it without updating the script first
   wait_contains("---", &mut stdout_lines).await;
-
   check_alive_then_kill(child);
 }
 
@@ -2363,6 +2363,9 @@ console.log("---");
   wait_contains("BAR: valid_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Change to invalid .env file
   std::fs::write(
     &env_file,
@@ -2370,8 +2373,8 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart - should show warning but continue
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart - should show warning but continue
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Should still show valid values - test the error handling behavior
   let foo_line = wait_contains("FOO:", &mut stdout_lines).await;
@@ -2438,6 +2441,9 @@ console.log("---");
   wait_contains("BAR: env_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Change the script to read different env vars
   std::fs::write(
     &main_script,
@@ -2450,8 +2456,8 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Should show FOO and BAR, but BAZ should be undefined
   wait_contains("FOO: env_value", &mut stdout_lines).await;
@@ -2463,12 +2469,15 @@ console.log("---");
   );
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure previous run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Now add BAZ to .env file
   std::fs::write(&env_file, "FOO=env_value\nBAR=env_value\nBAZ=new_env_value")
     .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Now BAZ should have a value
   wait_contains("FOO: env_value", &mut stdout_lines).await;

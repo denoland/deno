@@ -63,7 +63,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.372.0" }
+deno_core = { version = "0.373.0" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.188.0"
@@ -314,7 +314,7 @@ dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
-libsui = "0.12.2"
+libsui = "0.12.3"
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"
