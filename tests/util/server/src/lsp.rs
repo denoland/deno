@@ -53,6 +53,7 @@ use crate::deno_exe_path;
 use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
+use crate::print::spawn_thread;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -127,7 +128,7 @@ struct LspStdoutReader {
 impl LspStdoutReader {
   pub fn new(mut buf_reader: io::BufReader<ChildStdout>) -> Self {
     let messages: Arc<(Mutex<Vec<LspMessage>>, Condvar)> = Default::default();
-    std::thread::spawn({
+    spawn_thread({
       let messages = messages.clone();
       move || {
         while let Ok(Some(msg_buf)) = read_message(&mut buf_reader) {
@@ -568,7 +569,7 @@ impl LspClientBuilder {
         let (tx, rx) = mpsc::channel::<String>();
         let (perf_tx, perf_rx) =
           self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
-        std::thread::spawn(move || {
+        spawn_thread(move || {
           let stderr = BufReader::new(stderr);
           for line in stderr.lines() {
             match line {

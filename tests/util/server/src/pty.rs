@@ -489,6 +489,7 @@ mod windows {
 
   use super::PTY_ROWS_COLS;
   use super::SystemPty;
+  use crate::print::spawn_thread;
 
   macro_rules! assert_win_success {
     ($expression:expr) => {
@@ -590,7 +591,7 @@ mod windows {
 
         // start a thread that will close the pseudoconsole on process exit
         let thread_handle = WinHandle::new(proc_info.hThread);
-        std::thread::spawn({
+        spawn_thread({
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {

@@ -40,6 +40,7 @@ use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
+use crate::print::spawn_thread;
 use crate::println;
 use crate::pty::Pty;
 use crate::servers::tsgo_prebuilt_path;
@@ -728,12 +729,8 @@ impl TestCommandBuilder {
       (
         None,
         Some((
-          std::thread::spawn(move || {
-            read_pipe_to_string(stdout_reader, show_output)
-          }),
-          std::thread::spawn(move || {
-            read_pipe_to_string(stderr_reader, show_output)
-          }),
+          spawn_thread(move || read_pipe_to_string(stdout_reader, show_output)),
+          spawn_thread(move || read_pipe_to_string(stderr_reader, show_output)),
         )),
       )
     } else {
@@ -948,7 +945,7 @@ impl DenoChild {
     let stdout = deno.stdout.take().unwrap();
     let no_capture = *file_test_runner::NO_CAPTURE;
     let final_output = Arc::new(Mutex::new(Vec::<String>::new()));
-    let stdout = std::thread::spawn({
+    let stdout = spawn_thread({
       let final_output = final_output.clone();
       let test_name = test_name.to_string();
       move || {
@@ -972,7 +969,7 @@ impl DenoChild {
 
     let now = Instant::now();
     let stderr = deno.stderr.take().unwrap();
-    let stderr = std::thread::spawn({
+    let stderr = spawn_thread({
       let final_output = final_output.clone();
       let test_name = test_name.to_string();
       move || {

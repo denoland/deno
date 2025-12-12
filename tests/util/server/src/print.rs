@@ -2,30 +2,59 @@
 
 use std::cell::RefCell;
 use std::io::Write;
+use std::sync::Arc;
+use std::thread::JoinHandle;
+
+use parking_lot::Mutex;
 
 thread_local! {
-    static OUTPUT_BUFFER: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+  static OUTPUT_BUFFER: RefCell<Arc<Mutex<Option<Vec<u8>>>>> = RefCell::new(Arc::new(Mutex::new(None)));
+}
+
+/// Spawns a thread maintaining the output buffer for capturing printing.
+pub fn spawn_thread<F, T>(f: F) -> JoinHandle<T>
+where
+  F: FnOnce() -> T,
+  F: Send + 'static,
+  T: Send + 'static,
+{
+  let captured_buffer = OUTPUT_BUFFER.with(|buffer| buffer.borrow().clone());
+  #[allow(clippy::disallowed_methods)]
+  std::thread::spawn(|| {
+    OUTPUT_BUFFER.with(|buffer| {
+      *buffer.borrow_mut() = captured_buffer;
+    });
+    f()
+  })
 }
 
 /// Print to stdout, or to the thread-local buffer if one is set
 pub fn print_stdout(data: &[u8]) {
-  OUTPUT_BUFFER.with(|buffer| {
-    if let Some(ref mut buf) = *buffer.borrow_mut() {
-      buf.extend_from_slice(data);
-    } else {
-      let _ = std::io::stdout().write_all(data);
+  OUTPUT_BUFFER.with(|buffer_cell| {
+    {
+      let buffer = buffer_cell.borrow();
+      let mut buffer = buffer.lock();
+      if let Some(ref mut buf) = *buffer {
+        buf.extend_from_slice(data);
+        return;
+      }
     }
+    let _ = std::io::stdout().write_all(data);
   });
 }
 
 /// Print to stderr, or to the thread-local buffer if one is set
 pub fn print_stderr(data: &[u8]) {
-  OUTPUT_BUFFER.with(|buffer| {
-    if let Some(ref mut buf) = *buffer.borrow_mut() {
-      buf.extend_from_slice(data);
-    } else {
-      let _ = std::io::stderr().write_all(data);
+  OUTPUT_BUFFER.with(|buffer_cell| {
+    {
+      let buffer = buffer_cell.borrow();
+      let mut buffer = buffer.lock();
+      if let Some(ref mut buf) = *buffer {
+        buf.extend_from_slice(data);
+        return;
+      }
     }
+    let _ = std::io::stderr().write_all(data);
   });
 }
 
@@ -44,13 +73,13 @@ where
 
 fn set_buffer(enabled: bool) {
   OUTPUT_BUFFER.with(|buffer| {
-    let mut buffer = buffer.borrow_mut();
-    *buffer = if enabled { Some(Vec::new()) } else { None };
+    let buffer = buffer.borrow();
+    *buffer.lock() = if enabled { Some(Vec::new()) } else { None };
   });
 }
 
 fn take_buffer() -> Vec<u8> {
-  OUTPUT_BUFFER.with(|buffer| buffer.borrow_mut().take().unwrap_or_default())
+  OUTPUT_BUFFER.with(|buffer| buffer.borrow().lock().take().unwrap_or_default())
 }
 
 /// Print to stdout with a newline

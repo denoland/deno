@@ -172,7 +172,7 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.8.3"
+file_test_runner = "0.9.0"
 filetime = "0.2.16"
 flate2 = { version = "1.0.30", default-features = false }
 fqdn = "0.4.6"
@@ -212,7 +212,6 @@ mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
 notify = "=6.1.1"
-ntest_timeout = "0.9.3"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -543,6 +542,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-file_test_runner = { path = "../file_test_runner" }

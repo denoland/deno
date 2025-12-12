@@ -767,6 +767,7 @@ pub struct TestMacroCase {
   pub func: fn(),
   pub flaky: bool,
   pub ignore: bool,
+  pub timeout: Option<usize>,
 }
 
 inventory::collect!(TestMacroCase);

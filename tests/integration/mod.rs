@@ -88,6 +88,12 @@ pub fn main() {
       return TestResult::Ignored;
     }
     let run_test = || {
+      let _test_timeout_holder = test.data.timeout.map(|timeout_secs| {
+        test_util::test_runner::with_timeout(
+          test.name.clone(),
+          std::time::Duration::from_secs(timeout_secs as u64),
+        )
+      });
       let (mut captured_output, result) =
         test_util::print::with_captured_output(|| {
           TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
