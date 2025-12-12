@@ -1,6 +1,5 @@
 {
   "tempDir": true,
-  "if": "unix",
   "args": "x -y @denotest/deno --version",
   "output": "x.out"
 }

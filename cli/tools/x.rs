@@ -105,13 +105,8 @@ async fn maybe_run_local_npm_bin(
 ) -> Result<Option<i32>, AnyError> {
   let permissions = factory.root_permissions_container()?;
 
-  let bins = resolve_local_bins(node_resolver, npm_resolver)?;
-  let command = if command.starts_with("@") && command.contains("/") {
-    command.split("/").last().unwrap()
-  } else {
-    command
-  };
-  let bin_value = if let Some(bin_value) = bins.get(command) {
+  let mut bins = resolve_local_bins(node_resolver, npm_resolver)?;
+  let bin_value = if let Some(bin_value) = bins.remove(command) {
     bin_value
   } else if let Some(bin_value) = {
     let command = if command.starts_with("@") && command.contains("/") {
@@ -119,7 +114,7 @@ async fn maybe_run_local_npm_bin(
     } else {
       command
     };
-    bins.get(command)
+    bins.remove(command)
   } {
     bin_value
   } else {
@@ -134,7 +129,15 @@ async fn maybe_run_local_npm_bin(
         .await
         .map(Some);
     }
-    BinValue::Executable(path_buf) => {
+    BinValue::Executable(mut path_buf) => {
+      if cfg!(windows) && path_buf.extension().is_none() {
+        // prefer cmd shim over sh
+        path_buf.set_extension("cmd");
+        if !path_buf.exists() {
+          //  just fall back to original path
+          path_buf.set_extension("");
+        }
+      }
       permissions.check_run(
         &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
           PathQueryDescriptor::new(
@@ -248,7 +251,7 @@ exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
     std::fs::write(
       out_path,
       r##"@echo off
-./deno.exe x %*
+"%~dp0deno.exe" x %*
 exit /b %ERRORLEVEL%
 "##,
     )?;

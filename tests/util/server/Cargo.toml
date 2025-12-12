@@ -28,6 +28,7 @@ deno_unsync = "0"
 denokv_proto.workspace = true
 faster-hex.workspace = true
 fastwebsockets.workspace = true
+file_test_runner.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 glob.workspace = true

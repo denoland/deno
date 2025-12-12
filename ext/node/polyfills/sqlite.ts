@@ -2,17 +2,94 @@
 
 import { primordials } from "ext:core/mod.js";
 import {
-  DatabaseSync,
+  DatabaseSync as DatabaseSyncOp,
   op_node_database_backup,
   StatementSync,
 } from "ext:core/ops";
-import { Buffer } from "node:buffer";
+import type { Buffer } from "node:buffer";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import type { URL } from "node:url";
 
 const {
   ObjectDefineProperties,
-  SymbolFor,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectConstruct,
+  StringPrototypeIncludes,
   SymbolDispose,
+  SymbolFor,
+  TypeError,
 } = primordials;
+
+class ConstructCallRequiredError extends TypeError {
+  code: string;
+  constructor() {
+    super("Cannot call constructor without `new`");
+    this.code = "ERR_CONSTRUCT_CALL_REQUIRED";
+  }
+}
+
+class InvalidPathError extends TypeError {
+  code: string;
+  constructor() {
+    super(
+      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
+    );
+    this.code = "ERR_INVALID_ARG_TYPE";
+  }
+}
+
+class InvalidURLSchemeError extends TypeError {
+  code: string;
+  constructor() {
+    super("The URL must be of scheme file:");
+    this.code = "ERR_INVALID_URL_SCHEME";
+  }
+}
+
+const parsePath = (path: unknown): string => {
+  let parsedPath: string | undefined;
+  if (typeof path === "string") {
+    parsedPath = path;
+  } else if (isUint8Array(path)) {
+    const decoder = new TextDecoder("utf8");
+    parsedPath = decoder.decode(path);
+    // @ts-expect-error safe to check even though `path` is unknown
+  } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, path)) {
+    if ((path as URL).protocol !== "file:") {
+      throw new InvalidURLSchemeError();
+    }
+    parsedPath = (path as URL).href;
+  }
+
+  if (
+    typeof parsedPath === "undefined" ||
+    StringPrototypeIncludes(parsedPath, "\0")
+  ) {
+    throw new InvalidPathError();
+  }
+
+  return parsedPath;
+};
+
+// Using ES5 class allows custom error to be thrown
+// when called without `new`.
+function DatabaseSync(
+  path: string | URL | Buffer,
+  options?: unknown,
+): DatabaseSyncOp {
+  if (new.target === undefined) {
+    throw new ConstructCallRequiredError();
+  }
+  return ReflectConstruct(
+    DatabaseSyncOp,
+    [parsePath(path), options],
+    new.target,
+  );
+}
+ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
+ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
 interface BackupOptions {
   /**
@@ -42,10 +119,6 @@ interface BackupOptions {
 interface BackupProgressInfo {
   totalPages: number;
   remainingPages: number;
-}
-
-interface BackupResult {
-  totalPages: number;
 }
 
 /**
@@ -83,12 +156,11 @@ async function backup(
   path: string | Buffer | URL,
   options?: BackupOptions,
 ): Promise<number> {
-  const result: BackupResult = await op_node_database_backup(
+  return await op_node_database_backup(
     sourceDb,
-    path,
+    parsePath(path),
     options,
   );
-  return result.totalPages;
 }
 
 export const constants = {

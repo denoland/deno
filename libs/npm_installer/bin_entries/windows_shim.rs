@@ -23,6 +23,7 @@ use std::io::BufRead;
 use std::path::Path;
 use std::path::PathBuf;
 
+use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 
@@ -295,7 +296,9 @@ impl ShimData {
 }
 
 pub fn set_up_bin_shim<'a>(
-  sys: &(impl FsOpen + FsWrite),
+  sys: &(impl FsOpen + FsWrite + FsMetadata),
+  package: &'a deno_npm::NpmResolutionPackage,
+  extra: &'a deno_npm::NpmPackageExtraInfo,
   bin_name: &'a str,
   bin_script: &'a str,
   package_path: &'a Path,
@@ -303,6 +306,22 @@ pub fn set_up_bin_shim<'a>(
 ) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
   let shim_path = bin_node_modules_dir_path.join(bin_name);
   let target_file = package_path.join(bin_script);
+
+  let target_file = if !sys.fs_exists_no_err(&target_file) {
+    let target_file_exe = target_file.with_extension("exe");
+    if !sys.fs_exists_no_err(&target_file_exe) {
+      return Ok(EntrySetupOutcome::MissingEntrypoint {
+        bin_name,
+        package_path,
+        entrypoint: target_file,
+        package,
+        extra,
+      });
+    }
+    target_file_exe
+  } else {
+    target_file
+  };
 
   let rel_target =
     relative_path(bin_node_modules_dir_path, &target_file).unwrap();

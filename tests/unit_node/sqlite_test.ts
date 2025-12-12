@@ -2,6 +2,7 @@
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as nodeAssert from "node:assert";
+import { Buffer } from "node:buffer";
 
 const tempDir = Deno.makeTempDirSync();
 
@@ -836,4 +837,38 @@ Deno.test("[node/sqlite] DatabaseSync.aggregate: throws an error when trying to 
     code: "ERR_SQLITE_ERROR",
     message: "sumint() may not be used as a window function",
   });
+});
+
+Deno.test("[node/sqlite] accept Buffer paths", () => {
+  const dbPath = `${tempDir}/buffer_path.db`;
+  const backupPath = `${tempDir}/buffer_path_backup.db`;
+  const dbPathBuffer = Buffer.from(dbPath);
+  const backupPathBuffer = Buffer.from(backupPath);
+  const db = new DatabaseSync(dbPathBuffer);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, backupPathBuffer);
+  db.close();
+
+  Deno.removeSync(dbPath);
+  Deno.removeSync(backupPath);
+});
+
+Deno.test("[node/sqlite] accept URL paths", () => {
+  const dbPath = `file://${tempDir}/url_path.db`;
+  const backupPath = `file://${tempDir}/url_path_backup.db`;
+  const dbPathUrl = new URL(dbPath);
+  const backupPathUrl = new URL(backupPath);
+  const db = new DatabaseSync(dbPathUrl);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, backupPathUrl);
+  db.close();
+
+  Deno.removeSync(dbPathUrl);
+  Deno.removeSync(backupPathUrl);
 });
