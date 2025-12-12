@@ -5787,7 +5787,7 @@ dependencies = [
 [[package]]
 name = "libsui"
 version = "0.12.3"
-source = "git+https://github.com/denoland/sui?branch=intel-mac-sentinal-conflict#58c505dc0ff7f26ce76f4e9709e2ef0feaddaf8c"
+source = "git+https://github.com/denoland/sui?rev=e103ea0c6461664b59b4b224ff0f526898efe536#e103ea0c6461664b59b4b224ff0f526898efe536"
 dependencies = [
  "editpe",
  "image",
