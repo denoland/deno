@@ -1214,7 +1214,12 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBuffer;
+type Transferable =
+  | MessagePort
+  | ArrayBuffer
+  | ReadableStream
+  | WritableStream
+  | TransformStream;
 
 /**
  * Options that control structured serialization operations such as

@@ -39,6 +39,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -1046,7 +1047,11 @@ async fn initialize_tunnel(
       .to_deploy_config()?
       .expect("auth to be called");
 
-    (deploy_config.org, deploy_config.app)
+    let Some(app) = deploy_config.app else {
+      anyhow::bail!("The 'app' key is missing from the 'deploy' configuration");
+    };
+
+    (deploy_config.org, app)
   };
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
