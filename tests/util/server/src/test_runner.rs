@@ -5,6 +5,8 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -89,7 +91,8 @@ pub fn run_flaky_test(
 
   // if we got here, it means the CI is very flaky at the moment
   // so reduce concurrency down to 1
-  if let Some(parallelism) = parallelism
+  if *IS_CI
+    && let Some(parallelism) = parallelism
     && parallelism.limit_to_one()
   {
     eprintln!(
@@ -107,7 +110,7 @@ pub fn run_flaky_test(
     }
   }
 
-  // surface on third try
+  // surface this one
   action()
 }
 
@@ -171,6 +174,10 @@ struct PtyReporterData {
 }
 
 impl PtyReporterData {
+  pub fn render_clear(&mut self) -> String {
+    self.static_text.render_clear().unwrap_or_default()
+  }
+
   pub fn render(&mut self) -> Option<String> {
     let mut items = Vec::new();
     if !self.pending_tests.is_empty() {
@@ -197,7 +204,7 @@ impl PtyReporterData {
 
     items.push(console_static_text::TextItem::Text(
       format!(
-        "{} Passed - {} Failed - {} Ignored",
+        "    {} Passed - {} Failed - {} Ignored",
         self.passed_tests,
         self.failed_tests.len(),
         self.ignored_tests
@@ -210,39 +217,45 @@ impl PtyReporterData {
 }
 
 struct PtyReporter {
-  data: Mutex<PtyReporterData>,
+  data: Arc<Mutex<PtyReporterData>>,
+  _tx: std::sync::mpsc::Sender<()>,
 }
 
 impl PtyReporter {
   pub fn new() -> Self {
-    Self {
-      data: Mutex::new(PtyReporterData {
-        static_text: ConsoleStaticText::new(move || {
-          let size = crossterm::terminal::size().ok();
-          console_static_text::ConsoleSize {
-            cols: size.map(|(cols, _)| cols),
-            rows: size.map(|(_, rows)| rows),
-          }
-        }),
-        pending_tests: Default::default(),
-        failed_tests: Default::default(),
-        passed_tests: Default::default(),
-        ignored_tests: Default::default(),
+    let (tx, rx) = channel();
+    let data = Arc::new(Mutex::new(PtyReporterData {
+      static_text: ConsoleStaticText::new(move || {
+        let size = crossterm::terminal::size().ok();
+        console_static_text::ConsoleSize {
+          cols: size.map(|(cols, _)| cols),
+          rows: size.map(|(_, rows)| rows),
+        }
       }),
-    }
-  }
-  pub fn render(&self) {
-    let maybe_text = { self.data.lock().render() };
-    if let Some(text) = maybe_text {
-      _ = std::io::stderr().write_all(text.as_bytes());
-    }
-  }
-
-  pub fn render_clear(&self) {
-    let maybe_clear_text = { self.data.lock().static_text.render_clear() };
-    if let Some(text) = maybe_clear_text {
-      _ = std::io::stderr().write_all(text.as_bytes());
-    }
+      pending_tests: Default::default(),
+      failed_tests: Default::default(),
+      passed_tests: Default::default(),
+      ignored_tests: Default::default(),
+    }));
+    std::thread::spawn({
+      let data = data.clone();
+      move || {
+        loop {
+          match rx.recv_timeout(Duration::from_millis(1_000)) {
+            Err(RecvTimeoutError::Timeout) => {
+              let mut data = data.lock();
+              if let Some(text) = data.render() {
+                _ = std::io::stderr().write_all(text.as_bytes())
+              }
+            }
+            _ => {
+              return;
+            }
+          }
+        }
+      }
+    });
+    Self { data, _tx: tx }
   }
 }
 
@@ -250,24 +263,22 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
   fn report_category_start(
     &self,
     category: &file_test_runner::collection::CollectedTestCategory<TData>,
-    context: &file_test_runner::reporter::ReporterContext,
+    _context: &file_test_runner::reporter::ReporterContext,
   ) {
-    self.render_clear();
-    LogReporter.report_category_start(category, context);
-    self.render();
+    let mut data = self.data.lock();
+    let mut final_text = data.render_clear().into_bytes();
+    _ = LogReporter::write_report_category_start(&mut final_text, category);
+    if let Some(text) = data.render() {
+      final_text.extend_from_slice(text.as_bytes());
+    }
+    _ = std::io::stderr().write_all(&final_text);
   }
 
   fn report_category_end(
     &self,
-    category: &file_test_runner::collection::CollectedTestCategory<TData>,
+    _category: &file_test_runner::collection::CollectedTestCategory<TData>,
     _context: &file_test_runner::reporter::ReporterContext,
   ) {
-    self.render_clear();
-    LogReporter.report_category_end(
-      category,
-      &file_test_runner::reporter::ReporterContext { is_parallel: true },
-    );
-    self.render();
   }
 
   fn report_test_start(
@@ -275,15 +286,12 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     test: &file_test_runner::collection::CollectedTest<TData>,
     _context: &file_test_runner::reporter::ReporterContext,
   ) {
-    let maybe_text = {
-      let mut data = self.data.lock();
-      data.pending_tests.push(PtyReporterPendingTest {
-        name: test.name.clone(),
-        start_time: std::time::Instant::now(),
-      });
-      data.render()
-    };
-    if let Some(text) = maybe_text {
+    let mut data = self.data.lock();
+    data.pending_tests.push(PtyReporterPendingTest {
+      name: test.name.clone(),
+      start_time: std::time::Instant::now(),
+    });
+    if let Some(text) = data.render() {
       _ = std::io::stderr().write_all(text.as_bytes());
     }
   }
@@ -293,44 +301,49 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     test: &file_test_runner::collection::CollectedTest<TData>,
     duration: Duration,
     result: &TestResult,
-    context: &file_test_runner::reporter::ReporterContext,
+    _context: &file_test_runner::reporter::ReporterContext,
   ) {
-    self.render_clear();
-    LogReporter.report_test_end(test, duration, result, context);
-    let maybe_text = {
-      let mut data = self.data.lock();
-      if let Some(index) =
-        data.pending_tests.iter().position(|t| t.name == test.name)
-      {
-        data.pending_tests.remove(index);
-      }
-      match result {
-        TestResult::Passed => {
-          data.passed_tests += 1;
-        }
-        TestResult::Ignored => {
-          data.ignored_tests += 1;
-        }
-        TestResult::Failed { .. } => {
-          data.failed_tests.push(PtyReporterFailedTest {
-            name: test.name.to_string(),
-            path: match test.line_and_column {
-              Some((line, col)) => {
-                format!("{}:{}:{}", test.path.display(), line + 1, col + 1)
-              }
-              None => test.path.display().to_string(),
-            },
-          });
-        }
-        TestResult::SubTests(..) => {
-          // ignore
-        }
-      }
-      data.render()
-    };
-    if let Some(text) = maybe_text {
-      _ = std::io::stderr().write_all(text.as_bytes());
+    let mut data = self.data.lock();
+    let clear_text = data.static_text.render_clear().unwrap_or_default();
+    if let Some(index) =
+      data.pending_tests.iter().position(|t| t.name == test.name)
+    {
+      data.pending_tests.remove(index);
     }
+    match result {
+      TestResult::Passed => {
+        data.passed_tests += 1;
+      }
+      TestResult::Ignored => {
+        data.ignored_tests += 1;
+      }
+      TestResult::Failed { .. } => {
+        data.failed_tests.push(PtyReporterFailedTest {
+          name: test.name.to_string(),
+          path: match test.line_and_column {
+            Some((line, col)) => {
+              format!("{}:{}:{}", test.path.display(), line + 1, col + 1)
+            }
+            None => test.path.display().to_string(),
+          },
+        });
+      }
+      TestResult::SubTests(..) => {
+        // ignore
+      }
+    }
+    let mut final_text = clear_text.into_bytes();
+    _ = LogReporter::write_report_test_end(
+      &mut final_text,
+      test,
+      duration,
+      result,
+      &file_test_runner::reporter::ReporterContext { is_parallel: true },
+    );
+    if let Some(text) = data.render() {
+      final_text.extend_from_slice(text.as_bytes());
+    }
+    _ = std::io::stderr().write_all(&final_text);
   }
 
   fn report_long_running_test(&self, _test_name: &str) {
@@ -342,7 +355,18 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     failures: &[file_test_runner::reporter::ReporterFailure<TData>],
     total_tests: usize,
   ) {
-    self.render_clear();
-    LogReporter.report_failures(failures, total_tests);
+    let clear_text = self
+      .data
+      .lock()
+      .static_text
+      .render_clear()
+      .unwrap_or_default();
+    let mut final_text = clear_text.into_bytes();
+    _ = LogReporter::write_report_failures(
+      &mut final_text,
+      failures,
+      total_tests,
+    );
+    _ = std::io::stderr().write_all(&final_text);
   }
 }
