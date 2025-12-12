@@ -58,7 +58,6 @@ use crate::timers::op_now;
 use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
-  deps = [ deno_webidl ],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -110,6 +109,7 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_recv,
   ],
   esm = [
+    "00_webidl.js",
     "00_infra.js",
     "01_dom_exception.js",
     "01_mimesniff.js",

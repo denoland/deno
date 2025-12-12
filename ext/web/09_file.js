@@ -56,7 +56,7 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_web/00_webidl.js";
 import { ReadableStream } from "./06_streams.js";
 import { URL } from "ext:deno_web/00_url.js";
 import { createFilteredInspectProxy } from "./01_console.js";

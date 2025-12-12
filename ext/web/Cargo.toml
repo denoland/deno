@@ -32,7 +32,10 @@ uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-deno_webidl.workspace = true
+
+[[bench]]
+name = "dict"
+harness = false
 
 [[bench]]
 name = "encoding"

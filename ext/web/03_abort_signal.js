@@ -23,7 +23,7 @@ const {
   WeakSetPrototypeHas,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_web/00_webidl.js";
 import { assert } from "./00_infra.js";
 import { createFilteredInspectProxy } from "./01_console.js";
 import {

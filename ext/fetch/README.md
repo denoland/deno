@@ -67,7 +67,6 @@ Where:
 
 ## Dependencies
 
-- **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
 - **deno_console**: Provided by the `deno_console` crate
 

@@ -110,7 +110,6 @@ deno_telemetry = { version = "0.44.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.209.0", path = "./ext/tls" }
 deno_web = { version = "0.253.0", path = "./ext/web" }
 deno_webgpu = { version = "0.189.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.222.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.227.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.217.0", path = "./ext/webstorage" }
 denort_helper = { version = "0.20.0", path = "./ext/rt_helper" }

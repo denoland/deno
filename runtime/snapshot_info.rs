@@ -16,7 +16,6 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   vec![
     deno_telemetry::deno_telemetry::init(),
-    deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
       Default::default(),
       Default::default(),

@@ -48,7 +48,6 @@ Where the `Option<u64>` represents an optional seed for initialization.
 
 ## Dependencies
 
-- **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
 
 ## Provided ops

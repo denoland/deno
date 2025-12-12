@@ -34,7 +34,7 @@ struct OriginStorageDir(PathBuf);
 const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
 deno_core::extension!(deno_webstorage,
-  deps = [ deno_webidl ],
+  deps = [ deno_web ],
   ops = [
     op_webstorage_iterate_keys,
   ],
