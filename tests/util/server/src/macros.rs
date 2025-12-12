@@ -23,7 +23,6 @@ macro_rules! timeout {
   ( $($timeout:literal)? ) => {
     let _test_timeout_holder = {
       let function = $crate::function!();
-      let (tx, rx) = ::std::sync::mpsc::channel::<()>();
       let timeout: &[u64] = &[$($timeout)?];
       let timeout = *timeout.get(0).unwrap_or(&300);
       $crate::test_runner::with_timeout(
