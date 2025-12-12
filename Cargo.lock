@@ -1885,9 +1885,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.372.0"
+version = "0.373.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24cc349b258a9825f0dc29e986b33093fabb33f2e332991d35b0641c680b2fb"
+checksum = "559b437009e516b78cb30927182ec0b7563bf68a03cbda43fd57573a33196cf8"
 dependencies = [
  "anyhow",
  "az",
@@ -2612,9 +2612,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.248.0"
+version = "0.249.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b1fd01b849fc60fb1206255877d7a183f2e7ee5329e75c389c8470a63437eab"
+checksum = "1e89c54aee7eb075b55a069e65f647c2213e45a4d472e769164e15f587737ab7"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -4054,9 +4054,9 @@ checksum = "c007b1ae3abe1cb6f85a16305acd418b7ca6343b953633fee2b76d8f108b830f"
 
 [[package]]
 name = "file_test_runner"
-version = "0.9.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8e0e8985ec7e1f9672562bacfddef7eeadca78dd7c0e73326b0e201c9869f05"
+checksum = "44fe48e7fa1784535e26e9240de0d215e8201083176c7bd58e9aaa7aadd9d235"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -8173,9 +8173,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.281.0"
+version = "0.282.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55b7d3cf62efe5c68ec52873f3c737dfd76ded33474cf8b928e6a1fb2cd33158"
+checksum = "eb7f62a825e28a7e8d77a2afcc6bdb6facb2aade9862baa1f3c6e7c53f1f1270"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -9274,7 +9274,6 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "console_static_text",
- "crossterm",
  "deno_unsync",
  "denokv_proto",
  "faster-hex",

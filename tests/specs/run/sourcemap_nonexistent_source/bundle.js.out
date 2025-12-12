@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Test error from bundle with missing source
+  throw new Error("Test error from bundle with missing source");
+  ^
+    at throwError ([WILDCARD]bundle.js:3:3)
+    at [WILDCARD]bundle.js:6:14
