@@ -24,6 +24,8 @@ deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
+lightningcss.workspace = true
+nalgebra.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

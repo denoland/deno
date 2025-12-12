@@ -531,6 +531,7 @@ impl MainWorker {
         deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
