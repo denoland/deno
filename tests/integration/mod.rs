@@ -121,18 +121,6 @@ pub fn main() {
     }
   };
 
-  let (watcher_tests, main_tests) =
-    main_category.partition(|t| t.name.contains("::watcher::"));
-
-  // watcher tests are really flaky, so run them sequentially
-  file_test_runner::run_tests(
-    &watcher_tests,
-    RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
-      ..Default::default()
-    },
-    move |test| run_test(test),
-  );
   let parallelism = CpuMonitorParallelism::default();
   file_test_runner::run_tests(
     &main_tests,
