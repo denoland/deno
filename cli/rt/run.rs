@@ -18,7 +18,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::future::LocalBoxFuture;

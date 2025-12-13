@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::analysis::ModuleInfo;

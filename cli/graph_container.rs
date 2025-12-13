@@ -5,7 +5,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;

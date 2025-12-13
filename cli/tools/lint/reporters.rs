@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_ast::diagnostics::Diagnostic;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::serde_json;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lint::diagnostic::LintDiagnostic;

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;

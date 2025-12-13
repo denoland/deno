@@ -8,8 +8,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 use deno_core::ModuleSpecifier;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;

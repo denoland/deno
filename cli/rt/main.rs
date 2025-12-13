@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::env;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::deno_telemetry::OtelConfig;

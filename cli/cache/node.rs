@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::serde_json;
 use deno_resolver::cjs::analyzer::DenoCjsAnalysis;
 use deno_resolver::cjs::analyzer::NodeAnalysisCache;

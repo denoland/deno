@@ -6,8 +6,8 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_error::JsErrorClass;

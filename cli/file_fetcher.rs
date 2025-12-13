@@ -11,7 +11,7 @@ use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
 use deno_resolver::loader::MemoryFiles;

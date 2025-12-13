@@ -12,7 +12,7 @@ use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_ast::view::AssignOp;
 use deno_core::anyhow::Context as _;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use rustyline::Cmd;

@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use dissimilar::Chunk;
 use dissimilar::diff;
 use text_size::TextRange;

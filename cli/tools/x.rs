@@ -8,7 +8,7 @@ use std::sync::Arc;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::UnconfiguredRuntime;

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_lib::worker::LibWorkerFactoryRoots;

@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
@@ -553,8 +553,8 @@ async fn dep_manager_args(
 
 mod filter {
   use deno_core::anyhow::Context;
+  use deno_core::anyhow::Error as AnyError;
   use deno_core::anyhow::anyhow;
-  use deno_core::error::AnyError;
   use deno_semver::VersionReq;
 
   enum FilterKind {

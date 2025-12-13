@@ -19,7 +19,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_core::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;

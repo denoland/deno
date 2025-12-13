@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use deno_core::anyhow::Context;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 
 fn unzip_with_shell(
   archive_path: &Path,
