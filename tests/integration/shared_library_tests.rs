@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-#[test]
+#[test_util::test]
 // https://github.com/denoland/deno/issues/18266
 fn linux_shared_libraries() {
   use test_util as util;
@@ -35,7 +35,7 @@ fn linux_shared_libraries() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
+#[test_util::test]
 // https://github.com/denoland/deno/issues/18243
 // This test is to prevent inadvertently linking to more shared system libraries that usually
 // increases dyld startup time.

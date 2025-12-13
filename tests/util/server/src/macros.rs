@@ -21,23 +21,14 @@ macro_rules! function {
 #[macro_export]
 macro_rules! timeout {
   ( $($timeout:literal)? ) => {
-    struct TestTimeoutHolder(::std::sync::mpsc::Sender<()>);
-
     let _test_timeout_holder = {
       let function = $crate::function!();
-      let (tx, rx) = ::std::sync::mpsc::channel::<()>();
       let timeout: &[u64] = &[$($timeout)?];
       let timeout = *timeout.get(0).unwrap_or(&300);
-      ::std::thread::spawn(move || {
-        if rx.recv_timeout(::std::time::Duration::from_secs(timeout)) == Err(::std::sync::mpsc::RecvTimeoutError::Timeout) {
-          use std::io::Write;
-          eprintln!("Test {function} timed out after {timeout} seconds, aborting");
-          _ = std::io::stderr().flush();
-          #[allow(clippy::disallowed_methods)]
-          ::std::process::exit(1);
-        }
-      });
-      TestTimeoutHolder(tx)
+      $crate::test_runner::with_timeout(
+        function.to_string(),
+        ::std::time::Duration::from_secs(timeout)
+      )
     };
   };
 }
