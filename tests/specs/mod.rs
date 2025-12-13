@@ -31,7 +31,7 @@ use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 enum VecOrString {
   Vec(Vec<String>),
@@ -273,6 +273,7 @@ pub fn main() {
   );
 }
 
+#[must_use]
 fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
@@ -282,13 +283,16 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
     if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
-      for _ in 0..repeat {
-        run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone());
+      for _ in 0..(repeat - 1) {
+        let result =
+          run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone());
+        if result.is_failed() {
+          return result;
+        }
       }
       TestResult::Passed
     } else {
-      run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone());
-      TestResult::Passed
+      run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone())
     }
   }));
   match result {
@@ -306,6 +310,7 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   }
 }
 
+#[must_use]
 fn run_test_inner(
   test: &CollectedTest<serde_json::Value>,
   metadata: &MultiStepMetaData,
