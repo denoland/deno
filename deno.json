@@ -1,0 +1,6 @@
+{
+  "lock": false,
+  "lint": {
+    "plugins": ["./tools/no_deno_global_plugin.ts"]
+  }
+}
