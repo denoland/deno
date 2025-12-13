@@ -598,7 +598,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
-  Deploy,
+  Deploy(Option<&'static str>),
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1666,9 +1666,20 @@ pub fn flags_from_vec_with_initial_cwd(
     ..Default::default()
   };
 
-  // to pass all flags, even help and
+  // to pass all flags, even help
   if matches.subcommand_matches("deploy").is_some() {
-    deploy_parse(&mut flags, &mut matches.remove_subcommand().unwrap().1)?;
+    deploy_parse(
+      &mut flags,
+      &mut matches.remove_subcommand().unwrap().1,
+      None,
+    )?;
+    return Ok(flags);
+  } else if matches.subcommand_matches("sandbox").is_some() {
+    deploy_parse(
+      &mut flags,
+      &mut matches.remove_subcommand().unwrap().1,
+      Some("sandbox"),
+    )?;
     return Ok(flags);
   }
 
@@ -1723,7 +1734,12 @@ pub fn flags_from_vec_with_initial_cwd(
     if subcommand.get_name() == "deploy" {
       flags.argv = vec![String::from("--help")];
       flags.permissions.allow_all = true;
-      flags.subcommand = DenoSubcommand::Deploy;
+      flags.subcommand = DenoSubcommand::Deploy(None);
+      return Ok(flags);
+    } else if subcommand.get_name() == "sandbox" {
+      flags.argv = vec![String::from("--help")];
+      flags.permissions.allow_all = true;
+      flags.subcommand = DenoSubcommand::Deploy(Some("sandbox"));
       return Ok(flags);
     }
 
@@ -2061,6 +2077,7 @@ pub fn clap_root() -> Command {
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
         .subcommand(deploy_subcommand())
+        .subcommand(sandbox_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
@@ -2830,6 +2847,16 @@ Generate html reports from lcov:
 
 fn deploy_subcommand() -> Command {
   Command::new("deploy").arg(
+    Arg::new("args")
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .trailing_var_arg(true)
+      .allow_hyphen_values(true),
+  )
+}
+
+fn sandbox_subcommand() -> Command {
+  Command::new("sandbox").arg(
     Arg::new("args")
       .num_args(0..)
       .action(ArgAction::Append)
@@ -5884,6 +5911,7 @@ fn coverage_parse(
 fn deploy_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  subcommand: Option<&'static str>,
 ) -> clap::error::Result<()> {
   let mut args: Vec<String> = matches
     .remove_many("args")
@@ -5895,7 +5923,7 @@ fn deploy_parse(
   }
 
   flags.argv = args;
-  flags.subcommand = DenoSubcommand::Deploy;
+  flags.subcommand = DenoSubcommand::Deploy(subcommand);
   Ok(())
 }
 
