@@ -286,13 +286,16 @@ fn run_test(
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
-        run_test_inner(
+        let result = run_test_inner(
           test,
           &metadata,
           &cwd,
           diagnostic_logger.clone(),
           parallelism,
         );
+        if result.is_failed() {
+          return result;
+        }
       }
       TestResult::Passed
     } else {
@@ -302,8 +305,7 @@ fn run_test(
         &cwd,
         diagnostic_logger.clone(),
         parallelism,
-      );
-      TestResult::Passed
+      )
     }
   }));
   match result {
@@ -342,13 +344,13 @@ fn run_test_inner(
           TestResult::Passed
         }))
       };
-      if step.flaky {
-        let result = run_flaky_test(&test.name, None, run_func);
-        if result.is_failed() {
-          return result;
-        }
+      let result = if step.flaky {
+        run_flaky_test(&test.name, None, run_func)
       } else {
-        run_func();
+        run_func()
+      };
+      if result.is_failed() {
+        return result;
       }
     }
     TestResult::Passed
