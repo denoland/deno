@@ -25,8 +25,8 @@ use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::run_flaky_test;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::run_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
@@ -118,6 +118,7 @@ impl MultiTestMetaData {
       collected_tests.push(CollectedTest {
         name: format!("{}::{}", parent_test.name, name),
         path: parent_test.path.clone(),
+        line_and_column: None,
         data: serde_json::Value::Object(json_data),
       });
     }
@@ -593,6 +594,7 @@ where
     children.push(CollectedCategoryOrTest::Test(CollectedTest {
       name: format!("{}::{}", test_name, variant_name),
       path: test_path.to_path_buf(),
+      line_and_column: None,
       data: child_data,
     }));
   }
@@ -633,6 +635,7 @@ fn map_test_within_file(
     Ok(CollectedCategoryOrTest::Test(CollectedTest {
       name: test.name,
       path: test.path,
+      line_and_column: None,
       data: metadata_value,
     }))
   }

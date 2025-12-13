@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use file_test_runner::RunOptions;
@@ -10,8 +9,8 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::flaky_test_ci;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 use util::deno_config_path;
 use util::env_vars_for_npm_tests;
@@ -45,9 +44,7 @@ fn main() {
   file_test_runner::run_tests(
     &crypto_category,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::new(
-        NonZeroUsize::new(1).unwrap(),
-      )),
+      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
       ..Default::default()
     },
     move |test| flaky_test_ci(&test.name, None, || run_test(test)),
