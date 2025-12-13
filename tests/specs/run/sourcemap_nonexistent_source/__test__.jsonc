@@ -1,5 +1,0 @@
-{
-  "args": "run bundle.js",
-  "output": "bundle.js.out",
-  "exitCode": 1
-}
