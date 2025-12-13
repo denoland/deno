@@ -283,7 +283,7 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
     if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
-      for _ in 0..(repeat - 1) {
+      for _ in 0..repeat {
         let result =
           run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone());
         if result.is_failed() {
