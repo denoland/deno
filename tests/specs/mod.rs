@@ -25,13 +25,13 @@ use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
-use test_util::test_runner::Parallelism;
+use test_util::test_runner::CpuMonitorParallelism;
 use test_util::test_runner::run_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 enum VecOrString {
   Vec(Vec<String>),
@@ -262,21 +262,18 @@ pub fn main() {
   }
 
   let _http_guard = test_util::http_server();
-  let parallelism = Parallelism::default();
+  let parallelism = CpuMonitorParallelism::default();
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
       parallelism: parallelism.for_run_options(),
       reporter: Arc::new(LogReporter),
     },
-    move |test| run_test(test, &parallelism),
+    run_test,
   );
 }
 
-fn run_test(
-  test: &CollectedTest<serde_json::Value>,
-  parallelism: &Parallelism,
-) -> TestResult {
+fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -286,24 +283,15 @@ fn run_test(
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
-        run_test_inner(
-          test,
-          &metadata,
-          &cwd,
-          diagnostic_logger.clone(),
-          parallelism,
-        );
+        let result =
+          run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone());
+        if result.is_failed() {
+          return result;
+        }
       }
       TestResult::Passed
     } else {
-      run_test_inner(
-        test,
-        &metadata,
-        &cwd,
-        diagnostic_logger.clone(),
-        parallelism,
-      );
-      TestResult::Passed
+      run_test_inner(test, &metadata, &cwd, diagnostic_logger.clone())
     }
   }));
   match result {
@@ -326,7 +314,6 @@ fn run_test_inner(
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-  parallelism: &Parallelism,
 ) -> TestResult {
   let run_fn = || {
     let context =
@@ -342,19 +329,19 @@ fn run_test_inner(
           TestResult::Passed
         }))
       };
-      if step.flaky {
-        let result = run_flaky_test(&test.name, None, run_func);
-        if result.is_failed() {
-          return result;
-        }
+      let result = if step.flaky {
+        run_flaky_test(&test.name, run_func)
       } else {
-        run_func();
+        run_func()
+      };
+      if result.is_failed() {
+        return result;
       }
     }
     TestResult::Passed
   };
   if metadata.flaky || *IS_CI {
-    run_flaky_test(&test.name, Some(parallelism), run_fn)
+    run_flaky_test(&test.name, run_fn)
   } else {
     run_fn()
   }

@@ -2,14 +2,13 @@
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
 use test_util::TestMacroCase;
-use test_util::test_runner::Parallelism;
+use test_util::test_runner::CpuMonitorParallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::test_runner::run_flaky_test;
 
@@ -81,9 +80,7 @@ pub fn main() {
     return; // no tests to run for the filter
   }
 
-  let number_tests = main_category.test_count();
-  let run_test = move |test: &CollectedTest<&'static TestMacroCase>,
-                       parallelism: Option<&Parallelism>| {
+  let run_test = move |test: &CollectedTest<&'static TestMacroCase>| {
     if test.data.ignore {
       return TestResult::Ignored;
     }
@@ -116,34 +113,20 @@ pub fn main() {
         TestResult::SubTests(_) => unreachable!(),
       }
     };
-    // don't use this if we're only running a single test
-    let parallelism = parallelism.filter(|_| number_tests > 1);
     if test.data.flaky {
-      run_flaky_test(&test.name, parallelism, run_test)
+      run_flaky_test(&test.name, run_test)
     } else {
-      flaky_test_ci(&test.name, parallelism, run_test)
+      flaky_test_ci(&test.name, run_test)
     }
   };
 
-  let (watcher_tests, main_tests) =
-    main_category.partition(|t| t.name.contains("::watcher::"));
-
-  // watcher tests are really flaky, so run them sequentially
+  let parallelism = CpuMonitorParallelism::default();
   file_test_runner::run_tests(
-    &watcher_tests,
-    RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
-      ..Default::default()
-    },
-    move |test| run_test(test, None),
-  );
-  let parallelism = Parallelism::default();
-  file_test_runner::run_tests(
-    &main_tests,
+    &main_category,
     RunOptions {
       parallelism: parallelism.for_run_options(),
       ..Default::default()
     },
-    move |test| run_test(test, Some(&parallelism)),
+    run_test,
   );
 }
