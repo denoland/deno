@@ -30,12 +30,10 @@ class ConstructCallRequiredError extends TypeError {
   }
 }
 
-class InvalidPathError extends TypeError {
+class InvalidArgTypeError extends TypeError {
   code: string;
-  constructor() {
-    super(
-      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
-    );
+  constructor(message: string) {
+    super(message);
     this.code = "ERR_INVALID_ARG_TYPE";
   }
 }
@@ -67,7 +65,9 @@ const parsePath = (path: unknown): string => {
     typeof parsedPath === "undefined" ||
     StringPrototypeIncludes(parsedPath, "\0")
   ) {
-    throw new InvalidPathError();
+    throw new InvalidArgTypeError(
+      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
+    );
   }
 
   return parsedPath;
@@ -156,6 +156,12 @@ async function backup(
   path: string | Buffer | URL,
   options?: BackupOptions,
 ): Promise<number> {
+  if (!ObjectPrototypeIsPrototypeOf(DatabaseSync.prototype, sourceDb)) {
+    throw new InvalidArgTypeError(
+      'The "sourceDb" argument must be an object.',
+    );
+  }
+
   return await op_node_database_backup(
     sourceDb,
     parsePath(path),
