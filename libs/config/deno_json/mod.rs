@@ -1071,7 +1071,7 @@ impl NodeModulesDirMode {
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {
   pub org: String,
-  pub app: String,
+  pub app: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

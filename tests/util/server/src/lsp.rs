@@ -50,8 +50,10 @@ use url::Url;
 use super::TempDir;
 use crate::PathRef;
 use crate::deno_exe_path;
+use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
+use crate::print::spawn_thread;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -126,7 +128,7 @@ struct LspStdoutReader {
 impl LspStdoutReader {
   pub fn new(mut buf_reader: io::BufReader<ChildStdout>) -> Self {
     let messages: Arc<(Mutex<Vec<LspMessage>>, Condvar)> = Default::default();
-    std::thread::spawn({
+    spawn_thread({
       let messages = messages.clone();
       move || {
         while let Ok(Some(msg_buf)) = read_message(&mut buf_reader) {
@@ -151,7 +153,6 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
-  #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
     eprintln!("{:?}", messages);
@@ -568,15 +569,12 @@ impl LspClientBuilder {
         let (tx, rx) = mpsc::channel::<String>();
         let (perf_tx, perf_rx) =
           self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
-        std::thread::spawn(move || {
+        spawn_thread(move || {
           let stderr = BufReader::new(stderr);
           for line in stderr.lines() {
             match line {
               Ok(line) => {
-                #[allow(clippy::print_stderr)]
-                {
-                  eprintln!("{}", line);
-                }
+                eprintln!("{}", line);
                 if let Some(tx) = perf_tx.as_ref() {
                   // look for perf records
                   if line.starts_with('{') && line.ends_with("},") {
@@ -588,10 +586,7 @@ impl LspClientBuilder {
                         continue;
                       }
                       Err(err) => {
-                        #[allow(clippy::print_stderr)]
-                        {
-                          eprintln!("failed to parse perf record: {:#}", err);
-                        }
+                        eprintln!("failed to parse perf record: {:#}", err);
                       }
                     }
                   }
@@ -792,14 +787,11 @@ impl LspClient {
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("==== STDERR OUTPUT ====");
-      for line in found_lines {
-        eprintln!("{}", line)
-      }
-      eprintln!("== END STDERR OUTPUT ==");
+    eprintln!("==== STDERR OUTPUT ====");
+    for line in found_lines {
+      eprintln!("{}", line)
     }
+    eprintln!("== END STDERR OUTPUT ==");
 
     panic!("Timed out waiting on condition.")
   }

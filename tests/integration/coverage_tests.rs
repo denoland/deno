@@ -1,13 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use util::PathRef;
+use util::TempDir;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
+use util::eprintln;
+use util::test;
 
 #[test]
 fn branch() {
