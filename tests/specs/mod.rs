@@ -326,13 +326,13 @@ fn run_test_inner(
           TestResult::Passed
         }))
       };
-      if step.flaky {
-        let result = run_flaky_test(&test.name, run_func);
-        if result.is_failed() {
-          return result;
-        }
+      let result = if step.flaky {
+        run_flaky_test(&test.name, run_func)
       } else {
-        run_func();
+        run_func()
+      };
+      if result.is_failed() {
+        return result;
       }
     }
     TestResult::Passed
