@@ -273,7 +273,6 @@ pub fn main() {
   );
 }
 
-#[must_use]
 fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
@@ -310,7 +309,6 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   }
 }
 
-#[must_use]
 fn run_test_inner(
   test: &CollectedTest<serde_json::Value>,
   metadata: &MultiStepMetaData,
