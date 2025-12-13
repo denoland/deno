@@ -267,7 +267,7 @@ impl<'a> TaskRunner<'a> {
     task_name: &str,
     kill_signal: &KillSignal,
     argv: &[String],
-  ) -> Result<i32, deno_core::anyhow::Error> {
+  ) -> Result<i32, AnyError> {
     match sort_tasks_topo(pkg_tasks_config, task_name) {
       Ok(sorted) => self.run_tasks_in_parallel(sorted, kill_signal, argv).await,
       Err(err) => match err {
@@ -307,7 +307,7 @@ impl<'a> TaskRunner<'a> {
     tasks: Vec<ResolvedTask<'a>>,
     kill_signal: &KillSignal,
     args: &[String],
-  ) -> Result<i32, deno_core::anyhow::Error> {
+  ) -> Result<i32, AnyError> {
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
@@ -441,7 +441,7 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
-  ) -> Result<i32, deno_core::anyhow::Error> {
+  ) -> Result<i32, AnyError> {
     let Some(command) = &definition.command else {
       self.output_task(
         task_name,
@@ -487,7 +487,7 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
     argv: &[String],
-  ) -> Result<i32, deno_core::anyhow::Error> {
+  ) -> Result<i32, AnyError> {
     // ensure the npm packages are installed if using a managed resolver
     self.maybe_npm_install().await?;
 
