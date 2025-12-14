@@ -27,6 +27,7 @@ use deno_fetch::HttpClientResource;
 use deno_fetch::get_or_create_client_from_state;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
@@ -99,25 +100,6 @@ pub enum WebsocketError {
   Canceled(#[from] deno_core::Canceled),
 }
 
-pub trait WebSocketPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl WebSocketPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &url::Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-}
-
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
@@ -135,16 +117,13 @@ impl Resource for WsCancelResource {
 // but actual op that connects WS is async.
 #[op2(stack_trace)]
 #[smi]
-pub fn op_ws_check_permission_and_cancel_handle<WP>(
+pub fn op_ws_check_permission_and_cancel_handle(
   state: &mut OpState,
   #[string] api_name: String,
   #[string] url: String,
   cancel_handle: bool,
-) -> Result<Option<ResourceId>, WebsocketError>
-where
-  WP: WebSocketPermissions + 'static,
-{
-  state.borrow_mut::<WP>().check_net_url(
+) -> Result<Option<ResourceId>, WebsocketError> {
+  state.borrow_mut::<PermissionsContainer>().check_net_url(
     &url::Url::parse(&url).map_err(WebsocketError::Url)?,
     &api_name,
   )?;
@@ -416,7 +395,7 @@ fn populate_common_request_headers(
 }
 
 #[op2(stack_trace)]
-pub async fn op_ws_create<WP>(
+pub async fn op_ws_create(
   state: Rc<RefCell<OpState>>,
   #[string] api_name: String,
   #[string] url: String,
@@ -424,13 +403,10 @@ pub async fn op_ws_create<WP>(
   #[smi] cancel_handle: Option<ResourceId>,
   #[v8_slow] headers: Option<Vec<(ByteString, ByteString)>>,
   #[smi] client_rid: Option<u32>,
-) -> Result<CreateResponse, WebsocketError>
-where
-  WP: WebSocketPermissions + 'static,
-{
+) -> Result<CreateResponse, WebsocketError> {
   let (client, allow_host) = {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<WP>()
+    s.borrow_mut::<PermissionsContainer>()
       .check_net_url(
         &url::Url::parse(&url).map_err(WebsocketError::Url)?,
         &api_name,
@@ -864,12 +840,12 @@ pub async fn op_ws_next_event(
   }
 }
 
-deno_core::extension!(deno_websocket,
-  deps = [ deno_web, deno_webidl ],
-  parameters = [P: WebSocketPermissions],
+deno_core::extension!(
+  deno_websocket,
+  deps = [deno_web, deno_webidl],
   ops = [
-    op_ws_check_permission_and_cancel_handle<P>,
-    op_ws_create<P>,
+    op_ws_check_permission_and_cancel_handle,
+    op_ws_create,
     op_ws_close,
     op_ws_next_event,
     op_ws_get_buffer,
@@ -883,7 +859,7 @@ deno_core::extension!(deno_websocket,
     op_ws_send_ping,
     op_ws_get_buffered_amount,
   ],
-  esm = [ "01_websocket.js", "02_websocketstream.js" ],
+  esm = ["01_websocket.js", "02_websocketstream.js"],
 );
 
 // Needed so hyper can use non Send futures

@@ -23,6 +23,7 @@ import { promises } from "node:dns";
 export const {
   getServers,
   lookup,
+  lookupService,
   resolve,
   resolve4,
   resolve6,

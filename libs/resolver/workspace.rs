@@ -294,7 +294,7 @@ pub enum WorkspaceResolvePkgJsonFolderErrorKind {
   #[error("Could not find package.json with name '{0}' in workspace.")]
   NotFound(String),
   #[error(
-    "Found package.json in workspace, but version '{1}' didn't satisy constraint '{0}'."
+    "Found package.json in workspace, but version '{1}' didn't satisfy constraint '{0}'."
   )]
   VersionNotSatisfied(VersionReq, Version),
 }
@@ -543,6 +543,8 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Dcts
             | MediaType::Tsx
             | MediaType::Json
+            | MediaType::Jsonc
+            | MediaType::Json5
             | MediaType::Wasm
             | MediaType::Css
             | MediaType::Html
@@ -1832,6 +1834,15 @@ mod test {
           referrer_extra: None,
         }),
       )))
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
     }
   }
 

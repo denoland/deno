@@ -18,6 +18,7 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
+use deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
@@ -29,21 +30,17 @@ use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsMetadataValue;
 
 use crate::ExtNodeSys;
-use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 use crate::NodeResolverRc;
 use crate::PackageJsonResolverRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-fn ensure_read_permission<'a, P>(
+fn ensure_read_permission<'a>(
   state: &mut OpState,
   file_path: Cow<'a, Path>,
-) -> Result<Cow<'a, Path>, JsErrorBox>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Cow<'a, Path>, JsErrorBox> {
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<PermissionsContainer>();
   loader.ensure_read_permission(permissions, file_path)
 }
 
@@ -168,10 +165,7 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op2(stack_trace)]
-pub fn op_require_node_module_paths<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
@@ -346,10 +340,7 @@ pub fn op_require_path_is_absolute(#[string] p: &str) -> bool {
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_require_stat<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_stat<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<i32, JsErrorBox> {
@@ -359,7 +350,7 @@ pub fn op_require_stat<
     // because they're noisy and it's fine
     path
   } else {
-    ensure_read_permission::<P>(state, path)?
+    ensure_read_permission(state, path)?
   };
   let sys = state.borrow::<TSys>();
   if let Ok(metadata) = sys.fs_metadata(&path) {
@@ -375,15 +366,12 @@ pub fn op_require_stat<
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_require_real_path<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_real_path<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] request: &str,
 ) -> Result<String, RequireError> {
   let path = Cow::Borrowed(Path::new(request));
-  let path = ensure_read_permission::<P>(state, path)
+  let path = ensure_read_permission(state, path)
     .map_err(RequireErrorKind::Permission)?;
   let sys = state.borrow::<TSys>();
   let canonicalized_path =
@@ -449,7 +437,6 @@ pub fn op_require_path_basename(
 #[op2(stack_trace)]
 #[string]
 pub fn op_require_try_self<
-  P: NodePermissions + 'static,
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
@@ -510,16 +497,13 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-pub fn op_require_read_file<P>(
+pub fn op_require_read_file(
   state: &mut OpState,
   #[string] file_path: &str,
-) -> Result<FastString, RequireError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<FastString, RequireError> {
   let file_path = Cow::Borrowed(Path::new(file_path));
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
-  let file_path = ensure_read_permission::<P>(state, file_path)
+  let file_path = ensure_read_permission(state, file_path)
     .map_err(RequireErrorKind::Permission)?;
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
@@ -542,7 +526,6 @@ pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
 #[op2(stack_trace)]
 #[string]
 pub fn op_require_resolve_exports<
-  P: NodePermissions + 'static,
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
@@ -628,10 +611,7 @@ pub fn op_require_is_maybe_cjs(
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_require_read_package_scope<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_require_read_package_scope<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] package_json_path: &str,
 ) -> Option<PackageJsonRc> {
@@ -650,7 +630,6 @@ pub fn op_require_read_package_scope<
 #[op2(stack_trace)]
 #[string]
 pub fn op_require_package_imports_resolve<
-  P: NodePermissions + 'static,
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
@@ -660,7 +639,7 @@ pub fn op_require_package_imports_resolve<
   #[string] request: &str,
 ) -> Result<Option<String>, RequireError> {
   let referrer_path = Cow::Borrowed(Path::new(referrer_filename));
-  let referrer_path = ensure_read_permission::<P>(state, referrer_path)
+  let referrer_path = ensure_read_permission(state, referrer_path)
     .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let Some(pkg) = pkg_json_resolver.get_closest_package_json(&referrer_path)?

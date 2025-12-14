@@ -213,6 +213,10 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
         }
       } else if !self.has_run_scripts(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
+        && !(self.config.denied.iter().any(|d| {
+          package.id.nv.name == d.name
+            && d.version_req.matches(&package.id.nv.version)
+        }))
       {
         // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
         // being run, and it's also very popular - any project using Vite would raise warnings.

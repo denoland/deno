@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
@@ -1033,6 +1032,8 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
@@ -1044,6 +1045,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
+  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
 }
 
 impl DocumentModules {
@@ -1071,6 +1073,7 @@ impl DocumentModules {
         .collect(),
     );
     self.dep_info_by_scope = Default::default();
+    self.assigned_scopes = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
     NodeResolutionThreadLocalCache::clear();
@@ -1275,12 +1278,19 @@ impl DocumentModules {
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(
+    let module = self.module_inner(
       &document,
       Some(&Arc::new(specifier)),
       scope,
       compiler_options_key,
-    )
+    );
+    if let Some(module) = &module {
+      self.assigned_scopes.insert(
+        document.uri().clone(),
+        (module.scope.clone(), module.compiler_options_key.clone()),
+      );
+    }
+    module
   }
 
   pub fn primary_module(
@@ -1289,6 +1299,16 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    if let Some((scope, compiler_options_key)) =
+      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
+    {
+      return self.module_inner(
+        document,
+        None,
+        scope.as_deref(),
+        Some(&compiler_options_key),
+      );
     }
     for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
@@ -1486,11 +1506,6 @@ impl DocumentModules {
         for dependency in module.dependencies.values() {
           let code_specifier = dependency.get_code();
           let type_specifier = dependency.get_type();
-          if let Some(dep) = code_specifier
-            && dep.scheme() == "node"
-          {
-            dep_info.has_node_specifier = true;
-          }
           if dependency.maybe_deno_types_specifier.is_some()
             && let (Some(code_specifier), Some(type_specifier)) =
               (code_specifier, type_specifier)
@@ -1570,15 +1585,6 @@ impl DocumentModules {
         )
       })
       .clone()
-  }
-
-  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
-    self
-      .dep_info_by_scope()
-      .iter()
-      .filter(|(_, i)| i.has_node_specifier)
-      .map(|(s, _)| s.clone())
-      .collect::<HashSet<_>>()
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

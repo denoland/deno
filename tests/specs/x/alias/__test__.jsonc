@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "ignore": true,
+  "steps": [
+    {
+      "args": "x --install-alias",
+      "output": ""
+    },
+    {
+      "args": "task --eval \"dx\"",
+      "output": "alias.out"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
+use deno_semver::Version;
 use url::Url;
 
 use crate::errors;
@@ -18,6 +19,15 @@ pub trait NpmPackageFolderResolver {
     specifier: &str,
     referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, errors::PackageFolderResolveError>;
+
+  /// Finds the `@types` package closest to the provided `@types` package name
+  /// and version of the original package.
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf>;
 }
 
 /// Checks if a provided specifier is in an npm package.

@@ -9,6 +9,8 @@ use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_jsr_tests_with_git_check;
+use test_util::eprintln;
+use test_util::test;
 
 #[test]
 fn publish_non_exported_files_using_import_map() {

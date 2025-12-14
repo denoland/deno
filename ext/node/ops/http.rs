@@ -43,6 +43,7 @@ use deno_net::raw::NetworkStreamReadHalf;
 use deno_net::raw::NetworkStreamWriteHalf;
 use deno_net::raw::take_network_stream_resource;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use http::Method;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
@@ -156,7 +157,7 @@ pub enum ConnError {
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
 #[allow(clippy::await_holding_refcell_ref)]
-pub async fn op_node_http_request_with_conn<P>(
+pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
   #[serde] method: ByteString,
   #[string] url: String,
@@ -164,10 +165,7 @@ pub async fn op_node_http_request_with_conn<P>(
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
-) -> Result<FetchReturn, ConnError>
-where
-  P: crate::NodePermissions + 'static,
-{
+) -> Result<FetchReturn, ConnError> {
   let stream = take_network_stream_resource(
     &mut state.borrow_mut().resource_table,
     conn_rid,
@@ -184,7 +182,7 @@ where
 
   {
     let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<P>();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
     permissions.check_net_url(&url_parsed, "ClientRequest")?;
   }
 

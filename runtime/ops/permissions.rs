@@ -37,7 +37,9 @@ impl From<PermissionState> for PermissionStatus {
     PermissionStatus {
       state: match state {
         PermissionState::Granted | PermissionState::GrantedPartial => "granted",
-        PermissionState::DeniedPartial | PermissionState::Denied => "denied",
+        PermissionState::Ignored
+        | PermissionState::DeniedPartial
+        | PermissionState::Denied => "denied",
         PermissionState::Prompt => "prompt",
       },
       partial: state == PermissionState::GrantedPartial,

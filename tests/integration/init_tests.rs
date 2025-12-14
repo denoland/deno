@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::test;
 use util::TestContextBuilder;
 use util::assert_contains;
 
@@ -171,6 +172,50 @@ Run these commands to get started
   output.assert_matches_text("Log from main.ts that already exists\n");
 }
 
+#[test]
+fn init_subcommand_empty() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("init --empty")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+
+  let stderr = output.stderr();
+  assert_contains!(stderr, "Project initialized");
+  assert!(!stderr.contains("cd"));
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno task dev");
+  assert!(!stderr.contains("deno test"));
+
+  let deno_json_path = cwd.join("deno.json");
+  assert!(deno_json_path.exists());
+
+  let deno_json_content = deno_json_path.read_to_string();
+  assert!(!deno_json_content.contains("@std/assert"));
+
+  assert!(cwd.join("main.ts").exists());
+  assert!(!cwd.join("main_test.ts").exists());
+
+  let main_content = cwd.join("main.ts").read_to_string();
+  assert_eq!(main_content, "console.log('Hello world!');\n");
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("run main.ts")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_eq!(output.stdout().as_bytes(), b"Hello world!\n");
+  output.skip_output_check();
+}
+
 #[tokio::test]
 async fn init_subcommand_serve() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
@@ -225,7 +270,7 @@ async fn init_subcommand_serve() {
   output.skip_output_check();
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn init_npm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let cwd = context.temp_dir().path();

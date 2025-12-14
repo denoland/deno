@@ -27,6 +27,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
@@ -49,7 +50,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
-use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
@@ -309,14 +309,11 @@ pub fn op_tls_cert_resolver_resolve_error(
 }
 
 #[op2(stack_trace)]
-pub fn op_tls_start<NP>(
+pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,
   #[v8_slow] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let rid = args.rid;
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
@@ -402,15 +399,12 @@ where
 }
 
 #[op2(stack_trace)]
-pub async fn op_net_connect_tls<NP>(
+pub async fn op_net_connect_tls(
   state: Rc<RefCell<OpState>>,
   #[v8_slow] addr: IpAddr,
   #[v8_slow] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
@@ -421,7 +415,7 @@ where
 
   let cert_file = {
     let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
+    let permissions = s.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")
       .map_err(NetError::Permission)?;
@@ -431,7 +425,7 @@ where
           .check_open(
             Cow::Borrowed(Path::new(path)),
             OpenAccessKind::ReadNoFollow,
-            "Deno.connectTls()",
+            Some("Deno.connectTls()"),
           )
           .map_err(NetError::Permission)?,
       )
@@ -513,21 +507,18 @@ pub struct ListenTlsArgs {
 }
 
 #[op2(stack_trace)]
-pub fn op_net_listen_tls<NP>(
+pub fn op_net_listen_tls(
   state: &mut OpState,
   #[v8_slow] addr: IpAddr,
   #[v8_slow] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   if args.reuse_port {
     super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
   }
 
   {
-    let permissions = state.borrow_mut::<NP>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
       .map_err(NetError::Permission)?;

@@ -268,6 +268,22 @@ export class FileHandle extends EventEmitter {
   [SymbolAsyncDispose]() {
     return this.close();
   }
+
+  appendFile(
+    data: string | ArrayBufferView | ArrayBuffer | DataView,
+    options?: string | { encoding?: string; mode?: number; flag?: string },
+  ): Promise<void> {
+    const resolvedOptions = typeof options === "string"
+      ? { encoding: options }
+      : (options ?? {});
+
+    const optsWithAppend = {
+      ...resolvedOptions,
+      flag: resolvedOptions.flag ?? "a",
+    };
+
+    return fsCall(promises.writeFile, "writeFile", this, data, optsWithAppend);
+  }
 }
 
 function readPromise(
