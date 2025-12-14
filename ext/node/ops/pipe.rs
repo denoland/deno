@@ -14,6 +14,9 @@ mod windows {
   use std::rc::Rc;
 
   use deno_core::AsyncRefCell;
+  use deno_core::AsyncResult;
+  use deno_core::BufMutView;
+  use deno_core::BufView;
   use deno_core::CancelHandle;
   use deno_core::CancelTryFuture;
   use deno_core::OpState;
@@ -21,7 +24,6 @@ mod windows {
   use deno_core::Resource;
   use deno_core::ResourceId;
   use deno_core::op2;
-  use deno_error::JsErrorBox;
   use tokio::io::AsyncReadExt;
   use tokio::io::AsyncWriteExt;
   use tokio::net::windows::named_pipe::ClientOptions;
@@ -60,8 +62,28 @@ mod windows {
       self.cancel.cancel();
     }
 
-    deno_core::impl_readable_byob!();
-    deno_core::impl_writable!();
+    fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+      Box::pin(async move {
+        let mut buf = BufMutView::new(limit);
+        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let cancel = RcRef::map(&self, |r| &r.cancel);
+        let nread = pipe.read(&mut buf).try_or_cancel(cancel).await??;
+        buf.truncate(nread);
+        Ok(BufView::from(buf))
+      })
+    }
+
+    fn write(
+      self: Rc<Self>,
+      buf: BufView,
+    ) -> AsyncResult<deno_core::WriteOutcome> {
+      Box::pin(async move {
+        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let nwritten = pipe.write(&buf).await?;
+        pipe.flush().await?;
+        Ok(deno_core::WriteOutcome::Full { nwritten })
+      })
+    }
   }
 
   impl NamedPipeClientResource {
@@ -70,25 +92,6 @@ mod windows {
         pipe: AsyncRefCell::new(pipe),
         cancel: CancelHandle::new(),
       }
-    }
-
-    pub async fn read(
-      self: Rc<Self>,
-      data: &mut [u8],
-    ) -> Result<usize, PipeError> {
-      let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-      let cancel = RcRef::map(&self, |r| &r.cancel);
-      Ok(pipe.read(data).try_or_cancel(cancel).await??)
-    }
-
-    pub async fn write(
-      self: Rc<Self>,
-      data: &[u8],
-    ) -> Result<usize, PipeError> {
-      let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-      let nwritten = pipe.write(data).await?;
-      pipe.flush().await?;
-      Ok(nwritten)
     }
   }
 
@@ -151,7 +154,7 @@ mod windows {
   /// Create a Windows named pipe server and start listening.
   ///
   /// Returns a resource ID for the server.
-  #[op2]
+  #[op2(fast)]
   #[smi]
   pub fn op_node_pipe_listen(
     state: &mut OpState,
@@ -194,7 +197,7 @@ mod windows {
     let connect_result = server.connect().try_or_cancel(cancel).await;
 
     match connect_result {
-      Ok(Ok(())) => {
+      Ok(()) => {
         // Connection successful - the server becomes the connection
         // We need to create a new server instance for future connections
         let new_server = ServerOptions::new().create(&name)?;
@@ -206,15 +209,10 @@ mod windows {
         let client_rid = state.borrow_mut().resource_table.add(client_resource);
         Ok(client_rid)
       }
-      Ok(Err(e)) => {
+      Err(e) => {
         // Put the server back
         *server_cell = Some(server);
-        Err(PipeError::Io(e))
-      }
-      Err(e) => {
-        // Canceled - put the server back
-        *server_cell = Some(server);
-        Err(PipeError::Canceled(e))
+        Err(e.into())
       }
     }
   }
@@ -234,8 +232,28 @@ mod windows {
       self.cancel.cancel();
     }
 
-    deno_core::impl_readable_byob!();
-    deno_core::impl_writable!();
+    fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+      Box::pin(async move {
+        let mut buf = BufMutView::new(limit);
+        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let cancel = RcRef::map(&self, |r| &r.cancel);
+        let nread = pipe.read(&mut buf).try_or_cancel(cancel).await??;
+        buf.truncate(nread);
+        Ok(BufView::from(buf))
+      })
+    }
+
+    fn write(
+      self: Rc<Self>,
+      buf: BufView,
+    ) -> AsyncResult<deno_core::WriteOutcome> {
+      Box::pin(async move {
+        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let nwritten = pipe.write(&buf).await?;
+        pipe.flush().await?;
+        Ok(deno_core::WriteOutcome::Full { nwritten })
+      })
+    }
   }
 
   impl NamedPipeServerConnectionResource {
@@ -244,25 +262,6 @@ mod windows {
         pipe: AsyncRefCell::new(pipe),
         cancel: CancelHandle::new(),
       }
-    }
-
-    pub async fn read(
-      self: Rc<Self>,
-      data: &mut [u8],
-    ) -> Result<usize, PipeError> {
-      let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-      let cancel = RcRef::map(&self, |r| &r.cancel);
-      Ok(pipe.read(data).try_or_cancel(cancel).await??)
-    }
-
-    pub async fn write(
-      self: Rc<Self>,
-      data: &[u8],
-    ) -> Result<usize, PipeError> {
-      let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-      let nwritten = pipe.write(data).await?;
-      pipe.flush().await?;
-      Ok(nwritten)
     }
   }
 }
