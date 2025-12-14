@@ -153,6 +153,8 @@ pub struct WatcherCommunicatorOptions {
   pub changed_paths_tx: tokio::sync::broadcast::Sender<Option<Vec<PathBuf>>>,
   /// Send a message to force a restart.
   pub restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  /// Send a message to handle ctrl+c.
+  pub ctrl_c_tx: tokio::sync::mpsc::UnboundedSender<()>,
   pub restart_mode: WatcherRestartMode,
   pub banner: String,
 }
@@ -167,6 +169,8 @@ pub struct WatcherCommunicator {
   changed_paths_tx: tokio::sync::broadcast::Sender<Option<Vec<PathBuf>>>,
   /// Send a message to force a restart.
   restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  /// Send a message to handle ctrl+c.
+  ctrl_c_tx: tokio::sync::mpsc::UnboundedSender<()>,
   restart_mode: Mutex<WatcherRestartMode>,
   banner: String,
 }
@@ -178,6 +182,7 @@ impl WatcherCommunicator {
       changed_paths_rx: options.changed_paths_rx,
       changed_paths_tx: options.changed_paths_tx,
       restart_tx: options.restart_tx,
+      ctrl_c_tx: options.ctrl_c_tx,
       restart_mode: Mutex::new(options.restart_mode),
       banner: options.banner,
     }
@@ -198,6 +203,10 @@ impl WatcherCommunicator {
     // from scratch.
     *self.restart_mode.lock() = WatcherRestartMode::Automatic;
     self.restart_tx.send(())
+  }
+
+  pub fn handle_ctrl_c(&self) -> Result<(), SendError<()>> {
+    self.ctrl_c_tx.send(())
   }
 
   pub async fn watch_for_changed_paths(
@@ -307,6 +316,7 @@ where
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (ctrl_c_tx, mut ctrl_c_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
   let (changed_paths_tx, changed_paths_rx) = tokio::sync::broadcast::channel(4);
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
@@ -325,6 +335,7 @@ where
       changed_paths_rx: changed_paths_rx.resubscribe(),
       changed_paths_tx,
       restart_tx: restart_tx.clone(),
+      ctrl_c_tx: ctrl_c_tx.clone(),
       restart_mode,
       banner: colors::intense_blue(banner).to_string(),
     }));
@@ -382,7 +393,7 @@ where
 
     select! {
       _ = receiver_future => {},
-      _ = deno_signals::ctrl_c() => {
+      _ = ctrl_c_rx.recv() => {
         return Ok(());
       },
       _ = restart_rx.recv() => {
