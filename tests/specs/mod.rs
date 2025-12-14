@@ -288,9 +288,6 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
         if result.is_failed() {
           return result;
         }
-        if result.is_failed() {
-          return result;
-        }
       }
       TestResult::Passed
     } else {
