@@ -5,11 +5,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use file_test_runner::NO_CAPTURE;
 use file_test_runner::TestResult;
 
 use crate::IS_CI;
 use crate::colors;
+use crate::eprintln;
 
 pub fn flaky_test_ci(
   test_name: &str,
@@ -30,11 +30,7 @@ pub struct Parallelism {
 
 impl Default for Parallelism {
   fn default() -> Self {
-    let parallelism = if *NO_CAPTURE {
-      file_test_runner::parallelism::Parallelism::none()
-    } else {
-      file_test_runner::parallelism::Parallelism::from_env()
-    };
+    let parallelism = file_test_runner::parallelism::Parallelism::from_env();
     Self {
       parallelism: Arc::new(parallelism),
       has_raised: Default::default(),
@@ -74,7 +70,6 @@ pub fn run_flaky_test(
     if !result.is_failed() {
       return result;
     }
-    #[allow(clippy::print_stderr)]
     if *IS_CI {
       eprintln!(
         "{} {} was flaky on run {}",
@@ -88,7 +83,6 @@ pub fn run_flaky_test(
 
   // if we got here, it means the CI is very flaky at the moment
   // so reduce concurrency down to 1
-  #[allow(clippy::print_stderr)]
   if let Some(parallelism) = parallelism
     && parallelism.limit_to_one()
   {
@@ -109,4 +103,35 @@ pub fn run_flaky_test(
 
   // surface on third try
   action()
+}
+
+pub struct TestTimeoutHolder {
+  _tx: std::sync::mpsc::Sender<()>,
+}
+
+pub fn with_timeout(
+  test_name: String,
+  duration: Duration,
+) -> TestTimeoutHolder {
+  let (tx, rx) = ::std::sync::mpsc::channel::<()>();
+  // ok to allow because we don't need to maintain logging context here
+  #[allow(clippy::disallowed_methods)]
+  std::thread::spawn(move || {
+    if rx.recv_timeout(duration)
+      == Err(::std::sync::mpsc::RecvTimeoutError::Timeout)
+    {
+      use std::io::Write;
+      #[allow(clippy::print_stderr)]
+      {
+        ::std::eprintln!(
+          "Test {test_name} timed out after {} seconds, aborting",
+          duration.as_secs()
+        );
+      }
+      _ = std::io::stderr().flush();
+      #[allow(clippy::disallowed_methods)]
+      ::std::process::exit(1);
+    }
+  });
+  TestTimeoutHolder { _tx: tx }
 }

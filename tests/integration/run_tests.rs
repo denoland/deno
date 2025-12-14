@@ -17,7 +17,10 @@ use rustls_tokio_stream::TlsStream;
 use serde_json::json;
 use test_util as util;
 use test_util::TempDir;
+use test_util::eprintln;
 use test_util::itest;
+use test_util::println;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -167,7 +170,7 @@ itest!(_089_run_allow_list {
   output: "run/089_run_allow_list.ts.out",
 });
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn _090_run_permissions_request() {
   TestContext::default()
     .new_command()
@@ -200,7 +203,7 @@ fn _090_run_permissions_request() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn _090_run_permissions_request_sync() {
   TestContext::default()
     .new_command()
@@ -233,7 +236,7 @@ fn _090_run_permissions_request_sync() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all() {
   TestContext::default()
     .new_command()
@@ -327,7 +330,7 @@ fn permissions_prompt_allow_all() {
   );
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -375,7 +378,7 @@ fn permissions_prompt_allow_all_2() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_lowercase_a() {
   TestContext::default()
     .new_command()
@@ -396,7 +399,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
     .new_command()
@@ -410,7 +413,7 @@ fn permission_request_long() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_cache() {
   TestContext::default()
     .new_command()
@@ -433,7 +436,7 @@ fn permissions_cache() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_trace() {
   TestContext::default()
     .new_command()
@@ -1250,6 +1253,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use test_util::test;
   use util::TestContext;
 
   #[test]
@@ -1626,7 +1630,7 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _061_permissions_request() {
     TestContext::default()
       .new_command()
@@ -1658,7 +1662,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _061_permissions_request_sync() {
     TestContext::default()
       .new_command()
@@ -1690,7 +1694,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _062_permissions_request_global() {
     TestContext::default()
       .new_command()
@@ -1715,7 +1719,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _062_permissions_request_global_sync() {
     TestContext::default()
       .new_command()
@@ -1740,7 +1744,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1777,7 +1781,7 @@ mod permissions {
   }
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()
@@ -1791,7 +1795,7 @@ fn process_stdin_read_unblock() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -2019,7 +2023,7 @@ fn check_local_then_remote() {
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permission_request_with_no_prompt() {
   TestContext::default()
     .new_command()
@@ -2295,8 +2299,8 @@ fn basic_auth_tokens() {
   assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_resolve_dns() {
+#[test]
+fn test_resolve_dns() {
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -2349,116 +2353,125 @@ async fn test_resolve_dns() {
     server_fut.block_until_done().await.unwrap();
   }
 
-  let (ready_tx, ready_rx) = oneshot::channel();
-  let dns_server_fut = run_dns_server(ready_tx);
-  let handle = tokio::spawn(dns_server_fut);
-
-  // Waits for the DNS server to be ready
-  ready_rx.await.unwrap();
-
-  // Pass: `--allow-net`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    println!("{err}");
-    assert!(output.status.success());
-    assert!(err.starts_with("Check run/resolve_dns.ts"));
-
-    let expected = std::fs::read_to_string(
-      util::testdata_path().join("run/resolve_dns.ts.out"),
-    )
+  // Create a multi-threaded tokio runtime with 2 worker threads
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .worker_threads(2)
+    .enable_all()
+    .build()
     .unwrap();
-    assert_eq!(expected, out);
-  }
 
-  // Pass: `--allow-net=127.0.0.1:4553`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net=127.0.0.1:4553")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
+  runtime.block_on(async {
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let dns_server_fut = run_dns_server(ready_tx);
+    let handle = tokio::spawn(dns_server_fut);
+
+    // Waits for the DNS server to be ready
+    ready_rx.await.unwrap();
+
+    // Pass: `--allow-net`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      println!("{err}");
+      assert!(output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+
+      let expected = std::fs::read_to_string(
+        util::testdata_path().join("run/resolve_dns.ts.out"),
+      )
       .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    if !output.status.success() {
-      eprintln!("stderr: {err}");
+      assert_eq!(expected, out);
     }
-    assert!(output.status.success());
-    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
-    let expected = std::fs::read_to_string(
-      util::testdata_path().join("run/resolve_dns.ts.out"),
-    )
-    .unwrap();
-    assert_eq!(expected, out);
-  }
+    // Pass: `--allow-net=127.0.0.1:4553`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net=127.0.0.1:4553")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      if !output.status.success() {
+        eprintln!("stderr: {err}");
+      }
+      assert!(output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
 
-  // Permission error: `--allow-net=deno.land`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net=deno.land")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
+      let expected = std::fs::read_to_string(
+        util::testdata_path().join("run/resolve_dns.ts.out"),
+      )
       .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    assert!(!output.status.success());
-    assert!(err.starts_with("Check run/resolve_dns.ts"));
-    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
-    assert!(out.is_empty());
-  }
+      assert_eq!(expected, out);
+    }
 
-  // Permission error: no permission specified
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    assert!(!output.status.success());
-    assert!(err.starts_with("Check run/resolve_dns.ts"));
-    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
-    assert!(out.is_empty());
-  }
+    // Permission error: `--allow-net=deno.land`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net=deno.land")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      assert!(!output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
+      assert!(out.is_empty());
+    }
 
-  handle.abort();
+    // Permission error: no permission specified
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      assert!(!output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
+      assert!(out.is_empty());
+    }
+
+    handle.abort();
+  });
 }
 
-#[tokio::test]
+#[test]
 async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -2702,7 +2715,7 @@ where
   }
 }
 
-#[tokio::test]
+#[test]
 async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
@@ -2753,9 +2766,8 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[tokio::test]
+#[test(timeout = 60_000)]
 async fn websocket_server_idletimeout() {
-  test_util::timeout!(60);
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -2803,7 +2815,7 @@ async fn websocket_server_idletimeout() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/16772
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn file_fetcher_preserves_permissions() {
   let context = TestContext::with_http_server();
   context
@@ -2820,7 +2832,7 @@ fn file_fetcher_preserves_permissions() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn stdio_streams_are_locked_in_permission_prompt() {
   if !util::pty::Pty::is_supported() {
     // Don't deal with the logic below if the with_pty
@@ -2881,7 +2893,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -3322,7 +3334,7 @@ fn node_process_stdin_pause() {
     .unwrap();
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
@@ -3351,7 +3363,7 @@ fn node_process_stdin_unref_with_pty() {
     });
 }
 
-#[tokio::test]
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3406,7 +3418,7 @@ async fn listen_tls_alpn() {
   assert!(status.success());
 }
 
-#[tokio::test]
+#[test]
 async fn listen_tls_alpn_fail() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3505,7 +3517,7 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
   let socket_path = if cfg!(windows) {
@@ -3525,7 +3537,7 @@ fn test_permission_broker_doesnt_exit() {
   );
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn test_permission_broker() {
   use std::io::BufRead;
   use std::io::BufReader;
