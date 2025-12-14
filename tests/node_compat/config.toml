@@ -979,6 +979,7 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-spawn-cmd-named-pipe.js" = { darwin = false, linux = false }
 "parallel/test-sqlite-custom-functions.js" = {}
 "parallel/test-sqlite-data-types.js" = {}
 "parallel/test-sqlite-database-sync-dispose.js" = {}

@@ -14,6 +14,7 @@ pub mod inspector;
 pub mod ipc;
 pub mod os;
 pub mod perf_hooks;
+pub mod pipe;
 pub mod process;
 pub mod require;
 pub mod sqlite;
