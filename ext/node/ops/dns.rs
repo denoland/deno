@@ -89,8 +89,7 @@ pub async fn op_node_getaddrinfo(
   })
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_node_getnameinfo(
   state: Rc<RefCell<OpState>>,
   #[string] ip: String,

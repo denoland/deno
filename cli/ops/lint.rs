@@ -231,7 +231,7 @@ fn op_lint_create_serialized_ast(
 #[derive(FromV8)]
 struct LintReportFix {
   text: String,
-  #[serde] range: (usize, usize),
+  #[v8(serde)] range: (usize, usize),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

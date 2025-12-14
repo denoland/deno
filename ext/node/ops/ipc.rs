@@ -175,7 +175,6 @@ mod impl_ {
 
   // Open IPC pipe from bootstrap options.
   #[op2]
-  #[to_v8]
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
   ) -> Result<Option<(ResourceId, u8)>, io::Error> {
@@ -434,7 +433,7 @@ mod impl_ {
     state.put(constants);
   }
 
-  #[op2(async)]
+  #[op2]
   pub fn op_node_ipc_write_advanced<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
@@ -757,8 +756,7 @@ mod impl_ {
     }
   }
 
-  #[op2(async)]
-  #[to_v8]
+  #[op2]
   pub async fn op_node_ipc_read_advanced(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
