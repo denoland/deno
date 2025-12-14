@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::ffi::c_int;
-use std::time;
+use std::rc::Rc;
 
-use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
@@ -13,7 +13,6 @@ use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use rusqlite::Connection;
 use rusqlite::backup;
-use rusqlite::backup::Progress;
 
 use super::DatabaseSync;
 use super::SqliteError;
@@ -39,14 +38,11 @@ impl<'a> Default for BackupOptions<'a> {
   }
 }
 
-impl<'a> FromV8<'a> for BackupOptions<'a> {
-  type Error = validators::Error;
-
-  fn from_v8(
+impl<'a> BackupOptions<'a> {
+  fn from_value(
     scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
-  ) -> Result<Self, Self::Error> {
-    use validators::Error;
+  ) -> Result<Self, validators::Error> {
     let mut options = BackupOptions::default();
 
     if value.is_undefined() {
@@ -54,7 +50,7 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
     }
 
     let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
-      return Err(Error::InvalidArgType(
+      return Err(validators::Error::InvalidArgType(
         "The \"options\" argument must be an object.",
       ));
     };
@@ -72,7 +68,7 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
     {
       let source_str =
         v8::Local::<v8::String>::try_from(source_val).map_err(|_| {
-          Error::InvalidArgType(
+          validators::Error::InvalidArgType(
             "The \"options.source\" argument must be a string.",
           )
         })?;
@@ -85,7 +81,7 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
     {
       let target_str =
         v8::Local::<v8::String>::try_from(target_val).map_err(|_| {
-          Error::InvalidArgType(
+          validators::Error::InvalidArgType(
             "The \"options.target\" argument must be a string.",
           )
         })?;
@@ -98,14 +94,14 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
     {
       let rate_int = v8::Local::<v8::Integer>::try_from(rate_val)
         .map_err(|_| {
-          Error::InvalidArgType(
+          validators::Error::InvalidArgType(
             "The \"options.rate\" argument must be an integer.",
           )
         })?
         .value();
 
       options.rate = i32::try_from(rate_int).map_err(|_| {
-        Error::InvalidArgType(
+        validators::Error::InvalidArgType(
           "The \"options.rate\" argument must be an integer.",
         )
       })?;
@@ -117,7 +113,7 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
     {
       let progress_fn = v8::Local::<v8::Function>::try_from(progress_val)
         .map_err(|_| {
-          Error::InvalidArgType(
+          validators::Error::InvalidArgType(
             "The \"options.progress\" argument must be a function.",
           )
         })?;
@@ -128,22 +124,32 @@ impl<'a> FromV8<'a> for BackupOptions<'a> {
   }
 }
 
-#[op2(stack_trace)]
+#[op2(fast, reentrant)]
 #[smi]
-pub fn op_node_database_backup(
-  state: &mut OpState,
+pub fn op_node_database_backup<'a>(
+  state: Rc<RefCell<OpState>>,
+  scope: &mut v8::PinScope<'a, '_>,
   #[cppgc] source_db: &DatabaseSync,
   #[string] path: &str,
-  #[from_v8] options: BackupOptions,
+  options: v8::Local<'a, v8::Value>,
 ) -> Result<i32, SqliteError> {
+  use rusqlite::backup::StepResult::Busy;
+  use rusqlite::backup::StepResult::Done;
+  use rusqlite::backup::StepResult::Locked;
+  use rusqlite::backup::StepResult::More;
+
+  let options = BackupOptions::from_value(scope, options)?;
   let src_conn_ref = source_db.conn.borrow();
   let src_conn = src_conn_ref.as_ref().ok_or(SqliteError::SessionClosed)?;
-  let path = std::path::Path::new(path);
-  let checked_path = state.borrow_mut::<PermissionsContainer>().check_open(
-    Cow::Borrowed(path),
-    OpenAccessKind::Write,
-    Some("node:sqlite.backup"),
-  )?;
+  let checked_path = {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_open(
+      Cow::Borrowed(std::path::Path::new(path)),
+      OpenAccessKind::Write,
+      Some("node:sqlite.backup"),
+    )?
+  };
 
   let mut dst_conn = Connection::open(checked_path)?;
   let backup = backup::Backup::new_with_names(
@@ -153,10 +159,41 @@ pub fn op_node_database_backup(
     options.target.as_str(),
   )?;
 
-  backup.run_to_completion(
-    options.rate,
-    time::Duration::from_millis(250),
-    None,
-  )?;
-  Ok(backup.progress().pagecount)
+  v8_static_strings! {
+    TOTAL_PAGES_STRING = "totalPages",
+    REMAINING_PAGES_STRING = "remainingPages",
+  }
+
+  loop {
+    let r = backup.step(options.rate)?;
+    if let Some(ref progress_fn) = options.progress {
+      let recv = v8::null(scope).into();
+      let js_progress_obj = v8::Object::new(scope);
+      let total_pages_string = TOTAL_PAGES_STRING.v8_string(scope).unwrap();
+      let remaining_pages_string =
+        REMAINING_PAGES_STRING.v8_string(scope).unwrap();
+
+      let progress = backup.progress();
+      let total_pages_js = v8::Integer::new(scope, progress.pagecount);
+      let remaining_pages_js = v8::Integer::new(scope, progress.remaining);
+      js_progress_obj.set(
+        scope,
+        total_pages_string.into(),
+        total_pages_js.into(),
+      );
+      js_progress_obj.set(
+        scope,
+        remaining_pages_string.into(),
+        remaining_pages_js.into(),
+      );
+
+      progress_fn
+        .call(scope, recv, &[js_progress_obj.into()])
+        .unwrap();
+    }
+    match r {
+      Done => return Ok(backup.progress().pagecount),
+      More | Busy | Locked | _ => continue,
+    }
+  }
 }

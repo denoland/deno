@@ -151,7 +151,7 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-async function backup(
+function backup(
   sourceDb: DatabaseSync,
   path: string | Buffer | URL,
   options?: BackupOptions,
@@ -162,7 +162,7 @@ async function backup(
     );
   }
 
-  return await op_node_database_backup(
+  return op_node_database_backup(
     sourceDb,
     parsePath(path),
     options,
