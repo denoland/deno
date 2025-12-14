@@ -12,6 +12,7 @@ import { URLPrototype } from "ext:deno_web/00_url.js";
 import type { URL } from "node:url";
 
 const {
+  ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -168,6 +169,13 @@ function backup(
     options,
   );
 }
+ObjectDefineProperty(backup, "length", {
+  __proto__: null,
+  value: 2,
+  enumerable: false,
+  configurable: true,
+  writable: false,
+});
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
