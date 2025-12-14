@@ -152,7 +152,7 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-function backup(
+async function backup(
   sourceDb: DatabaseSync,
   path: string | Buffer | URL,
   options?: BackupOptions,
@@ -163,7 +163,8 @@ function backup(
     );
   }
 
-  return op_node_database_backup(
+  // TODO(Tango992): Implement async op
+  return await op_node_database_backup(
     sourceDb,
     parsePath(path),
     options,
