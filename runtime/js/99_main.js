@@ -532,6 +532,10 @@ const NOT_IMPORTED_OPS = [
   "op_test_get_origin",
   "op_pledge_test_permissions",
 
+  // TODO(bartlomieju): used in various integration tests - figure out a way
+  // to not depend on them.
+  "op_napi_open",
+
   // deno deploy subcommand
   "op_deploy_token_get",
   "op_deploy_token_set",
