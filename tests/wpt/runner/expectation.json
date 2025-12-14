@@ -15359,7 +15359,6 @@
     "shared-worker-in-data-url-context.window.html": false,
     "worker-performance.worker.html": [
       "Resource timing seems to work in workers",
-      "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
     ],
     "importscripts_mime_local.any.worker.html": [
