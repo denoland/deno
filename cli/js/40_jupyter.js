@@ -37,6 +37,7 @@
  * ```
  */
 import { core, internals } from "ext:core/mod.js";
+import { op_base64_decode, op_base64_encode } from "ext:core/ops";
 
 const $display = Symbol.for("Jupyter.display");
 
@@ -281,12 +282,12 @@ async function format(obj) {
   }
   if (isJpg(obj)) {
     return {
-      "image/jpeg": core.ops.op_base64_encode(obj),
+      "image/jpeg": op_base64_encode(obj),
     };
   }
   if (isPng(obj)) {
     return {
-      "image/png": core.ops.op_base64_encode(obj),
+      "image/png": op_base64_encode(obj),
     };
   }
   if (isSVGElementLike(obj)) {
@@ -393,11 +394,11 @@ function image(obj) {
   }
 
   if (isJpg(obj)) {
-    return makeDisplayable({ "image/jpeg": core.ops.op_base64_encode(obj) });
+    return makeDisplayable({ "image/jpeg": op_base64_encode(obj) });
   }
 
   if (isPng(obj)) {
-    return makeDisplayable({ "image/png": core.ops.op_base64_encode(obj) });
+    return makeDisplayable({ "image/png": op_base64_encode(obj) });
   }
 
   if (obj instanceof GPUTexture) {
