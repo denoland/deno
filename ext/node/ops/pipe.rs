@@ -285,6 +285,7 @@ mod stubs {
   #[error("Windows named pipes are not supported on this platform")]
   pub struct NotSupportedError;
 
+  #[allow(clippy::unused_async)]
   #[op2(async)]
   #[smi]
   pub async fn op_node_pipe_connect(
@@ -303,6 +304,7 @@ mod stubs {
     Err(NotSupportedError)
   }
 
+  #[allow(clippy::unused_async)]
   #[op2(async)]
   #[smi]
   pub async fn op_node_pipe_accept(
