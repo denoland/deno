@@ -124,7 +124,7 @@ impl<'a> BackupOptions<'a> {
   }
 }
 
-#[op2(fast, reentrant)]
+#[op2(fast, reentrant, stack_trace)]
 #[smi]
 pub fn op_node_database_backup<'a>(
   state: Rc<RefCell<OpState>>,
@@ -164,7 +164,7 @@ pub fn op_node_database_backup<'a>(
         errcode: err.extended_code as _,
       }
     }
-    other => SqliteError::from(other),
+    other_err => SqliteError::from(other_err),
   })?;
   let backup = backup::Backup::new_with_names(
     src_conn,
@@ -179,33 +179,35 @@ pub fn op_node_database_backup<'a>(
   }
 
   loop {
-    let r = backup.step(options.rate)?;
+    let step_result = backup.step(options.rate)?;
     if let Some(progress_fn) = options.progress {
-      let recv = v8::null(scope).into();
-      let js_progress_obj = v8::Object::new(scope);
-      let total_pages_string = TOTAL_PAGES_STRING.v8_string(scope).unwrap();
-      let remaining_pages_string =
-        REMAINING_PAGES_STRING.v8_string(scope).unwrap();
-
       let progress = backup.progress();
-      let total_pages_js = v8::Integer::new(scope, progress.pagecount);
-      let remaining_pages_js = v8::Integer::new(scope, progress.remaining);
-      js_progress_obj.set(
-        scope,
-        total_pages_string.into(),
-        total_pages_js.into(),
-      );
-      js_progress_obj.set(
-        scope,
-        remaining_pages_string.into(),
-        remaining_pages_js.into(),
-      );
+      if progress.remaining != 0 {
+        let js_progress_obj = v8::Object::new(scope);
+        let total_pages_string = TOTAL_PAGES_STRING.v8_string(scope).unwrap();
+        let remaining_pages_string =
+          REMAINING_PAGES_STRING.v8_string(scope).unwrap();
 
-      progress_fn
-        .call(scope, recv, &[js_progress_obj.into()])
-        .unwrap();
+        let total_pages_js = v8::Integer::new(scope, progress.pagecount);
+        let remaining_pages_js = v8::Integer::new(scope, progress.remaining);
+        js_progress_obj.set(
+          scope,
+          total_pages_string.into(),
+          total_pages_js.into(),
+        );
+        js_progress_obj.set(
+          scope,
+          remaining_pages_string.into(),
+          remaining_pages_js.into(),
+        );
+
+        let recv = v8::null(scope).into();
+        progress_fn
+          .call(scope, recv, &[js_progress_obj.into()])
+          .unwrap();
+      }
     }
-    match r {
+    match step_result {
       Done => return Ok(backup.progress().pagecount),
       More | Busy | Locked | _ => continue,
     }
