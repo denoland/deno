@@ -124,7 +124,7 @@ impl<'a> BackupOptions<'a> {
   }
 }
 
-#[op2(fast, reentrant, stack_trace)]
+#[op2(reentrant, stack_trace)]
 #[smi]
 pub fn op_node_database_backup<'a>(
   state: Rc<RefCell<OpState>>,
@@ -132,7 +132,7 @@ pub fn op_node_database_backup<'a>(
   #[cppgc] source_db: &DatabaseSync,
   #[string] path: &str,
   options: v8::Local<'a, v8::Value>,
-) -> Result<i32, SqliteError> {
+) -> Result<Option<i32>, SqliteError> {
   use rusqlite::backup::StepResult::Busy;
   use rusqlite::backup::StepResult::Done;
   use rusqlite::backup::StepResult::Locked;
@@ -202,13 +202,15 @@ pub fn op_node_database_backup<'a>(
         );
 
         let recv = v8::null(scope).into();
-        progress_fn
-          .call(scope, recv, &[js_progress_obj.into()])
-          .unwrap();
+        let res = progress_fn.call(scope, recv, &[js_progress_obj.into()]);
+        if res.is_none() {
+          // JS exception occurred in progress callback
+          return Ok(None);
+        }
       }
     }
     match step_result {
-      Done => return Ok(backup.progress().pagecount),
+      Done => return Ok(Some(backup.progress().pagecount)),
       More | Busy | Locked | _ => continue,
     }
   }
