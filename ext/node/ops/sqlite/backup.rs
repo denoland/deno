@@ -140,7 +140,7 @@ pub fn op_node_database_backup<'a>(
 
   let options = BackupOptions::from_value(scope, options)?;
   let src_conn_ref = source_db.conn.borrow();
-  let src_conn = src_conn_ref.as_ref().ok_or(SqliteError::SessionClosed)?;
+  let src_conn = src_conn_ref.as_ref().ok_or(SqliteError::AlreadyClosed)?;
   let checked_path = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<PermissionsContainer>();
@@ -151,7 +151,21 @@ pub fn op_node_database_backup<'a>(
     )?
   };
 
-  let mut dst_conn = Connection::open(checked_path)?;
+  let mut dst_conn = Connection::open(checked_path).map_err(|e| match e {
+    rusqlite::Error::SqliteFailure(err, Some(msg)) => {
+      let message = if err.extended_code == rusqlite::ffi::SQLITE_CANTOPEN {
+        "unable to open database file".to_string()
+      } else {
+        msg
+      };
+      SqliteError::SqliteSysError {
+        message: message.clone(),
+        errstr: message,
+        errcode: err.extended_code as _,
+      }
+    }
+    other => SqliteError::from(other),
+  })?;
   let backup = backup::Backup::new_with_names(
     src_conn,
     options.source.as_str(),
@@ -166,7 +180,7 @@ pub fn op_node_database_backup<'a>(
 
   loop {
     let r = backup.step(options.rate)?;
-    if let Some(ref progress_fn) = options.progress {
+    if let Some(progress_fn) = options.progress {
       let recv = v8::null(scope).into();
       let js_progress_obj = v8::Object::new(scope);
       let total_pages_string = TOTAL_PAGES_STRING.v8_string(scope).unwrap();
