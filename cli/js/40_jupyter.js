@@ -37,7 +37,7 @@
  * ```
  */
 import { core, internals } from "ext:core/mod.js";
-import { op_base64_decode, op_base64_encode } from "ext:core/ops";
+import { op_base64_encode } from "ext:core/ops";
 
 const $display = Symbol.for("Jupyter.display");
 
