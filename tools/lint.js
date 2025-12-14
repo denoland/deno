@@ -414,6 +414,7 @@ async function ensureNoNewTopLevelFiles() {
     "CLAUDE.md",
     "Cargo.lock",
     "Cargo.toml",
+    "deno.json",
     "LICENSE.md",
     "README.md",
     "Releases.md",
