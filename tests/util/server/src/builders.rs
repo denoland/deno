@@ -33,12 +33,15 @@ use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
+use crate::eprintln;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
+use crate::print::spawn_thread;
+use crate::println;
 use crate::pty::Pty;
 use crate::servers::tsgo_prebuilt_path;
 use crate::strip_ansi_codes;
@@ -88,7 +91,6 @@ impl DiagnosticLogger {
   pub fn writeln(&self, text: impl AsRef<str>) {
     match self {
       DiagnosticLogger::Null => {}
-      #[allow(clippy::print_stderr)]
       DiagnosticLogger::Stderr => {
         eprintln!("{}", text.as_ref());
       }
@@ -727,12 +729,8 @@ impl TestCommandBuilder {
       (
         None,
         Some((
-          std::thread::spawn(move || {
-            read_pipe_to_string(stdout_reader, show_output)
-          }),
-          std::thread::spawn(move || {
-            read_pipe_to_string(stderr_reader, show_output)
-          }),
+          spawn_thread(move || read_pipe_to_string(stdout_reader, show_output)),
+          spawn_thread(move || read_pipe_to_string(stderr_reader, show_output)),
         )),
       )
     } else {
@@ -947,14 +945,13 @@ impl DenoChild {
     let stdout = deno.stdout.take().unwrap();
     let no_capture = *file_test_runner::NO_CAPTURE;
     let final_output = Arc::new(Mutex::new(Vec::<String>::new()));
-    let stdout = std::thread::spawn({
+    let stdout = spawn_thread({
       let final_output = final_output.clone();
       let test_name = test_name.to_string();
       move || {
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
           if let Ok(line) = line {
-            #[allow(clippy::print_stdout)]
             if no_capture {
               println!(
                 "[{test_name} {:0>6.2}] {line}",
@@ -972,14 +969,13 @@ impl DenoChild {
 
     let now = Instant::now();
     let stderr = deno.stderr.take().unwrap();
-    let stderr = std::thread::spawn({
+    let stderr = spawn_thread({
       let final_output = final_output.clone();
       let test_name = test_name.to_string();
       move || {
         let reader = BufReader::new(stderr);
         for line in reader.lines() {
           if let Ok(line) = line {
-            #[allow(clippy::print_stderr)]
             if no_capture {
               eprintln!(
                 "[{test_name} {:0>6.2}] {line}",
