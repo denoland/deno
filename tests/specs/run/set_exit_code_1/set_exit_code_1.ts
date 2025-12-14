@@ -1,2 +1,2 @@
-Deno.exit(42);
+Deno.exitCode = 42;
 Deno.exit();

@@ -2,7 +2,7 @@
 // setting exit code in worker context is a no-op and is an alias for
 // `self.close()`.
 
-Deno.exit(21);
+Deno.exitCode = 21;
 
 const worker = new Worker(
   import.meta.resolve("./op_exit_op_set_exit_code_worker.js"),
