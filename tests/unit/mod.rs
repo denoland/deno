@@ -8,8 +8,8 @@ use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::TestContextBuilder;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::flaky_test_ci;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 
 fn main() {

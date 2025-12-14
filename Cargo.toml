@@ -50,6 +50,7 @@ members = [
   "tests/napi",
   "tests/sqlite_extension_test",
   "tests/util/server",
+  "tests/util/test_macro",
 ]
 # tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
 # feature, which is incompatible with the "session" feature used by the rest of the workspace.
@@ -132,6 +133,7 @@ deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.
 deno_typescript_go_client_rust = { version = "0.4.0", path = "./libs/typescript_go_client" }
 napi_sym = { version = "0.152.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.60.0", path = "./libs/node_resolver" }
+test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 deno_tunnel = "0.8.0"
@@ -170,9 +172,8 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.8.2"
+file_test_runner = "0.9.2"
 filetime = "0.2.16"
-flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
 fqdn = "0.4.6"
 fs3 = "0.5.0"
@@ -195,6 +196,7 @@ idna = "1.0.3"
 ignore = "0.4"
 import_map = { version = "0.24.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
+inventory = "0.3.21"
 ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
@@ -210,7 +212,6 @@ mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
 notify = "=6.1.1"
-ntest_timeout = "0.9.3"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -224,6 +225,7 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
 pretty_assertions = "=1.4.1"
+proc-macro2 = "1.0"
 prost = "0.13"
 prost-build = "0.13"
 quick-junit = "0.3.5"

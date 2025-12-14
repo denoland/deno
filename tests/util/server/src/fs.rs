@@ -22,6 +22,7 @@ use url::Url;
 use crate::assertions::assert_wildcard_match;
 use crate::lsp::SourceFile;
 use crate::lsp::source_file;
+use crate::println;
 use crate::testdata_path;
 
 /// Characters that are left unencoded in a `Url` path but will be encoded in a
@@ -382,10 +383,7 @@ impl PathRef {
   #[track_caller]
   pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
     let wildcard_file = testdata_path().join(wildcard_file);
-    #[allow(clippy::print_stdout)]
-    {
-      println!("output path {}", wildcard_file);
-    }
+    println!("output path {}", wildcard_file);
     let expected_text = wildcard_file.read_to_string();
     self.assert_matches_text(&expected_text)
   }
