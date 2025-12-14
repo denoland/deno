@@ -81,11 +81,10 @@ pub struct SyncFetchScript {
 }
 
 #[op2]
-#[to_v8]
 #[allow(clippy::result_large_err)]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
-  #[from_v8] scripts: Vec<String>,
+  #[v8_slow] scripts: Vec<String>,
   loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, SyncFetchError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();

@@ -108,8 +108,7 @@ pub enum DecryptError {
   Rsa(rsa::Error),
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_decrypt(
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,

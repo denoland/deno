@@ -207,7 +207,6 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
   #[smi] uid: u32,

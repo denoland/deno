@@ -122,7 +122,7 @@ pub enum JupyterBroadcastError {
   ZeroMq(AnyError),
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_jupyter_broadcast(
   state: Rc<RefCell<OpState>>,
   #[string] message_type: String,
@@ -351,7 +351,6 @@ pub fn op_jupyter_create_png_from_texture(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_jupyter_get_buffer(
   #[cppgc] buffer: &deno_runtime::deno_webgpu::buffer::GPUBuffer,
 ) -> Result<Vec<u8>, deno_runtime::deno_webgpu::error::GPUError> {

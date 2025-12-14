@@ -127,7 +127,6 @@ pub fn op_crypto_import_pkcs8_ed25519(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
 ) -> Result<Uint8Array, Ed25519Error> {
@@ -148,7 +147,6 @@ pub fn op_crypto_export_spki_ed25519(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<Uint8Array, Ed25519Error> {

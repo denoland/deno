@@ -73,7 +73,6 @@ pub fn op_socket_address_parse(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
 ) -> SocketAddressSerialization {

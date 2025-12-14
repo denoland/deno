@@ -8,10 +8,9 @@ use std::rc::Rc;
 use bytes::Bytes;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::ByteString;
+use deno_core::convert::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -416,15 +415,14 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   #[string] api_name: String,
   #[string] url: String,
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
-  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[v8_slow] headers: Option<Vec<(ByteString, ByteString)>>,
   #[smi] client_rid: Option<u32>,
 ) -> Result<CreateResponse, WebsocketError>
 where
@@ -654,17 +652,17 @@ pub fn op_ws_send_text(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
 ) -> Result<(), WebsocketError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  let data = data.to_vec();
+  let data = data.0;
   let lock = resource.reserve_lock();
   resource
     .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
@@ -672,7 +670,7 @@ pub async fn op_ws_send_binary_async(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -707,7 +705,7 @@ pub fn op_ws_get_buffered_amount(
     .get() as u32
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -755,7 +753,6 @@ pub async fn op_ws_close(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -788,7 +785,7 @@ pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

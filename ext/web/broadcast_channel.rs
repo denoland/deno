@@ -115,7 +115,7 @@ where
   bc.unsubscribe(&resource)
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -130,7 +130,7 @@ where
   bc.send(&resource, name, buf.to_vec()).await
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,

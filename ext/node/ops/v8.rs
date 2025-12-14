@@ -165,7 +165,6 @@ pub fn op_v8_set_treat_array_buffer_views_as_host_objects(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> Uint8Array {
   ser.inner.release().into()
 }
@@ -388,7 +387,6 @@ pub fn op_v8_read_uint32(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
 ) -> Result<(u32, u32), JsErrorBox> {

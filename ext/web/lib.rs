@@ -178,7 +178,6 @@ pub enum WebError {
 }
 
 #[op2]
-#[to_v8]
 fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;

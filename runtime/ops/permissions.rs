@@ -65,10 +65,9 @@ pub enum PermissionError {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_query_permission(
   state: &mut OpState,
-  #[from_v8] args: PermissionArgs,
+  #[v8_slow] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -86,10 +85,9 @@ pub fn op_query_permission(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_revoke_permission(
   state: &mut OpState,
-  #[from_v8] args: PermissionArgs,
+  #[v8_slow] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -107,10 +105,9 @@ pub fn op_revoke_permission(
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_request_permission(
   state: &mut OpState,
-  #[from_v8] args: PermissionArgs,
+  #[v8_slow] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {

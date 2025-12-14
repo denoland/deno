@@ -88,7 +88,7 @@ fn op_cron_create<C>(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
   #[string] cron_schedule: String,
-  #[from_v8] backoff_schedule: Option<Vec<u32>>,
+  #[v8_slow] backoff_schedule: Option<Vec<u32>>,
 ) -> Result<ResourceId, CronError>
 where
   C: CronHandler + 'static,
@@ -118,7 +118,7 @@ where
   Ok(handle_rid)
 }
 
-#[op2(async)]
+#[op2]
 async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

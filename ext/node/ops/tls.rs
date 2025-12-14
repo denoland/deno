@@ -47,7 +47,6 @@ use super::crypto::x509::Certificate;
 use super::crypto::x509::CertificateObject;
 
 #[op2]
-#[to_v8]
 pub fn op_get_root_certificates() -> Vec<String> {
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
@@ -480,7 +479,7 @@ impl Resource for JSStreamTlsResource {
 #[op2]
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] args: StartJSTlsArgs,
+  #[v8_slow] args: StartJSTlsArgs,
   #[buffer] output: &mut [u32],
 ) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
@@ -560,7 +559,7 @@ pub fn op_node_tls_start(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_node_tls_handshake(
   state: Rc<RefCell<OpState>>,

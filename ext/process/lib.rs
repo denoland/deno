@@ -958,7 +958,6 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -974,9 +973,8 @@ fn op_spawn_child(
   child
 }
 
-#[op2(async)]
+#[op2]
 #[allow(clippy::await_holding_refcell_ref)]
-#[to_v8]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1000,7 +998,6 @@ async fn op_spawn_wait(
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -1113,10 +1110,9 @@ mod deprecated {
   }
 
   #[op2(stack_trace)]
-  #[to_v8]
   pub fn op_run(
     state: &mut OpState,
-    #[from_v8] run_args: RunArgs,
+    #[v8_slow] run_args: RunArgs,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
@@ -1234,8 +1230,7 @@ mod deprecated {
     exit_signal: i32,
   }
 
-  #[op2(async)]
-  #[to_v8]
+  #[op2]
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,

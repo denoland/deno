@@ -547,7 +547,7 @@ unsafe fn do_ffi_callback(
   }
 }
 
-#[op2(async)]
+#[op2()]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

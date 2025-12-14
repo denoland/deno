@@ -31,12 +31,11 @@ struct BackupResult {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_node_database_backup<P>(
   state: &mut OpState,
   #[cppgc] source_db: &DatabaseSync,
   #[string] path: &str,
-  #[from_v8] options: Option<BackupOptions>,
+  #[v8_slow] options: Option<BackupOptions>,
 ) -> Result<BackupResult, SqliteError>
 where
   P: NodePermissions + 'static,

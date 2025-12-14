@@ -156,7 +156,6 @@ impl TransferredResource for MessagePort {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
 ) -> (ResourceId, ResourceId) {
@@ -252,7 +251,7 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,

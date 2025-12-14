@@ -212,11 +212,10 @@ pub struct OnLoadOptions {
   pub namespace: Option<String>,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_bundle(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] options: BundleOptions,
+  #[v8_slow] options: BundleOptions,
 ) -> Result<BuildResponse, JsErrorBox> {
   // eprintln!("op_bundle: {:?}", options);
   let provider = {

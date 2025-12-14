@@ -51,7 +51,6 @@ fn op_remap_specifier(
 }
 
 #[op2]
-#[to_v8]
 fn op_libs() -> Vec<String> {
   let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
   for (key, value) in LAZILY_LOADED_STATIC_ASSETS.iter() {
@@ -68,11 +67,10 @@ fn op_libs() -> Vec<String> {
 }
 
 #[op2]
-#[to_v8]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  #[from_v8] specifiers: Vec<(bool, String)>,
+  #[v8_slow] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }

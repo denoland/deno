@@ -201,7 +201,7 @@ fn start_watcher(
 fn op_fs_events_open(
   state: &mut OpState,
   recursive: bool,
-  #[from_v8] paths: Vec<String>,
+  #[v8_slow] paths: Vec<String>,
 ) -> Result<ResourceId, FsEventsError> {
   let mut resolved_paths = Vec::with_capacity(paths.len());
   {
@@ -243,7 +243,7 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,

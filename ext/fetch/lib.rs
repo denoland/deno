@@ -29,13 +29,13 @@ use data_url::DataUrl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
+use deno_core::convert::{ByteString};
+use deno_core::convert::{Uint8Array};
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::FromV8;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -483,18 +483,17 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::result_large_err)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  #[serde] method: ByteString,
+  #[v8_slow] method: ByteString,
   #[string] url: String,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   has_body: bool,
-  #[buffer] data: Option<JsBuffer>,
+  data: Option<Uint8Array>,
   #[smi] resource: Option<ResourceId>,
 ) -> Result<FetchReturn, FetchError>
 where
@@ -548,7 +547,7 @@ where
             // If a body is passed, we use it, and don't return a body for streaming.
             con_len = Some(data.len() as u64);
 
-            ReqBody::full(data.to_vec().into())
+            ReqBody::full(data.0.into())
           }
           (_, Some(resource)) => {
             let resource = state.resource_table.take_any(resource)?;
@@ -670,7 +669,6 @@ where
 pub struct FetchResponse {
   pub status: u16,
   pub status_text: String,
-  #[to_v8(serde)]
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
@@ -683,8 +681,7 @@ pub struct FetchResponse {
   pub error: Option<(String, String)>,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -922,7 +919,7 @@ pub struct CreateHttpClientArgs {
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  #[from_v8] mut args: CreateHttpClientArgs,
+  #[v8_slow] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError>
 where
@@ -1207,7 +1204,6 @@ pub fn create_http_client(
 }
 
 #[op2]
-#[serde]
 pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }

@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::io::Write;
-
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use flate2::Compression;
 use flate2::write::DeflateDecoder;
@@ -77,11 +77,10 @@ pub fn op_compression_new(
 }
 
 #[op2]
-#[buffer]
 pub fn op_compression_write(
   #[cppgc] resource: &CompressionResource,
   #[anybuffer] input: &[u8],
-) -> Result<Vec<u8>, CompressionError> {
+) -> Result<Uint8Array, CompressionError> {
   let mut inner = resource.0.borrow_mut();
   let inner = inner.as_mut().ok_or(CompressionError::ResourceClosed)?;
   let out: Vec<u8> = match &mut *inner {
@@ -117,15 +116,14 @@ pub fn op_compression_write(
     }
   }
   .collect();
-  Ok(out)
+  Ok(out.into())
 }
 
 #[op2]
-#[buffer]
 pub fn op_compression_finish(
   #[cppgc] resource: &CompressionResource,
   report_errors: bool,
-) -> Result<Vec<u8>, CompressionError> {
+) -> Result<Uint8Array, CompressionError> {
   let inner = resource
     .0
     .borrow_mut()
@@ -152,9 +150,9 @@ pub fn op_compression_finish(
       if report_errors {
         Err(err)
       } else {
-        Ok(Vec::with_capacity(0))
+        Ok(Vec::with_capacity(0).into())
       }
     }
-    Ok(out) => Ok(out),
+    Ok(out) => Ok(out.into()),
   }
 }

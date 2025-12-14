@@ -180,7 +180,7 @@ mod impl_ {
     SerdeJson(serde_json::Error),
   }
 
-  #[op2(async)]
+  #[op2]
   pub fn op_node_ipc_write<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
@@ -236,7 +236,7 @@ mod impl_ {
     })
   }
 
-  #[op2(async)]
+  #[op2]
   #[serde]
   pub async fn op_node_ipc_read(
     state: Rc<RefCell<OpState>>,

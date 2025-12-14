@@ -278,7 +278,7 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
-#[op2(async)]
+#[op2]
 #[string]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
@@ -309,10 +309,9 @@ pub fn op_tls_cert_resolver_resolve_error(
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] args: StartTlsArgs,
+  #[v8_slow] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
@@ -402,12 +401,11 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] addr: IpAddr,
-  #[from_v8] args: ConnectTlsArgs,
+  #[v8_slow] addr: IpAddr,
+  #[v8_slow] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
@@ -515,11 +513,10 @@ pub struct ListenTlsArgs {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
-  #[from_v8] addr: IpAddr,
-  #[from_v8] args: ListenTlsArgs,
+  #[v8_slow] addr: IpAddr,
+  #[v8_slow] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
@@ -579,8 +576,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -616,7 +612,7 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,

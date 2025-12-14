@@ -10,7 +10,7 @@ use std::task::Poll;
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::BufView;
-use deno_core::ByteString;
+use deno_core::convert::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsBuffer;
@@ -138,8 +138,7 @@ pub enum Http2Error {
   ),
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -167,7 +166,7 @@ pub async fn op_http2_connect(
   Ok((client_rid, conn_rid))
 }
 
-#[op2(async)]
+#[op2]
 #[smi]
 pub async fn op_http2_listen(
   state: Rc<RefCell<OpState>>,
@@ -187,8 +186,7 @@ pub async fn op_http2_listen(
   )
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_http2_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -259,13 +257,12 @@ pub async fn op_http2_accept(
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_http2_send_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[smi] status: u16,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
@@ -291,7 +288,7 @@ pub async fn op_http2_send_response(
   Ok((rid, stream_id.into()))
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -313,15 +310,14 @@ pub async fn op_http2_poll_client_connection(
   Ok(())
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
   #[smi] client_rid: ResourceId,
   // TODO(bartlomieju): maybe use a vector with fixed layout to save sending
   // 4 strings of keys?
   #[serde] mut pseudo_headers: HashMap<String, String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
@@ -372,7 +368,7 @@ pub async fn op_http2_client_request(
   Ok((stream_rid, stream_id.into()))
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http2_client_send_data(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -389,7 +385,7 @@ pub async fn op_http2_client_send_data(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -404,11 +400,11 @@ pub async fn op_http2_client_reset_stream(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-  #[serde] trailers: Vec<(ByteString, ByteString)>,
+  #[v8_slow] trailers: Vec<(ByteString, ByteString)>,
 ) -> Result<(), Http2Error> {
   let resource = state
     .borrow()
@@ -430,14 +426,12 @@ pub async fn op_http2_client_send_trailers(
 
 #[derive(ToV8)]
 pub struct Http2ClientResponse {
-  #[to_v8(serde)]
   headers: Vec<(ByteString, ByteString)>,
   body_rid: ResourceId,
   status_code: u16,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -509,8 +503,7 @@ fn poll_data_or_trailers(
   Poll::Pending
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
@@ -556,8 +549,7 @@ pub async fn op_http2_client_get_response_body_chunk(
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,

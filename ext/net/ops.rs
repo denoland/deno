@@ -184,8 +184,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -227,7 +226,7 @@ pub async fn op_net_accept_tcp(
   ))
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
@@ -248,12 +247,12 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[from_v8] addr: IpAddr,
+  #[v8_slow] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, NetError>
 where
@@ -301,7 +300,7 @@ pub fn op_net_validate_multicast(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -323,7 +322,7 @@ pub async fn op_net_join_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -344,7 +343,7 @@ pub async fn op_net_join_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -366,7 +365,7 @@ pub async fn op_net_leave_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -387,7 +386,7 @@ pub async fn op_net_leave_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -410,7 +409,7 @@ pub async fn op_net_set_multi_loopback_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -428,7 +427,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_broadcast_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -471,18 +470,16 @@ impl NetPermToken {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_net_get_ips_from_perm_token(
   #[cppgc] token: &NetPermToken,
 ) -> Vec<String> {
   token.resolved_ips.clone()
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] addr: IpAddr,
+  #[v8_slow] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
@@ -573,10 +570,9 @@ impl Resource for UdpSocketResource {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  #[from_v8] addr: IpAddr,
+  #[v8_slow] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
@@ -674,10 +670,9 @@ where
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  #[from_v8] addr: IpAddr,
+  #[v8_slow] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError>
@@ -689,10 +684,9 @@ where
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  #[from_v8] addr: IpAddr,
+  #[v8_slow] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError>
@@ -703,8 +697,7 @@ where
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_net_connect_vsock<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] cid: u32,
@@ -766,7 +759,6 @@ where
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_net_listen_vsock<NP>(
   state: &mut OpState,
   #[smi] cid: u32,
@@ -812,8 +804,7 @@ where
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_net_accept_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -862,7 +853,6 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_net_listen_tunnel(
   state: &mut OpState,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -877,8 +867,7 @@ pub fn op_net_listen_tunnel(
   Ok((rid, local_addr))
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_net_accept_tunnel(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -978,11 +967,10 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] args: ResolveAddrArgs,
+  #[v8_slow] args: ResolveAddrArgs,
 ) -> Result<Vec<DnsRecordWithTtl>, NetError>
 where
   NP: NetPermissions + 'static,

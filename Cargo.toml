@@ -61,7 +61,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = { version = "0.368.0" }
+deno_core = { version = "0.370.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.186.0"
@@ -530,3 +530,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { path = "../deno_core/core" }

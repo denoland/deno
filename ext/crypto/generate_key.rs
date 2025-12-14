@@ -67,8 +67,7 @@ pub enum GenerateKeyOptions {
   },
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_generate_key(
   #[serde] opts: GenerateKeyOptions,
 ) -> Result<Uint8Array, GenerateKeyError> {

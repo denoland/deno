@@ -222,8 +222,8 @@ fn decode_bitmap_data(
 /// related issue in whatwg
 /// https://github.com/whatwg/html/issues/10578
 ///
-/// reference in wpt  
-/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18  
+/// reference in wpt
+/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18
 /// https://wpt.live/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html
 fn apply_color_space_conversion(
   image: DynamicImage,
@@ -369,7 +369,6 @@ fn parse_args(
 }
 
 #[op2]
-#[to_v8]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,

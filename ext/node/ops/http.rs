@@ -152,8 +152,7 @@ pub enum ConnError {
   Hyper(#[from] hyper::Error),
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
 #[allow(clippy::await_holding_refcell_ref)]
@@ -307,8 +306,7 @@ where
   })
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_http_await_information(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -328,8 +326,7 @@ pub async fn op_node_http_await_information(
   rx.next().await
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -376,8 +373,7 @@ pub async fn op_node_http_await_response(
   })
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

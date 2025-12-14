@@ -23,7 +23,7 @@ pub enum GetAddrInfoError {
   Resolution(String),
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[cppgc]
 pub async fn op_node_getaddrinfo<P>(
   state: Rc<RefCell<OpState>>,

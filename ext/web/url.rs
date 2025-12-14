@@ -192,7 +192,6 @@ pub fn op_url_reparse(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
   #[buffer] zero_copy: Option<JsBuffer>,
@@ -214,7 +213,7 @@ pub fn op_url_parse_search_params(
 #[op2]
 #[string]
 pub fn op_url_stringify_search_params(
-  #[from_v8] args: Vec<(String, String)>,
+  #[v8_slow] args: Vec<(String, String)>,
 ) -> String {
   form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

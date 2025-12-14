@@ -15,7 +15,6 @@ use boxed_error::Boxed;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::convert::Uint8Array;
@@ -185,7 +184,7 @@ impl From<FsOpenOptions> for OpenOptions {
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
-  #[from_v8] options: Option<FsOpenOptions>,
+  #[v8_slow] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -209,12 +208,12 @@ where
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[from_v8] options: Option<FsOpenOptions>,
+  #[v8_slow] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -273,7 +272,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -343,7 +342,7 @@ where
 }
 
 #[cfg(unix)]
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -368,7 +367,7 @@ where
 }
 
 #[cfg(not(unix))]
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -413,7 +412,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -450,7 +449,7 @@ pub fn op_fs_fchmod_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchmod_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -475,7 +474,7 @@ pub fn op_fs_fchown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchown_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -517,7 +516,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -579,7 +578,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] from: String,
@@ -631,7 +630,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_fs_stat_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -678,7 +677,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_fs_lstat_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -727,7 +726,7 @@ where
   Ok(path_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -757,7 +756,6 @@ where
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -777,8 +775,7 @@ where
   Ok(entries)
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_fs_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -832,7 +829,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -892,7 +889,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_link_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -949,7 +946,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -1004,7 +1001,7 @@ where
   Ok(target_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1053,7 +1050,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1104,7 +1101,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1184,7 +1181,7 @@ where
   .context("tmpdir")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1284,7 +1281,7 @@ where
   .context("tmpfile")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1479,7 +1476,7 @@ pub fn op_fs_write_file_sync<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -1500,7 +1497,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[allow(clippy::too_many_arguments)]
 pub async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1509,7 +1506,7 @@ pub async fn op_fs_write_file_async<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
   #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<(), FsOpsError>
 where
@@ -1531,7 +1528,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.write_file_async(path.as_owned(), options, data.to_vec());
+  let fut = fs.write_file_async(path.as_owned(), options, data.0);
 
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1551,7 +1548,6 @@ where
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -1582,8 +1578,7 @@ where
   Ok(buf.into_owned().to_vec().into())
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1633,7 +1628,6 @@ where
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -1658,8 +1652,7 @@ where
   })
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1731,7 +1724,7 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
@@ -1757,7 +1750,7 @@ pub fn op_fs_file_sync_data_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1779,7 +1772,7 @@ pub fn op_fs_file_sync_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1811,7 +1804,7 @@ pub fn op_fs_file_stat_sync<P: FsPermissions + 'static>(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_fs_file_stat_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
@@ -1842,7 +1835,7 @@ pub fn op_fs_flock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1865,7 +1858,7 @@ pub fn op_fs_funlock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1888,7 +1881,7 @@ pub fn op_fs_ftruncate_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1922,7 +1915,7 @@ pub fn op_fs_futime_sync<P: FsPermissions + 'static>(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_futime_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

@@ -140,7 +140,7 @@ impl HandleWrap {
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'_, '_>,
-    #[global] cb: Option<v8::Global<v8::Function>>,
+    #[v8_slow] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
       return Ok(());

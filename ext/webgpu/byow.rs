@@ -108,7 +108,7 @@ impl UnsafeWindowSurface {
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[from_v8] options: UnsafeWindowSurfaceOptions,
+    #[v8_slow] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
     let instance = state
       .try_borrow::<super::Instance>()
@@ -152,7 +152,6 @@ impl UnsafeWindowSurface {
     })
   }
 
-  #[global]
   fn get_context(
     &self,
     #[this] this: v8::Global<v8::Object>,

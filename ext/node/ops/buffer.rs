@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -15,12 +16,11 @@ pub fn op_is_utf8(#[buffer] buf: &[u8]) -> bool {
 }
 
 #[op2]
-#[buffer]
 pub fn op_transcode(
   #[buffer] source: &[u8],
   #[string] from_encoding: &str,
   #[string] to_encoding: &str,
-) -> Result<Vec<u8>, JsErrorBox> {
+) -> Result<Uint8Array, JsErrorBox> {
   match (from_encoding, to_encoding) {
     ("utf8", "ascii") => Ok(utf8_to_ascii(source)),
     ("utf8", "latin1") => Ok(utf8_to_latin1(source)),
@@ -35,34 +35,34 @@ pub fn op_transcode(
   }
 }
 
-fn latin1_ascii_to_utf16le(source: &[u8]) -> Vec<u8> {
+fn latin1_ascii_to_utf16le(source: &[u8]) -> Uint8Array {
   let mut result = Vec::with_capacity(source.len() * 2);
   for &byte in source {
     result.push(byte);
     result.push(0);
   }
-  result
+  result.into()
 }
 
-fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
+fn utf16le_to_utf8(source: &[u8]) -> Result<Uint8Array, JsErrorBox> {
   let ucs2_vec: Vec<u16> = source
     .chunks(2)
     .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
     .collect();
   String::from_utf16(&ucs2_vec)
-    .map(|utf8_string| utf8_string.into_bytes())
+    .map(|utf8_string| utf8_string.into_bytes().into())
     .map_err(|e| JsErrorBox::generic(format!("Invalid UTF-16 sequence: {}", e)))
 }
 
-fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
+fn utf8_to_utf16le(source: &[u8]) -> Result<Uint8Array, JsErrorBox> {
   let utf8_string =
     std::str::from_utf8(source).map_err(JsErrorBox::from_err)?;
   let ucs2_vec: Vec<u16> = utf8_string.encode_utf16().collect();
   let bytes: Vec<u8> = ucs2_vec.iter().flat_map(|&x| x.to_le_bytes()).collect();
-  Ok(bytes)
+  Ok(bytes.into())
 }
 
-fn utf8_to_latin1(source: &[u8]) -> Vec<u8> {
+fn utf8_to_latin1(source: &[u8]) -> Uint8Array {
   let mut latin1_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
   while i < source.len() {
@@ -94,10 +94,10 @@ fn utf8_to_latin1(source: &[u8]) -> Vec<u8> {
       }
     }
   }
-  latin1_bytes
+  latin1_bytes.into()
 }
 
-fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
+fn utf8_to_ascii(source: &[u8]) -> Uint8Array {
   let mut ascii_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
   while i < source.len() {
@@ -118,7 +118,7 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
       }
     }
   }
-  ascii_bytes
+  ascii_bytes.into()
 }
 
 #[op2]

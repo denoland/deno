@@ -61,7 +61,7 @@ pub fn op_node_check_prime_bytes(
   primes::is_probably_prime(&candidate, checks)
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_node_check_prime_async(
   #[bigint] num: i64,
   #[number] checks: usize,
@@ -71,7 +71,7 @@ pub async fn op_node_check_prime_async(
     .await
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_node_check_prime_bytes_async(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,
@@ -93,7 +93,6 @@ pub fn op_node_create_hash(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
@@ -165,7 +164,6 @@ pub enum PrivateEncryptDecryptError {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
@@ -192,7 +190,6 @@ pub fn op_node_private_encrypt(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
@@ -208,7 +205,6 @@ pub fn op_node_private_decrypt(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
@@ -277,7 +273,6 @@ pub fn op_node_cipheriv_encrypt(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -292,15 +287,14 @@ pub fn op_node_cipheriv_final(
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_cipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
-) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
+) -> Result<Option<Uint8Array>, cipher::CipherContextError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
-  Ok(context.take_tag())
+  Ok(context.take_tag().map(Into::into))
 }
 
 #[op2(fast)]
@@ -504,8 +498,7 @@ pub fn op_node_pbkdf2_validate(
   )
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_pbkdf2_async(
   #[anybuffer] password: JsBuffer,
   #[anybuffer] salt: JsBuffer,
@@ -526,8 +519,7 @@ pub fn op_node_fill_random(#[buffer] buf: &mut [u8]) {
   rand::thread_rng().fill(buf);
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_fill_random_async(#[smi] len: i32) -> Uint8Array {
   spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
@@ -589,8 +581,7 @@ pub fn op_node_hkdf(
   hkdf_sync(digest_algorithm, handle, salt, info, okm)
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_hkdf_async(
   #[string] digest_algorithm: String,
   #[cppgc] handle: &KeyObjectHandle,
@@ -608,7 +599,6 @@ pub async fn op_node_hkdf_async(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_dh_compute_secret(
   #[buffer] prime: JsBuffer,
   #[buffer] private_key: JsBuffer,
@@ -697,8 +687,7 @@ pub enum ScryptAsyncError {
   Other(JsErrorBox),
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
@@ -741,12 +730,11 @@ pub enum EcdhEncodePubKey {
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_ecdh_encode_pubkey(
   #[string] curve: &str,
   #[buffer] pubkey: &[u8],
   compress: bool,
-) -> Result<Vec<u8>, EcdhEncodePubKey> {
+) -> Result<Uint8Array, EcdhEncodePubKey> {
   use elliptic_curve::sec1::FromEncodedPoint;
 
   match curve {
@@ -764,7 +752,7 @@ pub fn op_node_ecdh_encode_pubkey(
 
       let pubkey = pubkey.unwrap();
 
-      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
     "prime256v1" | "secp256r1" => {
       let pubkey = elliptic_curve::PublicKey::<NistP256>::from_encoded_point(
@@ -777,7 +765,7 @@ pub fn op_node_ecdh_encode_pubkey(
 
       let pubkey = pubkey.unwrap();
 
-      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
     "secp384r1" => {
       let pubkey = elliptic_curve::PublicKey::<NistP384>::from_encoded_point(
@@ -790,7 +778,7 @@ pub fn op_node_ecdh_encode_pubkey(
 
       let pubkey = pubkey.unwrap();
 
-      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
     "secp224r1" => {
       let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
@@ -803,7 +791,7 @@ pub fn op_node_ecdh_encode_pubkey(
 
       let pubkey = pubkey.unwrap();
 
-      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
     &_ => Err(EcdhEncodePubKey::UnsupportedCurve),
   }
@@ -975,13 +963,11 @@ fn gen_prime(size: usize) -> Uint8Array {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_gen_prime(#[number] size: usize) -> Uint8Array {
   gen_prime(size)
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
 ) -> Result<Uint8Array, tokio::task::JoinError> {
@@ -1168,25 +1154,23 @@ pub fn op_node_verify_spkac(
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_cert_export_public_key(
   #[buffer] spkac: &[u8],
-) -> Result<Option<Vec<u8>>, SpkacError> {
+) -> Result<Option<Uint8Array>, SpkacError> {
   if spkac.len() > i32::MAX as usize {
     return Err(SpkacError::BufferOutOfRange);
   }
 
-  Ok(deno_crypto_provider::spki::export_public_key(spkac))
+  Ok(deno_crypto_provider::spki::export_public_key(spkac).map(Into::into))
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_cert_export_challenge(
   #[buffer] spkac: &[u8],
-) -> Result<Option<Vec<u8>>, SpkacError> {
+) -> Result<Option<Uint8Array>, SpkacError> {
   if spkac.len() > i32::MAX as usize {
     return Err(SpkacError::BufferOutOfRange);
   }
 
-  Ok(deno_crypto_provider::spki::export_challenge(spkac))
+  Ok(deno_crypto_provider::spki::export_challenge(spkac).map(Into::into))
 }

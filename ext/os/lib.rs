@@ -328,7 +328,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, PermissionCheckError> {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, OsError> {

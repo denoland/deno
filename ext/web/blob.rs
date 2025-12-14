@@ -222,8 +222,7 @@ pub fn op_blob_slice_part(
   Ok(id)
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
   #[serde] id: Uuid,

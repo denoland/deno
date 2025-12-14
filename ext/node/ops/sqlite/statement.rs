@@ -573,7 +573,6 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
-  #[to_v8]
   fn run(
     &self,
     scope: &mut v8::PinScope<'_, '_>,

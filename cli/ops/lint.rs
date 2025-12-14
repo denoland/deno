@@ -6,6 +6,7 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
+use deno_core::convert::Uint8Array;
 use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::op2;
@@ -205,12 +206,11 @@ pub enum LintError {
 }
 
 #[op2]
-#[buffer]
 #[allow(clippy::result_large_err)]
 fn op_lint_create_serialized_ast(
   #[string] file_name: &str,
   #[string] source: String,
-) -> Result<Vec<u8>, LintError> {
+) -> Result<Uint8Array, LintError> {
   let file_text = deno_ast::strip_bom(source);
   let path = std::env::current_dir()?.join(file_name);
   let specifier = ModuleSpecifier::from_file_path(&path)
@@ -225,13 +225,13 @@ fn op_lint_create_serialized_ast(
     maybe_syntax: None,
   })?;
   let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
-  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map))
+  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map).into())
 }
 
 #[derive(FromV8)]
 struct LintReportFix {
   text: String,
-  range: (usize, usize),
+  #[serde] range: (usize, usize),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -255,7 +255,7 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start_utf16: usize,
   #[smi] end_utf16: usize,
-  #[from_v8] fix: Vec<LintReportFix>,
+  #[v8_slow] fix: Vec<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;

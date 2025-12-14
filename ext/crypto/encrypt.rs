@@ -100,8 +100,7 @@ pub enum EncryptError {
   Failed,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_encrypt(
   #[serde] opts: EncryptOptions,
   #[buffer] data: JsBuffer,

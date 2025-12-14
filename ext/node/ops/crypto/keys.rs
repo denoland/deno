@@ -1657,7 +1657,7 @@ pub struct RsaJwkKey {
 #[op2]
 #[cppgc]
 pub fn op_node_create_rsa_jwk(
-  #[from_v8] jwk: RsaJwkKey,
+  #[v8_slow] jwk: RsaJwkKey,
   is_public: bool,
 ) -> Result<KeyObjectHandle, RsaJwkError> {
   KeyObjectHandle::new_rsa_jwk(jwk, is_public)
@@ -1904,7 +1904,7 @@ pub fn op_node_generate_secret_key(#[smi] len: usize) -> KeyObjectHandle {
   KeyObjectHandle::Secret(key.into_boxed_slice())
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_secret_key_async(
   #[smi] len: usize,
@@ -1990,7 +1990,7 @@ pub fn op_node_generate_rsa_key(
   generate_rsa(modulus_length, public_exponent)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
@@ -2081,7 +2081,7 @@ pub fn op_node_generate_rsa_pss_key(
   )
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_rsa_pss_key_async(
   #[smi] modulus_length: usize,
@@ -2141,7 +2141,7 @@ pub fn op_node_generate_dsa_key(
   dsa_generate(modulus_length, divisor_length)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dsa_key_async(
   #[smi] modulus_length: usize,
@@ -2188,7 +2188,7 @@ pub fn op_node_generate_ec_key(
   ec_generate(named_curve)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_ec_key_async(
   #[string] named_curve: String,
@@ -2211,7 +2211,7 @@ pub fn op_node_generate_x25519_key() -> KeyObjectHandlePair {
   x25519_generate()
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_x25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(x25519_generate).await.unwrap()
@@ -2230,7 +2230,7 @@ pub fn op_node_generate_ed25519_key() -> KeyObjectHandlePair {
   ed25519_generate()
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed25519_generate).await.unwrap()
@@ -2307,7 +2307,7 @@ pub fn op_node_generate_dh_group_key(
   dh_group_generate(group_name)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dh_group_key_async(
   #[string] group_name: String,
@@ -2353,7 +2353,7 @@ pub fn op_node_generate_dh_key(
   dh_generate(prime, prime_len, generator)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dh_key_async(
   #[buffer(copy)] prime: Option<Box<[u8]>>,
@@ -2366,7 +2366,6 @@ pub async fn op_node_generate_dh_key_async(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_node_dh_keys_generate_and_export(
   #[buffer] prime: Option<&[u8]>,
   #[smi] prime_len: usize,
@@ -2382,14 +2381,13 @@ pub fn op_node_dh_keys_generate_and_export(
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_export_secret_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<Box<[u8]>, JsErrorBox> {
+) -> Result<Uint8Array, JsErrorBox> {
   let key = handle
     .as_secret_key()
     .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
-  Ok(key.to_vec().into_boxed_slice())
+  Ok(key.to_vec().into())
 }
 
 #[op2]

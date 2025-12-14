@@ -95,7 +95,6 @@ impl GPUDevice {
   }
 
   #[getter]
-  #[global]
   fn features(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -108,7 +107,6 @@ impl GPUDevice {
   }
 
   #[getter]
-  #[global]
   fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let limits = self.instance.device_limits(self.id);
@@ -117,7 +115,6 @@ impl GPUDevice {
   }
 
   #[getter]
-  #[global]
   fn adapter_info(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -135,7 +132,6 @@ impl GPUDevice {
   }
 
   #[getter]
-  #[global]
   fn queue(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.queue_obj.get(scope, |_| GPUQueue {
       id: self.queue,
@@ -482,7 +478,6 @@ impl GPUDevice {
     self.new_render_pipeline(descriptor)
   }
 
-  #[async_method]
   #[required(1)]
   #[cppgc]
   async fn create_compute_pipeline_async(
@@ -492,7 +487,6 @@ impl GPUDevice {
     self.new_compute_pipeline(descriptor)
   }
 
-  #[async_method]
   #[required(1)]
   #[cppgc]
   async fn create_render_pipeline_async(
@@ -609,7 +603,6 @@ impl GPUDevice {
   }
 
   // TODO(@crowlKats): support returning same promise
-  #[async_method]
   #[getter]
   #[cppgc]
   async fn lost(&self) -> GPUDeviceLostInfo {
@@ -631,7 +624,6 @@ impl GPUDevice {
   }
 
   #[async_method(fake)]
-  #[global]
   fn pop_error_scope(
     &self,
     scope: &mut v8::PinScope<'_, '_>,

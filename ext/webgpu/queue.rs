@@ -86,7 +86,6 @@ impl GPUQueue {
     Ok(())
   }
 
-  #[async_method]
   async fn on_submitted_work_done(&self) {
     let (sender, receiver) = oneshot::channel::<()>();
     let callback = Box::new(move || {

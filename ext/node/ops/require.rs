@@ -118,7 +118,6 @@ pub enum RequireErrorKind {
 pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
-#[to_v8]
 pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
   // we probably don't want it for small mammal, so ignore it for now
@@ -169,7 +168,6 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_require_node_module_paths<
   P: NodePermissions + 'static,
   TSys: ExtNodeSys + 'static,
@@ -302,10 +300,9 @@ pub fn op_require_is_deno_dir_package<
 }
 
 #[op2]
-#[to_v8]
 pub fn op_require_resolve_lookup_paths(
   #[string] request: &str,
-  #[from_v8] maybe_parent_paths: Option<Vec<String>>,
+  #[v8_slow] maybe_parent_paths: Option<Vec<String>>,
   #[string] parent_filename: &str,
 ) -> Option<Vec<String>> {
   if !request.starts_with('.')
@@ -417,7 +414,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
 
 #[op2]
 #[string]
-pub fn op_require_path_resolve(#[from_v8] parts: Vec<String>) -> String {
+pub fn op_require_path_resolve(#[v8_slow] parts: Vec<String>) -> String {
   path_resolve(parts.iter().map(|s| s.as_str()))
     .to_string_lossy()
     .into_owned()
@@ -513,7 +510,6 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
   #[string] file_path: &str,

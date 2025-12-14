@@ -405,7 +405,7 @@ impl DatabaseSync {
     #[validate(validators::path_str)]
     #[string]
     location: String,
-    #[from_v8] options: DatabaseSyncOptions,
+    #[v8_slow] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
       let db =
@@ -793,7 +793,7 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[from_v8] options: OptionUndefined<SessionOptions>,
+    #[v8_slow] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
     let db = self.conn.borrow();

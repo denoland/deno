@@ -99,7 +99,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_bench(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
+  #[v8_slow] function: v8::Global<v8::Function>,
   #[string] name: String,
   baseline: bool,
   #[string] group: Option<String>,

@@ -117,7 +117,6 @@ impl GPUBuffer {
     *self.map_state.borrow()
   }
 
-  #[async_method]
   async fn map_async(
     &self,
     #[webidl(options(enforce_range = true))] mode: u32,

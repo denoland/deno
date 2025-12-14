@@ -65,7 +65,7 @@ where
   Ok(fs.exists_sync(&path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_fs_exists<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -129,7 +129,7 @@ where
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 pub async fn op_node_open<P>(
   state: Rc<RefCell<OpState>>,
@@ -196,7 +196,7 @@ where
   statfs(path, bigint)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_node_statfs<P>(
   state: Rc<RefCell<OpState>>,
@@ -371,7 +371,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lutimes<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -425,7 +425,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchown<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -467,7 +467,7 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchmod<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -523,7 +523,7 @@ where
   )))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_node_mkdtemp<P>(
   state: Rc<RefCell<OpState>>,

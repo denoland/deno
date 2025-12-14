@@ -4739,7 +4739,6 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
 }
 
 #[op2]
-#[to_v8]
 fn op_libs() -> Vec<String> {
   let mut out =
     Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
@@ -4843,12 +4842,11 @@ fn op_release(
 }
 
 #[op2]
-#[to_v8]
 #[allow(clippy::type_complexity)]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
-  #[from_v8] specifiers: Vec<(bool, String)>,
+  #[v8_slow] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let _span = super::logging::lsp_tracing_info_span!("op_resolve").entered();
   op_resolve_inner(state, ResolveArgs { base, specifiers })
@@ -4901,8 +4899,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
 ) -> convert::OptionNull<TscRequestArray> {

@@ -22,6 +22,7 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::convert::Uint8Array;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
@@ -231,7 +232,7 @@ unsafe impl GarbageCollected for EndpointResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_create<NP>(
   state: Rc<RefCell<OpState>>,
-  #[from_v8] addr: Addr,
+  #[v8_slow] addr: Addr,
   can_listen: bool,
 ) -> Result<EndpointResource, QuicError>
 where
@@ -274,7 +275,6 @@ where
 }
 
 #[op2]
-#[to_v8]
 pub(crate) fn op_quic_endpoint_get_addr(
   #[cppgc] endpoint: &EndpointResource,
 ) -> Result<Addr, QuicError> {
@@ -319,8 +319,8 @@ unsafe impl GarbageCollected for ListenerResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_listen(
   #[cppgc] endpoint: &EndpointResource,
-  #[from_v8] args: ListenArgs,
-  #[from_v8] transport_config: TransportConfig,
+  #[v8_slow] args: ListenArgs,
+  #[v8_slow] transport_config: TransportConfig,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<ListenerResource, QuicError> {
   if !endpoint.can_listen {
@@ -387,7 +387,7 @@ unsafe impl GarbageCollected for IncomingResource {
   }
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_listener_accept(
   #[cppgc] resource: &ListenerResource,
@@ -418,7 +418,6 @@ pub(crate) fn op_quic_incoming_local_ip(
 }
 
 #[op2]
-#[to_v8]
 pub(crate) fn op_quic_incoming_remote_addr(
   #[cppgc] incoming_resource: &IncomingResource,
 ) -> Result<Addr, QuicError> {
@@ -460,11 +459,11 @@ fn quic_incoming_accept(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_incoming_accept(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[from_v8] transport_config: Option<TransportConfig>,
+  #[v8_slow] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   let conn = connecting.await?;
@@ -475,7 +474,7 @@ pub(crate) async fn op_quic_incoming_accept(
 #[cppgc]
 pub(crate) fn op_quic_incoming_accept_0rtt(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[from_v8] transport_config: Option<TransportConfig>,
+  #[v8_slow] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   match connecting.into_0rtt() {
@@ -544,8 +543,8 @@ struct CertificateHash {
 pub(crate) fn op_quic_endpoint_connect<NP>(
   state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
-  #[from_v8] args: ConnectArgs,
-  #[from_v8] transport_config: TransportConfig,
+  #[v8_slow] args: ConnectArgs,
+  #[v8_slow] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<ConnectingResource, QuicError>
 where
@@ -623,7 +622,7 @@ where
   Ok(ConnectingResource(RefCell::new(Some(connecting))))
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_connecting_1rtt(
   #[cppgc] connecting: &ConnectingResource,
@@ -678,7 +677,6 @@ pub(crate) fn op_quic_connection_get_server_name(
 }
 
 #[op2]
-#[to_v8]
 pub(crate) fn op_quic_connection_get_remote_addr(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<Addr, QuicError> {
@@ -701,7 +699,7 @@ pub(crate) fn op_quic_connection_close(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
@@ -720,7 +718,7 @@ pub(crate) async fn op_quic_connection_closed(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub(crate) async fn op_quic_connection_handshake(
   #[cppgc] connection: &ConnectionResource,
 ) {
@@ -827,8 +825,7 @@ impl Resource for RecvStreamResource {
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub(crate) async fn op_quic_connection_accept_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -850,8 +847,7 @@ pub(crate) async fn op_quic_connection_accept_bi(
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub(crate) async fn op_quic_connection_open_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -875,8 +871,7 @@ pub(crate) async fn op_quic_connection_open_bi(
   Ok((tx_rid, rx_rid))
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub(crate) async fn op_quic_connection_accept_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -899,8 +894,7 @@ pub(crate) async fn op_quic_connection_accept_uni(
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub(crate) async fn op_quic_connection_open_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -925,7 +919,7 @@ pub(crate) async fn op_quic_connection_open_uni(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2]
 pub(crate) async fn op_quic_connection_send_datagram(
   #[cppgc] connection: &ConnectionResource,
   #[buffer] buf: JsBuffer,
@@ -934,13 +928,12 @@ pub(crate) async fn op_quic_connection_send_datagram(
   Ok(())
 }
 
-#[op2(async)]
-#[buffer]
+#[op2]
 pub(crate) async fn op_quic_connection_read_datagram(
   #[cppgc] connection: &ConnectionResource,
-) -> Result<Vec<u8>, QuicError> {
+) -> Result<Uint8Array, QuicError> {
   let data = connection.0.read_datagram().await?;
-  Ok(data.into())
+  Ok(Vec::from(data).into())
 }
 
 #[op2(fast)]
@@ -1103,8 +1096,7 @@ pub(crate) mod webtransport {
     Ok((settings_tx_rid, settings_rx_rid))
   }
 
-  #[op2(async)]
-  #[to_v8]
+  #[op2]
   pub(crate) async fn op_webtransport_connect(
     state: Rc<RefCell<OpState>>,
     #[cppgc] connection_resource: &ConnectionResource,
@@ -1167,8 +1159,7 @@ pub(crate) mod webtransport {
     ))
   }
 
-  #[op2(async)]
-  #[to_v8]
+  #[op2]
   pub(crate) async fn op_webtransport_accept(
     state: Rc<RefCell<OpState>>,
     #[cppgc] connection_resource: &ConnectionResource,

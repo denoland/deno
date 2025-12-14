@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::OpState;
-use deno_core::ToV8;
 use deno_core::op2;
 use deno_terminal::colors::ColorLevel;
 
@@ -36,7 +35,7 @@ deno_core::extension!(
   },
 );
 
-#[derive(ToV8)]
+#[derive(serde::Serialize)]
 pub struct SnapshotOptions {
   pub ts_version: String,
   pub v8_version: &'static str,
@@ -66,7 +65,7 @@ impl Default for SnapshotOptions {
 
 // Note: Called at snapshot time, op perf is not a concern.
 #[op2]
-#[to_v8]
+#[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
   #[cfg(feature = "hmr")]
   {
@@ -79,7 +78,6 @@ pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_bootstrap_args(state: &mut OpState) -> Vec<String> {
   state.borrow::<BootstrapOptions>().args.clone()
 }
@@ -103,7 +101,6 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   let mut flags = Vec::with_capacity(options.unstable_features.len());

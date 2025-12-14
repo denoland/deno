@@ -223,7 +223,6 @@ pub enum CryptoError {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
 ) -> Result<Uint8Array, CryptoError> {
@@ -294,10 +293,9 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_sign_key(
-  #[from_v8] args: SignArg,
+  #[v8_slow] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -429,9 +427,9 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_crypto_verify_key(
-  #[from_v8] args: VerifyArg,
+  #[v8_slow] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -593,10 +591,9 @@ pub struct DeriveKeyArg {
   info: Option<JsBuffer>,
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_derive_bits(
-  #[from_v8] args: DeriveKeyArg,
+  #[v8_slow] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -767,8 +764,7 @@ pub fn op_crypto_random_uuid(
   Ok(uuid)
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 pub async fn op_crypto_subtle_digest(
   #[serde] algorithm: CryptoHash,
   #[buffer] data: JsBuffer,
@@ -792,7 +788,6 @@ pub struct WrapUnwrapKeyArg {
 }
 
 #[op2]
-#[to_v8]
 pub fn op_crypto_wrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
@@ -822,7 +817,6 @@ pub fn op_crypto_wrap_key(
 }
 
 #[op2]
-#[to_v8]
 pub fn op_crypto_unwrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,

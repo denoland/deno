@@ -210,7 +210,7 @@ pub enum KvErrorKind {
   InvalidRange,
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -349,7 +349,7 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -435,8 +435,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -520,7 +519,7 @@ enum WatchEntry {
   Unchanged,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_kv_watch_next(
   state: Rc<RefCell<OpState>>,
@@ -573,7 +572,7 @@ async fn op_kv_watch_next(
   Ok(Some(entries))
 }
 
-#[op2(async)]
+#[op2]
 async fn op_kv_finish_dequeued_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] handle_rid: ResourceId,
@@ -885,7 +884,7 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op2(async)]
+#[op2]
 #[string]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,

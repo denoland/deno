@@ -145,7 +145,6 @@ impl GPU {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[async_method]
   #[cppgc]
   async fn request_adapter(
     &self,
