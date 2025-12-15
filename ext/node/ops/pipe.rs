@@ -50,7 +50,7 @@ mod windows {
 
   /// Resource representing a Windows named pipe client connection.
   pub struct NamedPipeClientResource {
-    pipe: AsyncRefCell<NamedPipeClient>,
+    pipe: AsyncRefCell<Option<NamedPipeClient>>,
     cancel: CancelHandle,
   }
 
@@ -66,7 +66,11 @@ mod windows {
     fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok(BufView::from(vec![]));
+        };
         let nread = match pipe.read(&mut data).await {
           Ok(n) => n,
           // Treat BrokenPipe as EOF - the other end closed the connection
@@ -83,7 +87,11 @@ mod windows {
       mut buf: BufMutView,
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok((0, buf));
+        };
         let nread = match pipe.read(&mut buf).await {
           Ok(n) => n,
           // Treat BrokenPipe as EOF - the other end closed the connection
@@ -99,7 +107,11 @@ mod windows {
       buf: BufView,
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        };
         let nwritten = buf.len();
         // Ignore BrokenPipe on write - the other end closed
         match pipe.write_all(&buf).await {
@@ -113,12 +125,23 @@ mod windows {
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
+
+    // Named pipes don't support half-close, so shutdown closes the entire pipe
+    fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+      Box::pin(async move {
+        // Take and drop the pipe to close it, signaling EOF to the other end
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let _ = pipe_guard.take(); // Drop the pipe to close it
+        self.cancel.cancel();
+        Ok(())
+      })
+    }
   }
 
   impl NamedPipeClientResource {
     pub fn new(pipe: NamedPipeClient) -> Self {
       Self {
-        pipe: AsyncRefCell::new(pipe),
+        pipe: AsyncRefCell::new(Some(pipe)),
         cancel: CancelHandle::new(),
       }
     }
@@ -248,7 +271,7 @@ mod windows {
 
   /// Resource representing a connected Windows named pipe (from server side).
   pub struct NamedPipeServerConnectionResource {
-    pipe: AsyncRefCell<NamedPipeServer>,
+    pipe: AsyncRefCell<Option<NamedPipeServer>>,
     cancel: CancelHandle,
   }
 
@@ -264,7 +287,11 @@ mod windows {
     fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok(BufView::from(vec![]));
+        };
         let nread = match pipe.read(&mut data).await {
           Ok(n) => n,
           // Treat BrokenPipe as EOF - the other end closed the connection
@@ -281,7 +308,11 @@ mod windows {
       mut buf: BufMutView,
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok((0, buf));
+        };
         let nread = match pipe.read(&mut buf).await {
           Ok(n) => n,
           // Treat BrokenPipe as EOF - the other end closed the connection
@@ -297,7 +328,11 @@ mod windows {
       buf: BufView,
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
-        let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let Some(pipe) = pipe_guard.as_mut() else {
+          // Pipe was closed by shutdown
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        };
         let nwritten = buf.len();
         // Ignore BrokenPipe on write - the other end closed
         match pipe.write_all(&buf).await {
@@ -311,12 +346,23 @@ mod windows {
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
+
+    // Named pipes don't support half-close, so shutdown closes the entire pipe
+    fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+      Box::pin(async move {
+        // Take and drop the pipe to close it, signaling EOF to the other end
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let _ = pipe_guard.take(); // Drop the pipe to close it
+        self.cancel.cancel();
+        Ok(())
+      })
+    }
   }
 
   impl NamedPipeServerConnectionResource {
     pub fn new(pipe: NamedPipeServer) -> Self {
       Self {
-        pipe: AsyncRefCell::new(pipe),
+        pipe: AsyncRefCell::new(Some(pipe)),
         cancel: CancelHandle::new(),
       }
     }
