@@ -54,9 +54,22 @@ mod windows {
 
   impl From<std::io::Error> for PipeError {
     fn from(err: std::io::Error) -> Self {
+      // Map various "not found" type errors to NotFound
+      // On Windows, invalid pipe names can return different error codes
       match err.kind() {
         std::io::ErrorKind::NotFound => PipeError::NotFound(err),
-        _ => PipeError::Io(err),
+        _ => {
+          // Check raw OS error for Windows-specific codes
+          if let Some(os_err) = err.raw_os_error() {
+            match os_err {
+              2 => return PipeError::NotFound(err),   // ERROR_FILE_NOT_FOUND
+              3 => return PipeError::NotFound(err),   // ERROR_PATH_NOT_FOUND
+              123 => return PipeError::NotFound(err), // ERROR_INVALID_NAME
+              _ => {}
+            }
+          }
+          PipeError::Io(err)
+        }
       }
     }
   }
