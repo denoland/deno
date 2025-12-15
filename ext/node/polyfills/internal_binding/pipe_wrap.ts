@@ -40,6 +40,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
 import {
   kStreamBaseField,
@@ -255,8 +256,19 @@ export class Pipe extends ConnectionWrap {
             // swallow callback errors.
           }
         },
-        (e: Error & { code?: string }) => {
-          const code = MapPrototypeGet(codeMap, e.code ?? "UNKNOWN") ??
+        (e: Error & { code?: string; errno?: number }) => {
+          // Try to map the error code
+          let errCode = e.code;
+          if (!errCode) {
+            // Check for Deno error types
+            if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+              errCode = "ENOENT";
+            } else if (typeof e.errno === "number") {
+              // Map Windows system error to UV error code
+              errCode = uvTranslateSysError(e.errno);
+            }
+          }
+          const code = MapPrototypeGet(codeMap, errCode ?? "UNKNOWN") ??
             MapPrototypeGet(codeMap, "UNKNOWN")!;
 
           try {

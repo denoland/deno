@@ -37,7 +37,10 @@ mod windows {
   pub enum PipeError {
     #[class(generic)]
     #[error("{0}")]
-    Io(#[from] std::io::Error),
+    Io(std::io::Error),
+    #[class("NotFound")]
+    #[error("{0}")]
+    NotFound(std::io::Error),
     #[class(inherit)]
     #[error(transparent)]
     Resource(#[from] deno_core::error::ResourceError),
@@ -47,6 +50,15 @@ mod windows {
     #[class(generic)]
     #[error("Pipe connection failed: {0}")]
     ConnectionFailed(String),
+  }
+
+  impl From<std::io::Error> for PipeError {
+    fn from(err: std::io::Error) -> Self {
+      match err.kind() {
+        std::io::ErrorKind::NotFound => PipeError::NotFound(err),
+        _ => PipeError::Io(err),
+      }
+    }
   }
 
   /// Resource representing a Windows named pipe client connection.
@@ -260,6 +272,7 @@ mod windows {
     state: &mut OpState,
     #[string] name: String,
   ) -> Result<ResourceId, PipeError> {
+    // Don't set max_instances to get unlimited instances (default behavior)
     let server = ServerOptions::new()
       .first_pipe_instance(true)
       .create(&name)?;
@@ -294,6 +307,7 @@ mod windows {
 
     match connect_result {
       Ok(()) => {
+        // Create a new server instance for the next connection
         let new_server = ServerOptions::new().create(&name)?;
         *server_cell = Some(new_server);
 
