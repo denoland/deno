@@ -90,13 +90,12 @@ mod windows {
           Ok(n) => n,
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            // Check for cancellation (ConnectionAborted is used when cancelled)
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok(BufView::from(vec![]));
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok(BufView::from(vec![]));
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok(BufView::from(vec![]));
             }
             return Err(JsErrorBox::from_err(e));
           }
@@ -132,13 +131,11 @@ mod windows {
           Ok(n) => n,
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok((0, buf));
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok((0, buf));
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok((0, buf));
             }
             return Err(JsErrorBox::from_err(e));
           }
@@ -167,13 +164,11 @@ mod windows {
           Ok(()) => {}
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
             }
             return Err(JsErrorBox::from_err(e));
           }
@@ -308,7 +303,7 @@ mod windows {
       }
       Err(e) => {
         *server_cell = Some(server);
-        Err(e.into())
+        Err(PipeError::Io(e))
       }
     }
   }
@@ -354,13 +349,11 @@ mod windows {
           Ok(n) => n,
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok(BufView::from(vec![]));
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok(BufView::from(vec![]));
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok(BufView::from(vec![]));
             }
             return Err(JsErrorBox::from_err(e));
           }
@@ -396,13 +389,11 @@ mod windows {
           Ok(n) => n,
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok((0, buf));
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok((0, buf));
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok((0, buf));
             }
             return Err(JsErrorBox::from_err(e));
           }
@@ -431,13 +422,11 @@ mod windows {
           Ok(()) => {}
           Err(e) => {
             let _ = pipe_guard.take();
-            if e.is::<deno_core::Canceled>() {
+            if e.kind() == std::io::ErrorKind::ConnectionAborted {
               return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
             }
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
-                return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
-              }
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+              return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
             }
             return Err(JsErrorBox::from_err(e));
           }
