@@ -202,9 +202,13 @@ interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
-export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
+export function enterSpan(
+  span: Span,
+  context?: Context,
+): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
-  const context = (CURRENT.get() ?? ROOT_CONTEXT).setValue(SPAN_KEY, span);
+  context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
+    .setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
 
@@ -1632,7 +1636,13 @@ class BaggageImpl implements Baggage {
   #entries: Map<string, BaggageEntry>;
 
   constructor(entries?: Map<string, BaggageEntry>) {
-    this.#entries = entries ? new SafeMap(entries) : new SafeMap();
+    this.#entries = new SafeMap();
+    // The `SafeMap` constructor that takes an iterable doesn't work for non Array iterables correctly.
+    if (entries) {
+      for (const { 0: key, 1: entry } of new SafeIterator(entries)) {
+        this.#entries.set(key, ObjectAssign({}, entry));
+      }
+    }
   }
 
   getEntry(key: string): BaggageEntry | undefined {
@@ -1676,9 +1686,11 @@ class BaggageImpl implements Baggage {
   }
 }
 
+const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
+
 export class W3CBaggagePropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const baggage = context.getValue(baggageEntryMetadataSymbol) as
+    const baggage = context.getValue(BAGGAGE_KEY) as
       | Baggage
       | undefined;
     if (!baggage || isTracingSuppressed(context)) return;
@@ -1702,9 +1714,6 @@ export class W3CBaggagePropagator implements TextMapPropagator {
       : headerValue;
     if (!baggageString) return context;
     const baggage: Record<string, BaggageEntry> = {};
-    if (baggageString.length === 0) {
-      return context;
-    }
     const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
     ArrayPrototypeForEach(pairs, (entry) => {
       const keyPair = parsePairKeyValue(entry);
@@ -1721,7 +1730,7 @@ export class W3CBaggagePropagator implements TextMapPropagator {
     }
 
     return context.setValue(
-      baggageEntryMetadataSymbol,
+      BAGGAGE_KEY,
       new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
     );
   }
