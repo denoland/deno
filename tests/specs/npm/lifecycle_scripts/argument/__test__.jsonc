@@ -30,7 +30,7 @@
           },
           "args": "cache --allow-scripts implicit_node_gyp.js",
           "output": "node_gyp_not_found.out",
-          "exitCode": 1
+          "exitCode": 0
         }
       ]
     },
