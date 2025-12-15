@@ -527,18 +527,20 @@ impl WebWorker {
         services.blob_store,
         Some(options.main_module.clone()),
         services.broadcast_channel,
+        deno_web::fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store_provider: services.root_cert_store_provider.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(
+            deno_web::fetch::fs_fetch_handler::FsFetchHandler,
+          ),
+          ..Default::default()
+        },
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_canvas::deno_canvas::init(),
-      deno_fetch::deno_fetch::init(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store_provider: services.root_cert_store_provider.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
       deno_cache::deno_cache::init(create_cache),
       deno_websocket::deno_websocket::init(),
       deno_webstorage::deno_webstorage::init(None).disable(),

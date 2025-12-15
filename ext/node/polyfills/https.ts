@@ -12,7 +12,7 @@ import {
   type RequestOptions,
 } from "node:http";
 import { Agent as HttpAgent } from "node:_http_agent";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { createHttpClient } from "ext:deno_web/22_http_client.js";
 import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";

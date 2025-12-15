@@ -26,7 +26,6 @@ In the `extensions` field of your `RuntimeOptions`
 ## Dependencies
 
 - **deno_web**: Provided by the `deno_web` crate
-- **deno_fetch**: Provided by the `deno_fetch` crate
 
 ## Provided ops
 

@@ -98,7 +98,7 @@ pub enum CacheError {
 pub struct CreateCache(pub Arc<dyn Fn() -> Result<CacheImpl, CacheError>>);
 
 deno_core::extension!(deno_cache,
-  deps = [ deno_webidl, deno_web, deno_fetch ],
+  deps = [ deno_webidl, deno_web ],
   ops = [
     op_cache_storage_open,
     op_cache_storage_has,

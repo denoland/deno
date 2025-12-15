@@ -15,24 +15,53 @@ path = "lib.rs"
 
 [dependencies]
 async-trait.workspace = true
+base64.workspace = true
 base64-simd.workspace = true
 bytes.workspace = true
+data-url.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
+deno_fs.workspace = true
+deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_tls.workspace = true
+dyn-clone.workspace = true
 encoding_rs.workspace = true
+error_reporter.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
+h2.workspace = true
+hickory-resolver.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
+ipnet.workspace = true
+percent-encoding.workspace = true
+rustls-webpki.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-socks.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
+tower.workspace = true
+tower-http.workspace = true
+tower-service.workspace = true
 urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
 deno_webidl.workspace = true
+fast-socks5.workspace = true
+rustls.workspace = true
 
 [[bench]]
 name = "encoding"

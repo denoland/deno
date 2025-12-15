@@ -14,11 +14,12 @@ use tokio::io::AsyncWriteExt;
 
 use super::CreateHttpClientOptions;
 use super::create_http_client;
-use crate::dns;
+use crate::fetch::dns;
 
-static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
+static EXAMPLE_CRT: &[u8] =
+  include_bytes!("../../tls/testdata/example1_cert.der");
 static EXAMPLE_KEY: &[u8] =
-  include_bytes!("../tls/testdata/example1_prikey.der");
+  include_bytes!("../../tls/testdata/example1_prikey.der");
 
 #[test]
 fn test_userspace_resolver() {
@@ -130,7 +131,7 @@ async fn rust_test_client_with_resolver(
 
   let req = http::Request::builder()
     .uri(format!("https://{}/foo", src_addr))
-    .body(crate::ReqBody::empty())
+    .body(crate::fetch::ReqBody::empty())
     .unwrap();
   let resp = client.send(req).await.unwrap();
   assert_eq!(resp.status(), http::StatusCode::OK);

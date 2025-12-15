@@ -22,14 +22,14 @@ use deno_core::op2;
 use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_error::JsErrorBox;
-use deno_fetch::ClientConnectError;
-use deno_fetch::HttpClientCreateError;
-use deno_fetch::HttpClientResource;
-use deno_fetch::get_or_create_client_from_state;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
+use deno_web::fetch::ClientConnectError;
+use deno_web::fetch::HttpClientCreateError;
+use deno_web::fetch::HttpClientResource;
+use deno_web::fetch::get_or_create_client_from_state;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
@@ -201,7 +201,7 @@ pub enum HandshakeError {
 }
 
 async fn handshake_websocket(
-  client: deno_fetch::Client,
+  client: deno_web::fetch::Client,
   allow_host: bool,
   uri: Uri,
   protocols: &str,
@@ -246,7 +246,7 @@ async fn handshake_websocket(
 }
 
 async fn handshake_http1(
-  client: deno_fetch::Client,
+  client: deno_web::fetch::Client,
   allow_host: bool,
   scheme: &str,
   authority: &http::uri::Authority,
@@ -305,7 +305,7 @@ async fn handshake_http1(
 
 #[allow(clippy::too_many_arguments)]
 async fn handshake_http2(
-  client: deno_fetch::Client,
+  client: deno_web::fetch::Client,
   allow_host: bool,
   uri: Uri,
   protocols: &str,
