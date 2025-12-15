@@ -2825,7 +2825,6 @@ dependencies = [
  "deno_tls",
  "deno_web",
  "deno_webgpu",
- "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
  "encoding_rs",
@@ -3059,7 +3058,6 @@ dependencies = [
  "deno_error",
  "deno_features",
  "deno_permissions",
- "deno_webidl",
  "encoding_rs",
  "flate2",
  "futures",
@@ -3089,11 +3087,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.222.0"
-dependencies = [
- "deno_bench_util",
- "deno_core",
-]
+version = "0.223.0"
 
 [[package]]
 name = "deno_websocket"

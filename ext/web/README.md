@@ -107,10 +107,6 @@ Where:
 - `Arc<BlobStore>` can be provided by `Default::default()`
 - `Option<Url>` provides an optional base URL for certain ops
 
-## Dependencies
-
-- **deno_webidl**: Provided by the `deno_webidl` crate
-
 ## Provided ops
 
 Following ops are provided, which can be accessed through `Deno.ops`:

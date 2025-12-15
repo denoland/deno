@@ -37,7 +37,7 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_web/00_webidl.js";
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,

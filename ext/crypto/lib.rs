@@ -82,7 +82,7 @@ pub use crate::x448::X448Error;
 pub use crate::x25519::X25519Error;
 
 deno_core::extension!(deno_crypto,
-  deps = [ deno_webidl, deno_web ],
+  deps = [ deno_web ],
   ops = [
     op_crypto_get_random_values,
     op_crypto_generate_key,
