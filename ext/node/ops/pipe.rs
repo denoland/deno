@@ -62,7 +62,6 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
-      // Mark as closed - the read loop will see this and close the pipe
       self.closed.set(true);
       self.cancel.cancel();
     }
@@ -83,7 +82,6 @@ mod windows {
           return Ok(BufView::from(vec![]));
         };
         let read_result = pipe.read(&mut data).try_or_cancel(cancel).await;
-        // After read completes (or is cancelled), check if we should close
         if self.closed.get() {
           let _ = pipe_guard.take();
           return Ok(BufView::from(vec![]));
@@ -91,7 +89,6 @@ mod windows {
         let nread = match read_result {
           Ok(n) => n,
           Err(e) => {
-            // Cancelled or error - check if it's a cancellation
             let _ = pipe_guard.take();
             if e.is::<deno_core::Canceled>() {
               return Ok(BufView::from(vec![]));
@@ -127,7 +124,6 @@ mod windows {
           return Ok((0, buf));
         };
         let read_result = pipe.read(&mut buf).try_or_cancel(cancel).await;
-        // After read completes (or is cancelled), check if we should close
         if self.closed.get() {
           let _ = pipe_guard.take();
           return Ok((0, buf));
@@ -151,10 +147,7 @@ mod windows {
       })
     }
 
-    fn write(
-      self: Rc<Self>,
-      buf: BufView,
-    ) -> AsyncResult<deno_core::WriteOutcome> {
+    fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
         if self.closed.get() {
           return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
@@ -186,7 +179,6 @@ mod windows {
           }
         };
         let _ = pipe.flush().await;
-        // Close the pipe after write if close was requested
         if self.closed.get() {
           let _ = pipe_guard.take();
         }
@@ -243,22 +235,17 @@ mod windows {
   }
 
   /// Connect to a Windows named pipe as a client.
-  ///
-  /// Returns a resource ID for the connected pipe.
   #[op2(async)]
   #[smi]
   pub async fn op_node_pipe_connect(
     state: Rc<RefCell<OpState>>,
     #[string] name: String,
   ) -> Result<ResourceId, PipeError> {
-    // Try to connect to the named pipe
-    // We may need to retry if the pipe is busy
     let pipe = loop {
       match ClientOptions::new().open(&name) {
         Ok(pipe) => break pipe,
         Err(e) if e.raw_os_error() == Some(231) => {
           // ERROR_PIPE_BUSY (231) - All pipe instances are busy
-          // Wait a bit and retry
           tokio::time::sleep(std::time::Duration::from_millis(50)).await;
           continue;
         }
@@ -272,8 +259,6 @@ mod windows {
   }
 
   /// Create a Windows named pipe server and start listening.
-  ///
-  /// Returns a resource ID for the server.
   #[op2(fast)]
   #[smi]
   pub fn op_node_pipe_listen(
@@ -290,8 +275,6 @@ mod windows {
   }
 
   /// Wait for a client to connect to the named pipe server.
-  ///
-  /// Returns a resource ID for the connected client pipe.
   #[op2(async)]
   #[smi]
   pub async fn op_node_pipe_accept(
@@ -306,31 +289,24 @@ mod windows {
     let cancel = RcRef::map(&resource, |r| &r.cancel);
     let name = resource.name.clone();
 
-    // Take the server out to wait for connection
     let mut server_cell =
       RcRef::map(&resource, |r| &r.server).borrow_mut().await;
     let server = server_cell.take().ok_or_else(|| {
       PipeError::ConnectionFailed("Server already accepting".to_string())
     })?;
 
-    // Wait for a client to connect
     let connect_result = server.connect().try_or_cancel(cancel).await;
 
     match connect_result {
       Ok(()) => {
-        // Connection successful - the server becomes the connection
-        // We need to create a new server instance for future connections
         let new_server = ServerOptions::new().create(&name)?;
         *server_cell = Some(new_server);
 
-        // Convert the connected server to a client-like resource
-        // The NamedPipeServer after connect() can be used for read/write
         let client_resource = NamedPipeServerConnectionResource::new(server);
         let client_rid = state.borrow_mut().resource_table.add(client_resource);
         Ok(client_rid)
       }
       Err(e) => {
-        // Put the server back
         *server_cell = Some(server);
         Err(e.into())
       }
@@ -350,7 +326,6 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
-      // Mark as closed - the read loop will see this and close the pipe
       self.closed.set(true);
       self.cancel.cancel();
     }
@@ -371,7 +346,6 @@ mod windows {
           return Ok(BufView::from(vec![]));
         };
         let read_result = pipe.read(&mut data).try_or_cancel(cancel).await;
-        // After read completes (or is cancelled), check if we should close
         if self.closed.get() {
           let _ = pipe_guard.take();
           return Ok(BufView::from(vec![]));
@@ -414,7 +388,6 @@ mod windows {
           return Ok((0, buf));
         };
         let read_result = pipe.read(&mut buf).try_or_cancel(cancel).await;
-        // After read completes (or is cancelled), check if we should close
         if self.closed.get() {
           let _ = pipe_guard.take();
           return Ok((0, buf));
@@ -438,10 +411,7 @@ mod windows {
       })
     }
 
-    fn write(
-      self: Rc<Self>,
-      buf: BufView,
-    ) -> AsyncResult<deno_core::WriteOutcome> {
+    fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
         if self.closed.get() {
           return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
@@ -473,7 +443,6 @@ mod windows {
           }
         };
         let _ = pipe.flush().await;
-        // Close the pipe after write if close was requested
         if self.closed.get() {
           let _ = pipe_guard.take();
         }
