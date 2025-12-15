@@ -395,7 +395,7 @@ pub async fn run(
         &mut unconfigured_runtime,
         runner_node_resolver,
         runner_npm_resolver,
-        bin_name.as_ref(),
+        bin_name,
       )
       .await?;
       if let Some(exit_code) = res {
