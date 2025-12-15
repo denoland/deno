@@ -260,8 +260,11 @@ export class Pipe extends ConnectionWrap {
           // Try to map the error code
           let errCode = e.code;
           if (!errCode) {
-            // Check for Deno error types
-            if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+            // Check for Deno error types by name or prototype
+            if (
+              e.name === "NotFound" ||
+              ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)
+            ) {
               errCode = "ENOENT";
             } else if (typeof e.errno === "number") {
               // Map Windows system error to UV error code
