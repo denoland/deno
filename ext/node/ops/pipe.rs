@@ -10,6 +10,7 @@ pub use windows::*;
 
 #[cfg(windows)]
 mod windows {
+  use std::cell::Cell;
   use std::cell::RefCell;
   use std::rc::Rc;
 
@@ -51,6 +52,7 @@ mod windows {
   /// Resource representing a Windows named pipe client connection.
   pub struct NamedPipeClientResource {
     pipe: AsyncRefCell<Option<NamedPipeClient>>,
+    closed: Cell<bool>,
     cancel: CancelHandle,
   }
 
@@ -60,26 +62,47 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
-      // Try to take and drop the pipe immediately to signal EOF to the other end
-      if let Ok(mut guard) = self.pipe.try_borrow_mut() {
-        let _ = guard.take(); // Drop the pipe to close the handle
-      }
+      // Mark as closed - the read loop will see this and close the pipe
+      self.closed.set(true);
       self.cancel.cancel();
     }
 
     fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok(BufView::from(vec![]));
+        }
         let mut data = vec![0u8; limit];
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(BufView::from(vec![]));
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok(BufView::from(vec![]));
         };
-        let nread = match pipe.read(&mut data).await {
+        let read_result = pipe.read(&mut data).try_or_cancel(cancel).await;
+        // After read completes (or is cancelled), check if we should close
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(BufView::from(vec![]));
+        }
+        let nread = match read_result {
           Ok(n) => n,
-          // Treat BrokenPipe as EOF - the other end closed the connection
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
-          Err(e) => return Err(JsErrorBox::from_err(e)),
+          Err(e) => {
+            // Cancelled or error - check if it's a cancellation
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok(BufView::from(vec![]));
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(BufView::from(vec![]));
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
+          }
         };
         data.truncate(nread);
         Ok(BufView::from(data))
@@ -91,16 +114,38 @@ mod windows {
       mut buf: BufMutView,
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok((0, buf));
+        }
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok((0, buf));
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok((0, buf));
         };
-        let nread = match pipe.read(&mut buf).await {
+        let read_result = pipe.read(&mut buf).try_or_cancel(cancel).await;
+        // After read completes (or is cancelled), check if we should close
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok((0, buf));
+        }
+        let nread = match read_result {
           Ok(n) => n,
-          // Treat BrokenPipe as EOF - the other end closed the connection
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
-          Err(e) => return Err(JsErrorBox::from_err(e)),
+          Err(e) => {
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok((0, buf));
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok((0, buf));
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
+          }
         };
         Ok((nread, buf))
       })
@@ -111,32 +156,50 @@ mod windows {
       buf: BufView,
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        }
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
         };
         let nwritten = buf.len();
-        // Ignore BrokenPipe on write - the other end closed
-        match pipe.write_all(&buf).await {
+        let write_result = pipe.write_all(&buf).try_or_cancel(cancel).await;
+        match write_result {
           Ok(()) => {}
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-            return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+          Err(e) => {
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
           }
-          Err(e) => return Err(JsErrorBox::from_err(e)),
         };
-        let _ = pipe.flush().await; // Ignore flush errors
+        let _ = pipe.flush().await;
+        // Close the pipe after write if close was requested
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+        }
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
 
-    // Named pipes don't support half-close, so shutdown closes the entire pipe
     fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
       Box::pin(async move {
-        // Take and drop the pipe to close it, signaling EOF to the other end
-        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let _ = pipe_guard.take(); // Drop the pipe to close it
+        self.closed.set(true);
         self.cancel.cancel();
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let _ = pipe_guard.take();
         Ok(())
       })
     }
@@ -146,6 +209,7 @@ mod windows {
     pub fn new(pipe: NamedPipeClient) -> Self {
       Self {
         pipe: AsyncRefCell::new(Some(pipe)),
+        closed: Cell::new(false),
         cancel: CancelHandle::new(),
       }
     }
@@ -276,6 +340,7 @@ mod windows {
   /// Resource representing a connected Windows named pipe (from server side).
   pub struct NamedPipeServerConnectionResource {
     pipe: AsyncRefCell<Option<NamedPipeServer>>,
+    closed: Cell<bool>,
     cancel: CancelHandle,
   }
 
@@ -285,26 +350,46 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
-      // Try to take and drop the pipe immediately to signal EOF to the other end
-      if let Ok(mut guard) = self.pipe.try_borrow_mut() {
-        let _ = guard.take(); // Drop the pipe to close the handle
-      }
+      // Mark as closed - the read loop will see this and close the pipe
+      self.closed.set(true);
       self.cancel.cancel();
     }
 
     fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok(BufView::from(vec![]));
+        }
         let mut data = vec![0u8; limit];
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(BufView::from(vec![]));
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok(BufView::from(vec![]));
         };
-        let nread = match pipe.read(&mut data).await {
+        let read_result = pipe.read(&mut data).try_or_cancel(cancel).await;
+        // After read completes (or is cancelled), check if we should close
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(BufView::from(vec![]));
+        }
+        let nread = match read_result {
           Ok(n) => n,
-          // Treat BrokenPipe as EOF - the other end closed the connection
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
-          Err(e) => return Err(JsErrorBox::from_err(e)),
+          Err(e) => {
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok(BufView::from(vec![]));
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(BufView::from(vec![]));
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
+          }
         };
         data.truncate(nread);
         Ok(BufView::from(data))
@@ -316,16 +401,38 @@ mod windows {
       mut buf: BufMutView,
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok((0, buf));
+        }
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok((0, buf));
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok((0, buf));
         };
-        let nread = match pipe.read(&mut buf).await {
+        let read_result = pipe.read(&mut buf).try_or_cancel(cancel).await;
+        // After read completes (or is cancelled), check if we should close
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok((0, buf));
+        }
+        let nread = match read_result {
           Ok(n) => n,
-          // Treat BrokenPipe as EOF - the other end closed the connection
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
-          Err(e) => return Err(JsErrorBox::from_err(e)),
+          Err(e) => {
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok((0, buf));
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok((0, buf));
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
+          }
         };
         Ok((nread, buf))
       })
@@ -336,32 +443,50 @@ mod windows {
       buf: BufView,
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
+        if self.closed.get() {
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        }
+        let cancel = RcRef::map(&self, |r| &r.cancel);
         let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+          return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+        }
         let Some(pipe) = pipe_guard.as_mut() else {
-          // Pipe was closed by shutdown
           return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
         };
         let nwritten = buf.len();
-        // Ignore BrokenPipe on write - the other end closed
-        match pipe.write_all(&buf).await {
+        let write_result = pipe.write_all(&buf).try_or_cancel(cancel).await;
+        match write_result {
           Ok(()) => {}
-          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-            return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+          Err(e) => {
+            let _ = pipe_guard.take();
+            if e.is::<deno_core::Canceled>() {
+              return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+            }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+              }
+            }
+            return Err(JsErrorBox::from_err(e));
           }
-          Err(e) => return Err(JsErrorBox::from_err(e)),
         };
-        let _ = pipe.flush().await; // Ignore flush errors
+        let _ = pipe.flush().await;
+        // Close the pipe after write if close was requested
+        if self.closed.get() {
+          let _ = pipe_guard.take();
+        }
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
 
-    // Named pipes don't support half-close, so shutdown closes the entire pipe
     fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
       Box::pin(async move {
-        // Take and drop the pipe to close it, signaling EOF to the other end
-        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let _ = pipe_guard.take(); // Drop the pipe to close it
+        self.closed.set(true);
         self.cancel.cancel();
+        let mut pipe_guard = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
+        let _ = pipe_guard.take();
         Ok(())
       })
     }
@@ -371,6 +496,7 @@ mod windows {
     pub fn new(pipe: NamedPipeServer) -> Self {
       Self {
         pipe: AsyncRefCell::new(Some(pipe)),
+        closed: Cell::new(false),
         cancel: CancelHandle::new(),
       }
     }
