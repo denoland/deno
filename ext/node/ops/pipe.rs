@@ -55,7 +55,7 @@ mod windows {
   }
 
   impl Resource for NamedPipeClientResource {
-    fn name(&self) -> std::borrow::Cow<str> {
+    fn name(&self) -> std::borrow::Cow<'_, str> {
       "namedPipeClient".into()
     }
 
@@ -67,7 +67,12 @@ mod windows {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nread = pipe.read(&mut data).await.map_err(JsErrorBox::from_err)?;
+        let nread = match pipe.read(&mut data).await {
+          Ok(n) => n,
+          // Treat BrokenPipe as EOF - the other end closed the connection
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
         data.truncate(nread);
         Ok(BufView::from(data))
       })
@@ -79,7 +84,12 @@ mod windows {
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nread = pipe.read(&mut *buf).await.map_err(JsErrorBox::from_err)?;
+        let nread = match pipe.read(&mut buf).await {
+          Ok(n) => n,
+          // Treat BrokenPipe as EOF - the other end closed the connection
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
         Ok((nread, buf))
       })
     }
@@ -91,7 +101,15 @@ mod windows {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
         let nwritten = buf.len();
-        pipe.write_all(&*buf).await.map_err(JsErrorBox::from_err)?;
+        // Ignore BrokenPipe on write - the other end closed
+        match pipe.write_all(&buf).await {
+          Ok(()) => {}
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+            return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+          }
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
+        let _ = pipe.flush().await; // Ignore flush errors
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
@@ -114,7 +132,7 @@ mod windows {
   }
 
   impl Resource for NamedPipeServerResource {
-    fn name(&self) -> std::borrow::Cow<str> {
+    fn name(&self) -> std::borrow::Cow<'_, str> {
       "namedPipeServer".into()
     }
 
@@ -235,7 +253,7 @@ mod windows {
   }
 
   impl Resource for NamedPipeServerConnectionResource {
-    fn name(&self) -> std::borrow::Cow<str> {
+    fn name(&self) -> std::borrow::Cow<'_, str> {
       "namedPipeServerConnection".into()
     }
 
@@ -247,7 +265,12 @@ mod windows {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nread = pipe.read(&mut data).await.map_err(JsErrorBox::from_err)?;
+        let nread = match pipe.read(&mut data).await {
+          Ok(n) => n,
+          // Treat BrokenPipe as EOF - the other end closed the connection
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
         data.truncate(nread);
         Ok(BufView::from(data))
       })
@@ -259,7 +282,12 @@ mod windows {
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nread = pipe.read(&mut *buf).await.map_err(JsErrorBox::from_err)?;
+        let nread = match pipe.read(&mut buf).await {
+          Ok(n) => n,
+          // Treat BrokenPipe as EOF - the other end closed the connection
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
         Ok((nread, buf))
       })
     }
@@ -271,7 +299,15 @@ mod windows {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
         let nwritten = buf.len();
-        pipe.write_all(&*buf).await.map_err(JsErrorBox::from_err)?;
+        // Ignore BrokenPipe on write - the other end closed
+        match pipe.write_all(&buf).await {
+          Ok(()) => {}
+          Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+            return Ok(deno_core::WriteOutcome::Full { nwritten: 0 });
+          }
+          Err(e) => return Err(JsErrorBox::from_err(e)),
+        };
+        let _ = pipe.flush().await; // Ignore flush errors
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
