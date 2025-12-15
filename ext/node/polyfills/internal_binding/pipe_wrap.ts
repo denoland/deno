@@ -69,6 +69,9 @@ const {
 class WindowsNamedPipeConn implements StreamBase {
   #rid: number;
   #unref = false;
+  #pendingWrites = 0;
+  #closeRequested = false;
+  #closed = false;
 
   constructor(rid: number) {
     this.#rid = rid;
@@ -83,16 +86,57 @@ class WindowsNamedPipeConn implements StreamBase {
     if (buffer.length === 0) {
       return 0;
     }
-    const nread = await core.read(this.#rid, buffer);
-    return nread === 0 ? null : nread;
+    if (this.#closed) {
+      return null;
+    }
+    try {
+      const nread = await core.read(this.#rid, buffer);
+      return nread === 0 ? null : nread;
+    } catch {
+      // Resource closed or error - return EOF
+      return null;
+    }
   }
 
-  write(data: Uint8Array): Promise<number> {
-    return core.write(this.#rid, data);
+  async write(data: Uint8Array): Promise<number> {
+    if (this.#closed || this.#closeRequested) {
+      return 0;
+    }
+    this.#pendingWrites++;
+    try {
+      const nwritten = await core.write(this.#rid, data);
+      return nwritten;
+    } finally {
+      this.#pendingWrites--;
+      // If close was requested and this was the last pending write, close now
+      if (this.#closeRequested && this.#pendingWrites === 0) {
+        this.#doClose();
+      }
+    }
+  }
+
+  #doClose(): void {
+    if (this.#closed) {
+      return;
+    }
+    this.#closed = true;
+    try {
+      core.close(this.#rid);
+    } catch {
+      // Already closed
+    }
   }
 
   close(): void {
-    core.close(this.#rid);
+    if (this.#closed) {
+      return;
+    }
+    this.#closeRequested = true;
+    // If no pending writes, close immediately
+    if (this.#pendingWrites === 0) {
+      this.#doClose();
+    }
+    // Otherwise, close will happen when pending writes complete
   }
 
   ref(): void {
