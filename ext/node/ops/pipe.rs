@@ -67,12 +67,7 @@ mod windows {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let cancel = RcRef::map(&self, |r| &r.cancel);
-        let nread = pipe
-          .read(&mut data)
-          .try_or_cancel(cancel)
-          .await
-          .map_err(JsErrorBox::from_err)?;
+        let nread = pipe.read(&mut data).await.map_err(JsErrorBox::from_err)?;
         data.truncate(nread);
         Ok(BufView::from(data))
       })
@@ -84,12 +79,7 @@ mod windows {
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let cancel = RcRef::map(&self, |r| &r.cancel);
-        let nread = pipe
-          .read(&mut buf)
-          .try_or_cancel(cancel)
-          .await
-          .map_err(JsErrorBox::from_err)?;
+        let nread = pipe.read(&mut *buf).await.map_err(JsErrorBox::from_err)?;
         Ok((nread, buf))
       })
     }
@@ -100,8 +90,8 @@ mod windows {
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nwritten = pipe.write(&buf).await.map_err(JsErrorBox::from_err)?;
-        pipe.flush().await.map_err(JsErrorBox::from_err)?;
+        let nwritten = buf.len();
+        pipe.write_all(&*buf).await.map_err(JsErrorBox::from_err)?;
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
@@ -257,12 +247,7 @@ mod windows {
       Box::pin(async move {
         let mut data = vec![0u8; limit];
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let cancel = RcRef::map(&self, |r| &r.cancel);
-        let nread = pipe
-          .read(&mut data)
-          .try_or_cancel(cancel)
-          .await
-          .map_err(JsErrorBox::from_err)?;
+        let nread = pipe.read(&mut data).await.map_err(JsErrorBox::from_err)?;
         data.truncate(nread);
         Ok(BufView::from(data))
       })
@@ -274,12 +259,7 @@ mod windows {
     ) -> AsyncResult<(usize, BufMutView)> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let cancel = RcRef::map(&self, |r| &r.cancel);
-        let nread = pipe
-          .read(&mut buf)
-          .try_or_cancel(cancel)
-          .await
-          .map_err(JsErrorBox::from_err)?;
+        let nread = pipe.read(&mut *buf).await.map_err(JsErrorBox::from_err)?;
         Ok((nread, buf))
       })
     }
@@ -290,8 +270,8 @@ mod windows {
     ) -> AsyncResult<deno_core::WriteOutcome> {
       Box::pin(async move {
         let mut pipe = RcRef::map(&self, |r| &r.pipe).borrow_mut().await;
-        let nwritten = pipe.write(&buf).await.map_err(JsErrorBox::from_err)?;
-        pipe.flush().await.map_err(JsErrorBox::from_err)?;
+        let nwritten = buf.len();
+        pipe.write_all(&*buf).await.map_err(JsErrorBox::from_err)?;
         Ok(deno_core::WriteOutcome::Full { nwritten })
       })
     }
