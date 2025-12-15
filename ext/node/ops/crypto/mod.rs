@@ -279,11 +279,11 @@ pub fn op_node_cipheriv_final(
   auto_pad: bool,
   #[buffer] input: &[u8],
   #[anybuffer] output: &mut [u8],
-) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
+) -> Result<Option<Uint8Array>, cipher::CipherContextError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
-  context.r#final(auto_pad, input, output)
+  context.r#final(auto_pad, input, output).map(|tag| tag.map(Into::into))
 }
 
 #[op2]
