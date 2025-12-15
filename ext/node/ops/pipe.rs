@@ -60,6 +60,10 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
+      // Try to take and drop the pipe immediately to signal EOF to the other end
+      if let Ok(mut guard) = self.pipe.try_borrow_mut() {
+        let _ = guard.take(); // Drop the pipe to close the handle
+      }
       self.cancel.cancel();
     }
 
@@ -281,6 +285,10 @@ mod windows {
     }
 
     fn close(self: Rc<Self>) {
+      // Try to take and drop the pipe immediately to signal EOF to the other end
+      if let Ok(mut guard) = self.pipe.try_borrow_mut() {
+        let _ = guard.take(); // Drop the pipe to close the handle
+      }
       self.cancel.cancel();
     }
 
