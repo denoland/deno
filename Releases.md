@@ -20,7 +20,6 @@ https://github.com/denoland/deno_install
   (#31614)
 - fix: adjust deno_cache version (#31553)
 - fix: source map file names to non-existent paths (#31564)
-- revert: Revert "test: disable more tests on Mac Intel (#31541)" (#31580)
 
 ### 2.6.0 / 2025.12.10
 
