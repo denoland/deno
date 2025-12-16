@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
+use std::num::NonZeroUsize;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
@@ -34,7 +34,7 @@ fn main() {
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
+      parallelism: parallelism.max_parallelism(),
       ..Default::default()
     },
     move |test| {
@@ -44,7 +44,7 @@ fn main() {
   file_test_runner::run_tests(
     &crypto_category,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
+      parallelism: NonZeroUsize::new(1).unwrap(),
       ..Default::default()
     },
     move |test| flaky_test_ci(&test.name, None, || run_test(test)),

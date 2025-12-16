@@ -1,16 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use std::time::Duration;
 
+use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
-use file_test_runner::parallelism::ParallelismProvider;
 use parking_lot::Mutex;
 
 use crate::IS_CI;
 use crate::colors;
-use crate::eprintln;
+use crate::semaphore::Semaphore;
 
 pub fn flaky_test_ci(
   test_name: &str,
@@ -20,7 +19,7 @@ pub fn flaky_test_ci(
   if *IS_CI {
     run_flaky_test(test_name, parallelism, run_test)
   } else {
-    run_test()
+    run_with_parallelism(parallelism, &run_test)
   }
 }
 
@@ -31,40 +30,51 @@ impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
     let mut value = self.0.has_raised_count.lock();
     *value -= 1;
     if *value == 0 {
-      self.0.parallelism.set_max(self.0.max_parallelism);
+      self.0.semaphore.set_max(self.0.max_parallelism);
     }
   }
 }
 
+struct ParallelismPermit<'a>(&'a Parallelism);
+
+impl<'a> Drop for ParallelismPermit<'a> {
+  fn drop(&mut self) {
+    self.0.semaphore.release();
+  }
+}
+
 pub struct Parallelism {
-  parallelism: Arc<file_test_runner::parallelism::Parallelism>,
+  semaphore: Semaphore,
   max_parallelism: NonZeroUsize,
   has_raised_count: Mutex<usize>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
-    let parallelism = file_test_runner::parallelism::Parallelism::from_env();
+    let max_parallelism = RunOptions::default_parallelism();
     Self {
-      max_parallelism: parallelism.max_parallelism(),
-      parallelism: Arc::new(parallelism),
+      max_parallelism,
+      semaphore: Semaphore::new(max_parallelism.get()),
       has_raised_count: Default::default(),
     }
   }
 }
 
 impl Parallelism {
-  pub fn for_run_options(
-    &self,
-  ) -> Arc<file_test_runner::parallelism::Parallelism> {
-    self.parallelism.clone()
+  pub fn max_parallelism(&self) -> NonZeroUsize {
+    self.max_parallelism
+  }
+
+  fn acquire(&self) -> ParallelismPermit<'_> {
+    self.semaphore.acquire();
+    ParallelismPermit(self)
   }
 
   fn raise_single_concurrency_flag(&self) -> SingleConcurrencyFlagGuard<'_> {
     {
       let mut value = self.has_raised_count.lock();
       if *value == 0 {
-        self.parallelism.set_max(NonZeroUsize::new(1).unwrap());
+        self.semaphore.set_max(NonZeroUsize::new(1).unwrap());
       }
       *value += 1;
     }
@@ -75,15 +85,17 @@ impl Parallelism {
 pub fn run_flaky_test(
   test_name: &str,
   parallelism: Option<&Parallelism>,
-  action: impl Fn() -> TestResult,
+  main_action: impl Fn() -> TestResult,
 ) -> TestResult {
+  let action = || run_with_parallelism(parallelism, &main_action);
   for i in 0..2 {
     let result = action();
     if !result.is_failed() {
       return result;
     }
+    #[allow(clippy::print_stderr)]
     if *IS_CI {
-      eprintln!(
+      ::std::eprintln!(
         "{} {} was flaky on run {}",
         colors::bold_red("Warning"),
         colors::gray(test_name),
@@ -94,9 +106,10 @@ pub fn run_flaky_test(
   }
 
   // on the CI, try running the test in isolation with no other tests running
-  let _maybe_guard = if let Some(parallelism) = parallelism.filter(|_| *IS_CI) {
+  #[allow(clippy::print_stderr)]
+  let _maybe_guard = if let Some(parallelism) = parallelism {
     let guard = parallelism.raise_single_concurrency_flag();
-    eprintln!(
+    ::std::eprintln!(
       "{} {} was flaky. Temporarily reducing test concurrency to 1 and trying a few more times.",
       colors::bold_red("***WARNING***"),
       colors::gray(test_name)
@@ -117,6 +130,16 @@ pub fn run_flaky_test(
 
   // surface result now
   action()
+}
+
+fn run_with_parallelism(
+  parallelism: Option<&Parallelism>,
+  action: impl Fn() -> TestResult,
+) -> TestResult {
+  let duration = std::time::Instant::now();
+  let _maybe_permit = parallelism.map(|p| p.acquire());
+  let result = action();
+  result.with_duration(duration.elapsed())
 }
 
 pub struct TestTimeoutHolder {

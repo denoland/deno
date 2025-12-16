@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::num::NonZeroUsize;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
@@ -97,22 +97,23 @@ pub fn main() {
         test_util::print::with_captured_output(|| {
           TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
             (test.data.func)();
-            TestResult::Passed
+            TestResult::Passed { duration: None }
           }))
         });
       match result {
-        TestResult::Passed | TestResult::Ignored => result,
-        TestResult::Failed { output } => {
+        TestResult::Passed { .. } | TestResult::Ignored => result,
+        TestResult::Failed { output, duration } => {
           if !captured_output.is_empty() {
             captured_output.push(b'\n');
           }
           captured_output.extend_from_slice(&output);
           TestResult::Failed {
+            duration,
             output: captured_output,
           }
         }
         // no support for sub tests
-        TestResult::SubTests(_) => unreachable!(),
+        TestResult::SubTests { .. } => unreachable!(),
       }
     };
     if test.data.flaky {
@@ -129,7 +130,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
+      parallelism: NonZeroUsize::new(1).unwrap(),
       ..Default::default()
     },
     move |test| run_test(test, None),
@@ -138,7 +139,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &main_tests,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
+      parallelism: parallelism.max_parallelism(),
       ..Default::default()
     },
     move |test| run_test(test, Some(&parallelism)),

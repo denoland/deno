@@ -267,7 +267,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
-      parallelism: parallelism.for_run_options(),
+      parallelism: parallelism.max_parallelism(),
       reporter: Arc::new(LogReporter),
     },
     move |test| run_test(test, &parallelism),
@@ -298,7 +298,7 @@ fn run_test(
           return result;
         }
       }
-      TestResult::Passed
+      TestResult::Passed { duration: None }
     } else {
       run_test_inner(
         test,
@@ -311,16 +311,17 @@ fn run_test(
   }));
   match result {
     TestResult::Failed {
+      duration,
       output: panic_output,
     } => {
       let mut output = diagnostic_logger.borrow().clone();
       output.push(b'\n');
       output.extend(panic_output);
-      TestResult::Failed { output }
+      TestResult::Failed { duration, output }
     }
-    TestResult::Passed | TestResult::Ignored | TestResult::SubTests(_) => {
-      result
-    }
+    TestResult::Passed { .. }
+    | TestResult::Ignored
+    | TestResult::SubTests { .. } => result,
   }
 }
 
@@ -342,7 +343,7 @@ fn run_test_inner(
       let run_func = || {
         TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
           run_step(step, metadata, cwd, &context);
-          TestResult::Passed
+          TestResult::Passed { duration: None }
         }))
       };
       let result = if step.flaky {
@@ -354,7 +355,7 @@ fn run_test_inner(
         return result;
       }
     }
-    TestResult::Passed
+    TestResult::Passed { duration: None }
   };
   if metadata.flaky || *IS_CI {
     run_flaky_test(&test.name, Some(parallelism), run_fn)

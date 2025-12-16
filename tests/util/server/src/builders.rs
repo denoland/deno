@@ -993,10 +993,11 @@ impl DenoChild {
 
     const PER_TEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
-    let get_failure_result = |error_message: String| {
+    let get_failure_result = |duration: Duration, error_message: String| {
       let mut final_output = std::mem::take(&mut *final_output.lock());
       final_output.push(error_message);
       TestResult::Failed {
+        duration: Some(duration),
         output: final_output.join("\n").into_bytes(),
       }
     };
@@ -1006,10 +1007,10 @@ impl DenoChild {
       if now.elapsed() > PER_TEST_TIMEOUT {
         // Last-ditch kill
         _ = deno.kill();
-        return get_failure_result(format!(
-          "Test {} failed to complete in time",
-          test_name
-        ));
+        return get_failure_result(
+          now.elapsed(),
+          format!("Test {} failed to complete in time", test_name),
+        );
       }
       if let Some(status) = deno
         .try_wait()
@@ -1019,26 +1020,32 @@ impl DenoChild {
       }
       std::thread::sleep(Duration::from_millis(100));
     };
+    let duration = now.elapsed();
 
     #[cfg(unix)]
     if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status)
     {
-      return get_failure_result(format!(
-        "{:?}\nDeno should not have died with a signal",
-        signal,
-      ));
+      return get_failure_result(
+        duration,
+        format!("{:?}\nDeno should not have died with a signal", signal,),
+      );
     }
     if status.code() != Some(0) {
-      return get_failure_result(format!(
-        "Deno should have exited cleanly (code: {:?})",
-        status.code(),
-      ));
+      return get_failure_result(
+        duration,
+        format!(
+          "Deno should have exited cleanly (code: {:?})",
+          status.code(),
+        ),
+      );
     }
 
     stdout.join().unwrap();
     stderr.join().unwrap();
 
-    TestResult::Passed
+    TestResult::Passed {
+      duration: Some(duration),
+    }
   }
 }
 
