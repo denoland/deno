@@ -136,8 +136,8 @@ fn run_with_parallelism(
   parallelism: Option<&Parallelism>,
   action: impl Fn() -> TestResult,
 ) -> TestResult {
-  let duration = std::time::Instant::now();
   let _maybe_permit = parallelism.map(|p| p.acquire());
+  let duration = std::time::Instant::now();
   let result = action();
   result.with_duration(duration.elapsed())
 }
