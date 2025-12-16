@@ -1467,15 +1467,6 @@
 "sequential/test-require-cache-without-stat.js" = {}
 "sequential/test-resolution-inspect-brk.js" = {}
 "sequential/test-runner-run-inspect.mjs" = {}
-"sequential/test-single-executable-application-assets-raw.js" = {}
-"sequential/test-single-executable-application-assets.js" = {}
-"sequential/test-single-executable-application-disable-experimental-sea-warning.js" = {}
-"sequential/test-single-executable-application-empty.js" = {}
-"sequential/test-single-executable-application-snapshot-and-code-cache.js" = {}
-"sequential/test-single-executable-application-snapshot-worker.js" = {}
-"sequential/test-single-executable-application-snapshot.js" = {}
-"sequential/test-single-executable-application-use-code-cache.js" = {}
-"sequential/test-single-executable-application.js" = {}
 "sequential/test-stream2-fs.js" = {}
 "sequential/test-tls-lookup.js" = {}
 "sequential/test-tls-psk-client.js" = {}
