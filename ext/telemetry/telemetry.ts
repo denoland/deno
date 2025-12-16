@@ -27,7 +27,6 @@ import {
   OtelTracer,
 } from "ext:core/ops";
 import { Console } from "ext:deno_web/01_console.js";
-import console from "node:console";
 
 const {
   ArrayFrom,
@@ -1767,6 +1766,7 @@ export class CompositePropagator implements TextMapPropagator {
       try {
         propagator.inject(context, carrier, setter);
       } catch (err) {
+        // deno-lint-ignore no-console
         console.warn(
           `Failed to inject with ${propagator.constructor.name}.`,
           err,
@@ -1780,6 +1780,7 @@ export class CompositePropagator implements TextMapPropagator {
       try {
         return propagator.extract(ctx, carrier, getter);
       } catch (err) {
+        // deno-lint-ignore no-console
         console.warn(
           `Failed to extract with ${propagator.constructor.name}.`,
           err,
