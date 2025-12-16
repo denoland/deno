@@ -567,7 +567,6 @@
     "ext:deno_node/_readline_shared_types.d.ts": "../ext/node/polyfills/_readline_shared_types.d.ts",
     "ext:deno_node/_stream.d.ts": "../ext/node/polyfills/_stream.d.ts",
     "ext:deno_node/_stream.mjs": "../ext/node/polyfills/_stream.mjs",
-    "ext:deno_node/_util/asserts.ts": "../ext/node/polyfills/_util/asserts.ts",
     "ext:deno_node/_util/async.ts": "../ext/node/polyfills/_util/async.ts",
     "ext:deno_node/_util/os.ts": "../ext/node/polyfills/_util/os.ts",
     "ext:deno_node/_util/std_fmt_colors.ts": "../ext/node/polyfills/_util/std_fmt_colors.ts",

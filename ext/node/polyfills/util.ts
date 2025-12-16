@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -42,7 +42,6 @@ import {
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "node:process";
 import {
   validateAbortSignal,
   validateNumber,
@@ -52,6 +51,11 @@ import {
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+
+let process: NodeJS.Process;
+const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
+  "node:process",
+);
 
 export {
   callbackify,
@@ -192,6 +196,7 @@ const codesWarned = new SafeSet();
 // If --no-deprecation is set, then it is a no-op.
 // deno-lint-ignore no-explicit-any
 export function deprecate(fn: any, msg: string, code?: any) {
+  process ??= lazyLoadProcess();
   if (process.noDeprecation === true) {
     return fn;
   }

@@ -29,10 +29,10 @@
 
 import { op_net_connect_tcp } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { internalFdSymbol } = core;
+const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -127,7 +127,7 @@ export class TCP extends ConnectionWrap {
         break;
       }
       default: {
-        unreachable();
+        throw new Error("Unreachable code");
       }
     }
 

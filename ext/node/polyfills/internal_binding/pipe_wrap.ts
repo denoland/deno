@@ -25,7 +25,6 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -48,6 +47,7 @@ import { fs } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
 
 const {
+  Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
   ObjectPrototypeIsPrototypeOf,
@@ -101,7 +101,7 @@ export class Pipe extends ConnectionWrap {
         break;
       }
       default: {
-        unreachable();
+        throw new Error("Unreachable code");
       }
     }
 

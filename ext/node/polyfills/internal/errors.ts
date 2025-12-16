@@ -13,7 +13,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   AggregateError,
   ArrayIsArray,
@@ -67,11 +67,16 @@ import {
   mapSysErrnoToUvErrno,
   UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
+
+let assert: typeof nodeAssert;
+const lazyLoadAssert = core.createLazyLoader<typeof nodeAssert>(
+  "node:assert",
+);
 
 export { errorMap };
 
@@ -797,6 +802,7 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
     input: unknown,
     replaceDefaultBoolean = false,
   ) {
+    assert ??= lazyLoadAssert();
     assert(range, 'Missing "range" argument');
     let msg = replaceDefaultBoolean
       ? str
@@ -1967,6 +1973,7 @@ export class ERR_SOCKET_BAD_BUFFER_SIZE extends NodeTypeError {
 }
 export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
   constructor(name: string, port: unknown, allowZero = true) {
+    assert ??= lazyLoadAssert();
     assert(
       typeof allowZero === "boolean",
       "The 'allowZero' argument must be of type boolean.",
@@ -2585,6 +2592,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
       target.length &&
       !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
+      assert ??= lazyLoadAssert();
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
