@@ -40,6 +40,7 @@ impl Default for CpuMonitorParallelism {
         let mut system = sysinfo::System::default();
         let max_parallelism = parallelism.max_parallelism().get();
         let mut current_cpus = max_parallelism;
+        let mut seen_change = false;
         if max_parallelism < 3 || system.cpus().len() < 3 {
           return; // never decrease parallelism
         }
@@ -64,11 +65,20 @@ impl Default for CpuMonitorParallelism {
           (upper, lower)
         };
         // Buffer to store recent CPU utilization measurements
-        const SAMPLE_SIZE: usize = 10;
+        const SAMPLE_SIZE: usize = 20;
         let mut cpu_samples: Vec<f32> = Vec::with_capacity(SAMPLE_SIZE);
         loop {
-          match rx.recv_timeout(Duration::from_millis(250)) {
+          match rx.recv_timeout(Duration::from_millis(400)) {
             Err(RecvTimeoutError::Timeout) => {
+              if !seen_change {
+                if parallelism.current_used() != current_cpus {
+                  // the set parallelism hasn't taken effect yet, so wait
+                  continue;
+                } else {
+                  seen_change = true;
+                }
+              }
+
               // the documentation recommends calling this twice in order
               // to get a more accurate cpu reading
               system.refresh_cpu_usage();
@@ -92,19 +102,19 @@ impl Default for CpuMonitorParallelism {
               // Calculate average CPU utilization over recent samples
               let avg_utilization =
                 cpu_samples.iter().sum::<f32>() / cpu_samples.len() as f32;
-
-              if avg_utilization > upper_bound {
-                if current_cpus > 2 {
-                  current_cpus -= 1;
-                  parallelism
-                    .set_parallelism(NonZeroUsize::new(current_cpus).unwrap());
-                }
+              let new_value = if avg_utilization > upper_bound {
+                (current_cpus > 2).then_some(current_cpus - 1)
               } else if avg_utilization < lower_bound
                 && current_cpus < max_parallelism
               {
-                current_cpus += 1;
-                parallelism
-                  .set_parallelism(NonZeroUsize::new(current_cpus).unwrap());
+                Some(current_cpus + 1)
+              } else {
+                None
+              };
+              if let Some(new_value) = new_value {
+                current_cpus = new_value;
+                parallelism.set_max(NonZeroUsize::new(new_value).unwrap());
+                seen_change = false;
               }
 
               // clear the samples and re-evaluate after a period of time
