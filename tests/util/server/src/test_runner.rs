@@ -26,16 +26,8 @@ impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
     let mut value = self.0.has_raised_count.lock();
     *value -= 1;
     if *value == 0 {
-      self.0.semaphore.set_max(self.0.max_parallelism);
+      self.0.semaphore.set_max(self.0.max_parallelism.get());
     }
-  }
-}
-
-struct ParallelismPermit<'a>(&'a Parallelism);
-
-impl<'a> Drop for ParallelismPermit<'a> {
-  fn drop(&mut self) {
-    self.0.semaphore.release();
   }
 }
 
@@ -61,16 +53,15 @@ impl Parallelism {
     self.max_parallelism
   }
 
-  fn acquire(&self) -> ParallelismPermit<'_> {
-    self.semaphore.acquire();
-    ParallelismPermit(self)
+  fn acquire(&self) -> crate::semaphore::Permit<'_> {
+    self.semaphore.acquire()
   }
 
   fn raise_single_concurrency_flag(&self) -> SingleConcurrencyFlagGuard<'_> {
     {
       let mut value = self.has_raised_count.lock();
       if *value == 0 {
-        self.semaphore.set_max(NonZeroUsize::new(1).unwrap());
+        self.semaphore.set_max(1);
       }
       *value += 1;
     }

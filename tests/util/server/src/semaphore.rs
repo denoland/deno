@@ -1,13 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
-
 use parking_lot::Condvar;
 use parking_lot::Mutex;
 
 struct Permits {
   max: usize,
   used: usize,
+}
+
+pub struct Permit<'a>(&'a Semaphore);
+
+impl<'a> Drop for Permit<'a> {
+  fn drop(&mut self) {
+    self.0.release();
+  }
 }
 
 pub struct Semaphore {
@@ -26,16 +32,22 @@ impl Semaphore {
     }
   }
 
-  pub fn acquire(&self) {
-    let mut permits = self.permits.lock();
-    while permits.used >= permits.max {
-      self.condvar.wait(&mut permits);
+  pub fn acquire(&self) -> Permit<'_> {
+    {
+      let mut permits = self.permits.lock();
+      while permits.used >= permits.max {
+        self.condvar.wait(&mut permits);
+      }
+      permits.used += 1;
     }
-    permits.used += 1;
+    Permit(self)
   }
 
-  pub fn release(&self) {
+  fn release(&self) {
     let mut permits = self.permits.lock();
+    if permits.used == 0 {
+      return;
+    }
     permits.used -= 1;
     if permits.used < permits.max {
       drop(permits);
@@ -43,10 +55,10 @@ impl Semaphore {
     }
   }
 
-  pub fn set_max(&self, n: NonZeroUsize) {
+  pub fn set_max(&self, n: usize) {
     let mut permits = self.permits.lock();
-    let is_greater = n.get() > permits.max;
-    permits.max = n.get();
+    let is_greater = n > permits.max;
+    permits.max = n;
     drop(permits);
     if is_greater {
       self.condvar.notify_all(); // Wake up waiting threads
@@ -131,7 +143,7 @@ mod tests {
     });
 
     thread::sleep(Duration::from_millis(10));
-    sem.set_max(NonZeroUsize::new(2).unwrap());
+    sem.set_max(2);
 
     handle.join().unwrap();
     sem.release();
@@ -143,7 +155,7 @@ mod tests {
     sem.acquire();
     sem.acquire();
 
-    sem.set_max(NonZeroUsize::new(1).unwrap());
+    sem.set_max(1);
 
     sem.release();
     sem.release();
@@ -161,7 +173,7 @@ mod tests {
     });
 
     thread::sleep(Duration::from_millis(10));
-    sem.set_max(NonZeroUsize::new(1).unwrap());
+    sem.set_max(1);
 
     handle.join().unwrap();
   }
