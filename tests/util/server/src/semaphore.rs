@@ -12,7 +12,15 @@ pub struct Permit<'a>(&'a Semaphore);
 
 impl<'a> Drop for Permit<'a> {
   fn drop(&mut self) {
-    self.0.release();
+    let mut permits = self.0.permits.lock();
+    if permits.used == 0 {
+      return;
+    }
+    permits.used -= 1;
+    if permits.used < permits.max {
+      drop(permits);
+      self.0.condvar.notify_one();
+    }
   }
 }
 
@@ -43,18 +51,6 @@ impl Semaphore {
     Permit(self)
   }
 
-  fn release(&self) {
-    let mut permits = self.permits.lock();
-    if permits.used == 0 {
-      return;
-    }
-    permits.used -= 1;
-    if permits.used < permits.max {
-      drop(permits);
-      self.condvar.notify_one();
-    }
-  }
-
   pub fn set_max(&self, n: usize) {
     let mut permits = self.permits.lock();
     let is_greater = n > permits.max;
@@ -77,12 +73,12 @@ mod tests {
   #[test]
   fn test_multiple_acquire_release() {
     let sem = Semaphore::new(3);
-    sem.acquire();
-    sem.acquire();
-    sem.acquire();
-    sem.release();
-    sem.release();
-    sem.release();
+    let permit1 = sem.acquire();
+    let permit2 = sem.acquire();
+    let permit3 = sem.acquire();
+    drop(permit3);
+    drop(permit2);
+    drop(permit1);
   }
 
   #[test]
@@ -94,9 +90,8 @@ mod tests {
       let sem_clone = Arc::clone(&sem);
       #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
-        sem_clone.acquire();
+        let _perimt = sem_clone.acquire();
         thread::sleep(Duration::from_millis(10));
-        sem_clone.release();
       });
       handles.push(handle);
     }
@@ -111,19 +106,18 @@ mod tests {
     let sem = Arc::new(Semaphore::new(1));
     let sem_clone = Arc::clone(&sem);
 
-    sem.acquire();
+    let permit = sem.acquire();
 
     #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       let start = std::time::Instant::now();
-      sem_clone.acquire();
+      let _permit = sem_clone.acquire();
       let elapsed = start.elapsed();
-      sem_clone.release();
       elapsed
     });
 
     thread::sleep(Duration::from_millis(50));
-    sem.release();
+    drop(permit);
 
     let elapsed = handle.join().unwrap();
     assert!(elapsed >= Duration::from_millis(40));
@@ -134,31 +128,30 @@ mod tests {
     let sem = Arc::new(Semaphore::new(1));
     let sem_clone = Arc::clone(&sem);
 
-    sem.acquire();
+    let permit = sem.acquire();
 
     #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
-      sem_clone.acquire();
-      sem_clone.release();
+      let _permit = sem_clone.acquire();
     });
 
     thread::sleep(Duration::from_millis(10));
     sem.set_max(2);
 
     handle.join().unwrap();
-    sem.release();
+    drop(permit);
   }
 
   #[test]
   fn test_set_max_decrease() {
     let sem = Semaphore::new(3);
-    sem.acquire();
-    sem.acquire();
+    let permit1 = sem.acquire();
+    let permit2 = sem.acquire();
 
     sem.set_max(1);
 
-    sem.release();
-    sem.release();
+    drop(permit1);
+    drop(permit2);
   }
 
   #[test]
@@ -168,8 +161,7 @@ mod tests {
 
     #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
-      sem_clone.acquire();
-      sem_clone.release();
+      let _permit = sem_clone.acquire();
     });
 
     thread::sleep(Duration::from_millis(10));
@@ -189,12 +181,11 @@ mod tests {
       let counter_clone = Arc::clone(&counter);
       #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
-        sem_clone.acquire();
+        let _permit = sem_clone.acquire();
         let mut count = counter_clone.lock();
         *count += 1;
         thread::sleep(Duration::from_millis(5));
         drop(count);
-        sem_clone.release();
       });
       handles.push(handle);
     }
