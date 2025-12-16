@@ -81,7 +81,6 @@ pub fn main() {
     return; // no tests to run for the filter
   }
 
-  let number_tests = main_category.test_count();
   let run_test = move |test: &CollectedTest<&'static TestMacroCase>,
                        parallelism: Option<&Parallelism>| {
     if test.data.ignore {
@@ -116,8 +115,6 @@ pub fn main() {
         TestResult::SubTests(_) => unreachable!(),
       }
     };
-    // don't use this if we're only running a single test
-    let parallelism = parallelism.filter(|_| number_tests > 1);
     if test.data.flaky {
       run_flaky_test(&test.name, parallelism, run_test)
     } else {

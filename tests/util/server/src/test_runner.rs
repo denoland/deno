@@ -2,10 +2,11 @@
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use file_test_runner::TestResult;
+use file_test_runner::parallelism::ParallelismProvider;
+use parking_lot::Mutex;
 
 use crate::IS_CI;
 use crate::colors;
@@ -23,17 +24,31 @@ pub fn flaky_test_ci(
   }
 }
 
+struct SingleConcurrencyFlagGuard<'a>(&'a Parallelism);
+
+impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
+  fn drop(&mut self) {
+    let mut value = self.0.has_raised_count.lock();
+    *value -= 1;
+    if *value == 0 {
+      self.0.parallelism.set_max(self.0.max_parallelism);
+    }
+  }
+}
+
 pub struct Parallelism {
   parallelism: Arc<file_test_runner::parallelism::Parallelism>,
-  has_raised: AtomicBool,
+  max_parallelism: NonZeroUsize,
+  has_raised_count: Mutex<usize>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
     let parallelism = file_test_runner::parallelism::Parallelism::from_env();
     Self {
+      max_parallelism: parallelism.max_parallelism(),
       parallelism: Arc::new(parallelism),
-      has_raised: Default::default(),
+      has_raised_count: Default::default(),
     }
   }
 }
@@ -45,18 +60,15 @@ impl Parallelism {
     self.parallelism.clone()
   }
 
-  fn limit_to_one(&self) -> bool {
-    if !self
-      .has_raised
-      .swap(true, std::sync::atomic::Ordering::Relaxed)
+  fn raise_single_concurrency_flag(&self) -> SingleConcurrencyFlagGuard<'_> {
     {
-      self
-        .parallelism
-        .set_parallelism(NonZeroUsize::new(1).unwrap());
-      true
-    } else {
-      false
+      let mut value = self.has_raised_count.lock();
+      if *value == 0 {
+        self.parallelism.set_max(NonZeroUsize::new(1).unwrap());
+      }
+      *value += 1;
     }
+    SingleConcurrencyFlagGuard(self)
   }
 }
 
@@ -81,17 +93,15 @@ pub fn run_flaky_test(
     std::thread::sleep(Duration::from_millis(100));
   }
 
-  // if we got here, it means the CI is very flaky at the moment
-  // so reduce concurrency down to 1
-  if let Some(parallelism) = parallelism
-    && parallelism.limit_to_one()
-  {
+  // on the CI, try running the test in isolation with no other tests running
+  let _maybe_guard = if let Some(parallelism) = parallelism.filter(|_| *IS_CI) {
+    let guard = parallelism.raise_single_concurrency_flag();
     eprintln!(
-      "{} {} was flaky. Reducing test concurrency to 1.",
+      "{} {} was flaky. Temporarily reducing test concurrency to 1 and trying a few more times.",
       colors::bold_red("***WARNING***"),
       colors::gray(test_name)
     );
-    // try running the tests again
+
     for _ in 0..2 {
       let result = action();
       if !result.is_failed() {
@@ -99,9 +109,13 @@ pub fn run_flaky_test(
       }
       std::thread::sleep(Duration::from_millis(100));
     }
-  }
 
-  // surface on third try
+    Some(guard)
+  } else {
+    None
+  };
+
+  // surface result now
   action()
 }
 

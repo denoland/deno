@@ -255,7 +255,8 @@ pub fn main() {
         map: map_test_within_file,
       }),
       filter_override: None,
-    });
+    })
+    .into_flat_category();
 
   if root_category.is_empty() {
     return; // all tests filtered out
