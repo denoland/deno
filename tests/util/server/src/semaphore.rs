@@ -112,8 +112,7 @@ mod tests {
     let handle = thread::spawn(move || {
       let start = std::time::Instant::now();
       let _permit = sem_clone.acquire();
-      let elapsed = start.elapsed();
-      elapsed
+      start.elapsed()
     });
 
     thread::sleep(Duration::from_millis(50));
