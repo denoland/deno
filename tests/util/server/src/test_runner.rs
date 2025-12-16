@@ -3,13 +3,16 @@
 use std::io::IsTerminal;
 use std::io::Write;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::time::Instant;
 
+use console_static_text::ConsoleStaticText;
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
+use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
 
 use crate::IS_CI;
@@ -172,9 +175,12 @@ pub fn with_timeout(
 
 pub fn get_test_reporter<TData>()
 -> Arc<dyn file_test_runner::reporter::Reporter<TData>> {
-  if *file_test_runner::NO_CAPTURE || *IS_CI || !std::io::stderr().is_terminal()
+  if *file_test_runner::NO_CAPTURE
+    || *IS_CI
+    || !std::io::stderr().is_terminal()
+    || std::env::var("DENO_TEST_UTIL_REPORTER").ok().as_deref() == Some("log")
   {
-    Arc::new(file_test_runner::reporter::LogReporter)
+    Arc::new(file_test_runner::reporter::LogReporter::default())
   } else {
     Arc::new(PtyReporter::new())
   }
@@ -336,7 +342,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       data.pending_tests.remove(index);
     }
     match result {
-      TestResult::Passed => {
+      TestResult::Passed { .. } => {
         data.passed_tests += 1;
       }
       TestResult::Ignored => {
@@ -353,7 +359,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
           },
         });
       }
-      TestResult::SubTests(..) => {
+      TestResult::SubTests { .. } => {
         // ignore
       }
     }
@@ -369,10 +375,6 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       final_text.extend_from_slice(text.as_bytes());
     }
     _ = std::io::stderr().write_all(&final_text);
-  }
-
-  fn report_long_running_test(&self, _test_name: &str) {
-    // don't bother reporting because the pty tests display this
   }
 
   fn report_failures(
