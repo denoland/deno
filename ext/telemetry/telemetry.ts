@@ -56,7 +56,7 @@ const {
   ObjectValues,
   ReflectApply,
   SafeArrayIterator,
-  SafeIterator,
+  SafeMapIterator,
   SafeMap,
   SafePromiseAll,
   SafeRegExp,
@@ -752,7 +752,7 @@ class BatchObservableResult {
 
   static {
     batchResultHasObservables = (cb, observables) => {
-      for (const observable of new SafeIterator(observables)) {
+      for (const observable of new SafeArrayIterator(observables)) {
         if (!cb.#observables.has(observable)) return false;
       }
       return true;
@@ -1639,7 +1639,7 @@ class BaggageImpl implements Baggage {
     this.#entries = new SafeMap();
     // The `SafeMap` constructor that takes an iterable doesn't work for non Array iterables correctly.
     if (entries) {
-      for (const { 0: key, 1: entry } of new SafeIterator(entries)) {
+      for (const { 0: key, 1: entry } of new SafeMapIterator(entries)) {
         this.#entries.set(key, ObjectAssign({}, entry));
       }
     }
