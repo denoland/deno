@@ -12,6 +12,7 @@ import { URLPrototype } from "ext:deno_web/00_url.js";
 import type { URL } from "node:url";
 
 const {
+  ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -30,12 +31,10 @@ class ConstructCallRequiredError extends TypeError {
   }
 }
 
-class InvalidPathError extends TypeError {
+class InvalidArgTypeError extends TypeError {
   code: string;
-  constructor() {
-    super(
-      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
-    );
+  constructor(message: string) {
+    super(message);
     this.code = "ERR_INVALID_ARG_TYPE";
   }
 }
@@ -67,7 +66,9 @@ const parsePath = (path: unknown): string => {
     typeof parsedPath === "undefined" ||
     StringPrototypeIncludes(parsedPath, "\0")
   ) {
-    throw new InvalidPathError();
+    throw new InvalidArgTypeError(
+      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
+    );
   }
 
   return parsedPath;
@@ -151,17 +152,32 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
+// deno-lint-ignore require-await
 async function backup(
   sourceDb: DatabaseSync,
   path: string | Buffer | URL,
   options?: BackupOptions,
 ): Promise<number> {
-  return await op_node_database_backup(
+  if (!ObjectPrototypeIsPrototypeOf(DatabaseSync.prototype, sourceDb)) {
+    throw new InvalidArgTypeError(
+      'The "sourceDb" argument must be an object.',
+    );
+  }
+
+  // TODO(Tango992): Implement async op
+  return op_node_database_backup(
     sourceDb,
     parsePath(path),
     options,
   );
 }
+ObjectDefineProperty(backup, "length", {
+  __proto__: null,
+  value: 2,
+  enumerable: false,
+  configurable: true,
+  writable: false,
+});
 
 export const constants = {
   SQLITE_CHANGESET_OMIT: 0,
