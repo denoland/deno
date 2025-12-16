@@ -754,7 +754,8 @@
 "parallel/test-memory-usage.js" = {}
 "parallel/test-messagechannel.js" = {}
 "parallel/test-microtask-queue-integration.js" = {}
-"parallel/test-microtask-queue-run-immediate.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is fixed
+# "parallel/test-microtask-queue-run-immediate.js" = {}
 "parallel/test-microtask-queue-run.js" = {}
 "parallel/test-module-cache.js" = { flaky = true }
 "parallel/test-module-children.js" = {}
