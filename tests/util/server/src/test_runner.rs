@@ -211,22 +211,34 @@ impl PtyReporterData {
 
   pub fn render(&mut self) -> Option<String> {
     let mut items = Vec::new();
+    const MAX_ITEM_DISPLAY: usize = 10;
     if !self.pending_tests.is_empty() {
+      let text = if self.pending_tests.len() > MAX_ITEM_DISPLAY {
+        "oldest pending:"
+      } else {
+        "pending:"
+      };
       items.push(console_static_text::TextItem::Text(
-        colors::yellow("pending:").into(),
+        colors::yellow(text).into(),
       ));
-      items.extend(self.pending_tests.iter().map(|item| {
-        console_static_text::TextItem::Text(
-          format!("- {} ({}s)", item.name, item.start_time.elapsed().as_secs())
+      items.extend(self.pending_tests.iter().take(MAX_ITEM_DISPLAY).map(
+        |item| {
+          console_static_text::TextItem::Text(
+            format!(
+              "- {} ({}s)",
+              item.name,
+              item.start_time.elapsed().as_secs()
+            )
             .into(),
-        )
-      }));
+          )
+        },
+      ));
     }
     if !self.failed_tests.is_empty() {
       items.push(console_static_text::TextItem::Text(
         colors::red("failed:").to_string().into(),
       ));
-      for item in &self.failed_tests {
+      for item in self.failed_tests.iter().rev().take(MAX_ITEM_DISPLAY) {
         items.push(console_static_text::TextItem::Text(
           format!("- {} ({})", item.name, colors::gray(&item.path)).into(),
         ));
@@ -235,7 +247,8 @@ impl PtyReporterData {
 
     items.push(console_static_text::TextItem::Text(
       format!(
-        "    {} Passed - {} Failed - {} Ignored",
+        "    {} Pending - {} Passed - {} Failed - {} Ignored",
+        self.pending_tests.len(),
         self.passed_tests,
         self.failed_tests.len(),
         self.ignored_tests
@@ -268,6 +281,7 @@ impl PtyReporter {
       passed_tests: Default::default(),
       ignored_tests: Default::default(),
     }));
+    #[allow(clippy::disallowed_methods)]
     std::thread::spawn({
       let data = data.clone();
       move || {
@@ -324,6 +338,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     });
     if let Some(text) = data.render() {
       _ = std::io::stderr().write_all(text.as_bytes());
+      _ = std::io::stderr().flush();
     }
   }
 
@@ -375,6 +390,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       final_text.extend_from_slice(text.as_bytes());
     }
     _ = std::io::stderr().write_all(&final_text);
+    _ = std::io::stderr().flush();
   }
 
   fn report_failures(
@@ -395,5 +411,6 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       total_tests,
     );
     _ = std::io::stderr().write_all(&final_text);
+    _ = std::io::stderr().flush();
   }
 }
