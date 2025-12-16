@@ -64,7 +64,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.373.0" }
+deno_core = { version = "0.374.0" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.188.0"
@@ -172,7 +172,7 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.9.2"
+file_test_runner = "0.10.0"
 filetime = "0.2.16"
 flate2 = { version = "1.0.30", default-features = false }
 fqdn = "0.4.6"
