@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.1 / 2025.12.15
+
+- feat(unstable): deploy config allow app to be optional (#31567)
+- fix(add): include type-only imports when building graph (#31552)
+- fix(cli): add streams as transferable types (#31586)
+- fix(compile): intel mac compile fix (#31575)
+- fix(compile): sentinal conflict with strtab on intel mac (#31587)
+- fix(ext/node): `DatabaseSync` compatibility (#31515)
+- fix(x): correct alias deno command location for Windows (#31573)
+- fix(x): fix executing native binary on windows + some cleanup (#31551)
+- fix: --preload and --require flags only available in runtime subcommands
+  (#31614)
+- fix: adjust deno_cache version (#31553)
+- fix: source map file names to non-existent paths (#31564)
+
 ### 2.6.0 / 2025.12.10
 
 Read more: http://deno.com/blog/v2.6

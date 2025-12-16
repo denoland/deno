@@ -15,9 +15,15 @@ use crate::factory::CliFactory;
 use crate::ops;
 use crate::registry;
 
-pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
+pub async fn deploy(
+  mut flags: Flags,
+  subcommand: Option<&'static str>,
+) -> Result<i32, AnyError> {
   flags.node_modules_dir = Some(NodeModulesDirMode::None);
   flags.no_lock = true;
+  if let Some(subcommand) = subcommand {
+    flags.argv = vec![subcommand.to_string()];
+  }
 
   let mut factory = CliFactory::from_flags(Arc::new(flags));
 

@@ -507,18 +507,20 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       "isNodeSourceFile" => {
         let path = deser::<String>(payload)?;
         let state = &*state;
-        let result = ModuleSpecifier::parse(&path)
-          .ok()
-          .or_else(|| {
-            deno_path_util::resolve_url_or_path(&path, &state.current_dir).ok()
-          })
-          .and_then(|specifier| {
-            state
-              .maybe_npm
-              .as_ref()
-              .map(|n| n.node_resolver.in_npm_package(&specifier))
-          })
-          .unwrap_or(false);
+        let result = path.starts_with("asset:///node/")
+          || ModuleSpecifier::parse(&path)
+            .ok()
+            .or_else(|| {
+              deno_path_util::resolve_url_or_path(&path, &state.current_dir)
+                .ok()
+            })
+            .and_then(|specifier| {
+              state
+                .maybe_npm
+                .as_ref()
+                .map(|n| n.node_resolver.in_npm_package(&specifier))
+            })
+            .unwrap_or(false);
         Ok(jsons!(result)?)
       }
       _ => unreachable!("unknown callback: {name}"),

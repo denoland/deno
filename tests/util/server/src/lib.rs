@@ -30,6 +30,7 @@ mod npm;
 mod parsers;
 pub mod print;
 pub mod pty;
+mod semaphore;
 pub mod servers;
 pub mod spawn;
 pub mod test_runner;
