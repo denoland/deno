@@ -10,8 +10,7 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
 use test_util::TestMacroCase;
 use test_util::test_runner::Parallelism;
-use test_util::test_runner::flaky_test_ci;
-use test_util::test_runner::run_flaky_test;
+use test_util::test_runner::run_maybe_flaky_test;
 
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
@@ -116,11 +115,12 @@ pub fn main() {
         TestResult::SubTests { .. } => unreachable!(),
       }
     };
-    if test.data.flaky {
-      run_flaky_test(&test.name, parallelism, run_test)
-    } else {
-      flaky_test_ci(&test.name, parallelism, run_test)
-    }
+    run_maybe_flaky_test(
+      &test.name,
+      test.data.flaky || *test_util::IS_CI,
+      parallelism,
+      run_test,
+    )
   };
 
   let (watcher_tests, main_tests) =

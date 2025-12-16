@@ -26,7 +26,7 @@ use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 use test_util::test_runner::Parallelism;
-use test_util::test_runner::run_flaky_test;
+use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
@@ -346,22 +346,19 @@ fn run_test_inner(
           TestResult::Passed { duration: None }
         }))
       };
-      let result = if step.flaky {
-        run_flaky_test(&test.name, None, run_func)
-      } else {
-        run_func()
-      };
+      let result = run_maybe_flaky_test(&test.name, step.flaky, None, run_func);
       if result.is_failed() {
         return result;
       }
     }
     TestResult::Passed { duration: None }
   };
-  if metadata.flaky || *IS_CI {
-    run_flaky_test(&test.name, Some(parallelism), run_fn)
-  } else {
-    run_fn()
-  }
+  run_maybe_flaky_test(
+    &test.name,
+    metadata.flaky || *IS_CI,
+    Some(parallelism),
+    run_fn,
+  )
 }
 
 fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {

@@ -16,11 +16,7 @@ pub fn flaky_test_ci(
   parallelism: Option<&Parallelism>,
   run_test: impl Fn() -> TestResult,
 ) -> TestResult {
-  if *IS_CI {
-    run_flaky_test(test_name, parallelism, run_test)
-  } else {
-    run_with_parallelism(parallelism, &run_test)
-  }
+  run_maybe_flaky_test(test_name, *IS_CI, parallelism, run_test)
 }
 
 struct SingleConcurrencyFlagGuard<'a>(&'a Parallelism);
@@ -82,12 +78,17 @@ impl Parallelism {
   }
 }
 
-pub fn run_flaky_test(
+pub fn run_maybe_flaky_test(
   test_name: &str,
+  is_flaky: bool,
   parallelism: Option<&Parallelism>,
   main_action: impl Fn() -> TestResult,
 ) -> TestResult {
-  let action = || run_with_parallelism(parallelism, &main_action);
+  let ci_parallelism = parallelism.filter(|_| *IS_CI);
+  let action = || run_with_parallelism(ci_parallelism, &main_action);
+  if !is_flaky {
+    return action();
+  }
   for i in 0..2 {
     let result = action();
     if !result.is_failed() {
@@ -107,7 +108,7 @@ pub fn run_flaky_test(
 
   // on the CI, try running the test in isolation with no other tests running
   #[allow(clippy::print_stderr)]
-  let _maybe_guard = if let Some(parallelism) = parallelism {
+  let _maybe_guard = if let Some(parallelism) = ci_parallelism {
     let guard = parallelism.raise_single_concurrency_flag();
     ::std::eprintln!(
       "{} {} was flaky. Temporarily reducing test concurrency to 1 and trying a few more times.",
