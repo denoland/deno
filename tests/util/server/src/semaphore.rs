@@ -80,6 +80,7 @@ mod tests {
 
     for _ in 0..5 {
       let sem_clone = Arc::clone(&sem);
+      #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
         sem_clone.acquire();
         thread::sleep(Duration::from_millis(10));
@@ -100,6 +101,7 @@ mod tests {
 
     sem.acquire();
 
+    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       let start = std::time::Instant::now();
       sem_clone.acquire();
@@ -122,6 +124,7 @@ mod tests {
 
     sem.acquire();
 
+    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       sem_clone.acquire();
       sem_clone.release();
@@ -151,6 +154,7 @@ mod tests {
     let sem = Arc::new(Semaphore::new(0));
     let sem_clone = Arc::clone(&sem);
 
+    #[allow(clippy::disallowed_methods)]
     let handle = thread::spawn(move || {
       sem_clone.acquire();
       sem_clone.release();
@@ -171,6 +175,7 @@ mod tests {
     for _ in 0..10 {
       let sem_clone = Arc::clone(&sem);
       let counter_clone = Arc::clone(&counter);
+      #[allow(clippy::disallowed_methods)]
       let handle = thread::spawn(move || {
         sem_clone.acquire();
         let mut count = counter_clone.lock();
