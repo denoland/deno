@@ -39,7 +39,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
-use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -1052,17 +1051,15 @@ async fn initialize_tunnel(
   {
     (token.clone(), org, app)
   } else if let Some(deploy_config) = &deploy_config
+    && let Some(app) = &deploy_config.app
     && let Some(token) = &env_token
   {
-    (
-      token.clone(),
-      deploy_config.org.clone(),
-      deploy_config.app.clone(),
-    )
+    (token.clone(), deploy_config.org.clone(), app.clone())
   } else if let Some(deploy_config) = deploy_config
     && let Some(token) = storage_token
+    && let Some(app) = deploy_config.app
   {
-    (token, deploy_config.org, deploy_config.app)
+    (token, deploy_config.org, app)
   } else {
     let o = auth_tunnel(no_config, env_token.clone()).await?;
     (o.token, o.org, o.app)
