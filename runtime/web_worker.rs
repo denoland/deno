@@ -18,7 +18,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
-use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -30,7 +29,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -67,6 +65,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
 use crate::inspector_server::InspectorServer;
+use crate::inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -379,7 +378,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub main_inspector_session_tx: Option<UnboundedSender<InspectorSessionProxy>>,
+  pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -678,7 +677,7 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(main_session_tx) = services.main_inspector_session_tx {
+    if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
         deno_core::create_worker_inspector_session_pair(
           options.main_module.to_string(),

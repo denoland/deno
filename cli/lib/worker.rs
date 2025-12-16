@@ -6,10 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_bundle_runtime::BundleProvider;
-use deno_core::InspectorSessionProxy;
 use deno_core::error::JsError;
-use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::parking_lot::Mutex;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
@@ -44,6 +41,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::inspector_server::MainInspectorSessionChannel;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -373,8 +371,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
-  main_inspector_session_tx:
-    Mutex<Option<UnboundedSender<InspectorSessionProxy>>>,
+  main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -463,10 +460,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.compiled_wasm_module_store.clone(),
         ),
         maybe_inspector_server,
-        main_inspector_session_tx: shared
-          .main_inspector_session_tx
-          .lock()
-          .clone(),
+        main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
@@ -573,7 +567,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         fs,
         maybe_coverage_dir,
         maybe_inspector_server,
-        main_inspector_session_tx: Mutex::new(None),
+        main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -739,7 +733,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
     let session_tx = inspector.get_session_sender();
-    *shared.main_inspector_session_tx.lock() = Some(session_tx);
+    shared.main_inspector_session_tx.set(session_tx);
 
     Ok(LibMainWorker {
       main_module,
