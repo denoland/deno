@@ -1754,7 +1754,7 @@ export class CompositePropagator implements TextMapPropagator {
             this.#propagators,
             (p) => p.fields(),
           ),
-          (x, y) => x.concat(y),
+          (x, y) => ArrayPrototypeConcat(x, y),
           [],
         ),
       ),
@@ -1762,7 +1762,7 @@ export class CompositePropagator implements TextMapPropagator {
   }
 
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    for (const propagator of this.#propagators) {
+    for (const propagator of new SafeArrayIterator(this.#propagators)) {
       try {
         propagator.inject(context, carrier, setter);
       } catch (err) {
@@ -1775,7 +1775,7 @@ export class CompositePropagator implements TextMapPropagator {
   }
 
   extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
-    return this.#propagators.reduce((ctx, propagator) => {
+    return ArrayPrototypeReduce(this.#propagators, (ctx, propagator) => {
       try {
         return propagator.extract(ctx, carrier, getter);
       } catch (err) {
@@ -1789,7 +1789,7 @@ export class CompositePropagator implements TextMapPropagator {
   }
 
   fields(): string[] {
-    return this.#fields.slice();
+    return ArrayPrototypeSlice(this.#fields);
   }
 }
 
