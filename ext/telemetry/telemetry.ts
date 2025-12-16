@@ -27,6 +27,7 @@ import {
   OtelTracer,
 } from "ext:core/ops";
 import { Console } from "ext:deno_web/01_console.js";
+import console from "node:console";
 
 const {
   ArrayFrom,
@@ -1740,6 +1741,58 @@ export class W3CBaggagePropagator implements TextMapPropagator {
   }
 }
 
+export class CompositePropagator implements TextMapPropagator {
+  #propagators: TextMapPropagator[];
+  #fields: string[];
+
+  constructor(propagators: TextMapPropagator[]) {
+    this.#propagators = propagators;
+    this.#fields = ArrayFrom(
+      new SafeSet(
+        ArrayPrototypeReduce(
+          ArrayPrototypeMap(
+            this.#propagators,
+            (p) => p.fields(),
+          ),
+          (x, y) => x.concat(y),
+          [],
+        ),
+      ),
+    );
+  }
+
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    for (const propagator of this.#propagators) {
+      try {
+        propagator.inject(context, carrier, setter);
+      } catch (err) {
+        console.warn(
+          `Failed to inject with ${propagator.constructor.name}.`,
+          err,
+        );
+      }
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    return this.#propagators.reduce((ctx, propagator) => {
+      try {
+        return propagator.extract(ctx, carrier, getter);
+      } catch (err) {
+        console.warn(
+          `Failed to extract with ${propagator.constructor.name}.`,
+          err,
+        );
+      }
+      return ctx;
+    }, context);
+  }
+
+  fields(): string[] {
+    return this.#fields.slice();
+  }
+}
+
 let builtinTracerCache: Tracer;
 
 export function builtinTracer(): Tracer {
@@ -1808,7 +1861,7 @@ export function bootstrap(
       break;
   }
 
-  if (TRACING_ENABLED || METRICS_ENABLED) {
+  if (TRACING_ENABLED || METRICS_ENABLED || PROPAGATORS.length > 0) {
     const otel = globalThis[SymbolFor("opentelemetry.js.api.1")] ??= {
       version: OTEL_API_COMPAT_VERSION,
     };
@@ -1819,6 +1872,9 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
       enableIsolateMetrics();
+    }
+    if (PROPAGATORS.length > 0) {
+      otel.propagation = new CompositePropagator(PROPAGATORS);
     }
   }
 }
