@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::io;
 
+use console_static_text::ConsoleSize;
 use console_static_text::TextItem;
 use crossterm::ExecutableCommand;
 use crossterm::cursor;
