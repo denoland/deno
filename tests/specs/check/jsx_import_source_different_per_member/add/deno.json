@@ -1,0 +1,7 @@
+{
+  "name": "@pkg/add",
+  "compilerOptions": {
+    "jsxImportSource": "npm:react"
+  },
+  "exports": "./mod.tsx"
+}

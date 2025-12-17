@@ -296,10 +296,7 @@ impl TypeChecker {
           imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
-          referrer: self
-            .cli_options
-            .workspace()
-            .resolve_member_dir(root)
+          referrer: dir
             .maybe_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
