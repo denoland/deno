@@ -754,8 +754,7 @@
 "parallel/test-memory-usage.js" = {}
 "parallel/test-messagechannel.js" = {}
 "parallel/test-microtask-queue-integration.js" = {}
-# TODO(bartlomieju): Enable when `setImmediate` is fixed
-# "parallel/test-microtask-queue-run-immediate.js" = {}
+"parallel/test-microtask-queue-run-immediate.js" = {}
 "parallel/test-microtask-queue-run.js" = {}
 "parallel/test-module-cache.js" = { flaky = true }
 "parallel/test-module-children.js" = {}
@@ -1209,7 +1208,9 @@
 # TODO(bartlomieju): doesn't work correctly because of `node:domain`
 # error handling
 # "parallel/test-timers-immediate-queue-throw.js" = {}
-"parallel/test-timers-immediate-queue.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is properly supported
+# after the https://github.com/denoland/deno/pull/31643 revert
+# "parallel/test-timers-immediate-queue.js" = {}
 "parallel/test-timers-immediate-unref-nested-once.js" = {}
 "parallel/test-timers-immediate-unref-simple.js" = {}
 "parallel/test-timers-immediate-unref.js" = {}
