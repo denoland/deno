@@ -36,6 +36,7 @@ deno_core::extension!(
 );
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub ts_version: String,
   pub v8_version: &'static str,
