@@ -449,8 +449,7 @@
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
-# TODO(bartlomieju): crashes constantly on CI, disabling for now
-# "parallel/test-fs-glob.mjs" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
