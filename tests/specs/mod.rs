@@ -7,7 +7,6 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use anyhow::Context;
 use file_test_runner::NO_CAPTURE;
@@ -20,7 +19,6 @@ use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
-use file_test_runner::reporter::LogReporter;
 use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
@@ -268,7 +266,7 @@ pub fn main() {
     &root_category,
     file_test_runner::RunOptions {
       parallelism: parallelism.max_parallelism(),
-      reporter: Arc::new(LogReporter),
+      reporter: test_util::test_runner::get_test_reporter(),
     },
     move |test| run_test(test, &parallelism),
   );
