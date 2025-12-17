@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::io::Write;
+
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use flate2::Compression;

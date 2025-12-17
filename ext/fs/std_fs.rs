@@ -409,7 +409,7 @@ impl FileSystem for RealFs {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {

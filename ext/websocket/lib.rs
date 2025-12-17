@@ -8,13 +8,13 @@ use std::rc::Rc;
 use bytes::Bytes;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::convert::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
@@ -641,7 +641,10 @@ pub async fn op_ws_send_binary_async(
   let data = data.0;
   let lock = resource.reserve_lock();
   resource
-    .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Binary, None, (&*data).into()),
+    )
     .await
 }
 

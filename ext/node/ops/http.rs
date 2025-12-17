@@ -14,7 +14,6 @@ use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -24,6 +23,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToV8;
+use deno_core::convert::ByteString;
 use deno_core::error::ResourceError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
@@ -61,11 +61,9 @@ use tokio::io::AsyncWriteExt;
 pub struct NodeHttpResponse {
   pub status: u16,
   pub status_text: String,
-  #[to_v8(serde)]
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
-  #[to_v8(serde)]
   pub content_length: Option<u64>,
   pub error: Option<String>,
 }
@@ -77,7 +75,6 @@ type CancelableResponseResult =
 struct InformationalResponse {
   status: u16,
   status_text: String,
-  #[to_v8(serde)]
   headers: Vec<(ByteString, ByteString)>,
   version_major: u16,
   version_minor: u16,
@@ -159,10 +156,10 @@ pub enum ConnError {
 #[allow(clippy::await_holding_refcell_ref)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
-  #[serde] method: ByteString,
+  #[v8_slow] method: ByteString,
   #[string] url: String,
   #[string] request_path: Option<String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {

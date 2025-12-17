@@ -22,7 +22,6 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_core::convert::Uint8Array;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
@@ -32,6 +31,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::WriteOutcome;
+use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_error::JsError;
@@ -143,9 +143,7 @@ struct ListenArgs {
 
 #[derive(FromV8, Default, PartialEq)]
 struct TransportConfig {
-  #[from_v8(serde)]
   keep_alive_interval: Option<u64>,
-  #[from_v8(serde)]
   max_idle_timeout: Option<u64>,
   max_concurrent_bidirectional_streams: Option<u32>,
   max_concurrent_unidirectional_streams: Option<u32>,

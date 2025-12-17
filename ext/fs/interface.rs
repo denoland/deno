@@ -349,7 +349,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let file = self.open_async(path, options).await?;
     if let Some(mode) = options.mode {

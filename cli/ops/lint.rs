@@ -6,9 +6,9 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_core::convert::Uint8Array;
 use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
@@ -231,7 +231,7 @@ fn op_lint_create_serialized_ast(
 #[derive(FromV8)]
 struct LintReportFix {
   text: String,
-  #[v8(serde)] range: (usize, usize),
+  range: (usize, usize),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

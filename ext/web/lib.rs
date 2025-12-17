@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
-use deno_core::ByteString;
 use deno_core::U16String;
+use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -183,8 +183,9 @@ fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
 }
 
 #[op2]
-#[serde]
-fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, WebError> {
+fn op_base64_atob(
+  #[v8_slow] mut s: ByteString,
+) -> Result<ByteString, WebError> {
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
@@ -208,7 +209,7 @@ fn op_base64_encode(#[buffer] s: &[u8]) -> String {
 
 #[op2]
 #[string]
-fn op_base64_btoa(#[serde] s: ByteString) -> String {
+fn op_base64_btoa(#[v8_slow] s: ByteString) -> String {
   forgiving_base64_encode(s.as_ref())
 }
 

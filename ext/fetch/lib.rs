@@ -29,8 +29,6 @@ use data_url::DataUrl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::convert::{ByteString};
-use deno_core::convert::{Uint8Array};
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -41,6 +39,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToV8;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -818,7 +818,6 @@ pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   #[from_v8(serde)]
   proxy: Option<Proxy>,
-  #[from_v8(serde)]
   pool_max_idle_per_host: Option<usize>,
   #[from_v8(serde)]
   pool_idle_timeout: Option<serde_json::Value>,

@@ -248,7 +248,6 @@ struct GPUCanvasConfiguration {
   view_formats: Vec<GPUTextureFormat>,
 }
 
-
 #[derive(WebIDL)]
 #[webidl(enum)]
 enum GPUCanvasAlphaMode {

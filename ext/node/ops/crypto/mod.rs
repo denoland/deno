@@ -283,7 +283,9 @@ pub fn op_node_cipheriv_final(
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
-  context.r#final(auto_pad, input, output).map(|tag| tag.map(Into::into))
+  context
+    .r#final(auto_pad, input, output)
+    .map(|tag| tag.map(Into::into))
 }
 
 #[op2]

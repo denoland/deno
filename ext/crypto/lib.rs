@@ -441,7 +441,7 @@ pub async fn op_crypto_verify_key(
         use rsa::pkcs1v15::Signature;
         use rsa::pkcs1v15::VerifyingKey;
         let public_key = read_rsa_public_key(args.key)?;
-        let signature: Signature = (&**args.signature).try_into()?;
+        let signature: Signature = (&*args.signature).try_into()?;
         match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let verifying_key = VerifyingKey::<Sha1>::new(public_key);
@@ -578,7 +578,6 @@ pub struct DeriveKeyArg {
   algorithm: Algorithm,
   #[from_v8(serde)]
   hash: Option<CryptoHash>,
-  #[from_v8(serde)]
   length: usize,
   iterations: Option<u32>,
   // ECDH
