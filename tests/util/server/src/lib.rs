@@ -53,7 +53,6 @@ pub use parsers::parse_strace_output;
 pub use parsers::parse_wrk_output;
 pub use test_macro::test;
 pub use wildcard::WildcardMatchResult;
-pub use wildcard::wildcard_match;
 pub use wildcard::wildcard_match_detailed;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
