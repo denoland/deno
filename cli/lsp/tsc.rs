@@ -52,7 +52,6 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
-use log::error;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;

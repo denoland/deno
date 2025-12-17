@@ -489,9 +489,9 @@ mod npm {
             action.action,
             action.module,
             if let Some(target) = &action.target {
-              &format!("@{}", target)
+              format!("@{}", target)
             } else {
-              ""
+              "".to_string()
             },
             if action.is_major {
               " (major upgrade)"
