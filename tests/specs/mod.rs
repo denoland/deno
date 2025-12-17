@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -281,7 +282,12 @@ fn run_test(
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
+    let substs = variant_substitutions(&BTreeMap::new(), &metadata.variants);
+    let if_cond = metadata
+      .if_cond
+      .as_deref()
+      .map(|s| apply_substs(s, &substs));
+    if metadata.ignore || !should_run(if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
@@ -500,11 +506,8 @@ fn run_step(
       if substs.is_empty() {
         command.args(text)
       } else {
-        let mut text = text.clone();
-        for (from, to) in &substs {
-          text = text.replace(from, to);
-        }
-        command.args(text)
+        let text = apply_substs(text, &substs);
+        command.args(text.as_ref())
       }
     }
   };
@@ -513,7 +516,14 @@ fn run_step(
     None => command,
   };
   let command = match &step.command_name {
-    Some(command_name) => command.name(command_name),
+    Some(command_name) => {
+      if substs.is_empty() {
+        command.name(command_name)
+      } else {
+        let command_name = apply_substs(command_name, &substs);
+        command.name(command_name.as_ref())
+      }
+    }
     None => command,
   };
   let command = match *NO_CAPTURE {
@@ -691,5 +701,20 @@ fn substitute_variants_into_envs(
   }
   for key in to_remove {
     envs.remove(&key);
+  }
+}
+
+fn apply_substs<'a>(
+  text: &'a str,
+  substs: &'_ [(String, String)],
+) -> Cow<'a, str> {
+  if substs.is_empty() {
+    Cow::Borrowed(text)
+  } else {
+    let mut text = Cow::Borrowed(text);
+    for (from, to) in substs {
+      text = text.replace(from, to).into();
+    }
+    text
   }
 }

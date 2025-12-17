@@ -422,6 +422,7 @@ pub enum DenoXShimName {
   #[default]
   Dx,
   Denox,
+  Dnx,
   Other(String),
 }
 
@@ -430,6 +431,7 @@ impl DenoXShimName {
     match self {
       Self::Dx => "dx",
       Self::Denox => "denox",
+      Self::Dnx => "dnx",
       Self::Other(name) => name,
     }
   }
@@ -1623,7 +1625,8 @@ pub fn flags_from_vec_with_initial_cwd(
 ) -> clap::error::Result<Flags> {
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
-      || args[0].as_encoded_bytes().ends_with(b"denox"))
+      || args[0].as_encoded_bytes().ends_with(b"denox")
+      || args[0].as_encoded_bytes().ends_with(b"dnx"))
   {
     let mut new_args = Vec::with_capacity(args.len() + 1);
     new_args.push(args[0].clone());
@@ -3632,6 +3635,7 @@ fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
   match value {
     "dx" => Ok(DenoXShimName::Dx),
     "denox" => Ok(DenoXShimName::Denox),
+    "dnx" => Ok(DenoXShimName::Dnx),
     _ => Ok(DenoXShimName::Other(value.to_string())),
   }
 }
@@ -3660,7 +3664,6 @@ fn x_subcommand() -> Command {
           .long("install-alias")
           .num_args(0..=1)
           .default_missing_value("dx")
-          .require_equals(true)
           .value_parser(deno_x_shim_name_parser)
           .action(ArgAction::Set)
           .conflicts_with("script_arg"),
