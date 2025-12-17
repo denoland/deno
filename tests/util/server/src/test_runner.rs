@@ -290,7 +290,9 @@ impl PtyReporter {
             Err(RecvTimeoutError::Timeout) => {
               let mut data = data.lock();
               if let Some(text) = data.render() {
-                _ = std::io::stderr().write_all(text.as_bytes())
+                let mut stderr = std::io::stderr().lock();
+                _ = stderr.write_all(text.as_bytes());
+                _ = stderr.flush();
               }
             }
             _ => {
@@ -316,7 +318,9 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     if let Some(text) = data.render() {
       final_text.extend_from_slice(text.as_bytes());
     }
-    _ = std::io::stderr().write_all(&final_text);
+    let mut stderr = std::io::stderr().lock();
+    _ = stderr.write_all(&final_text);
+    _ = stderr.flush();
   }
 
   fn report_category_end(
@@ -336,9 +340,10 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       name: test.name.clone(),
       start_time: std::time::Instant::now(),
     });
-    if let Some(text) = data.render() {
-      _ = std::io::stderr().write_all(text.as_bytes());
-      _ = std::io::stderr().flush();
+    if let Some(final_text) = data.render() {
+      let mut stderr = std::io::stderr().lock();
+      _ = stderr.write_all(final_text.as_bytes());
+      _ = stderr.flush();
     }
   }
 
@@ -389,8 +394,9 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     if let Some(text) = data.render() {
       final_text.extend_from_slice(text.as_bytes());
     }
-    _ = std::io::stderr().write_all(&final_text);
-    _ = std::io::stderr().flush();
+    let mut stderr = std::io::stderr().lock();
+    _ = stderr.write_all(&final_text);
+    _ = stderr.flush();
   }
 
   fn report_failures(
@@ -410,7 +416,8 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
       failures,
       total_tests,
     );
-    _ = std::io::stderr().write_all(&final_text);
-    _ = std::io::stderr().flush();
+    let mut stderr = std::io::stderr().lock();
+    _ = stderr.write_all(&final_text);
+    _ = stderr.flush();
   }
 }
