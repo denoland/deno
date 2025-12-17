@@ -28,7 +28,7 @@ fn main() {
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
+      parallelism: parallelism.max_parallelism(),
       ..Default::default()
     },
     move |test| {
