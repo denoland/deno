@@ -26,7 +26,7 @@ use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 use test_util::test_runner::Parallelism;
-use test_util::test_runner::run_flaky_test;
+use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
@@ -255,7 +255,8 @@ pub fn main() {
         map: map_test_within_file,
       }),
       filter_override: None,
-    });
+    })
+    .into_flat_category();
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -266,7 +267,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
-      parallelism: parallelism.for_run_options(),
+      parallelism: parallelism.max_parallelism(),
       reporter: Arc::new(LogReporter),
     },
     move |test| run_test(test, &parallelism),
@@ -297,7 +298,7 @@ fn run_test(
           return result;
         }
       }
-      TestResult::Passed
+      TestResult::Passed { duration: None }
     } else {
       run_test_inner(
         test,
@@ -310,16 +311,17 @@ fn run_test(
   }));
   match result {
     TestResult::Failed {
+      duration,
       output: panic_output,
     } => {
       let mut output = diagnostic_logger.borrow().clone();
       output.push(b'\n');
       output.extend(panic_output);
-      TestResult::Failed { output }
+      TestResult::Failed { duration, output }
     }
-    TestResult::Passed | TestResult::Ignored | TestResult::SubTests(_) => {
-      result
-    }
+    TestResult::Passed { .. }
+    | TestResult::Ignored
+    | TestResult::SubTests { .. } => result,
   }
 }
 
@@ -341,25 +343,22 @@ fn run_test_inner(
       let run_func = || {
         TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
           run_step(step, metadata, cwd, &context);
-          TestResult::Passed
+          TestResult::Passed { duration: None }
         }))
       };
-      let result = if step.flaky {
-        run_flaky_test(&test.name, None, run_func)
-      } else {
-        run_func()
-      };
+      let result = run_maybe_flaky_test(&test.name, step.flaky, None, run_func);
       if result.is_failed() {
         return result;
       }
     }
-    TestResult::Passed
+    TestResult::Passed { duration: None }
   };
-  if metadata.flaky || *IS_CI {
-    run_flaky_test(&test.name, Some(parallelism), run_fn)
-  } else {
-    run_fn()
-  }
+  run_maybe_flaky_test(
+    &test.name,
+    metadata.flaky || *IS_CI,
+    Some(parallelism),
+    run_fn,
+  )
 }
 
 fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {

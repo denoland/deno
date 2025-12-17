@@ -638,7 +638,7 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      enterSpan(span);
+      enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
