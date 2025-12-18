@@ -5,7 +5,8 @@
     "jsxImportSource": "npm:react"
   },
   "imports": {
-    "react": "npm:react"
+    "react": "npm:react",
+    "@types/react": "npm:@types/react"
   },
   "exports": "./mod.tsx"
 }
