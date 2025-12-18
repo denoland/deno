@@ -105,13 +105,13 @@ Deno.test("[node/module findSourceMap] is a function", () => {
 // https://github.com/denoland/deno/issues/24902
 Deno.test("[node/module register] is a function", () => {
   // @ts-ignore types are not important here
-  assertThrows(register("foo"));
+  assertThrows(() => register("foo"));
   // @ts-ignore types are not important here
-  assertThrows(registerHooks("foo"));
+  assertThrows(() => registerHooks("foo"));
   // @ts-ignore types are not important here
-  assertThrows(Module.register("foo"));
+  assertThrows(() => Module.register("foo"));
   // @ts-ignore types are not important here
-  assertThrows(Module.registerHooks("foo"));
+  assertThrows(() => Module.registerHooks("foo"));
 });
 
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {
