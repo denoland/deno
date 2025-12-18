@@ -146,7 +146,7 @@ fn op_resolve_jsx_import_source(
   state
     .jsx_import_source_config_resolver
     .for_specifier(&referrer)?
-    .types_specifier()
+    .specifier()
     .map(|s| s.to_string())
 }
 

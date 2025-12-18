@@ -546,7 +546,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
           state
             .jsx_import_source_config_resolver
             .for_specifier(&referrer)
-            .and_then(|config| config.types_specifier())
+            .and_then(|config| config.specifier())
         });
         Ok(jsons!(result.unwrap_or_default())?)
       }

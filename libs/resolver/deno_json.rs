@@ -228,12 +228,8 @@ pub struct JsxImportSourceConfig {
 }
 
 impl JsxImportSourceConfig {
-  pub fn types_specifier(&self) -> Option<&str> {
-    self
-      .import_source_types
-      .as_ref()
-      .or(self.import_source_types.as_ref())
-      .map(|c| c.specifier.as_str())
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
   }
 }
 
