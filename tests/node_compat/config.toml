@@ -809,6 +809,7 @@
 "parallel/test-net-persistent-keepalive.js" = {}
 "parallel/test-net-persistent-nodelay.js" = {}
 "parallel/test-net-persistent-ref-unref.js" = {}
+"parallel/test-net-pipe-connect-errors.js" = {}
 "parallel/test-net-pipe-with-long-path.js" = {}
 "parallel/test-net-reconnect.js" = {}
 "parallel/test-net-remote-address-port.js" = {}

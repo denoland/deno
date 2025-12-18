@@ -530,3 +530,47 @@ fn temp_path_append_suffix(prefix: &str) -> String {
     (0..6).map(|_| OsRng.sample(Alphanumeric) as char).collect();
   format!("{}{}", prefix, suffix)
 }
+
+/// Create a file resource from a raw file descriptor.
+/// This is used for wrapping PTYs and other non-socket file descriptors
+/// that can't be wrapped as Unix streams.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_file_from_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<ResourceId, FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the created File from this point on.
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+
+  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "pipe".to_string()));
+  Ok(rid)
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[smi]
+pub fn op_node_file_from_fd(
+  _state: &mut OpState,
+  _fd: i32,
+) -> Result<ResourceId, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "op_node_file_from_fd is not supported on this platform",
+  )))
+}
