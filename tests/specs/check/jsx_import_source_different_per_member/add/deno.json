@@ -4,5 +4,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "npm:react"
   },
+  "imports": {
+    "react": "npm:react"
+  },
   "exports": "./mod.tsx"
 }
