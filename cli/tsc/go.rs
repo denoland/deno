@@ -277,6 +277,7 @@ struct Handler {
 }
 
 impl Handler {
+  #[allow(clippy::too_many_arguments)]
   fn new(
     config_path: String,
     synthetic_config: String,

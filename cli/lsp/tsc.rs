@@ -4957,7 +4957,7 @@ fn op_resolve_inner(
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
-  let referrer = state.specifier_map.normalize(&args.base)?;
+  let referrer = state.specifier_map.normalize(args.base)?;
   let specifiers = state
     .state_snapshot
     .document_modules
