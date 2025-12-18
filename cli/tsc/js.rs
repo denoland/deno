@@ -143,14 +143,11 @@ fn op_resolve_jsx_import_source(
   } else {
     Cow::Owned(resolve_url_or_path(referrer, &state.current_dir).ok()?)
   };
-  let config = state
+  state
     .jsx_import_source_config_resolver
-    .for_specifier(&referrer)?;
-  config
-    .import_source_types
-    .as_ref()
-    .or(config.import_source.as_ref())
-    .map(|s| s.specifier.clone())
+    .for_specifier(&referrer)?
+    .types_specifier()
+    .map(|s| s.to_string())
 }
 
 deno_core::extension!(deno_cli_tsc,
