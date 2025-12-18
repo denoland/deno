@@ -449,8 +449,7 @@
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
-# TODO(bartlomieju): crashes constantly on CI, disabling for now
-# "parallel/test-fs-glob.mjs" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
@@ -1208,7 +1207,9 @@
 # TODO(bartlomieju): doesn't work correctly because of `node:domain`
 # error handling
 # "parallel/test-timers-immediate-queue-throw.js" = {}
-"parallel/test-timers-immediate-queue.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is properly supported
+# after the https://github.com/denoland/deno/pull/31643 revert
+# "parallel/test-timers-immediate-queue.js" = {}
 "parallel/test-timers-immediate-unref-nested-once.js" = {}
 "parallel/test-timers-immediate-unref-simple.js" = {}
 "parallel/test-timers-immediate-unref.js" = {}

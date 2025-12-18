@@ -225,6 +225,11 @@ pub struct CoverageFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct DeployFlags {
+  pub sandbox: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
   #[default]
   Builtin,
@@ -598,7 +603,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
-  Deploy(Option<&'static str>),
+  Deploy(DeployFlags),
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1671,14 +1676,14 @@ pub fn flags_from_vec_with_initial_cwd(
     deploy_parse(
       &mut flags,
       &mut matches.remove_subcommand().unwrap().1,
-      None,
+      false,
     )?;
     return Ok(flags);
   } else if matches.subcommand_matches("sandbox").is_some() {
     deploy_parse(
       &mut flags,
       &mut matches.remove_subcommand().unwrap().1,
-      Some("sandbox"),
+      true,
     )?;
     return Ok(flags);
   }
@@ -1734,12 +1739,12 @@ pub fn flags_from_vec_with_initial_cwd(
     if subcommand.get_name() == "deploy" {
       flags.argv = vec![String::from("--help")];
       flags.permissions.allow_all = true;
-      flags.subcommand = DenoSubcommand::Deploy(None);
+      flags.subcommand = DenoSubcommand::Deploy(DeployFlags::default());
       return Ok(flags);
     } else if subcommand.get_name() == "sandbox" {
       flags.argv = vec![String::from("--help")];
       flags.permissions.allow_all = true;
-      flags.subcommand = DenoSubcommand::Deploy(Some("sandbox"));
+      flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox: true });
       return Ok(flags);
     }
 
@@ -5911,7 +5916,7 @@ fn coverage_parse(
 fn deploy_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  subcommand: Option<&'static str>,
+  sandbox: bool,
 ) -> clap::error::Result<()> {
   let mut args: Vec<String> = matches
     .remove_many("args")
@@ -5923,7 +5928,7 @@ fn deploy_parse(
   }
 
   flags.argv = args;
-  flags.subcommand = DenoSubcommand::Deploy(subcommand);
+  flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
   Ok(())
 }
 

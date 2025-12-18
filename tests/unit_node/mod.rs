@@ -31,11 +31,12 @@ fn main() {
   // Run the crypto category tests separately without concurrency because they run in Deno with --parallel
   let (crypto_category, category) =
     category.partition(|test| test.name.contains("::crypto::"));
+  let reporter = test_util::test_runner::get_test_reporter();
   file_test_runner::run_tests(
     &category,
     RunOptions {
       parallelism: parallelism.max_parallelism(),
-      ..Default::default()
+      reporter: reporter.clone(),
     },
     move |test| {
       flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
@@ -45,7 +46,7 @@ fn main() {
     &crypto_category,
     RunOptions {
       parallelism: NonZeroUsize::new(1).unwrap(),
-      ..Default::default()
+      reporter: reporter.clone(),
     },
     move |test| flaky_test_ci(&test.name, None, || run_test(test)),
   );

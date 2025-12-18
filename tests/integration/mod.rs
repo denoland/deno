@@ -127,11 +127,12 @@ pub fn main() {
     main_category.partition(|t| t.name.contains("::watcher::"));
 
   // watcher tests are really flaky, so run them sequentially
+  let reporter = test_util::test_runner::get_test_reporter();
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
       parallelism: NonZeroUsize::new(1).unwrap(),
-      ..Default::default()
+      reporter: reporter.clone(),
     },
     move |test| run_test(test, None),
   );
@@ -140,7 +141,7 @@ pub fn main() {
     &main_tests,
     RunOptions {
       parallelism: parallelism.max_parallelism(),
-      ..Default::default()
+      reporter: reporter.clone(),
     },
     move |test| run_test(test, Some(&parallelism)),
   );
