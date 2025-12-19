@@ -265,6 +265,17 @@ class VsockConn extends Conn {
   }
 }
 
+class PipeConn extends Conn {
+  constructor(rid) {
+    super(rid, null, null);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+  }
+}
+
 class TunnelConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
@@ -749,6 +760,7 @@ export {
   listen,
   Listener,
   listenOptionApiName,
+  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

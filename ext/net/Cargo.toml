@@ -35,6 +35,9 @@ tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 

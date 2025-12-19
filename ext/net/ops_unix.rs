@@ -241,3 +241,50 @@ pub fn op_node_unstable_net_listen_unixpacket(
 pub fn pathstring(pathname: &Path) -> Result<String, NetError> {
   into_string(pathname.into())
 }
+
+/// Check if fd is a socket using fstat
+fn is_socket_fd(fd: i32) -> bool {
+  // SAFETY: It is safe to zero-initialize a libc::stat struct
+  let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };
+  // SAFETY: fd is a valid file descriptor, stat_buf is a valid pointer
+  let result = unsafe { libc::fstat(fd, &mut stat_buf) };
+  if result != 0 {
+    return false;
+  }
+  // S_IFSOCK = 0o140000 on most Unix systems
+  (stat_buf.st_mode & libc::S_IFMT) == libc::S_IFSOCK
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_net_unix_stream_from_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<ResourceId, NetError> {
+  use std::os::unix::io::FromRawFd;
+
+  // Validate fd is non-negative
+  if fd < 0 {
+    return Err(NetError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // Check if fd is a socket - if not, we can't use UnixStream
+  if !is_socket_fd(fd) {
+    return Err(NetError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "File descriptor is not a socket",
+    )));
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the created UnixStream from this point on.
+  let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
+  std_stream.set_nonblocking(true)?;
+  let unix_stream = UnixStream::from_std(std_stream)?;
+  let resource = UnixStreamResource::new(unix_stream.into_split());
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
+}
