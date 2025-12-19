@@ -29,7 +29,7 @@ fn main() {
     &category,
     RunOptions {
       parallelism: parallelism.max_parallelism(),
-      ..Default::default()
+      reporter: test_util::test_runner::get_test_reporter(),
     },
     move |test| {
       flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))

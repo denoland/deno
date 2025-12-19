@@ -2314,6 +2314,38 @@ Deno.test(
 Deno.test(
   {
     permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5Url() {
+    // Test that socks5 transport accepts socks5:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5hUrl() {
+    // Test that socks5 transport accepts socks5h:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5h://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
     ignore: Deno.build.os === "windows",
   },
   function createHttpClientWithVsockProxy() {

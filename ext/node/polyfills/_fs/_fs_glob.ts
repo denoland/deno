@@ -205,7 +205,7 @@ class Cache {
     const promise = PromisePrototypeThen(
       readdir(path, { __proto__: null, withFileTypes: true }),
       null,
-      () => null,
+      () => [],
     );
     this.#readdirCache.set(path, promise);
     return promise;
@@ -306,9 +306,6 @@ class Pattern {
 class ResultSet extends SafeSet {
   #root = ".";
   #isExcluded = () => false;
-  constructor(i) {
-    super(i);
-  } // eslint-disable-line no-useless-constructor
 
   setup(root, isExcludedFn) {
     this.#root = root;
@@ -412,8 +409,8 @@ export class Glob {
 
     // If path is a directory, add trailing slash and test patterns again.
     if (
-      this.#isExcluded(`${fullpath}/`) &&
-      this.#cache.statSync(fullpath).isDirectory()
+      this.#cache.statSync(fullpath).isDirectory() &&
+      this.#isExcluded(`${fullpath}/`)
     ) {
       return;
     }
@@ -538,8 +535,22 @@ export class Glob {
         const fromSymlink = pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
+          const isDot = entry.name[0] === ".";
+
+          const nextMatches = pattern.test(nextIndex, entry.name);
+
+          let nextNonGlobIndex = nextIndex;
+          while (
+            pattern.at(nextNonGlobIndex) === lazyMinimatch().default.GLOBSTAR
+          ) {
+            nextNonGlobIndex++;
+          }
+
+          const matchesDot = isDot &&
+            pattern.test(nextNonGlobIndex, entry.name);
+
           if (
-            entry.name[0] === "." ||
+            (isDot && !matchesDot) ||
             (this.#exclude &&
               this.#exclude(this.#withFileTypes ? entry : entry.name))
           ) {
@@ -555,7 +566,6 @@ export class Glob {
 
           // Any pattern after ** is also a potential pattern
           // so we can already test it here
-          const nextMatches = pattern.test(nextIndex, entry.name);
           if (nextMatches && nextIndex === last && !isLast) {
             // If next pattern is the last one, add to results
             this.#results.add(entryPath);
@@ -781,8 +791,22 @@ export class Glob {
         const fromSymlink = pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
+          const isDot = entry.name[0] === ".";
+
+          const nextMatches = pattern.test(nextIndex, entry.name);
+
+          let nextNonGlobIndex = nextIndex;
+          while (
+            pattern.at(nextNonGlobIndex) === lazyMinimatch().default.GLOBSTAR
+          ) {
+            nextNonGlobIndex++;
+          }
+
+          const matchesDot = isDot &&
+            pattern.test(nextNonGlobIndex, entry.name);
+
           if (
-            entry.name[0] === "." ||
+            (isDot && !matchesDot) ||
             (this.#exclude &&
               this.#exclude(this.#withFileTypes ? entry : entry.name))
           ) {
@@ -793,22 +817,17 @@ export class Glob {
             subPatterns.add(index);
           } else if (!fromSymlink && index === last) {
             // If ** is last, add to results
-            if (!this.#results.has(entryPath)) {
-              if (this.#results.add(entryPath)) {
-                yield this.#withFileTypes ? entry : entryPath;
-              }
+            if (!this.#results.has(entryPath) && this.#results.add(entryPath)) {
+              yield this.#withFileTypes ? entry : entryPath;
             }
           }
 
           // Any pattern after ** is also a potential pattern
           // so we can already test it here
-          const nextMatches = pattern.test(nextIndex, entry.name);
           if (nextMatches && nextIndex === last && !isLast) {
             // If next pattern is the last one, add to results
-            if (!this.#results.has(entryPath)) {
-              if (this.#results.add(entryPath)) {
-                yield this.#withFileTypes ? entry : entryPath;
-              }
+            if (!this.#results.has(entryPath) && this.#results.add(entryPath)) {
+              yield this.#withFileTypes ? entry : entryPath;
             }
           } else if (nextMatches && entry.isDirectory()) {
             // Pattern matched, meaning two patterns forward

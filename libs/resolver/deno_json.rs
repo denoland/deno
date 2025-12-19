@@ -227,6 +227,12 @@ pub struct JsxImportSourceConfig {
   pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
 }
 
+impl JsxImportSourceConfig {
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
+  }
+}
+
 #[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
@@ -1544,7 +1550,7 @@ pub type CompilerOptionsResolverRc =
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
     FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,

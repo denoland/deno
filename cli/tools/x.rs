@@ -242,7 +242,7 @@ fn write_shim(
         &out_path,
         r##"#!/bin/sh
 SCRIPT_DIR="$(dirname -- "$(readlink -f -- "$0")")"
-exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
+exec "$SCRIPT_DIR/deno" x "$@"
 "##
           .as_bytes(),
       )?;

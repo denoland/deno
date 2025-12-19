@@ -602,10 +602,12 @@ impl WebWorker {
     ];
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -685,7 +687,7 @@ impl WebWorker {
 
       // Send worker proxy to the main runtime
       if main_session_tx.unbounded_send(main_proxy).is_err() {
-        log::warn!("Failed to send inspector session proxy to main runtime");
+        log::debug!("Failed to send inspector session proxy to main runtime");
       }
 
       // Send worker proxy to the worker runtime
@@ -695,7 +697,7 @@ impl WebWorker {
         .unbounded_send(worker_proxy)
         .is_err()
       {
-        log::warn!("Failed to send inspector session proxy to worker runtime");
+        log::debug!("Failed to send inspector session proxy to worker runtime");
       }
     }
 
