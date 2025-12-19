@@ -157,7 +157,7 @@ function loadTlsKeyPair(api, {
 }
 
 function listenTls({
-  port,
+  port = 0,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -167,7 +167,7 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  port = validatePort(port);
+  port = validatePort(port, true);
 
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError(
