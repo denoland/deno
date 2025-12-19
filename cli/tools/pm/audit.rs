@@ -507,7 +507,7 @@ mod npm {
             action.resolves.first().and_then(|r| {
               r.path
                 .as_deref()
-                .and_then(|p| p.split('>').last())
+                .and_then(|p| p.split('>').next_back())
                 .map(|s| s.trim().to_string())
             })
           })
