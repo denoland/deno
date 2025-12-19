@@ -1352,7 +1352,7 @@
 "parallel/test-vm-util-lazy-properties.js" = {}
 "parallel/test-warn-sigprof.js" = {}
 "parallel/test-weakref.js" = {}
-"parallel/test-webcrypto-encrypt-decrypt.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31631" }
+"parallel/test-webcrypto-encrypt-decrypt.js" = {}
 "parallel/test-websocket.js" = {}
 "parallel/test-webstream-string-tag.js" = {}
 "parallel/test-webstreams-compose.js" = {}
