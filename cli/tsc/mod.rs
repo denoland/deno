@@ -24,6 +24,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -497,6 +498,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
+  pub jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   pub hash_data: u64,
   pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -626,10 +628,10 @@ pub enum ResolveError {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveArgs {
+pub struct ResolveArgs<'a> {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  pub base: String,
+  pub base: &'a str,
   /// A list of specifiers that should be resolved.
   /// (is_cjs: bool, raw_specifier: String)
   pub specifiers: Vec<(bool, String)>,

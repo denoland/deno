@@ -23,6 +23,7 @@ use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use node_resolver::ResolutionMode;
 
 use super::ResolveArgs;
@@ -59,7 +60,7 @@ fn op_libs() -> Vec<String> {
 #[serde]
 fn op_resolve(
   state: &mut OpState,
-  #[string] base: String,
+  #[string] base: &str,
   #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
@@ -95,17 +96,17 @@ fn op_tsc_constants() -> TscConstants {
 #[inline]
 fn op_resolve_inner(
   state: &mut OpState,
-  args: ResolveArgs,
+  args: ResolveArgs<'_>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, Option<&'static str>)> =
     Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
-    state.maybe_remapped_specifier(&args.base)
+    state.maybe_remapped_specifier(args.base)
   {
     remapped_specifier.clone()
   } else {
-    resolve_url_or_path(&args.base, &state.current_dir)?
+    resolve_url_or_path(args.base, &state.current_dir)?
   };
   let referrer_module = state.graph.get(&referrer);
   for (is_cjs, specifier) in args.specifiers {
@@ -128,6 +129,27 @@ fn op_resolve_inner(
   Ok(resolved)
 }
 
+#[op2]
+#[string]
+fn op_resolve_jsx_import_source(
+  state: &mut OpState,
+  #[string] referrer: &str,
+) -> Option<String> {
+  let state = state.borrow::<State>();
+  let referrer = if let Some(remapped_specifier) =
+    state.maybe_remapped_specifier(referrer)
+  {
+    Cow::Borrowed(remapped_specifier)
+  } else {
+    Cow::Owned(resolve_url_or_path(referrer, &state.current_dir).ok()?)
+  };
+  state
+    .jsx_import_source_config_resolver
+    .for_specifier(&referrer)?
+    .specifier()
+    .map(|s| s.to_string())
+}
+
 deno_core::extension!(deno_cli_tsc,
   ops = [
     op_create_hash,
@@ -136,6 +158,7 @@ deno_core::extension!(deno_cli_tsc,
     op_load,
     op_remap_specifier,
     op_resolve,
+    op_resolve_jsx_import_source,
     op_tsc_constants,
     op_respond,
     op_libs,
@@ -148,6 +171,7 @@ deno_core::extension!(deno_cli_tsc,
   state = |state, options| {
     state.put(State::new(
       options.request.graph,
+      options.request.jsx_import_source_config_resolver,
       options.request.hash_data,
       options.request.maybe_npm,
       options.request.maybe_tsbuildinfo,
@@ -442,6 +466,7 @@ impl deno_core::ExtCodeCache for TscExtCodeCache {
 struct State {
   hash_data: u64,
   graph: Arc<ModuleGraph>,
+  jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   maybe_npm: Option<RequestNpmState>,
@@ -457,6 +482,7 @@ impl Default for State {
     Self {
       hash_data: Default::default(),
       graph: Arc::new(ModuleGraph::new(GraphKind::All)),
+      jsx_import_source_config_resolver: Default::default(),
       maybe_tsbuildinfo: Default::default(),
       maybe_response: Default::default(),
       maybe_npm: Default::default(),
@@ -468,8 +494,10 @@ impl Default for State {
 }
 
 impl State {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     graph: Arc<ModuleGraph>,
+    jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
     hash_data: u64,
     maybe_npm: Option<RequestNpmState>,
     maybe_tsbuildinfo: Option<String>,
@@ -480,6 +508,7 @@ impl State {
     State {
       hash_data,
       graph,
+      jsx_import_source_config_resolver,
       maybe_npm,
       maybe_tsbuildinfo,
       maybe_response: None,
@@ -572,6 +601,7 @@ mod tests {
       .await;
     let state = State::new(
       Arc::new(graph),
+      Default::default(),
       hash_data,
       None,
       maybe_tsbuildinfo,
@@ -628,6 +658,7 @@ mod tests {
       config,
       debug: false,
       graph: Arc::new(graph),
+      jsx_import_source_config_resolver: Default::default(),
       hash_data,
       maybe_npm: None,
       maybe_tsbuildinfo: None,
@@ -754,7 +785,7 @@ mod tests {
     let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
-        base: "https://deno.land/x/a.ts".to_string(),
+        base: "https://deno.land/x/a.ts",
         specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
@@ -776,7 +807,7 @@ mod tests {
     let actual = op_resolve_inner(
       &mut state,
       ResolveArgs {
-        base: "https://deno.land/x/a.ts".to_string(),
+        base: "https://deno.land/x/a.ts",
         specifiers: vec![(false, "./bad.ts".to_string())],
       },
     )

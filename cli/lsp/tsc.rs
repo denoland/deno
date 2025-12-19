@@ -4837,7 +4837,7 @@ fn op_release(
 #[allow(clippy::type_complexity)]
 fn op_resolve(
   state: &mut OpState,
-  #[string] base: String,
+  #[string] base: &str,
   #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let _span = super::logging::lsp_tracing_info_span!("op_resolve").entered();
@@ -4957,7 +4957,7 @@ fn op_resolve_inner(
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
-  let referrer = state.specifier_map.normalize(&args.base)?;
+  let referrer = state.specifier_map.normalize(args.base)?;
   let specifiers = state
     .state_snapshot
     .document_modules
@@ -7069,10 +7069,11 @@ mod tests {
     let (temp_dir, _, snapshot) =
       setup(json!({}), &[("a.ts", "", 1, LanguageId::TypeScript)]).await;
     let mut state = setup_op_state(snapshot);
+    let base = temp_dir.url().join("a.ts").unwrap().to_string();
     let resolved = op_resolve_inner(
       &mut state,
       ResolveArgs {
-        base: temp_dir.url().join("a.ts").unwrap().to_string(),
+        base: &base,
         specifiers: vec![(false, "./b.ts".to_string())],
       },
     )
