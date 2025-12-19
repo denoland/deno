@@ -983,6 +983,23 @@ const ci = {
           ].join("\n"),
         },
         {
+          name: "Combine Test Results",
+          if: [
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: "deno run -RWN ./tools/combine_test_results.js",
+        },
+        {
+          name: "Upload Test Results",
+          uses: "actions/upload-artifact@v4",
+          with: {
+            name:
+              "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+            path: "target/test_results.json",
+          },
+        },
+        {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
