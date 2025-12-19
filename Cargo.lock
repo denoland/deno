@@ -1878,8 +1878,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.376.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "829ee94e76838e99951cc7b3ccd31f68a220687f52229c0d6e135ff29b22f6d0"
+source = "git+https://github.com/fraidev/deno_core.git?branch=fix%2Fdynamic-import-pending-tla#6e1e4b35c2bdc71284981272cb1577810022e6fa"
 dependencies = [
  "anyhow",
  "az",
@@ -2619,8 +2618,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.252.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c83a1be112eed3cb12e02c541f0da2a7357655aa519f3f180c405c0409cfa5ea"
+source = "git+https://github.com/fraidev/deno_core.git?branch=fix%2Fdynamic-import-pending-tla#6e1e4b35c2bdc71284981272cb1577810022e6fa"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8236,8 +8234,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.285.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26d546283b1182f61e75b598da17f3babde4b25e479a5cb3fbb39d26cb928fd"
+source = "git+https://github.com/fraidev/deno_core.git?branch=fix%2Fdynamic-import-pending-tla#6e1e4b35c2bdc71284981272cb1577810022e6fa"
 dependencies = [
  "deno_error",
  "num-bigint",
