@@ -117,6 +117,21 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketAnonListenClose() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
     permissions: { read: true, write: false },
   },
   function netUnixListenWritePermission() {
@@ -149,6 +164,21 @@ Deno.test(
       assertEquals(socket.addr.path, filePath);
       socket.close();
     }, Deno.errors.NotCapable);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
+  function netUnixPacketAnonListenWritePermission() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
   },
 );
 
