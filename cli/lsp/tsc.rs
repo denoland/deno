@@ -5094,6 +5094,11 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     by_notebook_uri: Default::default(),
   };
 
+  let scopes_with_node_specifier = state
+    .state_snapshot
+    .document_modules
+    .scopes_with_node_specifier();
+
   // Insert global scripts.
   for (compiler_options_key, compiler_options_data) in
     state.state_snapshot.compiler_options_resolver.entries()
@@ -5111,6 +5116,9 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .state_snapshot
       .resolver
       .get_scoped_resolver(scope.as_deref());
+    if scopes_with_node_specifier.contains(&scope) {
+      script_names.insert("asset:///reference_types_node.d.ts".to_string());
+    }
     for (referrer, relative_specifiers) in compiler_options_data
       .ts_config_files
       .iter()
