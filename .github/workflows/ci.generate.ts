@@ -993,6 +993,10 @@ const ci = {
         {
           name: "Upload Test Results",
           uses: "actions/upload-artifact@v4",
+          if: [
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           with: {
             name:
               "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
