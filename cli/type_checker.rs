@@ -738,7 +738,14 @@ impl<'a> GraphWalker<'a> {
   /// redirects resolved. We need to include all the emittable files in
   /// the roots, so they get type checked and optionally emitted,
   /// otherwise they would be ignored if only imported into JavaScript.
-  pub fn into_tsc_roots(self) -> TscRoots {
+  pub fn into_tsc_roots(mut self) -> TscRoots {
+    if self.has_seen_node_builtin && !self.roots.is_empty() {
+      // inject a specifier that will force node types to be resolved
+      self.roots.push((
+        ModuleSpecifier::parse("asset:///reference_types_node.d.ts").unwrap(),
+        MediaType::Dts,
+      ));
+    }
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
@@ -801,12 +808,6 @@ impl<'a> GraphWalker<'a> {
         Module::Node(_) => {
           if !self.has_seen_node_builtin {
             self.has_seen_node_builtin = true;
-            // inject a specifier that will force node types to be resolved
-            self.roots.push((
-              ModuleSpecifier::parse("asset:///reference_types_node.d.ts")
-                .unwrap(),
-              MediaType::Dts,
-            ));
           }
         }
       }
