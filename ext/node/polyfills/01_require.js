@@ -1322,17 +1322,23 @@ Module.findSourceMap = findSourceMap;
  * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
  */
 export function register(_specifier, _parentUrl, _options) {
-  throw new Error(
-    "Module loader hooks are not yet supported in Deno. Follow https://github.com/denoland/deno/issues/31665 for updates.",
+  console.warn(
+    "Module loader hooks are not yet supported in Deno. " +
+    "Module.register() is currently a no-op. " +
+    "See https://github.com/denoland/deno/issues/31665 for updates.",
   );
+  return undefined;
 }
 
 Module.register = register;
 
 export function registerHooks(_hooks) {
-  throw new Error(
-    "Module loader hooks are not yet supported in Deno. Follow https://github.com/denoland/deno/issues/31665 for updates.",
+  console.warn(
+    "Module loader hooks are not yet supported in Deno. " +
+    "Module.registerHooks() is currently a no-op. " +
+    "See https://github.com/denoland/deno/issues/31665 for updates.",
   );
+  return undefined;
 }
 
 Module.registerHooks = registerHooks;
