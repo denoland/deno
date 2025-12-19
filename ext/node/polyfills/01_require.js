@@ -1324,8 +1324,8 @@ Module.findSourceMap = findSourceMap;
 export function register(_specifier, _parentUrl, _options) {
   console.warn(
     "Module loader hooks are not yet supported in Deno. " +
-    "Module.register() is currently a no-op. " +
-    "See https://github.com/denoland/deno/issues/31665 for updates.",
+      "Module.register() is currently a no-op. " +
+      "See https://github.com/denoland/deno/issues/31665 for updates.",
   );
   return undefined;
 }
@@ -1335,8 +1335,8 @@ Module.register = register;
 export function registerHooks(_hooks) {
   console.warn(
     "Module loader hooks are not yet supported in Deno. " +
-    "Module.registerHooks() is currently a no-op. " +
-    "See https://github.com/denoland/deno/issues/31665 for updates.",
+      "Module.registerHooks() is currently a no-op. " +
+      "See https://github.com/denoland/deno/issues/31665 for updates.",
   );
   return undefined;
 }
