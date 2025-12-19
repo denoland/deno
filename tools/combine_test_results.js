@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 import { join } from "@std/path";
 import { ROOT_PATH } from "./util.js";
 

@@ -266,7 +266,7 @@ impl JsonReporter {
     };
     let file_path = crate::root_path()
       .join("target")
-      .join(&format!("test_results_{}.json", self.test_module_name));
+      .join(format!("test_results_{}.json", self.test_module_name));
 
     file_path.write(json);
   }
