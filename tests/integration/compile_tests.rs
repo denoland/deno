@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::eprintln;
+use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_not_contains;

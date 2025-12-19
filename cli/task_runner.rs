@@ -359,12 +359,14 @@ impl ShellCommand for NodeGypCommand {
         "{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)",
         crate::colors::yellow("Warning")
       );
+      Box::pin(std::future::ready(ExecuteResult::from_exit_code(0)))
+    } else {
+      ExecutableCommand::new(
+        "node-gyp".to_string(),
+        "node-gyp".to_string().into(),
+      )
+      .execute(context)
     }
-    ExecutableCommand::new(
-      "node-gyp".to_string(),
-      "node-gyp".to_string().into(),
-    )
-    .execute(context)
   }
 }
 

@@ -3,8 +3,19 @@ import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as nodeAssert from "node:assert";
 import { Buffer } from "node:buffer";
+import { writeFileSync } from "node:fs";
 
 const tempDir = Deno.makeTempDirSync();
+
+const populate = (db: DatabaseSync, rows: number) => {
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  let values = "";
+  for (let i = 0; i < rows; i++) {
+    values += `(${i}, 'Name ${i}'),`;
+  }
+  values = values.slice(0, -1); // Remove trailing comma
+  db.exec(`INSERT INTO test (id, name) VALUES ${values}`);
+};
 
 Deno.test("[node/sqlite] sqlite-type symbol", () => {
   const db = new DatabaseSync(":memory:");
@@ -871,4 +882,91 @@ Deno.test("[node/sqlite] accept URL paths", () => {
 
   Deno.removeSync(dbPathUrl);
   Deno.removeSync(backupPathUrl);
+});
+
+Deno.test("[node/sqlite] database backup fails when dest file is not writable", async () => {
+  const readonlyDestDb = `${tempDir}/readonly_backup.db`;
+  using db = new DatabaseSync(":memory:");
+  writeFileSync(readonlyDestDb, "", { mode: 0o444 });
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, readonlyDestDb);
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: "attempt to write a readonly database",
+  });
+
+  Deno.removeSync(readonlyDestDb);
+});
+
+Deno.test("[node/sqlite] progress function to have been called at least once", async () => {
+  const destDb = `${tempDir}/backup_progress.db`;
+  using db = new DatabaseSync(":memory:");
+  populate(db, 100);
+
+  let totalPages: number | undefined;
+  let remainingPages: number | undefined;
+  await backup(db, destDb, {
+    rate: 1,
+    progress: (progress) => {
+      totalPages ??= progress.totalPages;
+      remainingPages ??= progress.remainingPages;
+    },
+  });
+
+  assertEquals(typeof totalPages, "number");
+  assertEquals(typeof remainingPages, "number");
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when progress function throws", async () => {
+  const destDb = `${tempDir}/backup_progress.db`;
+  using db = new DatabaseSync(":memory:");
+  populate(db, 100);
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, destDb, {
+      rate: 1,
+      progress: () => {
+        throw new Error("progress error");
+      },
+    });
+  }, {
+    message: "progress error",
+  });
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when source db is invalid", async () => {
+  using database = new DatabaseSync(":memory:");
+  const destDb = `${tempDir}/other_backup_progress.db`;
+
+  await nodeAssert.rejects(async () => {
+    await backup(database, destDb, {
+      rate: 1,
+      source: "invalid",
+    });
+  }, {
+    message: "unknown database invalid",
+  });
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when path cannot be opened", async () => {
+  using db = new DatabaseSync(":memory:");
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, `${tempDir}/invalid/backup.db`);
+  }, {
+    message: "unable to open database file",
+  });
+});
+
+// https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/test/parallel/test-sqlite-backup.mjs#L311-L314
+Deno.test("[node/sqlite] backup has correct name and length", () => {
+  assertEquals(backup.name, "backup");
+  assertEquals(backup.length, 2);
 });

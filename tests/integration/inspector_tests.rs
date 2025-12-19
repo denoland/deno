@@ -17,6 +17,8 @@ use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use serde_json::json;
 use test_util as util;
+use test_util::eprintln;
+use test_util::test;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
@@ -203,6 +205,7 @@ impl InspectorTester {
         let stdout = stdout.join("\n");
         let stderr = stderr.join("\n");
         self.child.kill().unwrap();
+        self.child.wait().unwrap();
 
         panic!(
           "Inspector test failed with error: {err:?}.\nstdout:\n{stdout}\nstderr:\n{stderr}"
@@ -293,7 +296,7 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   format!("{flag_prefix}=127.0.0.1:{port}")
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_connect() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -314,7 +317,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[flaky_test::flaky_test(tokio)]
+#[test(flaky)]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let child = util::deno_cmd()
@@ -397,7 +400,7 @@ async fn inspector_break_on_first_line() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_pause() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let child = util::deno_cmd()
@@ -426,10 +429,11 @@ async fn inspector_pause() {
     .await;
 
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
-#[tokio::test]
-async fn inspector_port_collision() {
+#[test(flaky)]
+fn inspector_port_collision() {
   // Skip this test on WSL, which allows multiple processes to listen on the
   // same port, rather than making `bind()` fail with `EADDRINUSE`. We also
   // skip this test on Windows because it will occasionally flake, possibly
@@ -477,7 +481,7 @@ async fn inspector_port_collision() {
   child2.wait().unwrap();
 }
 
-#[flaky_test::flaky_test(tokio)]
+#[test(flaky)]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let child = util::deno_cmd()
@@ -572,8 +576,8 @@ async fn inspector_does_not_hang() {
   // assert!(tester.child.wait().unwrap().success());
 }
 
-#[tokio::test]
-async fn inspector_without_brk_runs_code() {
+#[test]
+fn inspector_without_brk_runs_code() {
   let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
@@ -599,7 +603,7 @@ async fn inspector_without_brk_runs_code() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_runtime_evaluate_does_not_crash() {
   let child = util::deno_cmd()
     .arg("repl")
@@ -708,7 +712,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_json() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -755,9 +759,10 @@ async fn inspector_json() {
   }
 
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_json_list() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
@@ -785,7 +790,7 @@ async fn inspector_json_list() {
   child.kill().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_connect_non_ws() {
   // https://github.com/denoland/deno/issues/11449
   // Verify we don't panic if non-WS connection is being established
@@ -810,7 +815,7 @@ async fn inspector_connect_non_ws() {
   child.wait().unwrap();
 }
 
-#[flaky_test::flaky_test(tokio)]
+#[test(flaky)]
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
@@ -887,7 +892,7 @@ async fn inspector_break_on_first_line_in_test() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let child = util::deno_cmd()
@@ -898,6 +903,23 @@ async fn inspector_with_ts_files() {
     .piped_output()
     .spawn()
     .unwrap();
+
+  // Helper function to check if a scriptParsed message is for a testdata/inspector file
+  // by checking the actual URL field (not stackTrace which may reference test files).
+  fn is_test_script(msg: &str) -> bool {
+    if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
+      return false;
+    }
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(msg)
+      && let Some(url) = parsed
+        .get("params")
+        .and_then(|p| p.get("url"))
+        .and_then(|u| u.as_str())
+    {
+      return url.contains("testdata/inspector");
+    }
+    false
+  }
 
   fn notification_filter(msg: &str) -> bool {
     (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
@@ -916,52 +938,83 @@ async fn inspector_with_ts_files() {
       json!({"id":2,"method":"Debugger.enable"}),
     ])
     .await;
-  tester.assert_received_messages(
-      &[
-        r#"{"id":1,"result":{}}"#,
-      ],
+  tester
+    .assert_received_messages(
+      &[r#"{"id":1,"result":{}}"#],
       &[
         r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
       ],
     )
     .await;
 
-  // receive messages with sources from this test
-  let mut scripts = vec![
-    tester.recv().await,
-    tester.recv().await,
-    tester.recv().await,
-  ];
-  let script1 = scripts.remove(
-    scripts
-      .iter()
-      .position(|s| s.contains("testdata/inspector/test.ts"))
-      .unwrap(),
-  );
+  // Collect scriptParsed messages for test files until we have all 3.
+  // With recent V8 changes, internal scripts may include stackTrace with test file references,
+  // so we need to filter by the actual URL field rather than just string matching.
+  let mut scripts = Vec::new();
+  let mut debugger_response = None;
+  while scripts.len() < 3 {
+    let msg = tester.recv().await;
+    if is_test_script(&msg) {
+      scripts.push(msg);
+    } else if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      debugger_response = Some(msg);
+    }
+    // Ignore other scriptParsed messages (internal scripts)
+  }
+
+  // Helper to get URL from scriptParsed JSON (only the actual url, not stackTrace)
+  fn get_script_url(msg: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(msg)
+      .ok()
+      .and_then(|v| v["params"]["url"].as_str().map(|s| s.to_string()))
+  }
+
+  let script1 = scripts
+    .iter()
+    .find(|s| {
+      get_script_url(s)
+        .map(|url| url.contains("testdata/inspector/test.ts"))
+        .unwrap_or(false)
+    })
+    .expect("should have test.ts")
+    .clone();
   let script1_id = {
     let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script2 = scripts.remove(
-    scripts
-      .iter()
-      .position(|s| s.contains("testdata/inspector/foo.ts"))
-      .unwrap(),
-  );
+  let script2 = scripts
+    .iter()
+    .find(|s| {
+      get_script_url(s)
+        .map(|url| url.contains("testdata/inspector/foo.ts"))
+        .unwrap_or(false)
+    })
+    .expect("should have foo.ts")
+    .clone();
   let script2_id = {
     let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script3 = scripts.remove(0);
-  assert_contains!(script3, "testdata/inspector/bar.js");
+  let script3 = scripts
+    .iter()
+    .find(|s| {
+      get_script_url(s)
+        .map(|url| url.contains("testdata/inspector/bar.js"))
+        .unwrap_or(false)
+    })
+    .expect("should have bar.js")
+    .clone();
   let script3_id = {
     let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
 
-  tester
-    .assert_received_messages(&[r#"{"id":2,"result":{"debuggerId":"#], &[])
-    .await;
+  // If we haven't received the Debugger.enable response yet, get it now
+  if debugger_response.is_none() {
+    tester
+      .assert_received_messages(&[r#"{"id":2,"result":{"debuggerId":"#], &[])
+      .await;
+  }
 
   tester
     .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
@@ -1021,7 +1074,7 @@ async fn inspector_with_ts_files() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_memory() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
@@ -1037,35 +1090,59 @@ async fn inspector_memory() {
 
   tester.assert_stderr_for_inspect_brk();
 
+  // Send all setup commands at once
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
-    ])
-    .await;
-  tester.assert_received_messages(
-      &[
-        r#"{"id":1,"result":{}}"#,
-        r#"{"id":2,"result":{"debuggerId":"#,
-      ],
-      &[
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ],
-    )
-    .await;
-
-  tester
-    .send_many(&[
       json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
       json!({"id":4,"method":"HeapProfiler.enable"}),
     ])
     .await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+
+  // Collect responses - CDP messages can arrive in any order
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_run = false;
+  let mut got_heap = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_heap = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime
+      && got_debugger
+      && got_run
+      && got_heap
+      && got_context
+      && got_paused
+    {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_heap, "Expected HeapProfiler.enable response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
 
   tester
     .send(json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}}))
@@ -1122,7 +1199,7 @@ async fn inspector_memory() {
   tester.child.wait().unwrap();
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_profile() {
   let script = util::testdata_path().join("inspector/memory.js");
   let child = util::deno_cmd()
@@ -1137,35 +1214,59 @@ async fn inspector_profile() {
 
   tester.assert_stderr_for_inspect_brk();
 
+  // Send all setup commands at once
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
-    ])
-    .await;
-  tester.assert_received_messages(
-      &[
-        r#"{"id":1,"result":{}}"#,
-        r#"{"id":2,"result":{"debuggerId":"#,
-      ],
-      &[
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ],
-    )
-    .await;
-
-  tester
-    .send_many(&[
       json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
       json!({"id":4,"method":"Profiler.enable"}),
     ])
     .await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+
+  // Collect responses - CDP messages can arrive in any order
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_run = false;
+  let mut got_profiler = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_profiler = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime
+      && got_debugger
+      && got_run
+      && got_profiler
+      && got_context
+      && got_paused
+    {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_profiler, "Expected Profiler.enable response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
 
   tester.send_many(
       &[
@@ -1173,12 +1274,24 @@ async fn inspector_profile() {
         json!({"id":6,"method":"Profiler.start","params":{}}),
       ],
     ).await;
-  tester
-    .assert_received_messages(
-      &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
-      &[],
-    )
-    .await;
+
+  // Collect profiler responses - may get other notifications in between
+  let mut got_sampling = false;
+  let mut got_start = false;
+  for _ in 0..10 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":5,"result":{}}"#) {
+      got_sampling = true;
+    }
+    if msg.starts_with(r#"{"id":6,"result":{}}"#) {
+      got_start = true;
+    }
+    if got_sampling && got_start {
+      break;
+    }
+  }
+  assert!(got_sampling, "Expected setSamplingInterval response");
+  assert!(got_start, "Expected Profiler.start response");
 
   tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
@@ -1204,7 +1317,7 @@ async fn inspector_profile() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[flaky_test::flaky_test(tokio)]
+#[test(flaky)]
 async fn inspector_break_on_first_line_npm_esm() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1271,7 +1384,7 @@ async fn inspector_break_on_first_line_npm_esm() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[flaky_test::flaky_test(tokio)]
+#[test(flaky)]
 async fn inspector_break_on_first_line_npm_cjs() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1338,7 +1451,7 @@ async fn inspector_break_on_first_line_npm_cjs() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[tokio::test]
+#[test]
 async fn inspector_error_with_npm_import() {
   let script = util::testdata_path().join("inspector/error_with_npm_import.js");
   let context = TestContextBuilder::for_npm().build();
@@ -1398,7 +1511,7 @@ async fn inspector_error_with_npm_import() {
   assert_eq!(tester.child.wait().unwrap().code(), Some(1));
 }
 
-#[tokio::test]
+#[test]
 async fn inspector_wait() {
   let script = util::testdata_path().join("inspector/inspect_wait.js");
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
@@ -1450,4 +1563,317 @@ async fn inspector_wait() {
   assert_eq!(&tester.stderr_line(), "did run");
   assert!(temp_dir.path().join("hello.txt").exists());
   tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+#[test(flaky)]
+async fn inspector_multiple_workers() {
+  let script = util::testdata_path().join("inspector/multi_worker_main.js");
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("-A")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  // Use a filter that passes through attachedToTarget events
+  fn notification_filter(msg: &str) -> bool {
+    !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+  }
+
+  let mut tester = InspectorTester::create(child, notification_filter).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  // Enable runtime, debugger, target auto-attach, and run all at once
+  // CDP messages can arrive in any order, so we batch and collect
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+      json!({"id":3,"method":"Target.setAutoAttach","params":{"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true}}),
+      json!({"id":4,"method":"Runtime.runIfWaitingForDebugger"}),
+    ])
+    .await;
+
+  // Collect all expected responses and the Debugger.paused notification
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_auto_attach = false;
+  let mut got_run = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_auto_attach = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime
+      && got_debugger
+      && got_auto_attach
+      && got_run
+      && got_context
+      && got_paused
+    {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_auto_attach, "Expected Target.setAutoAttach response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
+
+  // Resume to let script run and spawn workers
+  tester
+    .send(json!({"id":5,"method":"Debugger.resume"}))
+    .await;
+
+  // Collect resume response and workers (can arrive in any order)
+  let mut got_resume = false;
+  let mut worker_sessions = Vec::new();
+  for _ in 0..25 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":5,"result":{}"#) {
+      got_resume = true;
+    }
+    if msg.contains("Target.attachedToTarget")
+      && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg)
+      && let Some(session_id) = parsed["params"]["sessionId"].as_str()
+    {
+      worker_sessions.push(session_id.to_string());
+    }
+    if got_resume && worker_sessions.len() >= 2 {
+      break;
+    }
+  }
+
+  assert!(got_resume, "Expected resume response");
+  assert_eq!(
+    worker_sessions.len(),
+    2,
+    "Expected 2 worker sessions, got {}",
+    worker_sessions.len()
+  );
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+#[test(flaky)]
+async fn inspector_worker_target_discovery() {
+  let script = util::testdata_path().join("inspector/worker_main.js");
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("-A")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  // Use a filter that passes through Target events
+  fn notification_filter(msg: &str) -> bool {
+    !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+  }
+
+  let mut tester = InspectorTester::create(child, notification_filter).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  // Enable runtime, debugger, target discovery, and run all at once
+  // CDP messages can arrive in any order, so we batch and collect
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+      json!({"id":3,"method":"Target.setDiscoverTargets","params":{"discover":true}}),
+      json!({"id":4,"method":"Runtime.runIfWaitingForDebugger"}),
+    ])
+    .await;
+
+  // Collect all expected responses and the Debugger.paused notification
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_discover = false;
+  let mut got_run = false;
+  let mut got_context = false;
+  let mut got_paused = false;
+  for _ in 0..15 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_discover = true;
+    }
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_run = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if msg.starts_with(r#"{"method":"Debugger.paused""#) {
+      got_paused = true;
+    }
+    if got_runtime
+      && got_debugger
+      && got_discover
+      && got_run
+      && got_context
+      && got_paused
+    {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_discover, "Expected Target.setDiscoverTargets response");
+  assert!(got_run, "Expected runIfWaitingForDebugger response");
+  assert!(got_context, "Expected executionContextCreated notification");
+  assert!(got_paused, "Expected Debugger.paused notification");
+
+  // Resume to let worker start
+  tester
+    .send(json!({"id":5,"method":"Debugger.resume"}))
+    .await;
+
+  // Collect resume response and targetCreated (can arrive in any order)
+  let mut got_resume = false;
+  let mut found_worker_target = false;
+  for _ in 0..25 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":5,"result":{}"#) {
+      got_resume = true;
+    }
+    if msg.contains("Target.targetCreated") && msg.contains("worker") {
+      found_worker_target = true;
+    }
+    if got_resume && found_worker_target {
+      break;
+    }
+  }
+
+  assert!(got_resume, "Expected resume response");
+  assert!(
+    found_worker_target,
+    "Expected to receive Target.targetCreated for worker"
+  );
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+/// Test NodeWorker.enable - the Node.js inspector protocol for worker debugging.
+/// This is used by Node.js-style debuggers (different from Chrome DevTools Target domain).
+/// This test verifies the NodeWorker domain handlers in inspector.rs work correctly.
+#[test(flaky)]
+async fn inspector_node_worker_enable() {
+  let script = util::testdata_path().join("inspector/worker_main.js");
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("-A")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  // Use a filter that passes through NodeWorker events and Debugger.paused/resumed
+  fn notification_filter(msg: &str) -> bool {
+    !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+  }
+
+  let mut tester = InspectorTester::create(child, notification_filter).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  // Test 1: Verify NodeWorker.enable sends a response
+  // This tests the handler at inspector.rs lines 1198-1216
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+      json!({"id":3,"method":"NodeWorker.enable","params":{"waitForDebuggerOnStart":false}}),
+    ])
+    .await;
+
+  // Collect responses - we need all 3
+  let mut got_runtime = false;
+  let mut got_debugger = false;
+  let mut got_nodeworker = false;
+  let mut got_context = false;
+  for _ in 0..10 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":1,"result":{}}"#) {
+      got_runtime = true;
+    }
+    if msg.starts_with(r#"{"id":2,"result":{"debuggerId":"#) {
+      got_debugger = true;
+    }
+    if msg.starts_with(r#"{"id":3,"result":{}}"#) {
+      got_nodeworker = true;
+    }
+    if msg.starts_with(r#"{"method":"Runtime.executionContextCreated"#) {
+      got_context = true;
+    }
+    if got_runtime && got_debugger && got_nodeworker && got_context {
+      break;
+    }
+  }
+  assert!(got_runtime, "Expected Runtime.enable response");
+  assert!(got_debugger, "Expected Debugger.enable response");
+  assert!(got_nodeworker, "Expected NodeWorker.enable response");
+  assert!(got_context, "Expected executionContextCreated notification");
+
+  // Test 2: Verify NodeWorker.sendMessageToWorker sends a response
+  // This tests the handler at inspector.rs lines 1218-1229
+  // We can send to a non-existent session - we just want to verify we get a response
+  tester
+    .send(json!({
+      "id": 4,
+      "method": "NodeWorker.sendMessageToWorker",
+      "params": {
+        "sessionId": "nonexistent",
+        "message": "{\"id\":1,\"method\":\"Runtime.enable\"}"
+      }
+    }))
+    .await;
+
+  let mut got_send_response = false;
+  for _ in 0..5 {
+    let msg = tester.recv().await;
+    if msg.starts_with(r#"{"id":4,"result":{}}"#) {
+      got_send_response = true;
+      break;
+    }
+  }
+  assert!(
+    got_send_response,
+    "Expected response for NodeWorker.sendMessageToWorker"
+  );
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }

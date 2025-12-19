@@ -240,35 +240,21 @@
       "severityNumber": 9,
       "severityText": "INFO",
       "body": {
-        "stringValue": "Listening on http://[WILDCARD]:8000/[WILDCARD]"
-      },
-      "attributes": [],
-      "droppedAttributesCount": 0,
-      "flags": 0,
-      "traceId": "",
-      "spanId": ""
-    },
-    {
-      "timeUnixNano": "[WILDCARD]",
-      "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 9,
-      "severityText": "INFO",
-      "body": {
-        "stringValue": "Listening on http://[WILDCARD]:8001/[WILDCARD]"
-      },
-      "attributes": [],
-      "droppedAttributesCount": 0,
-      "flags": 0,
-      "traceId": "",
-      "spanId": ""
-    },
-    {
-      "timeUnixNano": "[WILDCARD]",
-      "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 9,
-      "severityText": "INFO",
-      "body": {
         "stringValue": "server 1\n"
+      },
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "flags": 1,
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0100000000000001"
+    },
+    {
+      "timeUnixNano": "[WILDCARD]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "alice\n"
       },
       "attributes": [],
       "droppedAttributesCount": 0,

@@ -1,7 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+use std::num::NonZeroUsize;
+use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
+
+use file_test_runner::RunOptions;
+use file_test_runner::TestResult;
+use file_test_runner::collection::CollectedTest;
+use file_test_runner::collection::CollectedTestCategory;
+use test_util::TestMacroCase;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::run_maybe_flaky_test;
 
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
@@ -58,3 +67,82 @@ mod test;
 mod upgrade;
 #[path = "watcher_tests.rs"]
 mod watcher;
+
+pub fn main() {
+  let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
+    CollectedTestCategory {
+      name: module_path!().to_string(),
+      path: PathBuf::from(file!()),
+      children: Default::default(),
+    };
+  test_util::collect_and_filter_tests(&mut main_category);
+  if main_category.is_empty() {
+    return; // no tests to run for the filter
+  }
+
+  let run_test = move |test: &CollectedTest<&'static TestMacroCase>,
+                       parallelism: Option<&Parallelism>| {
+    if test.data.ignore {
+      return TestResult::Ignored;
+    }
+    let run_test = || {
+      let _test_timeout_holder = test.data.timeout.map(|timeout_secs| {
+        test_util::test_runner::with_timeout(
+          test.name.clone(),
+          std::time::Duration::from_secs(timeout_secs as u64),
+        )
+      });
+      let (mut captured_output, result) =
+        test_util::print::with_captured_output(|| {
+          TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+            (test.data.func)();
+            TestResult::Passed { duration: None }
+          }))
+        });
+      match result {
+        TestResult::Passed { .. } | TestResult::Ignored => result,
+        TestResult::Failed { output, duration } => {
+          if !captured_output.is_empty() {
+            captured_output.push(b'\n');
+          }
+          captured_output.extend_from_slice(&output);
+          TestResult::Failed {
+            duration,
+            output: captured_output,
+          }
+        }
+        // no support for sub tests
+        TestResult::SubTests { .. } => unreachable!(),
+      }
+    };
+    run_maybe_flaky_test(
+      &test.name,
+      test.data.flaky || *test_util::IS_CI,
+      parallelism,
+      run_test,
+    )
+  };
+
+  let (watcher_tests, main_tests) =
+    main_category.partition(|t| t.name.contains("::watcher::"));
+
+  // watcher tests are really flaky, so run them sequentially
+  let reporter = test_util::test_runner::get_test_reporter();
+  file_test_runner::run_tests(
+    &watcher_tests,
+    RunOptions {
+      parallelism: NonZeroUsize::new(1).unwrap(),
+      reporter: reporter.clone(),
+    },
+    move |test| run_test(test, None),
+  );
+  let parallelism = Parallelism::default();
+  file_test_runner::run_tests(
+    &main_tests,
+    RunOptions {
+      parallelism: parallelism.max_parallelism(),
+      reporter: reporter.clone(),
+    },
+    move |test| run_test(test, Some(&parallelism)),
+  );
+}

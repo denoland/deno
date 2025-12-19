@@ -8,8 +8,8 @@ use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::TestContextBuilder;
-use test_util::flaky_test::Parallelism;
-use test_util::flaky_test::flaky_test_ci;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 
 fn main() {
@@ -28,8 +28,8 @@ fn main() {
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
-      ..Default::default()
+      parallelism: parallelism.max_parallelism(),
+      reporter: test_util::test_runner::get_test_reporter(),
     },
     move |test| {
       flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))

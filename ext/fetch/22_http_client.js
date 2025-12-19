@@ -64,7 +64,7 @@ function createHttpClient(options) {
         case "socks5": {
           const url = options.proxy.url;
           if (
-            !StringPrototypeStartsWith(url, "socks5:") ||
+            !StringPrototypeStartsWith(url, "socks5:") &&
             !StringPrototypeStartsWith(url, "socks5h:")
           ) {
             throw new TypeError(
