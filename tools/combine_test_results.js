@@ -13,7 +13,7 @@ const filePaths = [
 
 const tests = [];
 for (const filePath of filePaths) {
-  tests.push(JSON.parse(Deno.readTextFileSync(filePath)).tests);
+  tests.push(...JSON.parse(Deno.readTextFileSync(filePath)).tests);
 }
 
 const combinedFileText = JSON.stringify({ tests });
