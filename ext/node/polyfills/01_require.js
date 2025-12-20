@@ -1322,20 +1322,12 @@ Module.findSourceMap = findSourceMap;
  * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
  */
 export function register(_specifier, _parentUrl, _options) {
-  throw new Error(
-    "Module loader hooks are not yet supported in Deno. Follow https://github.com/denoland/deno/issues/31665 for updates.",
-  );
+  // TODO(@marvinhagemeister): Stub implementation for programs registering
+  // TypeScript loaders. We don't support registering loaders for file
+  // types that Deno itself doesn't support at the moment.
+
+  return undefined;
 }
-
-Module.register = register;
-
-export function registerHooks(_hooks) {
-  throw new Error(
-    "Module loader hooks are not yet supported in Deno. Follow https://github.com/denoland/deno/issues/31665 for updates.",
-  );
-}
-
-Module.registerHooks = registerHooks;
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
