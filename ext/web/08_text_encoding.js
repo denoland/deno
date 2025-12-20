@@ -119,7 +119,7 @@ class TextDecoder {
       stream = options.stream;
     }
 
-    if (stream && (input == null || input.length === 0)) {
+    if (stream && input.length === 0) {
       return "";
     }
 
