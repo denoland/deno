@@ -6,6 +6,10 @@ Deno.test("TextDecoder stream:true and empty chunk", () => {
     const dec = new TextDecoder(enc);
     // stream:true and empty input
     const result = dec.decode(new Uint8Array([]), { stream: true });
-    assertEquals(result, "", `${enc} should return empty string for stream:true and empty chunk`);
+    assertEquals(
+      result,
+      "",
+      `${enc} should return empty string for stream:true and empty chunk`
+    );
   }
 });
