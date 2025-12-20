@@ -985,6 +985,7 @@ const ci = {
         {
           name: "Combine test results",
           if: [
+            "always() &&",
             "matrix.job == 'test' &&",
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
@@ -994,6 +995,7 @@ const ci = {
           name: "Upload test results",
           uses: "actions/upload-artifact@v4",
           if: [
+            "always() &&",
             "matrix.job == 'test' &&",
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
