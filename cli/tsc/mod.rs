@@ -312,6 +312,19 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.webworker.d.ts"),
     maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
     maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
+    (
+      // Special file that can be used to inject the @types/node package.
+      // This is used for `node:` specifiers.
+      "reference_types_node.d.ts",
+      StaticAsset {
+        is_lib: false,
+        source: StaticAssetSource::Uncompressed(
+          // causes either the built-in node types to be used or it
+          // prefers the @types/node if it exists
+          "/// <reference lib=\"node\" />\n/// <reference types=\"npm:@types/node\" />\n",
+        ),
+      },
+    ),
   ])
   .into_iter()
   .chain(node_type_libs!())
@@ -767,7 +780,36 @@ fn resolve_non_graph_specifier_types(
         .ok(),
     )))
   } else {
-    Ok(None)
+    match NpmPackageReqReference::from_str(raw_specifier) {
+      Ok(npm_req_ref) => {
+        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
+        // This could occur when resolving npm:@types/node when it is
+        // injected and not part of the graph
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            npm_req_ref.req(),
+            referrer,
+          )?;
+        let res_result = node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            npm_req_ref.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            NodeResolutionKind::Types,
+          );
+        let maybe_url = match res_result {
+          Ok(url_or_path) => Some(url_or_path.into_url()?),
+          Err(err) => match err.code() {
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            _ => return Err(err.into()),
+          },
+        };
+        Ok(Some(into_specifier_and_media_type(maybe_url)))
+      }
+      _ => Ok(None),
+    }
   }
 }
 
@@ -943,7 +985,10 @@ pub fn resolve_specifier_for_tsc(
         ) => {
           // it's most likely requesting the jsxImportSource, which isn't loaded
           // into the graph when not using jsx, so just ignore this error
-          if specifier.ends_with("/jsx-runtime") {
+          if specifier.ends_with("/jsx-runtime")
+            // ignore in order to support attempt to load when it doesn't exist
+            || specifier == "npm:@types/node"
+          {
             None
           } else {
             return Err(err.into());
