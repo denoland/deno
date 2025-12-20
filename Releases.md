@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.3 / 2025.12.20
+
+- Revert "fix(ext/node): stub out Module.register and Module.registerHooks"
+  (#31684)
+
 ### 2.6.2 / 2025.12.19
 
 - feat(unstable): add sandbox subcommand (#31568)
