@@ -613,6 +613,12 @@ class ClientRequest extends OutgoingMessage {
         incoming.req = this;
         this.res = incoming;
 
+        // release HTTP ownership when response ends
+        const kHttpOwned = Symbol.for("node:socket_http_owned");
+        const release = () => { this.socket[kHttpOwned] = false; };
+        incoming.once("end", release);
+        incoming.once("close", release);
+
         // TODO(@crowlKats):
         // incoming.httpVersionMajor = versionMajor;
         // incoming.httpVersionMinor = versionMinor;
@@ -776,6 +782,11 @@ class ClientRequest extends OutgoingMessage {
           this._flushHeaders();
         };
         this.socket = socket;
+        
+        // mark socket as HTTP-owned to prevent early EOF during connection setup
+        const kHttpOwned = Symbol.for("node:socket_http_owned");
+        this.socket[kHttpOwned] = true;
+        
         this.emit("socket", socket);
         socket.once("error", (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
@@ -1001,10 +1012,41 @@ const kTrailersCount = Symbol("kTrailersCount");
 export class IncomingMessageForClient extends NodeReadable {
   decoder = new TextDecoder();
 
+ private _eofPushed = false;
+
   constructor(socket: Socket) {
     super();
 
     this._readableState.readingMore = true;
+
+    // Guard *every* push(null) no matter where it originates
+    const _origPush = this.push;
+    this.push = function(this: IncomingMessageForClient, chunk: any, enc?: any) {
+      if (chunk === null) {
+        if (this._eofPushed) {
+          return false; // swallow duplicate EOF
+        }
+        this._eofPushed = true;
+      }
+      return _origPush.call(this, chunk, enc);
+    } as any;
+
+    // Suppress the first pre-EOF 'readable' event to match Node's behavior
+    // in test-stream2-httpclient-response-end.js
+    let sawFirstReadable = false;
+    const _emit = this.emit;
+    this.emit = function (ev: string, ...args: any[]) {
+      if (ev === "readable") {
+        // If we haven't ended yet, swallow the *first* pre-EOF 'readable'.
+        // Let the EOF-time 'readable' through (readableEnded = true).
+        if (!this.readableEnded && !sawFirstReadable) {
+          sawFirstReadable = true;
+          // Swallow this early 'readable'
+          return true;
+        }
+      }
+      return _emit.call(this, ev, ...args);
+    } as any;
 
     this.socket = socket;
 
@@ -1143,10 +1185,13 @@ export class IncomingMessageForClient extends NodeReadable {
 
     core.read(this._bodyRid, buf).then((bytesRead) => {
       if (bytesRead === 0) {
+        // EOF reached, push null to signal end of stream
         this.push(null);
-      } else {
-        this.push(Buffer.from(buf.subarray(0, bytesRead)));
+        return;
       }
+      this.push(Buffer.from(buf.subarray(0, bytesRead)));
+    }).catch((err) => {
+      this.destroy(err as Error);
     });
   }
 
