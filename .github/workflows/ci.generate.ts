@@ -983,7 +983,7 @@ const ci = {
           ].join("\n"),
         },
         {
-          name: "Combine Test Results",
+          name: "Combine test results",
           if: [
             "matrix.job == 'test' &&",
             "!startsWith(github.ref, 'refs/tags/')",
@@ -991,7 +991,7 @@ const ci = {
           run: "deno run -RWN ./tools/combine_test_results.js",
         },
         {
-          name: "Upload Test Results",
+          name: "Upload test results",
           uses: "actions/upload-artifact@v4",
           if: [
             "matrix.job == 'test' &&",
@@ -1079,7 +1079,7 @@ const ci = {
           run: "cargo bench --locked",
         },
         {
-          name: "Post Benchmarks",
+          name: "Post benchmarks",
           if: [
             "matrix.job == 'bench' &&",
             "github.repository == 'denoland/deno' &&",

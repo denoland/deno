@@ -216,7 +216,7 @@ struct RecordedTestResult {
   name: String,
   path: String,
   #[serde(skip_serializing_if = "Option::is_none")]
-  duration_ms: Option<u128>,
+  duration: Option<u128>,
   #[serde(skip_serializing_if = "is_false")]
   failed: bool,
   #[serde(skip_serializing_if = "is_false")]
@@ -299,7 +299,7 @@ impl JsonReporter {
         tests.push(RecordedTestResult {
           name: test_name,
           path,
-          duration_ms: duration.or(main_duration).map(|d| d.as_millis()),
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
           failed: sub_tests.iter().any(|s| s.result.is_failed()),
           ignored: false,
           flaky_count,
@@ -311,7 +311,7 @@ impl JsonReporter {
         let test_result = RecordedTestResult {
           name: test_name,
           path,
-          duration_ms: duration.or(main_duration).map(|d| d.as_millis()),
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
           failed: false,
           ignored: false,
           flaky_count,
@@ -324,7 +324,7 @@ impl JsonReporter {
         let test_result = RecordedTestResult {
           name: test_name,
           path,
-          duration_ms: duration.or(main_duration).map(|d| d.as_millis()),
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
           failed: true,
           ignored: false,
           flaky_count,
@@ -337,7 +337,7 @@ impl JsonReporter {
         let test_result = RecordedTestResult {
           name: test_name,
           path,
-          duration_ms: None,
+          duration: None,
           failed: false,
           ignored: true,
           flaky_count,
@@ -380,12 +380,17 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for JsonReporter {
   ) {
     let mut data = self.data.lock();
 
+    let relative_path = test
+      .path
+      .strip_prefix(crate::root_path())
+      .unwrap_or(&test.path);
     let path = match test.line_and_column {
       Some((line, col)) => {
-        format!("{}:{}:{}", test.path.display(), line + 1, col + 1)
+        format!("{}:{}:{}", relative_path.display(), line + 1, col + 1)
       }
-      None => test.path.display().to_string(),
-    };
+      None => relative_path.display().to_string(),
+    }
+    .replace("\\", "/");
 
     // Use the helper function to recursively flatten subtests
     self.flatten_and_record_test(
