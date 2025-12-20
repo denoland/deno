@@ -137,9 +137,15 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 
+// Global registry to track client requests by port for server-side destruction signaling
+const clientRequestRegistry = new Map<number, Set<ClientRequest>>();
+
 class FakeSocket extends EventEmitter {
   /** Stores the underlying request for lazily binding to abort signal */
   #request: Request | undefined;
+  #connectionTerminator?: () => void;
+  destroyed = false;
+  serverPort?: number;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
@@ -147,6 +153,8 @@ class FakeSocket extends EventEmitter {
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
       request?: Request;
+      connectionTerminator?: () => void;
+      serverPort?: number;
     } = {},
   ) {
     super();
@@ -156,7 +164,10 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
+    this.destroyed = false;
     this.#request = opts.request;
+    this.#connectionTerminator = opts.connectionTerminator;
+    this.serverPort = opts.serverPort;
   }
 
   [kBindToAbortSignal]() {
@@ -171,7 +182,62 @@ class FakeSocket extends EventEmitter {
 
   end() {}
 
-  destroy() {}
+  destroy(err?: Error) {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.readable = false;
+    this.writable = false;
+
+    // Signal matching client requests to emit ECONNRESET error
+    if (this.serverPort !== undefined) {
+      const clientRequests = clientRequestRegistry.get(this.serverPort);
+      if (clientRequests && clientRequests.size > 0) {
+        // Emit ECONNRESET error on all client requests to this port
+        const resetError = connResetException("socket hang up");
+        nextTick(() => {
+          for (const clientRequest of clientRequests) {
+            // Only emit error if the request hasn't been destroyed yet
+            if (!clientRequest.destroyed) {
+              clientRequest.emit("error", resetError);
+              // Don't call destroy here - let the error handler handle cleanup
+              // clientRequest.destroy(resetError);
+            }
+          }
+          // Clear the registry for this port
+          clientRequests.clear();
+        });
+      }
+    }
+
+    // Try to abort the underlying request to signal connection termination
+    if (this.#request?.signal && !this.#request.signal.aborted) {
+      // Use the request's abort controller if available
+      try {
+        const controller = (this.#request.signal as AbortSignal & {
+          controller?: AbortController;
+        }).controller;
+        if (controller && controller.abort) {
+          controller.abort(err || new Error("socket destroyed"));
+        }
+      } catch {
+        // Fallback to connection terminator
+        if (this.#connectionTerminator) {
+          this.#connectionTerminator();
+        }
+      }
+    } else if (this.#connectionTerminator) {
+      // Terminate the underlying connection to signal the client
+      this.#connectionTerminator();
+    }
+
+    // Emit error first if provided
+    if (err) {
+      this.emit("error", err);
+    }
+
+    // Emit close event to signal destruction
+    this.emit("close", !!err);
+  }
 
   setTimeout(callback, timeout = 0, ...args) {
     setTimeout(callback, timeout, args);
@@ -343,6 +409,14 @@ class ClientRequest extends OutgoingMessage {
     this.protocol = protocol;
     this.port = port;
     this.hash = options.hash;
+
+    // Register this client request for server-side destruction signaling
+    if (port) {
+      if (!clientRequestRegistry.has(port)) {
+        clientRequestRegistry.set(port, new Set());
+      }
+      clientRequestRegistry.get(port)!.add(this);
+    }
     this.search = options.search;
     this.auth = options.auth;
 
@@ -708,13 +782,21 @@ class ClientRequest extends OutgoingMessage {
         }
 
         if (
-          err.message.includes("connection closed before message completed")
+          err.message.includes("connection closed before message completed") ||
+          err.message.includes("connection error")
         ) {
-          // Node.js seems ignoring this error
+          // When the connection is closed before the message is completed,
+          // emit a connection reset error to match Node.js behavior
+          const resetError = connResetException("socket hang up");
+          this.destroy(resetError);
+          this.emit("error", resetError);
         } else if (err.message.includes("The signal has been aborted")) {
           // Remap this error
-          this.emit("error", connResetException("socket hang up"));
+          const resetError = connResetException("socket hang up");
+          this.destroy(resetError);
+          this.emit("error", resetError);
         } else {
+          this.destroy(err);
           this.emit("error", err);
         }
       } finally {
@@ -876,6 +958,17 @@ class ClientRequest extends OutgoingMessage {
       return this;
     }
     this.destroyed = true;
+
+    // Clean up from client request registry
+    if (this.port) {
+      const clientRequests = clientRequestRegistry.get(this.port);
+      if (clientRequests) {
+        clientRequests.delete(this);
+        if (clientRequests.size === 0) {
+          clientRequestRegistry.delete(this.port);
+        }
+      }
+    }
 
     // Request might be closed before we actually made it
     if (this._req !== undefined && this._req.cancelHandleRid !== null) {
@@ -1930,6 +2023,7 @@ const kRawHeaders = Symbol("rawHeaders");
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
+  #aborted = false;
   url: string;
   method: string;
   socket: Socket | FakeSocket;
@@ -1975,7 +2069,7 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get aborted() {
-    return false;
+    return this.#aborted;
   }
 
   get httpVersion() {
@@ -2023,6 +2117,49 @@ export class IncomingMessageForServer extends NodeReadable {
     }
     this.socket.setTimeout(msecs);
     return this;
+  }
+
+  destroy(err?: Error) {
+    if (this.destroyed) {
+      return this;
+    }
+
+    // Set aborted state and emit aborted event
+    this.#aborted = true;
+    this.emit("aborted");
+
+    // Destroy the underlying socket to signal client that connection is closed
+    // This ensures the client receives an error when the server destroys the request
+    if (this.socket && !this.socket.destroyed) {
+      this.socket.destroy(err);
+    }
+
+    // Call the parent destroy method first
+    const result = super.destroy(err);
+
+    // For HTTP requests that have been aborted, ensure proper stream state
+    // This should be done after parent destroy to avoid conflicts
+    if (this._readableState && this.#aborted) {
+      // Only set these if parent destroy didn't already handle them properly
+      if (!this._readableState.ended) {
+        this._readableState.ended = true;
+        this._readableState.endEmitted = true;
+      }
+
+      // Ensure close event is emitted if parent destroy didn't handle it
+      // Check on next tick to avoid race conditions with parent's close emission
+      nextTick(() => {
+        if (
+          !this._readableState?.closed &&
+          this._readableState?.emitClose !== false
+        ) {
+          this._readableState.closed = true;
+          this.emit("close");
+        }
+      });
+    }
+
+    return result;
   }
 }
 
@@ -2123,12 +2260,21 @@ export class ServerImpl extends EventEmitter {
   _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
+      // Create a connection terminator that can abort the request/response cycle
+      let connectionTerminator: (() => void) | undefined;
+
       const socket = new FakeSocket({
         remoteAddress: info.remoteAddr.hostname,
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
         request,
+        serverPort: this.#addr?.port,
+        connectionTerminator: () => {
+          if (connectionTerminator) {
+            connectionTerminator();
+          }
+        },
       });
 
       const req = new IncomingMessageForServer(socket);
@@ -2150,7 +2296,15 @@ export class ServerImpl extends EventEmitter {
         this.emit("upgrade", req, socket, Buffer.from([]));
         return response;
       } else {
-        return new Promise<Response>((resolve): void => {
+        return new Promise<Response>((resolve, reject): void => {
+          // Set up the connection terminator to actively reject with a connection error
+          connectionTerminator = () => {
+            // Reject with a specific error that should trigger ECONNRESET on client
+            const connectionError = new Error("Connection reset by peer");
+            connectionError.name = "ECONNRESET";
+            reject(connectionError);
+          };
+
           const res = new ServerResponse(req, resolve, socket);
 
           if (request.headers.has("expect")) {

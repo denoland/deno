@@ -1036,6 +1036,7 @@
 "parallel/test-stream-event-names.js" = {}
 "parallel/test-stream-events-prepend.js" = {}
 "parallel/test-stream-filter.js" = {}
+"parallel/test-stream-finished.js" = {}
 "parallel/test-stream-flatMap.js" = {}
 "parallel/test-stream-forEach.js" = {}
 "parallel/test-stream-inheritance.js" = {}

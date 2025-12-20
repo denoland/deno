@@ -342,7 +342,28 @@ pub async fn op_node_http_await_response(
     ))
   })?;
 
-  let res = resource.response.await??;
+  // Handle response with proper error detection following Node.js patterns
+  let response_result = resource.response.await;
+  let res = match response_result {
+    Ok(Ok(response)) => response,
+    Ok(Err(hyper_err)) => {
+      // Check if this is a connection termination error following Node.js patterns
+      let err_str = hyper_err.to_string().to_lowercase();
+      if err_str.contains("connection closed")
+        || err_str.contains("connection reset")
+        || err_str.contains("broken pipe")
+        || err_str.contains("connection aborted")
+        || err_str.contains("unexpected end of file")
+      {
+        return Err(ConnError::Io(std::io::Error::new(
+          std::io::ErrorKind::ConnectionReset,
+          "connection closed before message completed",
+        )));
+      }
+      return Err(ConnError::Hyper(hyper_err));
+    }
+    Err(cancel_err) => return Err(cancel_err.into()),
+  };
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
