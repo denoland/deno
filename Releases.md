@@ -8,6 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 2.6.3 / 2025.12.20
 
+- fix(check): improve node types handling
 - Revert "fix(ext/node): stub out Module.register and Module.registerHooks"
   (#31684)
 
