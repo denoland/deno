@@ -51,5 +51,5 @@ Deno.test(
       ];
       assertEquals(chunks.join(""), str);
     }
-  }
+  },
 );
