@@ -96,7 +96,9 @@ import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
-const notImplementedEvents = ["multipleResolves"];
+const notImplementedEvents = [
+  "multipleResolves",
+];
 
 export const argv: string[] = ["", ""];
 
@@ -144,7 +146,7 @@ export const abort = () => {
 function addReadOnlyProcessAlias(
   name: string,
   option: string,
-  enumerable = true
+  enumerable = true,
 ) {
   const value = getOptionValue(option);
 
@@ -179,7 +181,7 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
       validateNumber(previousValue.user, "prevValue.user");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
         "prevValue.user",
-        previousValue.user
+        previousValue.user,
       );
     }
 
@@ -187,7 +189,7 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
       validateNumber(previousValue.system, "prevValue.system");
       throw new ERR_INVALID_ARG_VALUE_RANGE(
         "prevValue.system",
-        previousValue.system
+        previousValue.system,
       );
     }
 
@@ -206,7 +208,7 @@ function createWarningObject(
   code?: string,
   // deno-lint-ignore ban-types
   ctor?: Function,
-  detail?: string
+  detail?: string,
 ): Error {
   assert(typeof warning === "string");
 
@@ -234,13 +236,14 @@ function doEmitWarning(warning: Error) {
 /** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
 export function emitWarning(
   warning: string | Error,
-  type: // deno-lint-ignore ban-types
-  | { type: string; detail: string; code: string; ctor: Function }
+  type:
+    // deno-lint-ignore ban-types
+    | { type: string; detail: string; code: string; ctor: Function }
     | string
     | null,
   code?: string,
   // deno-lint-ignore ban-types
-  ctor?: Function
+  ctor?: Function,
 ) {
   let detail;
 
@@ -337,9 +340,9 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
   }
-  const maybeSignal = Object.entries(constants.os.signals).find(
-    ([_, numericCode]) => numericCode === sig
-  );
+  const maybeSignal = Object.entries(constants.os.signals).find((
+    [_, numericCode],
+  ) => numericCode === sig);
 
   if (!maybeSignal) {
     return uv.codeMap.get("EINVAL");
@@ -383,7 +386,7 @@ let getgid, getuid, getegid, geteuid, setegid, seteuid, setgid, setuid;
 
 function wrapIdSetter(
   syscall: string,
-  fn: (id: number | string) => void
+  fn: (id: number | string) => void,
 ): (id: number | string) => void {
   return function (id: number | string) {
     if (typeof id === "number") {
@@ -465,7 +468,7 @@ Process.prototype.on = function (
   this: any,
   event: string,
   // deno-lint-ignore no-explicit-any
-  listener: (...args: any[]) => void
+  listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.on("${event}")`);
@@ -476,9 +479,7 @@ Process.prototype.on = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else if (
-      event !== "SIGBREAK" &&
-      event !== "SIGINT" &&
-      Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
       // TODO(#26331): Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
@@ -497,7 +498,7 @@ Process.prototype.off = function (
   this: any,
   event: string,
   // deno-lint-ignore no-explicit-any
-  listener: (...args: any[]) => void
+  listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.off("${event}")`);
@@ -506,9 +507,7 @@ Process.prototype.off = function (
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
-      event !== "SIGBREAK" &&
-      event !== "SIGINT" &&
-      Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
     ) {
       // Ignores all signals except SIGBREAK and SIGINT on windows.
     } else {
@@ -547,7 +546,7 @@ Process.prototype.prependListener = function (
   this: any,
   event: string,
   // deno-lint-ignore no-explicit-any
-  listener: (...args: any[]) => void
+  listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.prependListener("${event}")`);
@@ -571,7 +570,7 @@ Process.prototype.addListener = function (
   this: any,
   event: string,
   // deno-lint-ignore no-explicit-any
-  listener: (...args: any[]) => void
+  listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.addListener("${event}")`);
@@ -584,7 +583,7 @@ Process.prototype.removeListener = function (
   // deno-lint-ignore no-explicit-any
   this: any,
   event: string, // deno-lint-ignore no-explicit-any
-  listener: (...args: any[]) => void
+  listener: (...args: any[]) => void,
 ) {
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.removeListener("${event}")`);
@@ -602,8 +601,10 @@ Object.defineProperty(process, "release", {
   get() {
     return {
       name: "node",
-      sourceUrl: `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
-      headersUrl: `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
     };
   },
 });
@@ -987,8 +988,7 @@ function synchronizeListeners() {
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 ||
-    uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
@@ -1034,7 +1034,7 @@ internals.__bootstrapNodeProcess = function (
   args: string[],
   denoVersions: Record<string, string>,
   nodeDebug: string,
-  warmup = false
+  warmup = false,
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
@@ -1059,12 +1059,18 @@ internals.__bootstrapNodeProcess = function (
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = createWritableStdioStream(io.stdout, "stdout");
+      stdout = process.stdout = createWritableStdioStream(
+        io.stdout,
+        "stdout",
+      );
     }
 
     if (!io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = createWritableStdioStream(io.stderr, "stderr");
+      stderr = process.stderr = createWritableStdioStream(
+        io.stderr,
+        "stderr",
+      );
     }
 
     arch = arch_();
@@ -1092,14 +1098,14 @@ internals.__bootstrapNodeProcess = function (
     stdout = process.stdout = createWritableStdioStream(
       io.stdout,
       "stdout",
-      true
+      true,
     );
 
     /** https://nodejs.org/api/process.html#process_process_stderr */
     stderr = process.stderr = createWritableStdioStream(
       io.stderr,
       "stderr",
-      true
+      true,
     );
   }
 };
