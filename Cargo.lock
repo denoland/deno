@@ -1962,6 +1962,7 @@ dependencies = [
  "ed448-goldilocks",
  "elliptic-curve",
  "num-traits",
+ "ocb3",
  "once_cell",
  "p256",
  "p384",
@@ -1972,6 +1973,7 @@ dependencies = [
  "serde_bytes",
  "sha1",
  "sha2",
+ "sha3",
  "signature",
  "spki",
  "thiserror 2.0.12",
@@ -6426,6 +6428,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27b64972346851a39438c60b341ebc01bba47464ae329e55cf343eb93964efd9"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ocb3"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c196e0276c471c843dd5777e7543a36a298a4be942a2a688d8111cd43390dedb"
+dependencies = [
+ "aead",
+ "cipher",
+ "ctr",
+ "subtle",
 ]
 
 [[package]]

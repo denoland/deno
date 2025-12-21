@@ -26,6 +26,9 @@ use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use sha3::Sha3_256;
+use sha3::Sha3_384;
+use sha3::Sha3_512;
 
 use crate::shared::*;
 
@@ -61,6 +64,15 @@ pub enum DecryptAlgorithm {
   },
   #[serde(rename = "AES-GCM", rename_all = "camelCase")]
   AesGcm {
+    #[serde(with = "serde_bytes")]
+    iv: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
+    length: usize,
+    tag_length: usize,
+  },
+  #[serde(rename = "AES-OCB", rename_all = "camelCase")]
+  AesOcb {
     #[serde(with = "serde_bytes")]
     iv: Vec<u8>,
     #[serde(with = "serde_bytes")]
@@ -133,6 +145,12 @@ pub async fn op_crypto_decrypt(
       length,
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+    DecryptAlgorithm::AesOcb {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -168,6 +186,21 @@ fn decrypt_rsa_oaep(
     ShaHash::Sha512 => rsa::Oaep {
       digest: Box::<Sha512>::default(),
       mgf_digest: Box::<Sha512>::default(),
+      label,
+    },
+    ShaHash::Sha3_256 => rsa::Oaep {
+      digest: Box::<Sha3_256>::default(),
+      mgf_digest: Box::<Sha3_256>::default(),
+      label,
+    },
+    ShaHash::Sha3_384 => rsa::Oaep {
+      digest: Box::<Sha3_384>::default(),
+      mgf_digest: Box::<Sha3_384>::default(),
+      label,
+    },
+    ShaHash::Sha3_512 => rsa::Oaep {
+      digest: Box::<Sha3_512>::default(),
+      mgf_digest: Box::<Sha3_512>::default(),
       label,
     },
   };
@@ -370,6 +403,72 @@ fn decrypt_aes_gcm(
       &mut plaintext,
     )?,
     _ => return Err(DecryptError::InvalidIvLength),
+  }
+
+  Ok(plaintext)
+}
+
+fn decrypt_aes_ocb(
+  key: V8RawKeyData,
+  length: usize,
+  tag_length: usize,
+  iv: Vec<u8>,
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, DecryptError> {
+  use ocb3::Ocb3;
+  use ocb3::aead::KeyInit as Ocb3KeyInit;
+  use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
+  use aes_gcm::aead::generic_array::GenericArray;
+
+  let key = key.as_secret_key()?;
+  let additional_data = additional_data.unwrap_or_default();
+
+  // The `ocb3` crate only supports 128 bits tag length.
+  //
+  // Note that encryption won't fail, it instead truncates the tag
+  // to the specified tag length as specified in the spec.
+  if tag_length != 128 {
+    return Err(DecryptError::InvalidTagLength);
+  }
+
+  // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
+  if iv.is_empty() || iv.len() > 15 {
+    return Err(DecryptError::InvalidIvLength);
+  }
+
+  let sep = data.len() - (tag_length / 8);
+  let tag_bytes = &data[sep..];
+
+  // The actual ciphertext, called plaintext because it is reused in place.
+  let mut plaintext = data[..sep].to_vec();
+
+  let nonce = GenericArray::from_slice(&iv);
+  let tag = GenericArray::from_slice(tag_bytes);
+
+  match length {
+    128 => {
+      let cipher = Ocb3::<aes::Aes128>::new_from_slice(key)
+        .map_err(|_| DecryptError::Failed)?;
+      cipher
+        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
+        .map_err(|_| DecryptError::Failed)?;
+    }
+    192 => {
+      let cipher = Ocb3::<aes::Aes192>::new_from_slice(key)
+        .map_err(|_| DecryptError::Failed)?;
+      cipher
+        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
+        .map_err(|_| DecryptError::Failed)?;
+    }
+    256 => {
+      let cipher = Ocb3::<aes::Aes256>::new_from_slice(key)
+        .map_err(|_| DecryptError::Failed)?;
+      cipher
+        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
+        .map_err(|_| DecryptError::Failed)?;
+    }
+    _ => return Err(DecryptError::InvalidLength),
   }
 
   Ok(plaintext)

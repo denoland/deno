@@ -335,6 +335,7 @@ aead-gcm-stream = "0.4"
 aes = "=0.8.3"
 aes-gcm = "0.10"
 aes-kw = "0.2.1"
+ocb3 = "0.1.0"
 blake2 = "0.10.6"
 const-oid = "0.9.5"
 ctr = { version = "0.9.2", features = ["alloc"] }
