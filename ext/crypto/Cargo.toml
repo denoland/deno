@@ -17,7 +17,6 @@ path = "lib.rs"
 aes.workspace = true
 aes-gcm.workspace = true
 aes-kw = { workspace = true, features = ["alloc"] }
-ocb3.workspace = true
 aws-lc-rs.workspace = true
 base64.workspace = true
 cbc.workspace = true
@@ -31,6 +30,7 @@ ecdsa.workspace = true
 ed448-goldilocks = { workspace = true, features = ["zeroize"] }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 num-traits.workspace = true
+ocb3.workspace = true
 once_cell.workspace = true
 p256 = { workspace = true, features = ["ecdh", "ecdsa"] }
 p384 = { workspace = true, features = ["ecdsa"] }

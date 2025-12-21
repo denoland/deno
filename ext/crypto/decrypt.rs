@@ -416,10 +416,10 @@ fn decrypt_aes_ocb(
   additional_data: Option<Vec<u8>>,
   data: &[u8],
 ) -> Result<Vec<u8>, DecryptError> {
-  use ocb3::Ocb3;
-  use ocb3::aead::KeyInit as Ocb3KeyInit;
-  use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
   use aes_gcm::aead::generic_array::GenericArray;
+  use ocb3::Ocb3;
+  use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
+  use ocb3::aead::KeyInit as Ocb3KeyInit;
 
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
