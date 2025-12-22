@@ -51,11 +51,17 @@ pub fn op_inspector_close() {
 
 #[op2]
 #[string]
-pub fn op_inspector_url(state: &OpState) -> Option<String> {
-  match state.try_borrow::<InspectorServerUrl>().clone() {
+pub fn op_inspector_url(
+  state: &mut OpState,
+) -> Result<Option<String>, InspectorConnectError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "inspector.url")?;
+
+  Ok(match state.try_borrow::<InspectorServerUrl>().clone() {
     Some(url) => Some(url.0.to_string()),
     None => None,
-  }
+  })
 }
 
 #[op2(fast)]

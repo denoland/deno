@@ -3,7 +3,7 @@ import inspector, { Session } from "node:inspector";
 import inspectorPromises, {
   Session as SessionPromise,
 } from "node:inspector/promises";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 
 Deno.test("[node/inspector] - importing inspector works", () => {
   assertEquals(typeof inspector.open, "function");
@@ -95,7 +95,15 @@ Deno.test({
   },
 });
 
-Deno.test("[node/inspector] - url() returns undefined when no --inspect flag", () => {
+Deno.test("[node/inspector] - url() requires sys permission", {
+  permissions: { sys: false },
+}, () => {
+  assertThrows(() => inspector.url(), Deno.errors.NotCapable);
+});
+
+Deno.test("[node/inspector] - url() returns undefined when no --inspect flag", {
+  permissions: { sys: true },
+}, () => {
   const url = inspector.url();
   assertEquals(url, undefined);
 });
