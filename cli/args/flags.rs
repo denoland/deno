@@ -225,6 +225,11 @@ pub struct CoverageFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct DeployFlags {
+  pub sandbox: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
   #[default]
   Builtin,
@@ -422,6 +427,7 @@ pub enum DenoXShimName {
   #[default]
   Dx,
   Denox,
+  Dnx,
   Other(String),
 }
 
@@ -430,6 +436,7 @@ impl DenoXShimName {
     match self {
       Self::Dx => "dx",
       Self::Denox => "denox",
+      Self::Dnx => "dnx",
       Self::Other(name) => name,
     }
   }
@@ -598,7 +605,7 @@ pub enum DenoSubcommand {
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
-  Deploy,
+  Deploy(DeployFlags),
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1623,7 +1630,8 @@ pub fn flags_from_vec_with_initial_cwd(
 ) -> clap::error::Result<Flags> {
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
-      || args[0].as_encoded_bytes().ends_with(b"denox"))
+      || args[0].as_encoded_bytes().ends_with(b"denox")
+      || args[0].as_encoded_bytes().ends_with(b"dnx"))
   {
     let mut new_args = Vec::with_capacity(args.len() + 1);
     new_args.push(args[0].clone());
@@ -1666,9 +1674,20 @@ pub fn flags_from_vec_with_initial_cwd(
     ..Default::default()
   };
 
-  // to pass all flags, even help and
+  // to pass all flags, even help
   if matches.subcommand_matches("deploy").is_some() {
-    deploy_parse(&mut flags, &mut matches.remove_subcommand().unwrap().1)?;
+    deploy_parse(
+      &mut flags,
+      &mut matches.remove_subcommand().unwrap().1,
+      false,
+    )?;
+    return Ok(flags);
+  } else if matches.subcommand_matches("sandbox").is_some() {
+    deploy_parse(
+      &mut flags,
+      &mut matches.remove_subcommand().unwrap().1,
+      true,
+    )?;
     return Ok(flags);
   }
 
@@ -1723,7 +1742,12 @@ pub fn flags_from_vec_with_initial_cwd(
     if subcommand.get_name() == "deploy" {
       flags.argv = vec![String::from("--help")];
       flags.permissions.allow_all = true;
-      flags.subcommand = DenoSubcommand::Deploy;
+      flags.subcommand = DenoSubcommand::Deploy(DeployFlags::default());
+      return Ok(flags);
+    } else if subcommand.get_name() == "sandbox" {
+      flags.argv = vec![String::from("--help")];
+      flags.permissions.allow_all = true;
+      flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox: true });
       return Ok(flags);
     }
 
@@ -2061,6 +2085,7 @@ pub fn clap_root() -> Command {
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
         .subcommand(deploy_subcommand())
+        .subcommand(sandbox_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
         .subcommand(init_subcommand())
@@ -2838,6 +2863,16 @@ fn deploy_subcommand() -> Command {
   )
 }
 
+fn sandbox_subcommand() -> Command {
+  Command::new("sandbox").arg(
+    Arg::new("args")
+      .num_args(0..)
+      .action(ArgAction::Append)
+      .trailing_var_arg(true)
+      .allow_hyphen_values(true),
+  )
+}
+
 fn doc_subcommand() -> Command {
   command("doc",
       cstr!("Show documentation for a module.
@@ -3605,6 +3640,7 @@ fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
   match value {
     "dx" => Ok(DenoXShimName::Dx),
     "denox" => Ok(DenoXShimName::Denox),
+    "dnx" => Ok(DenoXShimName::Dnx),
     _ => Ok(DenoXShimName::Other(value.to_string())),
   }
 }
@@ -3633,7 +3669,6 @@ fn x_subcommand() -> Command {
           .long("install-alias")
           .num_args(0..=1)
           .default_missing_value("dx")
-          .require_equals(true)
           .value_parser(deno_x_shim_name_parser)
           .action(ArgAction::Set)
           .conflicts_with("script_arg"),
@@ -4378,8 +4413,6 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .args(lock_args())
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
-    .arg(preload_arg())
-    .arg(require_arg())
     .arg(min_dep_age_arg())
 }
 
@@ -4835,6 +4868,8 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(enable_testing_features_arg())
     .arg(trace_ops_arg())
     .arg(eszip_arg())
+    .arg(preload_arg())
+    .arg(require_arg())
 }
 
 fn eszip_arg() -> Arg {
@@ -5884,6 +5919,7 @@ fn coverage_parse(
 fn deploy_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
+  sandbox: bool,
 ) -> clap::error::Result<()> {
   let mut args: Vec<String> = matches
     .remove_many("args")
@@ -5895,7 +5931,7 @@ fn deploy_parse(
   }
 
   flags.argv = args;
-  flags.subcommand = DenoSubcommand::Deploy;
+  flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
   Ok(())
 }
 
@@ -6847,8 +6883,6 @@ fn compile_args_without_check_parse(
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
-  preload_arg_parse(flags, matches);
-  require_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -7114,6 +7148,8 @@ fn runtime_args_parse(
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
   eszip_arg_parse(flags, matches);
+  preload_arg_parse(flags, matches);
+  require_arg_parse(flags, matches);
   Ok(())
 }
 

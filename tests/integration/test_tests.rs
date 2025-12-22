@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use test_util as util;
-use util::TestContext;
-use util::TestContextBuilder;
-use util::assert_contains;
-use util::assert_not_contains;
-use util::wildcard_match;
+use test_util::TestContext;
+use test_util::TestContextBuilder;
+use test_util::assert_contains;
+use test_util::assert_not_contains;
+use test_util::assertions::assert_wildcard_match;
+use test_util::test;
+use test_util::with_pty;
 
 #[test]
 fn junit_path() {
@@ -24,11 +25,11 @@ fn junit_path() {
     .assert_matches_text("<?xml [WILDCARD]");
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 // todo(#18480): re-enable
 #[ignore]
 fn sigint_with_hanging_test() {
-  util::with_pty(
+  with_pty(
     &[
       "test",
       "--quiet",
@@ -39,7 +40,7 @@ fn sigint_with_hanging_test() {
       std::thread::sleep(std::time::Duration::from_secs(1));
       console.write_line("\x03");
       let text = console.read_until("hanging_test.ts:10:15");
-      wildcard_match(
+      assert_wildcard_match(
         include_str!("../testdata/test/sigint_with_hanging_test.out"),
         &text,
       );

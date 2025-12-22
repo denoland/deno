@@ -8,10 +8,12 @@ use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::task::Poll;
 use std::thread;
 
 use deno_core::InspectorMsg;
+use deno_core::InspectorSessionChannels;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntimeInspector;
@@ -22,6 +24,7 @@ use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
@@ -194,8 +197,10 @@ fn handle_ws_request(
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
     let inspector_session_proxy = InspectorSessionProxy {
-      tx: outbound_tx,
-      rx: inbound_rx,
+      channels: InspectorSessionChannels::Regular {
+        tx: outbound_tx,
+        rx: inbound_rx,
+      },
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: true,
       },
@@ -510,5 +515,38 @@ impl InspectorInfo {
         .unwrap_or_default(),
       process::id(),
     )
+  }
+}
+
+/// Channel for forwarding worker inspector session proxies to the main runtime.
+/// Workers send their InspectorSessionProxy through this channel to establish
+/// bidirectional debugging communication with the main inspector session.
+pub struct MainInspectorSessionChannel(
+  Arc<Mutex<Option<UnboundedSender<InspectorSessionProxy>>>>,
+);
+
+impl MainInspectorSessionChannel {
+  pub fn new() -> Self {
+    Self(Arc::new(Mutex::new(None)))
+  }
+
+  pub fn set(&self, tx: UnboundedSender<InspectorSessionProxy>) {
+    *self.0.lock() = Some(tx);
+  }
+
+  pub fn get(&self) -> Option<UnboundedSender<InspectorSessionProxy>> {
+    self.0.lock().clone()
+  }
+}
+
+impl Default for MainInspectorSessionChannel {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl Clone for MainInspectorSessionChannel {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
   }
 }

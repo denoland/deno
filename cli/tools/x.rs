@@ -24,15 +24,17 @@ use crate::args::XFlags;
 use crate::args::XFlagsKind;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
 
-fn resolve_local_bins(
+async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
+  factory: &CliFactory,
 ) -> Result<BTreeMap<String, BinValue>, AnyError> {
   match &npm_resolver {
     deno_resolver::npm::NpmResolver::Byonm(npm_resolver) => {
@@ -45,8 +47,23 @@ fn resolve_local_bins(
       for id in npm_resolver.resolution().top_level_packages() {
         let package_folder =
           npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
-        let bins = node_resolver
-          .resolve_npm_binary_commands_for_package(&package_folder)?;
+        let bins = match node_resolver
+          .resolve_npm_binary_commands_for_package(&package_folder)
+        {
+          Ok(bins) => bins,
+          Err(_) => {
+            crate::tools::pm::cache_top_level_deps(
+              factory,
+              None,
+              CacheTopLevelDepsOptions {
+                lockfile_only: false,
+              },
+            )
+            .await?;
+            node_resolver
+              .resolve_npm_binary_commands_for_package(&package_folder)?
+          }
+        };
         for (command, bin_value) in bins {
           all_bins.insert(command.clone(), bin_value.clone());
         }
@@ -105,7 +122,8 @@ async fn maybe_run_local_npm_bin(
 ) -> Result<Option<i32>, AnyError> {
   let permissions = factory.root_permissions_container()?;
 
-  let mut bins = resolve_local_bins(node_resolver, npm_resolver)?;
+  let mut bins =
+    resolve_local_bins(node_resolver, npm_resolver, factory).await?;
   let bin_value = if let Some(bin_value) = bins.remove(command) {
     bin_value
   } else if let Some(bin_value) = {
@@ -224,7 +242,7 @@ fn write_shim(
         &out_path,
         r##"#!/bin/sh
 SCRIPT_DIR="$(dirname -- "$(readlink -f -- "$0")")"
-exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
+exec "$SCRIPT_DIR/deno" x "$@"
 "##
           .as_bytes(),
       )?;
@@ -278,7 +296,8 @@ pub async fn run(
       let factory = CliFactory::from_flags(flags.clone());
       let npm_resolver = factory.npm_resolver().await?;
       let node_resolver = factory.node_resolver().await?;
-      let bins = resolve_local_bins(node_resolver, npm_resolver)?;
+      let bins =
+        resolve_local_bins(node_resolver, npm_resolver, &factory).await?;
       if bins.is_empty() {
         log::info!("No local commands found");
         return Ok(0);
@@ -346,7 +365,7 @@ pub async fn run(
   let reload = matches!(cache_setting, CacheSetting::ReloadAll);
   match thing_to_run {
     ReqRefOrUrl::Npm(npm_package_req_reference) => {
-      let (new_flags, _) = autoinstall_package(
+      let (managed_flags, managed_factory) = autoinstall_package(
         ReqRef::Npm(&npm_package_req_reference),
         &flags,
         reload,
@@ -354,36 +373,66 @@ pub async fn run(
         &factory.deno_dir()?.root,
       )
       .await?;
-      let mut new_new_flags = (*new_flags).clone();
-      new_new_flags.node_modules_dir =
+      let mut runner_flags = (*managed_flags).clone();
+      runner_flags.node_modules_dir =
         Some(deno_config::deno_json::NodeModulesDirMode::Manual);
-      let new_new_flags = Arc::new(new_new_flags);
-      let new_new_factory = CliFactory::from_flags(new_new_flags.clone());
-      let new_node_resolver = new_new_factory.node_resolver().await?;
-      let new_npm_resolver = new_new_factory.npm_resolver().await?;
+      let runner_flags = Arc::new(runner_flags);
+      let runner_factory = CliFactory::from_flags(runner_flags.clone());
+      let runner_node_resolver = runner_factory.node_resolver().await?;
+      let runner_npm_resolver = runner_factory.npm_resolver().await?;
 
-      let bin_name = npm_package_req_reference
-        .sub_path()
-        .unwrap_or_else(|| &npm_package_req_reference.req().name);
+      let bin_name =
+        if let Some(sub_path) = npm_package_req_reference.sub_path() {
+          sub_path
+        } else {
+          npm_package_req_reference.req().name.as_str()
+        };
 
       let res = maybe_run_local_npm_bin(
-        &new_new_factory,
-        &new_new_flags,
+        &runner_factory,
+        &runner_flags,
         roots.clone(),
         &mut unconfigured_runtime,
-        new_node_resolver,
-        new_npm_resolver,
+        runner_node_resolver,
+        runner_npm_resolver,
         bin_name,
       )
       .await?;
       if let Some(exit_code) = res {
         Ok(exit_code)
       } else {
-        let bins = resolve_local_bins(new_node_resolver, new_npm_resolver)?;
+        let managed_npm_resolver =
+          managed_factory.npm_resolver().await?.as_managed().unwrap();
+        let bin_commands = bin_commands_for_package(
+          runner_node_resolver,
+          managed_npm_resolver,
+          npm_package_req_reference.req(),
+        )?;
+        let fallback_name = if bin_commands.len() == 1 {
+          Some(bin_commands.keys().next().unwrap())
+        } else {
+          None
+        };
+
+        if let Some(fallback_name) = fallback_name
+          && let Some(exit_code) = maybe_run_local_npm_bin(
+            &runner_factory,
+            &runner_flags,
+            roots.clone(),
+            &mut unconfigured_runtime,
+            runner_node_resolver,
+            runner_npm_resolver,
+            fallback_name.as_ref(),
+          )
+          .await?
+        {
+          return Ok(exit_code);
+        }
+
         Err(anyhow::anyhow!(
           "Unable to choose binary for {}\n  Available bins:\n{}",
           command_flags.command,
-          bins
+          bin_commands
             .keys()
             .map(|k| format!("    {}", k))
             .collect::<Vec<_>>()
@@ -416,6 +465,20 @@ pub async fn run(
       run_js_file(&new_factory, roots, None, &url, false).await
     }
   }
+}
+
+fn bin_commands_for_package(
+  node_resolver: &CliNodeResolver,
+  managed_npm_resolver: &CliManagedNpmResolver,
+  package_req: &PackageReq,
+) -> Result<BTreeMap<String, BinValue>, AnyError> {
+  let pkg_id =
+    managed_npm_resolver.resolve_pkg_id_from_deno_module_req(package_req)?;
+  let package_folder =
+    managed_npm_resolver.resolve_pkg_folder_from_pkg_id(&pkg_id)?;
+  node_resolver
+    .resolve_npm_binary_commands_for_package(&package_folder)
+    .map_err(Into::into)
 }
 
 async fn autoinstall_package(

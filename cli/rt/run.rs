@@ -148,6 +148,7 @@ impl SharedModuleLoaderState {
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
+  sys: DenoRtSys,
 }
 
 impl std::fmt::Debug for EmbeddedModuleLoader {
@@ -592,6 +593,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     Some(Cow::Owned(data.data.to_vec()))
   }
 
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    use sys_traits::FsMetadata;
+    let specifier = Url::parse(source_url).ok()?;
+    // only bother checking this for npm packages that might depend on this
+    if self.shared.node_resolver.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return self.sys.fs_is_file(path).ok();
+    }
+
+    Some(true)
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
@@ -667,12 +681,14 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
 
 struct StandaloneModuleLoaderFactory {
   shared: Arc<SharedModuleLoaderState>,
+  sys: DenoRtSys,
 }
 
 impl StandaloneModuleLoaderFactory {
   pub fn create_result(&self) -> CreateModuleLoaderResult {
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
+      sys: self.sys.clone(),
     });
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
@@ -981,6 +997,7 @@ pub async fn run(
       vfs: vfs.clone(),
       workspace_resolver,
     }),
+    sys: sys.clone(),
   };
 
   let permissions = {

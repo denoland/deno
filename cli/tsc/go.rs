@@ -3,6 +3,7 @@
 mod setup;
 mod tsgo_version;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -15,6 +16,7 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::ModuleGraph;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_typescript_go_client_rust::CallbackHandler;
 use deno_typescript_go_client_rust::SyncRpcChannel;
 use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
@@ -100,6 +102,7 @@ fn exec_request_inner(
     root_map,
     request.initial_cwd,
     request.graph.clone(),
+    request.jsx_import_source_config_resolver.clone(),
     request.maybe_npm,
   );
 
@@ -274,6 +277,7 @@ struct Handler {
 }
 
 impl Handler {
+  #[allow(clippy::too_many_arguments)]
   fn new(
     config_path: String,
     synthetic_config: String,
@@ -281,6 +285,7 @@ impl Handler {
     root_map: HashMap<String, ModuleSpecifier>,
     current_dir: PathBuf,
     graph: Arc<ModuleGraph>,
+    jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
     maybe_npm: Option<super::RequestNpmState>,
   ) -> Self {
     Self {
@@ -291,6 +296,7 @@ impl Handler {
         root_map,
         current_dir,
         graph,
+        jsx_import_source_config_resolver,
         maybe_npm,
         module_kind_map: HashMap::new(),
         load_result_pending: HashMap::new(),
@@ -358,6 +364,7 @@ struct HandlerState {
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
   graph: Arc<ModuleGraph>,
+  jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   maybe_npm: Option<super::RequestNpmState>,
 
   module_kind_map:
@@ -370,6 +377,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
   fn supported_callbacks(&self) -> &'static [&'static str] {
     &[
       "readFile",
+      "resolveJsxImportSource",
       "resolveModuleName",
       "getPackageJsonScopeIfApplicable",
       "getPackageScopeForPath",
@@ -507,19 +515,41 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       "isNodeSourceFile" => {
         let path = deser::<String>(payload)?;
         let state = &*state;
-        let result = ModuleSpecifier::parse(&path)
-          .ok()
-          .or_else(|| {
-            deno_path_util::resolve_url_or_path(&path, &state.current_dir).ok()
-          })
-          .and_then(|specifier| {
-            state
-              .maybe_npm
-              .as_ref()
-              .map(|n| n.node_resolver.in_npm_package(&specifier))
-          })
-          .unwrap_or(false);
+        let result = path.starts_with("asset:///node/")
+          || ModuleSpecifier::parse(&path)
+            .ok()
+            .or_else(|| {
+              deno_path_util::resolve_url_or_path(&path, &state.current_dir)
+                .ok()
+            })
+            .and_then(|specifier| {
+              state
+                .maybe_npm
+                .as_ref()
+                .map(|n| n.node_resolver.in_npm_package(&specifier))
+            })
+            .unwrap_or(false);
         Ok(jsons!(result)?)
+      }
+      "resolveJsxImportSource" => {
+        let referrer = deser::<String>(payload)?;
+        let state = &*state;
+        let referrer = if let Some(remapped_specifier) =
+          state.maybe_remapped_specifier(&referrer)
+        {
+          Some(Cow::Borrowed(remapped_specifier))
+        } else {
+          deno_path_util::resolve_url_or_path(&referrer, &state.current_dir)
+            .ok()
+            .map(Cow::Owned)
+        };
+        let result = referrer.and_then(|referrer| {
+          state
+            .jsx_import_source_config_resolver
+            .for_specifier(&referrer)
+            .and_then(|config| config.specifier())
+        });
+        Ok(jsons!(result.unwrap_or_default())?)
       }
       _ => unreachable!("unknown callback: {name}"),
     }

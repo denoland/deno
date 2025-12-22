@@ -147,8 +147,8 @@ async fn run_subcommand(
       );
       tools::bundle::bundle(flags, bundle_flags).await
     }),
-    DenoSubcommand::Deploy => spawn_subcommand(async {
-      tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await
+    DenoSubcommand::Deploy(deploy_flags) => spawn_subcommand(async move {
+      tools::deploy::deploy(Arc::unwrap_or_clone(flags), deploy_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
@@ -734,7 +734,7 @@ async fn resolve_flags_and_init(
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy) {
+  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy(_)) {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(
         err.context("Failed to start with tunnel"),
@@ -984,17 +984,33 @@ fn wait_for_start(
   })
 }
 
-async fn auth_tunnel(
-  env_token: Option<String>,
-) -> Result<String, deno_core::anyhow::Error> {
-  let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
+#[derive(serde::Deserialize)]
+struct AuthTunnelOutput {
+  org: String,
+  app: String,
+  token: String,
+}
 
+async fn auth_tunnel(
+  no_config: bool,
+  env_token: Option<String>,
+) -> Result<AuthTunnelOutput, deno_core::anyhow::Error> {
+  let file = tempfile::NamedTempFile::new()?;
+
+  let mut args = vec![];
   if let Some(token) = &env_token {
     args.push("--token".to_string());
     args.push(token.clone());
   }
+  if no_config {
+    args.push("--really-no-config".into());
+  }
 
   let mut child = tokio::process::Command::new(env::current_exe()?)
+    .arg("deploy")
+    .arg("tunnel-login")
+    .arg("--out")
+    .arg(file.path())
     .args(args)
     .spawn()?;
   let out = child.wait().await?;
@@ -1003,20 +1019,21 @@ async fn auth_tunnel(
     deno_runtime::exit(1);
   }
 
-  if let Some(token) = env_token {
-    Ok(token)
-  } else {
-    Ok(tools::deploy::get_token_entry()?.get_password()?)
-  }
+  let contents = tokio::fs::read(file.path()).await?;
+  let output: AuthTunnelOutput = deno_core::serde_json::from_slice(&contents)?;
+
+  Ok(output)
 }
 
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
-  let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
-  let mut cli_options = factory.cli_options()?;
+  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
+
+  let no_config = flags.config_flag == crate::args::ConfigFlag::Disabled;
 
   let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
     .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
@@ -1025,28 +1042,27 @@ async fn initialize_tunnel(
   let env_org = env::var("DENO_DEPLOY_ORG").ok();
   let env_app = env::var("DENO_DEPLOY_APP").ok();
 
-  let token = if env_token.is_some() && env_org.is_some() && env_app.is_some() {
-    env_token.clone().unwrap()
+  let storage_token = tools::deploy::get_token_entry()
+    .and_then(|e| e.get_password())
+    .ok();
+
+  let (token, org, app) = if let (Some(token), Some(org), Some(app)) =
+    (&env_token, env_org, env_app)
+  {
+    (token.clone(), org, app)
+  } else if let Some(deploy_config) = &deploy_config
+    && let Some(app) = &deploy_config.app
+    && let Some(token) = &env_token
+  {
+    (token.clone(), deploy_config.org.clone(), app.clone())
+  } else if let Some(deploy_config) = deploy_config
+    && let Some(token) = storage_token
+    && let Some(app) = deploy_config.app
+  {
+    (token, deploy_config.org, app)
   } else {
-    auth_tunnel(env_token.clone()).await?
-  };
-
-  let (org, app) = if let (Some(org), Some(app)) = (env_org, env_app) {
-    (org, app)
-  } else {
-    if deploy_config.is_none() {
-      // we regenerate the factory & CliOptions since auth_tunnel updates
-      // the config file with the deploy config, only if it was not set previously.
-      factory = CliFactory::from_flags(Arc::new(flags.clone()));
-      cli_options = factory.cli_options()?;
-    }
-
-    let deploy_config = cli_options
-      .start_dir
-      .to_deploy_config()?
-      .expect("auth to be called");
-
-    (deploy_config.org, deploy_config.app)
+    let o = auth_tunnel(no_config, env_token.clone()).await?;
+    (o.token, o.org, o.app)
   };
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
@@ -1153,14 +1169,20 @@ async fn initialize_tunnel(
   {
     Ok(res) => res,
     Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
-      tools::deploy::get_token_entry()?.delete_credential()?;
+      if let Ok(e) = tools::deploy::get_token_entry() {
+        let _ = e.delete_credential();
+      }
 
-      let token = auth_tunnel(env_token).await?;
+      let output = auth_tunnel(no_config, env_token).await?;
       deno_runtime::deno_net::tunnel::TunnelConnection::connect(
         addr,
         hostname.to_owned(),
         tls_config,
-        deno_runtime::deno_net::tunnel::Authentication::App { token, org, app },
+        deno_runtime::deno_net::tunnel::Authentication::App {
+          token: output.token,
+          org: output.org,
+          app: output.app,
+        },
         metadata.clone(),
         on_event,
       )

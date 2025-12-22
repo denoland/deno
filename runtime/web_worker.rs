@@ -65,6 +65,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
 use crate::inspector_server::InspectorServer;
+use crate::inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -377,6 +378,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -600,10 +602,12 @@ impl WebWorker {
     ];
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -652,6 +656,7 @@ impl WebWorker {
       skip_op_registration: false,
       v8_platform: None,
       is_main: false,
+      worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
@@ -674,12 +679,26 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
+    if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
+        );
+
+      // Send worker proxy to the main runtime
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::debug!("Failed to send inspector session proxy to main runtime");
+      }
+
+      // Send worker proxy to the worker runtime
+      if js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
+        .is_err()
+      {
+        log::debug!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {

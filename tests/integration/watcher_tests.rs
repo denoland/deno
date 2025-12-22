@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use flaky_test::flaky_test;
 use test_util as util;
 use test_util::TempDir;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
+use test_util::eprintln;
 use test_util::http_server;
+use test_util::test;
 use tokio::io::AsyncBufReadExt;
 use util::DenoChild;
 use util::assert_not_contains;
@@ -191,7 +192,7 @@ fn child_lines(
   (stdout_lines, stderr_lines)
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn lint_watch_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -246,7 +247,7 @@ async fn lint_watch_test() {
   child.kill().unwrap();
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn lint_watch_without_args_test() {
   let t = TempDir::new();
   let badly_linted_original =
@@ -301,7 +302,7 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
   let badly_linted_fixed0 =
@@ -344,7 +345,7 @@ async fn lint_all_files_on_each_change_test() {
   drop(t);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn fmt_watch_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -399,7 +400,7 @@ async fn fmt_watch_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn fmt_watch_without_args_test() {
   let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
@@ -452,7 +453,7 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
   let fmt_testdata_path = util::testdata_path().join("fmt");
@@ -490,7 +491,7 @@ async fn fmt_check_all_files_on_each_change_test() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -567,7 +568,7 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn serve_watch_all() {
   let t = TempDir::new();
   let main_file_to_watch = t.path().join("main_file_to_watch.js");
@@ -643,7 +644,7 @@ async fn serve_watch_all() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_npm_specifier() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -683,7 +684,7 @@ async fn run_watch_npm_specifier() {
 // if that's because of a bug in code or the runner itself. We should reenable
 // it once we upgrade to XL runners for macOS.
 #[cfg(not(target_os = "macos"))]
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_external_watch_files() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -725,7 +726,7 @@ async fn run_watch_external_watch_files() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_load_unload_events() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -787,7 +788,7 @@ async fn run_watch_load_unload_events() {
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -819,7 +820,7 @@ async fn run_watch_not_exit() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -872,7 +873,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_with_ext_flag() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch");
@@ -908,7 +909,7 @@ async fn run_watch_with_ext_flag() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_error_messages() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -938,7 +939,7 @@ async fn run_watch_error_messages() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_basic() {
   let t = TempDir::new();
 
@@ -1092,7 +1093,7 @@ async fn test_watch_basic() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_doc() {
   let t = TempDir::new();
 
@@ -1222,7 +1223,7 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1250,7 +1251,7 @@ async fn test_watch_module_graph_error_referrer() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15428.
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_unload_handler_error_on_drop() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1280,7 +1281,7 @@ async fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_blob_urls_reset() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1321,7 +1322,7 @@ async fn run_watch_blob_urls_reset() {
 }
 
 #[cfg(unix)]
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
@@ -1346,7 +1347,7 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
 
@@ -1459,7 +1460,7 @@ async fn bench_watch_basic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/15465.
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_reload_once() {
   let _g = util::http_server();
   let t = TempDir::new();
@@ -1498,7 +1499,7 @@ async fn run_watch_reload_once() {
 
 /// Regression test for https://github.com/denoland/deno/issues/18960. Ensures that Deno.serve
 /// operates properly after a watch restart.
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn test_watch_serve() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1534,7 +1535,7 @@ async fn test_watch_serve() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1619,7 +1620,7 @@ async fn run_watch_dynamic_imports() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_inspect() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1660,7 +1661,7 @@ async fn run_watch_inspect() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_with_excluded_paths() {
   let t = TempDir::new();
 
@@ -1699,7 +1700,7 @@ async fn run_watch_with_excluded_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1772,7 +1773,7 @@ console.log("Listening...")
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_hmr_jsx() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1827,7 +1828,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_hmr_uncaught_error() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1887,7 +1888,7 @@ export function foo() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_hmr_unhandled_rejection() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1955,7 +1956,7 @@ setInterval(() => {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_hmr_compile_error() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -2008,7 +2009,7 @@ setInterval(() => {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn bundle_watch() {
   let _server = http_server();
 
@@ -2054,7 +2055,7 @@ async fn bundle_watch() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn bundle_watch_html_entry() {
   let _server = http_server();
 
@@ -2135,7 +2136,7 @@ async fn bundle_watch_html_entry() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_basic() {
   let t = TempDir::new();
 
@@ -2172,6 +2173,8 @@ console.log("---");
   wait_contains("FOO: initial_value", &mut stdout_lines).await;
   wait_contains("BAR: test_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
 
   // Change the .env file
   std::fs::write(
@@ -2180,20 +2183,18 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
-
+  // Wait for actual restart (not the initial "Restarting on file change..." message)
+  wait_contains("Restarting!", &mut stderr_lines).await;
   // Check that new values are reflected
   wait_contains("FOO: updated_value", &mut stdout_lines).await;
   wait_contains("BAR: test_value", &mut stdout_lines).await;
   // This test should fail if NEW_VAR isn't being loaded - but the script doesn't read NEW_VAR
   // so we can't test for it without updating the script first
   wait_contains("---", &mut stdout_lines).await;
-
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_multiple_files() {
   let t = TempDir::new();
 
@@ -2258,7 +2259,7 @@ console.log("---");
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_removed() {
   let t = TempDir::new();
 
@@ -2325,7 +2326,7 @@ console.log("---");
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_invalid_syntax() {
   let t = TempDir::new();
 
@@ -2363,6 +2364,9 @@ console.log("---");
   wait_contains("BAR: valid_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Change to invalid .env file
   std::fs::write(
     &env_file,
@@ -2370,8 +2374,8 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart - should show warning but continue
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart - should show warning but continue
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Should still show valid values - test the error handling behavior
   let foo_line = wait_contains("FOO:", &mut stdout_lines).await;
@@ -2395,7 +2399,7 @@ console.log("---");
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_with_script_changes() {
   let t = TempDir::new();
 
@@ -2438,6 +2442,9 @@ console.log("---");
   wait_contains("BAR: env_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure initial run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Change the script to read different env vars
   std::fs::write(
     &main_script,
@@ -2450,8 +2457,8 @@ console.log("---");
   )
   .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Should show FOO and BAR, but BAZ should be undefined
   wait_contains("FOO: env_value", &mut stdout_lines).await;
@@ -2463,12 +2470,15 @@ console.log("---");
   );
   wait_contains("---", &mut stdout_lines).await;
 
+  // Ensure previous run is complete
+  wait_contains("Process finished", &mut stderr_lines).await;
+
   // Now add BAZ to .env file
   std::fs::write(&env_file, "FOO=env_value\nBAR=env_value\nBAZ=new_env_value")
     .unwrap();
 
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
+  // Wait for actual restart
+  wait_contains("Restarting!", &mut stderr_lines).await;
 
   // Now BAZ should have a value
   wait_contains("FOO: env_value", &mut stdout_lines).await;
@@ -2483,7 +2493,7 @@ console.log("---");
   check_alive_then_kill(child);
 }
 
-#[flaky_test(tokio)]
+#[test(flaky)]
 async fn run_watch_env_file_with_multiline_values() {
   let t = TempDir::new();
 

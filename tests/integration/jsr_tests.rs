@@ -12,6 +12,7 @@ use url::Url;
 use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::test;
 
 #[test]
 fn fast_check_cache() {
@@ -141,7 +142,7 @@ impl deno_lockfile::NpmPackageInfoProvider for TestNpmPackageInfoProvider {
   }
 }
 
-#[tokio::test]
+#[test]
 async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
@@ -315,7 +316,7 @@ fn install_cache_busts_if_version_not_found() {
   output.assert_exit_code(0);
 }
 
-#[tokio::test]
+#[test]
 async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();

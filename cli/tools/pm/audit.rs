@@ -450,8 +450,8 @@ mod npm {
   #[derive(Debug, Deserialize)]
   pub struct AuditActionResolve {
     pub id: i32,
+    pub path: Option<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub path: String,
     // pub dev: bool,
     // pub optional: bool,
     // pub bundled: bool,
@@ -463,7 +463,7 @@ mod npm {
     pub is_major: bool,
     pub action: String,
     pub resolves: Vec<AuditActionResolve>,
-    pub module: String,
+    pub module: Option<String>,
     pub target: Option<String>,
   }
 
@@ -491,30 +491,41 @@ mod npm {
 
   impl AuditAdvisory {
     fn find_actions(&self, actions: &[AuditAction]) -> Vec<String> {
-      let mut acts = vec![];
+      let mut acts = Vec::new();
 
       for action in actions {
-        if action
-          .resolves
-          .iter()
-          .any(|action_resolve| action_resolve.id == self.id)
-        {
-          acts.push(format!(
-            "{} {}{}{}",
-            action.action,
-            action.module,
-            if let Some(target) = &action.target {
-              &format!("@{}", target)
-            } else {
-              ""
-            },
-            if action.is_major {
-              " (major upgrade)"
-            } else {
-              ""
-            }
-          ))
+        if !action.resolves.iter().any(|r| r.id == self.id) {
+          continue;
         }
+
+        let module = action
+          .module
+          .as_deref()
+          .map(str::to_owned)
+          .or_else(|| {
+            // Fallback to infer from dependency path
+            action.resolves.first().and_then(|r| {
+              r.path
+                .as_deref()
+                .and_then(|p| p.split('>').next_back())
+                .map(|s| s.trim().to_string())
+            })
+          })
+          .unwrap_or_else(|| "<unknown>".to_string());
+
+        let target = action
+          .target
+          .as_deref()
+          .map(|t| format!("@{}", t))
+          .unwrap_or_default();
+
+        let major = if action.is_major {
+          " (major upgrade)"
+        } else {
+          ""
+        };
+
+        acts.push(format!("{} {}{}{}", action.action, module, target, major));
       }
 
       acts

@@ -602,6 +602,7 @@ impl LspResolver {
 #[derive(Debug, Default, Clone)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  pub has_node_specifier: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
