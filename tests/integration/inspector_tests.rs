@@ -1879,7 +1879,7 @@ async fn inspector_node_worker_enable() {
 }
 
 #[test(flaky)]
-async fn inspector_node_runtime_api_url() {
+fn inspector_node_runtime_api_url() {
   let script = util::testdata_path().join("inspector/node/url.js");
   let child = util::deno_cmd()
     .arg("run")

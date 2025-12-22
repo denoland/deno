@@ -58,10 +58,11 @@ pub fn op_inspector_url(
     .borrow_mut::<PermissionsContainer>()
     .check_sys("inspector", "inspector.url")?;
 
-  Ok(match state.try_borrow::<InspectorServerUrl>().clone() {
-    Some(url) => Some(url.0.to_string()),
-    None => None,
-  })
+  Ok(
+    state
+      .try_borrow::<InspectorServerUrl>()
+      .map(|url| url.0.to_string()),
+  )
 }
 
 #[op2(fast)]
