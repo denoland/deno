@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -14,17 +15,50 @@ use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
 use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
+use serde::Serialize;
 
 use crate::IS_CI;
 use crate::colors;
 use crate::semaphore::Semaphore;
 
+/// Tracks the number of times each test has been flaky
+pub struct FlakyTestTracker {
+  flaky_counts: Mutex<HashMap<String, usize>>,
+}
+
+impl FlakyTestTracker {
+  pub fn record_flaky(&self, test_name: &str) {
+    let mut counts = self.flaky_counts.lock();
+    *counts.entry(test_name.to_string()).or_insert(0) += 1;
+  }
+
+  pub fn get_count(&self, test_name: &str) -> usize {
+    let counts = self.flaky_counts.lock();
+    counts.get(test_name).copied().unwrap_or(0)
+  }
+}
+
+impl Default for FlakyTestTracker {
+  fn default() -> Self {
+    Self {
+      flaky_counts: Mutex::new(HashMap::new()),
+    }
+  }
+}
+
 pub fn flaky_test_ci(
   test_name: &str,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: Option<&Parallelism>,
   run_test: impl Fn() -> TestResult,
 ) -> TestResult {
-  run_maybe_flaky_test(test_name, *IS_CI, parallelism, run_test)
+  run_maybe_flaky_test(
+    test_name,
+    *IS_CI,
+    flaky_test_tracker,
+    parallelism,
+    run_test,
+  )
 }
 
 struct SingleConcurrencyFlagGuard<'a>(&'a Parallelism);
@@ -80,6 +114,7 @@ impl Parallelism {
 pub fn run_maybe_flaky_test(
   test_name: &str,
   is_flaky: bool,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: Option<&Parallelism>,
   main_action: impl Fn() -> TestResult,
 ) -> TestResult {
@@ -93,6 +128,7 @@ pub fn run_maybe_flaky_test(
     if !result.is_failed() {
       return result;
     }
+    flaky_test_tracker.record_flaky(test_name);
     #[allow(clippy::print_stderr)]
     if *IS_CI {
       ::std::eprintln!(
@@ -120,6 +156,7 @@ pub fn run_maybe_flaky_test(
       if !result.is_failed() {
         return result;
       }
+      flaky_test_tracker.record_flaky(test_name);
       std::thread::sleep(Duration::from_millis(100));
     }
 
@@ -173,16 +210,240 @@ pub fn with_timeout(
   TestTimeoutHolder { _tx: tx }
 }
 
-pub fn get_test_reporter<TData>()
--> Arc<dyn file_test_runner::reporter::Reporter<TData>> {
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordedTestResult {
+  name: String,
+  path: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  duration: Option<u128>,
+  #[serde(skip_serializing_if = "is_false")]
+  failed: bool,
+  #[serde(skip_serializing_if = "is_false")]
+  ignored: bool,
+  #[serde(skip_serializing_if = "is_zero")]
+  flaky_count: usize,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  sub_tests: Vec<RecordedTestResult>,
+}
+
+fn is_false(value: &bool) -> bool {
+  !value
+}
+
+fn is_zero(value: &usize) -> bool {
+  *value == 0
+}
+
+#[derive(Default, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordedReport {
+  tests: Vec<RecordedTestResult>,
+}
+
+struct JsonReporter {
+  data: Arc<Mutex<RecordedReport>>,
+  flaky_tracker: Arc<FlakyTestTracker>,
+  test_module_name: String,
+}
+
+impl JsonReporter {
+  pub fn new(
+    flaky_tracker: Arc<FlakyTestTracker>,
+    test_module_name: String,
+  ) -> Self {
+    Self {
+      data: Default::default(),
+      flaky_tracker,
+      test_module_name,
+    }
+  }
+
+  fn write_report_to_file(&self) {
+    let json = {
+      let data = self.data.lock();
+      serde_json::to_string(&*data).unwrap()
+    };
+    let file_path = crate::root_path()
+      .join("target")
+      .join(format!("test_results_{}.json", self.test_module_name));
+
+    file_path.write(json);
+  }
+
+  fn flatten_and_record_test(
+    &self,
+    tests: &mut Vec<RecordedTestResult>,
+    test_name: String,
+    path: String,
+    result: &TestResult,
+    main_duration: Option<Duration>,
+  ) {
+    match result {
+      TestResult::SubTests {
+        sub_tests,
+        duration,
+      } => {
+        let mut sub_test_results = Vec::with_capacity(sub_tests.len());
+        for sub_test in sub_tests {
+          let full_name = format!("{}::{}", test_name, sub_test.name);
+          self.flatten_and_record_test(
+            &mut sub_test_results,
+            full_name,
+            path.clone(),
+            &sub_test.result,
+            None,
+          );
+        }
+        let flaky_count = self.flaky_tracker.get_count(&test_name);
+        tests.push(RecordedTestResult {
+          name: test_name,
+          path,
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
+          failed: sub_tests.iter().any(|s| s.result.is_failed()),
+          ignored: false,
+          flaky_count,
+          sub_tests: sub_test_results,
+        })
+      }
+      TestResult::Passed { duration } => {
+        let flaky_count = self.flaky_tracker.get_count(&test_name);
+        let test_result = RecordedTestResult {
+          name: test_name,
+          path,
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
+          failed: false,
+          ignored: false,
+          flaky_count,
+          sub_tests: Vec::new(),
+        };
+        tests.push(test_result);
+      }
+      TestResult::Failed { duration, .. } => {
+        let flaky_count = self.flaky_tracker.get_count(&test_name);
+        let test_result = RecordedTestResult {
+          name: test_name,
+          path,
+          duration: duration.or(main_duration).map(|d| d.as_millis()),
+          failed: true,
+          ignored: false,
+          flaky_count,
+          sub_tests: Vec::new(),
+        };
+        tests.push(test_result.clone());
+      }
+      TestResult::Ignored => {
+        let flaky_count = self.flaky_tracker.get_count(&test_name);
+        let test_result = RecordedTestResult {
+          name: test_name,
+          path,
+          duration: None,
+          failed: false,
+          ignored: true,
+          flaky_count,
+          sub_tests: Vec::new(),
+        };
+        tests.push(test_result);
+      }
+    }
+  }
+}
+
+impl<TData> file_test_runner::reporter::Reporter<TData> for JsonReporter {
+  fn report_category_start(
+    &self,
+    _category: &file_test_runner::collection::CollectedTestCategory<TData>,
+    _context: &file_test_runner::reporter::ReporterContext,
+  ) {
+  }
+
+  fn report_category_end(
+    &self,
+    _category: &file_test_runner::collection::CollectedTestCategory<TData>,
+    _context: &file_test_runner::reporter::ReporterContext,
+  ) {
+  }
+
+  fn report_test_start(
+    &self,
+    _test: &file_test_runner::collection::CollectedTest<TData>,
+    _context: &file_test_runner::reporter::ReporterContext,
+  ) {
+  }
+
+  fn report_test_end(
+    &self,
+    test: &file_test_runner::collection::CollectedTest<TData>,
+    duration: Duration,
+    result: &TestResult,
+    _context: &file_test_runner::reporter::ReporterContext,
+  ) {
+    let mut data = self.data.lock();
+
+    let relative_path = test
+      .path
+      .strip_prefix(crate::root_path())
+      .unwrap_or(&test.path);
+    let path = match test.line_and_column {
+      Some((line, col)) => {
+        format!("{}:{}:{}", relative_path.display(), line + 1, col + 1)
+      }
+      None => relative_path.display().to_string(),
+    }
+    .replace("\\", "/");
+
+    // Use the helper function to recursively flatten subtests
+    self.flatten_and_record_test(
+      &mut data.tests,
+      test.name.to_string(),
+      path,
+      result,
+      Some(duration),
+    );
+  }
+
+  fn report_failures(
+    &self,
+    _failures: &[file_test_runner::reporter::ReporterFailure<TData>],
+    _total_tests: usize,
+  ) {
+    // Write the report to file when failures are reported (at the end of test run)
+    self.write_report_to_file();
+  }
+}
+
+pub trait ReporterData {
+  fn times_flaky() -> usize;
+}
+
+pub fn get_test_reporter<TData: 'static>(
+  test_module_name: &str,
+  flaky_test_tracker: Arc<FlakyTestTracker>,
+) -> Arc<dyn file_test_runner::reporter::Reporter<TData>> {
+  let mut reporters: Vec<Box<dyn file_test_runner::reporter::Reporter<TData>>> =
+    Vec::with_capacity(2);
+  reporters.push(get_display_reporter());
+  if *IS_CI {
+    reporters.push(Box::new(JsonReporter::new(
+      flaky_test_tracker,
+      test_module_name.to_string(),
+    )));
+  }
+  Arc::new(file_test_runner::reporter::AggregateReporter::new(
+    reporters,
+  ))
+}
+
+fn get_display_reporter<TData>()
+-> Box<dyn file_test_runner::reporter::Reporter<TData>> {
   if *file_test_runner::NO_CAPTURE
     || *IS_CI
     || !std::io::stderr().is_terminal()
     || std::env::var("DENO_TEST_UTIL_REPORTER").ok().as_deref() == Some("log")
   {
-    Arc::new(file_test_runner::reporter::LogReporter::default())
+    Box::new(file_test_runner::reporter::LogReporter::default())
   } else {
-    Arc::new(PtyReporter::new())
+    Box::new(PtyReporter::new())
   }
 }
 
