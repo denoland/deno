@@ -3201,11 +3201,22 @@ function createSecureServer(options, handler) {
 }
 
 function createServer(options, handler) {
+  if (typeof options === "undefined") {
+    options = {};
+  }
   if (typeof options === "function") {
     handler = options;
     options = {};
   }
   return new Http2Server(options, handler);
+}
+
+function connect(authority, options, listener) {
+  if (typeof options === "function") {
+    listener = options;
+    options = {};
+  }
+  throw new Error("not yet implemented");
 }
 
 let _init = false;
@@ -3227,6 +3238,6 @@ function initCallbacks() {
   _init = true;
 }
 
-export { constants, createSecureServer, createServer };
+export { connect, constants, createSecureServer, createServer };
 
-export default { constants, createServer, createSecureServer };
+export default { constants, connect, createServer, createSecureServer };
