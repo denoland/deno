@@ -13,6 +13,8 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionsContainer;
 
+pub struct InspectorServerUrl(pub String);
+
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {
   // TODO: hook up to InspectorServer
@@ -49,9 +51,11 @@ pub fn op_inspector_close() {
 
 #[op2]
 #[string]
-pub fn op_inspector_url() -> Option<String> {
-  // TODO: hook up to InspectorServer
-  None
+pub fn op_inspector_url(state: &OpState) -> Option<String> {
+  match state.try_borrow::<InspectorServerUrl>().clone() {
+    Some(url) => Some(url.0.to_string()),
+    None => None,
+  }
 }
 
 #[op2(fast)]

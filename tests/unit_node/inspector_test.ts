@@ -94,3 +94,8 @@ Deno.test({
     ]);
   },
 });
+
+Deno.test("[node/inspector] - url() returns undefined when no --inspect flag", () => {
+  const url = inspector.url();
+  assertEquals(url, undefined);
+});
