@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
@@ -12,7 +11,6 @@ use std::sync::atomic::Ordering;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
@@ -112,12 +110,9 @@ pub enum OsError {
 #[op2]
 #[string]
 fn op_exec_path() -> Result<String, OsError> {
-  let current_exe = env::current_exe().unwrap();
-  // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(Cow::Owned(current_exe));
+  let path = env::current_exe().and_then(|p| p.canonicalize()).unwrap();
 
   path
-    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)
