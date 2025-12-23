@@ -1187,6 +1187,11 @@ export class IncomingMessageForClient extends NodeReadable {
     }
 
     const req = this.req;
+    // Only pool the socket if keepAlive is enabled.
+    if (!req?.shouldKeepAlive) {
+      return;
+    }
+
     const handle = req?._socketHandle || socket._handle;
     if (!handle) {
       return;
