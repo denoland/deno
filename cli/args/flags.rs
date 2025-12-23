@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU8;
@@ -1623,16 +1624,17 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
+pub fn is_dx_symlink(name: &OsStr) -> bool {
+  let bytes = name.as_encoded_bytes();
+  bytes.ends_with(b"dx") || bytes.ends_with(b"denox") || bytes.ends_with(b"dnx")
+}
+
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
-  let args = if !args.is_empty()
-    && (args[0].as_encoded_bytes().ends_with(b"dx")
-      || args[0].as_encoded_bytes().ends_with(b"denox")
-      || args[0].as_encoded_bytes().ends_with(b"dnx"))
-  {
+  let args = if !args.is_empty() && is_dx_symlink(&args[0]) {
     let mut new_args = Vec::with_capacity(args.len() + 1);
     new_args.push(args[0].clone());
     new_args.push(OsString::from("x"));

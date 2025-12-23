@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
@@ -74,13 +75,20 @@ deno_core::extension!(
   esm = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
+    is_dx_symlink: Option<IsDxSymlink>,
   },
   state = |state, options| {
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
     }
+    if let Some(is_dx_symlink) = options.is_dx_symlink {
+      state.put::<IsDxSymlink>(is_dx_symlink);
+    }
   }
 );
+
+#[derive(Debug, Clone, Copy)]
+pub struct IsDxSymlink(pub fn(&OsStr) -> bool);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
@@ -109,8 +117,14 @@ pub enum OsError {
 
 #[op2]
 #[string]
-fn op_exec_path() -> Result<String, OsError> {
-  let path = env::current_exe().and_then(|p| p.canonicalize()).unwrap();
+fn op_exec_path(state: &OpState) -> Result<String, OsError> {
+  let mut path = env::current_exe()?;
+
+  if let Some(is_dx_symlink) = state.try_borrow::<IsDxSymlink>() {
+    if is_dx_symlink.0(path.as_os_str()) {
+      path = path.canonicalize().unwrap_or(path);
+    }
+  }
 
   path
     .into_os_string()

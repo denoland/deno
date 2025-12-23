@@ -1082,6 +1082,7 @@ pub async fn run(
     lib_main_worker_options,
     Default::default(),
     None,
+    None,
   );
 
   // Initialize v8 once from the main thread.

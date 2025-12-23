@@ -362,6 +362,7 @@ pub struct LibWorkerFactoryRoots {
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
+  is_dx_symlink: Option<deno_runtime::deno_os::IsDxSymlink>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -467,6 +468,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         ),
         permissions: args.permissions,
         bundle_provider: shared.bundle_provider.clone(),
+        is_dx_symlink: shared.is_dx_symlink,
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
@@ -555,9 +557,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
     bundle_provider: Option<Arc<dyn BundleProvider>>,
+    is_dx_symlink: Option<deno_runtime::deno_os::IsDxSymlink>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
+        is_dx_symlink,
         blob_store,
         broadcast_channel: Default::default(),
         code_cache,
@@ -668,6 +672,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       permissions,
       v8_code_cache: shared.code_cache.clone(),
       bundle_provider: shared.bundle_provider.clone(),
+      is_dx_symlink: shared.is_dx_symlink,
     };
 
     let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();

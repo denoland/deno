@@ -392,6 +392,7 @@ pub struct WebWorkerServiceOptions<
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
+  pub is_dx_symlink: Option<deno_os::IsDxSymlink>,
 }
 
 pub struct WebWorkerOptions {
@@ -575,7 +576,7 @@ impl WebWorker {
       }),
       deno_io::deno_io::init(Some(options.stdio)),
       deno_fs::deno_fs::init(services.fs.clone()),
-      deno_os::deno_os::init(None),
+      deno_os::deno_os::init(None, services.is_dx_symlink),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<
         TInNpmPackageChecker,

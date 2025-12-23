@@ -1084,6 +1084,9 @@ impl CliFactory {
       Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
         self.flags.clone(),
       ))),
+      Some(deno_runtime::deno_os::IsDxSymlink(
+        crate::args::is_dx_symlink,
+      )),
     );
 
     Ok(CliMainWorkerFactory::new(

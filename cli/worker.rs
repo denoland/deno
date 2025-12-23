@@ -527,6 +527,7 @@ mod tests {
         v8_code_cache: Default::default(),
         fs,
         bundle_provider: None,
+        is_dx_symlink: None,
       },
       options,
     )

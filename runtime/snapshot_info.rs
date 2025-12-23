@@ -41,7 +41,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_http::deno_http::init(deno_http::Options::default()),
     deno_io::deno_io::init(Some(Default::default())),
     deno_fs::deno_fs::init(fs.clone()),
-    deno_os::deno_os::init(Default::default()),
+    deno_os::deno_os::init(Default::default(), Default::default()),
     deno_process::deno_process::init(Default::default()),
     deno_node::deno_node::init::<
       DenoInNpmPackageChecker,
