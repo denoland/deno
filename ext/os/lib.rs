@@ -120,10 +120,10 @@ pub enum OsError {
 fn op_exec_path(state: &OpState) -> Result<String, OsError> {
   let mut path = env::current_exe()?;
 
-  if let Some(is_dx_symlink) = state.try_borrow::<IsDxSymlink>() {
-    if is_dx_symlink.0(path.as_os_str()) {
-      path = path.canonicalize().unwrap_or(path);
-    }
+  if let Some(is_dx_symlink) = state.try_borrow::<IsDxSymlink>()
+    && is_dx_symlink.0(path.as_os_str())
+  {
+    path = path.canonicalize().unwrap_or(path);
   }
 
   path
