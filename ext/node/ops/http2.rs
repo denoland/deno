@@ -875,6 +875,39 @@ unsafe impl deno_core::GarbageCollected for Http2Stream {
   }
 }
 
+#[repr(C)]
+pub struct Http2Priority {
+  pub spec: ffi::nghttp2_priority_spec,
+}
+
+impl Http2Priority {
+  /// Create and initialize a priority spec (like the C++ constructor).
+  ///
+  /// `exclusive`: true => 1, false => 0
+  pub fn new(parent: i32, weight: i32, exclusive: bool) -> Self {
+    // SAFETY: We'll initialize `spec` by calling nghttp2_priority_spec_init.
+    // Because nghttp2_priority_spec is opaque here, we allocate uninitialized
+    // memory for it and then let nghttp2 fill it in.
+    let mut out = Self {
+      spec: unsafe {
+        std::mem::MaybeUninit::<ffi::nghttp2_priority_spec>::uninit()
+          .assume_init()
+      },
+    };
+
+    unsafe {
+      ffi::nghttp2_priority_spec_init(
+        &mut out.spec as *mut ffi::nghttp2_priority_spec,
+        parent,
+        weight,
+        if exclusive { 1 } else { 0 },
+      );
+    }
+
+    out
+  }
+}
+
 struct Http2Headers {
   backing_store: String,
   nva: Vec<ffi::nghttp2_nv>,
@@ -1592,6 +1625,43 @@ impl Http2Session {
       inner,
     }
   }
+
+  fn submit_request(
+    &mut self,
+    priority: Http2Priority,
+    headers: Http2Headers,
+    mut ret: i32,
+    options: i32,
+  ) -> Option<cppgc::Ref<Http2Stream>> {
+    let mut data_provider = ffi::nghttp2_data_provider {
+      source: ffi::nghttp2_data_source {
+        ptr: std::ptr::null_mut(),
+      },
+      read_callback: Some(on_stream_read_callback),
+    };
+
+    unsafe {
+      ret = ffi::nghttp2_submit_request(
+        self.session,
+        &priority.spec,
+        headers.data(),
+        headers.len(),
+        &mut data_provider as *mut _,
+        std::ptr::null_mut(),
+      );
+    }
+    const NGHTTP2_ERR_NOMEM: i32 = -901;
+    assert_ne!(ret, NGHTTP2_ERR_NOMEM);
+    if ret > 0 {
+      // TODO(): options?
+      // let (obj, stream) =
+      // Http2Stream::new(self, ret, ffi::NGHTTP2_HCAT_HEADERS);
+      // stream
+      todo!()
+    } else {
+      None
+    }
+  }
 }
 
 #[op2]
@@ -1676,6 +1746,20 @@ impl Http2Session {
 
   #[fast]
   fn refresh_state(&self) {}
+
+  fn request(
+    &self,
+    #[serde] headers: (String, usize),
+    options: i32,
+    stream_id: i32,
+    weight: i32,
+    exclusive: bool,
+  ) {
+    let priority = Http2Priority::new(stream_id, weight, exclusive);
+    let headers = Http2Headers::from(headers);
+
+    // TODO(bartlomieju): call `Http2Session::submit_request` instead
+  }
 }
 
 struct Http2Settings {
@@ -1905,6 +1989,8 @@ pub struct Http2Constants {
   max_frame_size: u32,
   max_header_list_size: u32,
   enable_connect_protocol: u32,
+
+  nghttp2_default_weight: u32,
 }
 
 #[op2]
@@ -2051,5 +2137,7 @@ pub fn op_http2_constants() -> Http2Constants {
     max_frame_size: ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
     max_header_list_size: ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
     enable_connect_protocol: 8,
+
+    nghttp2_default_weight: 16,
   }
 }
