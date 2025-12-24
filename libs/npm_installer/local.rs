@@ -1006,7 +1006,7 @@ fn clone_dir_recrusive_except_node_modules_child(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      clone_dir_recursive(sys, &new_from, &new_to)?;
+      clone_dir_recrusive_except_node_modules_child(sys, &new_from, &new_to)?;
     } else if file_type.is_file() {
       hard_link_file(sys, &new_from, &new_to).or_else(|_| {
         sys
