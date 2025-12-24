@@ -1064,6 +1064,12 @@ impl CliOptions {
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
+      augment_permissions_with_serve_flags(
+        &mut permissions_options,
+        serve_flags,
+      )?;
+    }
     Ok(permissions_options)
   }
 
@@ -1751,6 +1757,27 @@ fn flags_to_permissions_options(
       &identity,
     ),
     prompt: !resolve_no_prompt(flags),
+  })
+}
+
+fn augment_permissions_with_serve_flags(
+  permissions_options: &mut PermissionsOptions,
+  serve_flags: &ServeFlags,
+) -> Result<(), AnyError> {
+  let allowed = flags_net::parse(vec![if serve_flags.host == "0.0.0.0" {
+    format!(":{}", serve_flags.port)
+  } else {
+    format!("{}:{}", serve_flags.host, serve_flags.port)
+  }])?;
+  Ok(match &mut permissions_options.allow_net {
+    None => {
+      permissions_options.allow_net = Some(allowed);
+    }
+    Some(v) => {
+      if !v.is_empty() {
+        v.extend(allowed);
+      }
+    }
   })
 }
 
