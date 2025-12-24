@@ -34,6 +34,7 @@ use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
+pub use ops::inspector::InspectorServerUrl;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -281,6 +282,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_open,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
+    ops::fs::op_node_file_from_fd,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,

@@ -5,11 +5,11 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 81;
+const cacheVersion = 88;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04";
+const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-15-intel";
@@ -983,6 +983,29 @@ const ci = {
           ].join("\n"),
         },
         {
+          name: "Combine test results",
+          if: [
+            "always() &&",
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: "deno run -RWN ./tools/combine_test_results.js",
+        },
+        {
+          name: "Upload test results",
+          uses: "actions/upload-artifact@v4",
+          if: [
+            "always() &&",
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          with: {
+            name:
+              "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+            path: "target/test_results.json",
+          },
+        },
+        {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
@@ -1058,7 +1081,7 @@ const ci = {
           run: "cargo bench --locked",
         },
         {
-          name: "Post Benchmarks",
+          name: "Post benchmarks",
           if: [
             "matrix.job == 'bench' &&",
             "github.repository == 'denoland/deno' &&",

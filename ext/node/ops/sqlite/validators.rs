@@ -8,16 +8,12 @@ pub enum Error {
   #[class(type)]
   #[error("{0}")]
   InvalidArgType(&'static str),
-  #[class(type)]
-  #[error("Cannot call constructor without `new`")]
-  ConstructCallRequired,
 }
 
 impl Error {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
-      Self::ConstructCallRequired => ErrorCode::ERR_CONSTRUCT_CALL_REQUIRED,
     }
   }
 }
@@ -25,7 +21,6 @@ impl Error {
 #[allow(non_camel_case_types)]
 pub enum ErrorCode {
   ERR_INVALID_ARG_TYPE,
-  ERR_CONSTRUCT_CALL_REQUIRED,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -38,7 +33,6 @@ impl ErrorCode {
   pub fn as_str(&self) -> &str {
     match self {
       Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
-      Self::ERR_CONSTRUCT_CALL_REQUIRED => "ERR_CONSTRUCT_CALL_REQUIRED",
     }
   }
 }

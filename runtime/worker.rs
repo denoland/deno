@@ -444,10 +444,12 @@ impl MainWorker {
     }
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
@@ -617,12 +619,13 @@ impl MainWorker {
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
+      let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
+      js_runtime.op_state().borrow_mut().put(inspector_url);
     }
 
     let (
@@ -1120,6 +1123,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     extension_transpiler: None,
     inspector: true,
     is_main: true,
+    worker_id: None,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),

@@ -28,6 +28,8 @@ fn esbuild_platform() -> &'static str {
     ("aarch64", "macos" | "apple") => "darwin-arm64",
     ("x86_64", "windows") => "win32-x64",
     ("aarch64", "windows") => "win32-arm64",
+    ("x86_64", "android") => "android-x64",
+    ("aarch64", "android") => "android-arm64",
     _ => panic!(
       "Unsupported platform: {} {}",
       std::env::consts::ARCH,

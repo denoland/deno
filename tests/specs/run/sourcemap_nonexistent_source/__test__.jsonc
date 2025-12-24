@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "node_modules": {
+      "args": "run --allow-read node_modules.ts",
+      "output": "node_modules.out",
+      "exitCode": 1
+    },
+    "not_node_modules": {
+      "args": "run not_node_modules.js",
+      "output": "not_node_modules.out",
+      "exitCode": 1
+    }
+  }
+}

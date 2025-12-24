@@ -9,15 +9,25 @@ use deno_path_util::ResolveUrlOrPathError;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_permissions::PermissionsContainer;
 
+use crate::args::DeployFlags;
 use crate::args::Flags;
 use crate::args::jsr_api_url;
 use crate::factory::CliFactory;
 use crate::ops;
 use crate::registry;
 
-pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
+pub async fn deploy(
+  mut flags: Flags,
+  deploy_flags: DeployFlags,
+) -> Result<i32, AnyError> {
   flags.node_modules_dir = Some(NodeModulesDirMode::None);
   flags.no_lock = true;
+  if deploy_flags.sandbox {
+    // SAFETY: only this subcommand is running, nothing else, so it's safe to set an env var.
+    unsafe {
+      std::env::set_var("DENO_DEPLOY_CLI_SANDBOX", "1");
+    }
+  }
 
   let mut factory = CliFactory::from_flags(Arc::new(flags));
 

@@ -2,7 +2,6 @@
 
 use std::fs;
 
-use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde::Serialize;
@@ -11,17 +10,18 @@ use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
+use test_util::eprintln;
 use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
+use test_util::test;
 use test_util::testdata_path;
 use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;
 use tower_lsp::lsp_types as lsp;
 use url::Url;
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_startup_shutdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -30,8 +30,7 @@ fn lsp_startup_shutdown() {
   assert!(client.wait_exit().unwrap().success());
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_config_setting() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -64,8 +63,7 @@ fn lsp_config_setting() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_config_setting_compiler_options_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -108,8 +106,7 @@ fn lsp_config_setting_compiler_options_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_config_setting_compiler_options_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -154,8 +151,7 @@ fn lsp_config_setting_compiler_options_types_config_sub_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -178,8 +174,7 @@ fn lsp_triple_slash_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn unadded_dependency_message_with_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -242,8 +237,7 @@ fn unadded_dependency_message_with_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn unadded_dependency_message() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -299,8 +293,7 @@ fn unadded_dependency_message() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -355,8 +348,7 @@ fn lsp_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -391,8 +383,7 @@ fn lsp_import_map_remote() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_data_url() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -419,8 +410,7 @@ fn lsp_import_map_data_url() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_config_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -483,8 +473,7 @@ fn lsp_import_map_config_file() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_embedded_in_config_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -542,8 +531,7 @@ fn lsp_import_map_embedded_in_config_file() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_embedded_in_config_file_after_initialize() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -612,8 +600,7 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_config_file_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -719,8 +706,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_config_file_auto_discovered_symlink() {
   let context = TestContextBuilder::new()
     // DO NOT COPY THIS CODE. Very rare case where we want to force the temp
@@ -785,8 +771,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_config_setting_no_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -830,8 +815,7 @@ fn lsp_deno_config_setting_no_workspace() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_imports_comments_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -871,8 +855,7 @@ fn lsp_deno_json_imports_comments_cache() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_node_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -908,8 +891,7 @@ fn lsp_import_map_node_specifiers() {
 // Regression test for https://github.com/denoland/deno/issues/19802.
 // Disable the `workspace/configuration` capability. Ensure the LSP falls back
 // to using `enablePaths` from the `InitializationOptions`.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_workspace_enable_paths_no_workspace_configuration() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -984,8 +966,7 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_did_refresh_deno_configuration_tree_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1171,8 +1152,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_did_change_deno_configuration_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1296,8 +1276,7 @@ fn lsp_did_change_deno_configuration_notification() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1337,8 +1316,7 @@ fn lsp_deno_task() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_reload_import_registries_command() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1351,8 +1329,7 @@ fn lsp_reload_import_registries_command() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1467,8 +1444,7 @@ fn lsp_import_attributes() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1642,8 +1618,7 @@ fn lsp_import_map_import_completions() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1681,8 +1656,7 @@ fn lsp_hover() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1739,8 +1713,7 @@ fn lsp_hover_asset() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1770,8 +1743,7 @@ fn lsp_hover_disabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_inlay_hints() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1977,8 +1949,7 @@ fn lsp_inlay_hints() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_inlay_hints_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2026,8 +1997,7 @@ fn lsp_inlay_hints_not_enabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_suggestion_actions_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -2108,8 +2078,7 @@ fn lsp_suggestion_actions_disabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -2317,8 +2286,7 @@ fn lsp_workspace_disable_enable_paths() {
   run_test(false);
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_exclude_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -2442,8 +2410,7 @@ fn lsp_exclude_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_unstable_always_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2483,8 +2450,7 @@ fn lsp_hover_unstable_always_enabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_unstable_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2525,8 +2491,7 @@ fn lsp_hover_unstable_enabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_change_mbc() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2589,8 +2554,7 @@ fn lsp_hover_change_mbc() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_closed_document() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -2676,8 +2640,7 @@ fn lsp_hover_closed_document() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_dependency() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -2842,8 +2805,7 @@ fn lsp_hover_dependency() {
 
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
 // unable to resolve dependencies when there was an invalid syntax in the module
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_deps_preserved_when_invalid_parse() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2930,8 +2892,7 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
 }
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1068.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_rename_synbol_file_scheme_edits_only() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -2994,8 +2955,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/23121.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_document_preload_limit_zero_deno_json_detection() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3024,8 +2984,7 @@ fn lsp_document_preload_limit_zero_deno_json_detection() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/23141.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_map_setting_with_deno_json() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3059,8 +3018,7 @@ fn lsp_import_map_setting_with_deno_json() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3108,8 +3066,7 @@ fn lsp_hover_typescript_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_jsr() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3153,8 +3110,7 @@ fn lsp_hover_jsr() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_hover_jsdoc_symbol_link() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3202,8 +3158,7 @@ fn lsp_hover_jsdoc_symbol_link() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_goto_type_definition() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3246,8 +3201,7 @@ fn lsp_goto_type_definition() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_goto_type_definition_builtin() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3285,8 +3239,7 @@ fn lsp_goto_type_definition_builtin() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3416,8 +3369,7 @@ fn lsp_call_hierarchy() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_large_doc_changes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3519,8 +3471,7 @@ fn lsp_large_doc_changes() {
   assert!(client.duration().as_millis() <= 15000);
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_document_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3720,8 +3671,7 @@ fn lsp_document_symbol() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_folding_range() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3768,8 +3718,7 @@ fn lsp_folding_range() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_rename() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3837,8 +3786,7 @@ fn lsp_rename() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_selection_range() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3916,8 +3864,7 @@ fn lsp_selection_range() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_semantic_tokens() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3977,8 +3924,7 @@ fn lsp_semantic_tokens() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_lens_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4179,8 +4125,7 @@ fn lsp_code_lens_references() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_lens_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4354,8 +4299,7 @@ fn lsp_code_lens_implementations() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_lens_test() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4611,8 +4555,7 @@ fn lsp_code_lens_test() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_lens_test_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4651,8 +4594,7 @@ fn lsp_code_lens_test_disabled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_lens_non_doc_nav_tree() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4719,8 +4661,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_nav_tree_updates() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4906,8 +4847,7 @@ fn lsp_nav_tree_updates() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5016,8 +4956,7 @@ fn lsp_find_references() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_signature_help() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5138,8 +5077,7 @@ fn lsp_signature_help() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5327,8 +5265,7 @@ fn lsp_code_actions() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn test_lsp_code_actions_ordering() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5421,8 +5358,7 @@ fn test_lsp_code_actions_ordering() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_status_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5452,8 +5388,7 @@ fn lsp_status_file() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5543,8 +5478,7 @@ fn lsp_code_actions_deno_cache() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache_jsr() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5641,8 +5575,7 @@ fn lsp_code_actions_deno_cache_jsr() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -5694,8 +5627,7 @@ fn lsp_jsr_lockfile() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5759,8 +5691,7 @@ fn lsp_jsr_auto_import_completion() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5830,8 +5761,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5899,8 +5829,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion_workspace_member() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5964,8 +5893,7 @@ fn lsp_jsr_auto_import_completion_workspace_member() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion_patch() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6032,8 +5960,7 @@ fn lsp_jsr_auto_import_completion_patch() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6148,8 +6075,7 @@ fn lsp_jsr_code_action_missing_declaration() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsr_code_action_move_to_new_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6257,8 +6183,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6343,8 +6268,7 @@ fn lsp_code_actions_deno_cache_npm() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache_all() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6498,8 +6422,7 @@ fn lsp_code_actions_deno_cache_all() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_managed_no_export_diagnostic() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6536,8 +6459,7 @@ fn lsp_npm_managed_no_export_diagnostic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/29548.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_managed_type_only_export_no_diagnostic() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6560,8 +6482,7 @@ fn lsp_npm_managed_type_only_export_no_diagnostic() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/29177.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_managed_missing_types_no_diagnostic() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6578,8 +6499,7 @@ fn lsp_npm_managed_missing_types_no_diagnostic() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6629,8 +6549,7 @@ fn lsp_cache_on_save() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/25999.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_asset_document_dom_code_action() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -6669,8 +6588,7 @@ fn lsp_asset_document_dom_code_action() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/22122.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_cache_then_definition() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6732,8 +6650,7 @@ fn lsp_cache_then_definition() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6984,8 +6901,7 @@ export class DuckConfig {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_imports_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7057,8 +6973,7 @@ fn lsp_code_actions_imports_dts() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_import_map_remap() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7169,8 +7084,7 @@ fn lsp_code_actions_import_map_remap() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7380,8 +7294,7 @@ fn lsp_code_actions_refactor() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_imports_respects_fmt_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7549,8 +7462,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_quote_style_from_workspace_settings() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7690,8 +7602,7 @@ fn lsp_quote_style_from_workspace_settings() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_organize_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7789,8 +7700,7 @@ console.log(b, a, c, d, y, z);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_already_organized() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let tmp_dir = context.temp_dir();
@@ -7826,8 +7736,7 @@ console.log(a, b, c);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_with_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7925,8 +7834,7 @@ console.log(undeclaredVariable);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_in_a_workspace() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8033,8 +7941,7 @@ console.log(other, submodule);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_client_provided_capability() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8074,8 +7981,7 @@ console.log(b, a, c, d, y, z);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8145,8 +8051,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_deadlock() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8268,8 +8173,7 @@ fn lsp_code_actions_deadlock() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8328,8 +8232,7 @@ fn lsp_completions() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_private_fields() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8354,8 +8257,7 @@ fn lsp_completions_private_fields() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_optional() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8438,8 +8340,7 @@ fn lsp_completions_optional() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_auto_import() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8499,8 +8400,7 @@ fn lsp_completions_auto_import() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_auto_import_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8564,8 +8464,7 @@ fn lsp_completions_auto_import_node_builtin() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8815,8 +8714,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_auto_import_and_quick_fix_byonm() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8965,8 +8863,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_auto_import_with_deno_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9094,8 +8991,7 @@ fn lsp_npm_auto_import_with_deno_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -9206,8 +9102,7 @@ fn lsp_completions_node_specifier() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -9306,8 +9201,7 @@ fn lsp_infer_return_type() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/23895.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_types_nested_js_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9351,8 +9245,7 @@ fn lsp_npm_types_nested_js_dts() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/28777.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_reexport_from_non_export() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9402,8 +9295,7 @@ fn lsp_npm_reexport_from_non_export() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/28412.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_reexport_from_non_export_add_import_quick_fix() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9470,8 +9362,7 @@ fn lsp_npm_reexport_from_non_export_add_import_quick_fix() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/28676.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_managed_import_map_no_duplicate_completions() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9541,8 +9432,7 @@ fn lsp_npm_managed_import_map_no_duplicate_completions() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_using_decl() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9579,8 +9469,7 @@ res"#
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_always_caches() {
   // npm specifiers should always be cached even when not specified
   // because they affect the resolution of each other
@@ -9641,8 +9530,7 @@ fn lsp_npm_always_caches() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_semantic_tokens_for_disabled_module() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9682,8 +9570,7 @@ fn lsp_semantic_tokens_for_disabled_module() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10138,8 +10025,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_import_import_map_prefer_relative() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10196,8 +10082,7 @@ fn lsp_auto_import_import_map_prefer_relative() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/25775.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10265,8 +10150,7 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_snippet() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -10361,8 +10245,7 @@ fn lsp_completions_snippet() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_no_snippet() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -10418,8 +10301,7 @@ fn lsp_completions_no_snippet() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_npm() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10564,8 +10446,7 @@ fn lsp_completions_npm() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_import_npm_export_node_modules_dir_auto() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir_path = context.temp_dir().path();
@@ -10628,8 +10509,7 @@ fn lsp_auto_import_npm_export_node_modules_dir_auto() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_import_npm_export_node_modules_dir_manual() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -10701,8 +10581,7 @@ fn lsp_auto_import_npm_export_node_modules_dir_manual() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -10765,8 +10644,7 @@ fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/30666.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_import_npm_export_import_map_workspace_member() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -10827,8 +10705,7 @@ fn lsp_auto_import_npm_export_import_map_workspace_member() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/23869.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_imports_remote_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10892,8 +10769,7 @@ fn lsp_auto_imports_remote_dts() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10959,8 +10835,7 @@ fn lsp_npm_specifier_unopened_file() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11057,8 +10932,7 @@ fn lsp_completions_node_builtin() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_node_specifier_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11118,8 +10992,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_registry() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11185,8 +11058,7 @@ fn lsp_completions_registry() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_registry_empty() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11249,8 +11121,7 @@ fn lsp_completions_registry_empty() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_auto_discover_registry() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11287,8 +11158,7 @@ fn lsp_auto_discover_registry() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_cache_location() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11373,8 +11243,7 @@ fn lsp_cache_location() {
 /// Sets the TLS root certificate on startup, which allows the LSP to connect to
 /// the custom signed test server and be able to retrieve the registry config
 /// and cache files.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tls_cert() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11457,8 +11326,7 @@ fn lsp_tls_cert() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npmrc() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11529,8 +11397,7 @@ fn lsp_npmrc() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_lockfile_redirect_resolution() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11582,8 +11449,7 @@ fn lsp_lockfile_redirect_resolution() {
 }
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1157.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_diagnostics_brackets_in_file_name() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11627,8 +11493,7 @@ fn lsp_diagnostics_brackets_in_file_name() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11682,8 +11547,7 @@ fn lsp_diagnostics_deprecated() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_diagnostics_deno_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11711,8 +11575,7 @@ fn lsp_diagnostics_deno_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_root_with_global_reference_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11735,8 +11598,7 @@ fn lsp_root_with_global_reference_types() {
   assert_eq!(json!(diagnostics.all()), json!([]));
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_diagnostics_refresh_dependents() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11814,8 +11676,7 @@ fn lsp_diagnostics_refresh_dependents() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/10897.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11861,8 +11722,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_diagnostics_none_for_resolving_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   context
@@ -11895,8 +11755,7 @@ fn lsp_diagnostics_none_for_resolving_types() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jupyter_import_map_and_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12066,8 +11925,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jupyter_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12152,8 +12010,7 @@ fn lsp_jupyter_completions() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jupyter_tsx() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -12214,8 +12071,7 @@ fn lsp_jupyter_tsx() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_untitled_file_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12258,8 +12114,7 @@ fn lsp_untitled_file_diagnostics() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_non_normalized_uri_diagnostics_and_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12317,8 +12172,7 @@ struct PerformanceAverages {
   averages: Vec<PerformanceAverage>,
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_performance() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12375,8 +12229,7 @@ fn lsp_performance() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_no_changes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12406,8 +12259,7 @@ fn lsp_format_no_changes() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_error() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12436,8 +12288,7 @@ fn lsp_format_error() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_mbc() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12493,8 +12344,7 @@ fn lsp_format_mbc() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_exclude_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12546,8 +12396,7 @@ fn lsp_format_exclude_with_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_exclude_default_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12599,8 +12448,7 @@ fn lsp_format_exclude_default_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_untitled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12640,8 +12488,7 @@ fn lsp_format_untitled() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12690,8 +12537,7 @@ fn lsp_format_json() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_vscode_userdata() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12731,8 +12577,7 @@ fn lsp_format_vscode_userdata() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_editor_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12793,8 +12638,7 @@ fn lsp_format_editor_options() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_json_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12832,8 +12676,7 @@ fn lsp_json_no_diagnostics() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_json_import_with_query_string() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12867,8 +12710,7 @@ fn lsp_json_import_with_query_string() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12910,8 +12752,7 @@ fn lsp_format_markdown() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12950,8 +12791,7 @@ fn lsp_format_html() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13061,8 +12901,7 @@ fn lsp_format_css() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13101,8 +12940,7 @@ fn lsp_format_yaml() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_sql() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13151,8 +12989,7 @@ fn lsp_format_sql() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_component() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13298,8 +13135,7 @@ fn lsp_format_component() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_format_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13407,8 +13243,7 @@ fn lsp_format_with_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_markdown_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -13446,8 +13281,7 @@ fn lsp_markdown_no_diagnostics() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_configuration_did_change() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13533,8 +13367,7 @@ fn lsp_configuration_did_change() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_complete_function_calls() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13607,8 +13440,7 @@ fn lsp_completions_complete_function_calls() {
 }
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1276.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_completions_private_class_fields() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13707,8 +13539,7 @@ fn lsp_completions_private_class_fields() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_workspace_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -13821,8 +13652,7 @@ fn lsp_workspace_symbol() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_ignore_lint() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -13946,8 +13776,7 @@ fn lsp_code_actions_ignore_lint() {
 }
 
 /// This test exercises updating an existing deno-lint-ignore-file comment.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_update_ignore_lint() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -14073,8 +13902,7 @@ console.log(snake_case);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14166,8 +13994,7 @@ fn lsp_code_actions_lint_fixes() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_lint_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14208,8 +14035,7 @@ fn lsp_lint_with_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_lint_exclude_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14248,8 +14074,7 @@ fn lsp_lint_exclude_with_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsx_import_source_pragma() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14306,8 +14131,7 @@ export function B() {
 }
 
 #[ignore = "https://github.com/denoland/deno/issues/21770"]
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsx_import_source_config_file_automatic_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14372,8 +14196,7 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
 }
 
 #[ignore = "https://github.com/denoland/deno/issues/21770"]
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsx_import_source_package_json_automatic_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14447,8 +14270,7 @@ fn lsp_jsx_import_source_package_json_automatic_cache() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsx_import_source_byonm_preact() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14505,8 +14327,7 @@ fn lsp_jsx_import_source_byonm_preact() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsx_import_source_types_pragma() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14623,8 +14444,7 @@ pub struct TestRunProgressMessage {
   pub data: serde_json::Map<String, Value>,
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_testing_api() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14882,8 +14702,7 @@ Deno.test({
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_testing_api_failure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15001,8 +14820,7 @@ fn lsp_testing_api_failure() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -15207,8 +15025,7 @@ fn lsp_testing_api_describe_it_failure() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_testing_api_describe_it() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -15368,8 +15185,7 @@ fn lsp_testing_api_describe_it() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_closed_file_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15421,8 +15237,7 @@ fn lsp_closed_file_find_references() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_closed_file_find_references_low_document_pre_load() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15463,8 +15278,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_closed_file_find_references_excluded_path() {
   // we exclude any files or folders in the "exclude" part of
   // the config file from being pre-loaded
@@ -15517,8 +15331,7 @@ fn lsp_closed_file_find_references_excluded_path() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_data_urls_with_jsx_compiler_option() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15582,8 +15395,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -15701,8 +15513,7 @@ fn lsp_node_modules_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -15902,8 +15713,7 @@ fn lsp_vendor_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_global_cache_hover() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -15973,8 +15783,7 @@ fn lsp_npm_global_cache_hover() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16103,8 +15912,7 @@ fn lsp_deno_json_scopes_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16273,8 +16081,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16446,8 +16253,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_compiler_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16519,8 +16325,7 @@ fn lsp_deno_json_scopes_compiler_options() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_declaration_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16586,8 +16391,7 @@ fn lsp_deno_json_scopes_declaration_files() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16629,8 +16433,7 @@ fn lsp_deno_json_scopes_find_references() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_file_rename_import_edits() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16677,8 +16480,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_goto_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16717,8 +16519,7 @@ fn lsp_deno_json_scopes_goto_implementations() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16828,8 +16629,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_rename_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16887,8 +16687,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_scopes_search_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16933,8 +16732,7 @@ fn lsp_deno_json_scopes_search_symbol() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_fmt_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17055,8 +16853,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_lint_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17203,8 +17000,7 @@ fn lsp_deno_json_workspace_lint_config() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17303,8 +17099,7 @@ fn lsp_deno_json_workspace_import_map() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_workspace_lockfile() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17363,8 +17158,7 @@ fn lsp_workspace_lockfile() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17431,8 +17225,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17502,8 +17295,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_deno_json_workspace_jsr_resolution() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17563,8 +17355,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_workspace_compiler_options_root_dirs() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17624,8 +17415,7 @@ fn lsp_workspace_compiler_options_root_dirs() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tsconfig_scopes() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17700,8 +17490,7 @@ fn lsp_tsconfig_scopes() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tsconfig_references_extends_include() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17795,8 +17584,7 @@ fn lsp_tsconfig_references_extends_include() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tsconfig_node_modules_dts_diagnostics() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17854,8 +17642,7 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tsconfig_root_dirs() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17909,8 +17696,7 @@ fn lsp_tsconfig_root_dirs() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_tsconfig_watched() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17951,8 +17737,7 @@ fn lsp_tsconfig_watched() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18055,8 +17840,7 @@ fn lsp_npm_workspace() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/28865.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_npm_workspace_npm_reqs() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18103,8 +17887,7 @@ fn lsp_npm_workspace_npm_reqs() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18193,8 +17976,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_byonm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18292,8 +18074,7 @@ fn lsp_byonm() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18419,8 +18200,7 @@ fn lsp_sloppy_imports() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_sloppy_imports_prefers_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18497,8 +18277,7 @@ fn lsp_sloppy_imports_prefers_dts() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn sloppy_imports_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18625,8 +18404,7 @@ fn sloppy_imports_not_enabled() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/24457.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_byonm_js_import_resolves_to_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18665,8 +18443,7 @@ fn lsp_byonm_js_import_resolves_to_dts() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn decorators_tc39() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18714,8 +18491,7 @@ new C().m(1);
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn decorators_ts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18770,8 +18546,7 @@ C.test();
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_uses_lockfile_for_npm_initialization() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -18800,8 +18575,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_cjs_internal_types_default_export() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18849,8 +18623,7 @@ fn lsp_cjs_internal_types_default_export() {
   assert_eq!(json!(diagnostics.all()), json!([]));
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_cjs_import_dual() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18907,8 +18680,7 @@ fn lsp_cjs_import_dual() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_type_commonjs() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18957,8 +18729,7 @@ fn lsp_type_commonjs() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_ts_code_fix_any_param() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -19029,8 +18800,7 @@ fn lsp_ts_code_fix_any_param() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_semantic_token_caching() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -19114,8 +18884,7 @@ fn lsp_semantic_token_caching() {
   assert_eq!(res, res_cached);
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_jsdoc_named_example() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -19162,8 +18931,7 @@ fn lsp_jsdoc_named_example() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_wasm_module() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -19201,8 +18969,7 @@ fn lsp_wasm_module() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn wildcard_augment() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -19237,8 +19004,7 @@ fn wildcard_augment() {
   assert_eq!(diagnostics.all().len(), 0);
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn compiler_options_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -19283,8 +19049,7 @@ fn compiler_options_types() {
   }
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn type_reference_import_meta() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -19357,8 +19122,7 @@ fn type_reference_import_meta() {
   }
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn ambient_module_errors_suppressed() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -19406,8 +19170,7 @@ fn ambient_module_errors_suppressed() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn definitely_typed_fallback() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -19466,8 +19229,7 @@ fn definitely_typed_fallback() {
   }
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn do_not_auto_import_from_definitely_typed() {
   for node_modules_dir in ["none", "auto", "manual"] {
     eprintln!("node_modules_dir: {node_modules_dir}");
@@ -19548,8 +19310,7 @@ fn do_not_auto_import_from_definitely_typed() {
     client.shutdown();
   }
 }
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_skip_lib_check_graph_errors() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -19576,8 +19337,7 @@ fn lsp_skip_lib_check_graph_errors() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_json_module_import_attribute_variations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -19627,8 +19387,7 @@ fn lsp_import_json_module_import_attribute_variations() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_import_raw_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -19868,8 +19627,7 @@ console.log(invalid, validBytes, validText);
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30380.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_will_rename_files_js_to_ts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -19913,8 +19671,7 @@ fn lsp_will_rename_files_js_to_ts() {
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30627.
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_will_rename_files_move_to_different_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -19957,8 +19714,7 @@ fn lsp_will_rename_files_move_to_different_dir() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_push_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -20054,8 +19810,7 @@ fn lsp_push_diagnostics() {
   );
 }
 
-#[test]
-#[timeout(300_000)]
+#[test(timeout = 300)]
 fn lsp_isolated_declarations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
