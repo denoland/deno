@@ -468,6 +468,12 @@ impl<
       }
     }
 
+    // Wait for all npm package installations to complete before applying patches
+    // This prevents race conditions where npm packages could overwrite patch files
+    while let Some(result) = cache_futures.next().await {
+      result?; // surface the first error
+    }
+
     // 2. Setup the patch packages
     for patch_pkg in self.npm_install_deps_provider.patch_pkgs() {
       // there might be multiple ids per package due to peer dep copy packages
