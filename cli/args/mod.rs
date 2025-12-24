@@ -1769,7 +1769,7 @@ fn augment_permissions_with_serve_flags(
   } else {
     format!("{}:{}", serve_flags.host, serve_flags.port)
   }])?;
-  Ok(match &mut permissions_options.allow_net {
+  match &mut permissions_options.allow_net {
     None => {
       permissions_options.allow_net = Some(allowed);
     }
@@ -1778,7 +1778,8 @@ fn augment_permissions_with_serve_flags(
         v.extend(allowed);
       }
     }
-  })
+  }
+  Ok(())
 }
 
 #[cfg(test)]
