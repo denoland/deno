@@ -125,7 +125,6 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   //   &[
   //     "check",
   //     "--reload",
-  //     "--unstable",
   //     "--config",
   //     "tests/config/deno.json",
   //     "tests/util/std/http/file_server_test.ts",
@@ -138,7 +137,6 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   //     "cache",
   //     "--reload",
   //     "--no-check",
-  //     "--unstable",
   //     "--config",
   //     "tests/config/deno.json",
   //     "tests/util/std/http/file_server_test.ts",
