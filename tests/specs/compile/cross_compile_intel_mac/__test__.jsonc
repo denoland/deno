@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --output out --target x86_64-apple-darwin main.ts",
+      "output": "compile.out"
+    }
+  ]
+}
