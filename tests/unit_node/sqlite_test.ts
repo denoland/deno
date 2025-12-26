@@ -989,7 +989,11 @@ Deno.test("[node/sqlite] numbered positional parameters (?1, ?2) should work", (
 
   // Verify the data was inserted correctly
   const row = db.prepare("SELECT name, email FROM users WHERE id = 1").get();
-  assertEquals(row, { name: "Alice", email: "alice@example.com", __proto__: null });
+  assertEquals(row, {
+    name: "Alice",
+    email: "alice@example.com",
+    __proto__: null,
+  });
 });
 
 // https://github.com/denoland/deno/issues/31719 - numbered positional parameters
@@ -1001,10 +1005,14 @@ Deno.test("[node/sqlite] numbered parameters can be reused (?1 appearing multipl
       parent_id INTEGER
     )
   `);
-  db.exec("INSERT INTO nodes (id, parent_id) VALUES (1, NULL), (2, 1), (3, 1), (4, 2)");
+  db.exec(
+    "INSERT INTO nodes (id, parent_id) VALUES (1, NULL), (2, 1), (3, 1), (4, 2)",
+  );
 
   // Use same parameter twice - important use case for SQLite
-  const stmt = db.prepare("SELECT * FROM nodes WHERE id = ?1 OR parent_id = ?1 ORDER BY id");
+  const stmt = db.prepare(
+    "SELECT * FROM nodes WHERE id = ?1 OR parent_id = ?1 ORDER BY id",
+  );
   const rows = stmt.all(1);
 
   assertEquals(rows.length, 3); // id=1, and two nodes with parent_id=1
