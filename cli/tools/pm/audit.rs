@@ -333,18 +333,24 @@ mod npm {
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
     print_report(
-      vulns,
+      &vulns,
       advisories,
       response.actions,
       minimal_severity,
       audit_flags.ignore_unfixable,
     );
 
-    Ok(1)
+    // Exit code 1 only if there are vulnerabilities at or above the specified level
+    let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
+      1
+    } else {
+      0
+    };
+    Ok(exit_code)
   }
 
   fn print_report(
-    vulns: AuditVulnerabilities,
+    vulns: &AuditVulnerabilities,
     advisories: Vec<&AuditAdvisory>,
     actions: Vec<AuditAction>,
     minimal_severity: AdvisorySeverity,
@@ -543,6 +549,15 @@ mod npm {
   impl AuditVulnerabilities {
     fn total(&self) -> i32 {
       self.low + self.moderate + self.high + self.critical
+    }
+
+    fn count_at_or_above(&self, min_severity: AdvisorySeverity) -> i32 {
+      match min_severity {
+        AdvisorySeverity::Low => self.total(),
+        AdvisorySeverity::Moderate => self.moderate + self.high + self.critical,
+        AdvisorySeverity::High => self.high + self.critical,
+        AdvisorySeverity::Critical => self.critical,
+      }
     }
   }
 
