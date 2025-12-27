@@ -51,7 +51,6 @@ use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
 use crate::UnsafelyIgnoreCertificateErrors;
-use crate::happy_eyeballs::DEFAULT_ATTEMPT_TIMEOUT_MS;
 use crate::happy_eyeballs::connect_happy_eyeballs;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
@@ -476,13 +475,10 @@ pub async fn op_net_connect_tls(
 
   // Use Happy Eyeballs if enabled and multiple addresses available
   let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
-    let timeout_ms = options.auto_select_family_attempt_timeout;
-    let timeout = std::time::Duration::from_millis(if timeout_ms > 0 {
-      timeout_ms
-    } else {
-      DEFAULT_ATTEMPT_TIMEOUT_MS
-    });
-    let result = connect_happy_eyeballs(addrs, timeout, None).await?;
+    let attempt_delay = std::time::Duration::from_millis(
+      options.auto_select_family_attempt_delay,
+    );
+    let result = connect_happy_eyeballs(addrs, attempt_delay, None).await?;
     result.stream
   } else {
     // Single address or Happy Eyeballs disabled - use first address

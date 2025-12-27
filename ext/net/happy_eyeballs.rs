@@ -6,23 +6,98 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::time::Duration;
 
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::StreamExt;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::futures::StreamExt;
+use deno_core::futures::stream::FuturesUnordered;
 use tokio::net::TcpStream;
-use tokio::time::sleep_until;
 use tokio::time::Instant;
+use tokio::time::sleep_until;
 
-/// Default timeout for each connection attempt (matches Node.js default)
-pub const DEFAULT_ATTEMPT_TIMEOUT_MS: u64 = 250;
+/// Default delay between connection attempts
+pub const DEFAULT_ATTEMPT_DELAY_MS: u64 = 250;
 
 /// Result of a Happy Eyeballs connection attempt
 #[derive(Debug)]
 pub struct HappyEyeballsResult {
   pub stream: TcpStream,
   pub addr: SocketAddr,
-  pub attempted_addresses: Vec<String>,
+  pub attempted_addresses: Vec<SocketAddr>,
+}
+
+/// Connect using Happy Eyeballs algorithm (RFC 8305).
+///
+/// This implementation uses parallel connection attempts with staggered starts.
+/// A new connection attempt is started every `attempt_delay` while previous
+/// attempts are still in progress. The first successful connection wins and
+/// all other pending attempts are cancelled.
+pub async fn connect_happy_eyeballs(
+  addrs: Vec<SocketAddr>,
+  attempt_delay: Duration,
+  cancel_handle: Option<Rc<CancelHandle>>,
+) -> Result<HappyEyeballsResult, IoError> {
+  if addrs.is_empty() {
+    return Err(IoError::new(
+      ErrorKind::InvalidInput,
+      "No addresses to connect to",
+    ));
+  }
+
+  let addrs = interleave_addresses(addrs);
+  let mut attempted_addresses = Vec::new();
+  let mut last_error = IoError::other("Failed to connect to any address");
+
+  let mut pending = FuturesUnordered::new();
+  let mut addr_iter = addrs.into_iter().peekable();
+
+  // Start first connection immediately
+  if let Some(addr) = addr_iter.next() {
+    attempted_addresses.push(addr);
+    pending.push(start_connect(addr, cancel_handle.clone()));
+  }
+
+  let mut next_attempt_at = Instant::now() + attempt_delay;
+
+  loop {
+    let has_more_addrs = addr_iter.peek().is_some();
+    let has_pending = !pending.is_empty();
+
+    if !has_pending && !has_more_addrs {
+      // No more pending connections and no more addresses to try
+      break;
+    }
+
+    tokio::select! {
+      biased;
+
+      // A connection attempt completed
+      result = pending.next(), if has_pending => {
+        match result.expect("has_pending is true, so there should be a result") {
+          Ok((stream, addr)) => {
+            return Ok(HappyEyeballsResult {
+              stream,
+              addr,
+              attempted_addresses,
+            });
+          }
+          Err(e) => {
+            last_error = e;
+            // Continue waiting for other pending connections or start new ones
+          }
+        }
+      }
+
+      // Time to start next connection (staggered start per RFC 8305)
+      _ = sleep_until(next_attempt_at), if has_more_addrs => {
+        let addr = addr_iter.next().expect("has_more_addrs is true, so there should be an address");
+        attempted_addresses.push(addr);
+        pending.push(start_connect(addr, cancel_handle.clone()));
+        next_attempt_at = Instant::now() + attempt_delay;
+      }
+    }
+  }
+
+  Err(last_error)
 }
 
 /// Interleave IPv6 and IPv4 addresses per RFC 8305 Section 4.
@@ -54,92 +129,6 @@ fn interleave_addresses(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {
   result
 }
 
-/// Connect using Happy Eyeballs algorithm (RFC 8305).
-///
-/// This implementation uses parallel connection attempts with staggered starts.
-/// A new connection attempt is started every `attempt_delay` while previous
-/// attempts are still in progress. The first successful connection wins and
-/// all other pending attempts are cancelled.
-///
-/// See also: <https://github.com/nodejs/node/issues/48145>
-pub async fn connect_happy_eyeballs(
-  addrs: Vec<SocketAddr>,
-  attempt_delay: Duration,
-  cancel_handle: Option<Rc<CancelHandle>>,
-) -> Result<HappyEyeballsResult, IoError> {
-  if addrs.is_empty() {
-    return Err(IoError::new(
-      ErrorKind::InvalidInput,
-      "No addresses to connect to",
-    ));
-  }
-
-  let addrs = interleave_addresses(addrs);
-  let mut attempted_addresses = Vec::new();
-  let mut last_error: Option<IoError> = None;
-
-  // Track pending connection attempts
-  let mut pending: FuturesUnordered<_> = FuturesUnordered::new();
-  let mut addr_iter = addrs.into_iter().peekable();
-
-  // Start first connection immediately
-  if let Some(addr) = addr_iter.next() {
-    attempted_addresses.push(addr.to_string());
-    pending.push(start_connect(addr, cancel_handle.clone()));
-  }
-
-  // Schedule next attempt
-  let mut next_attempt_at = Instant::now() + attempt_delay;
-
-  loop {
-    let has_more_addrs = addr_iter.peek().is_some();
-    let has_pending = !pending.is_empty();
-
-    if !has_pending && !has_more_addrs {
-      // No more pending connections and no more addresses to try
-      break;
-    }
-
-    tokio::select! {
-      biased;
-
-      // A connection attempt completed
-      result = pending.next(), if has_pending => {
-        match result {
-          Some(Ok((stream, addr))) => {
-            // Success! Dropping `pending` cancels remaining attempts
-            return Ok(HappyEyeballsResult {
-              stream,
-              addr,
-              attempted_addresses,
-            });
-          }
-          Some(Err(e)) => {
-            last_error = Some(e);
-            // Continue waiting for other pending connections or start new ones
-          }
-          None => {
-            // FuturesUnordered is empty, will be caught by has_pending check
-          }
-        }
-      }
-
-      // Time to start next connection (staggered start per RFC 8305)
-      _ = sleep_until(next_attempt_at), if has_more_addrs => {
-        if let Some(addr) = addr_iter.next() {
-          attempted_addresses.push(addr.to_string());
-          pending.push(start_connect(addr, cancel_handle.clone()));
-          next_attempt_at = Instant::now() + attempt_delay;
-        }
-      }
-    }
-  }
-
-  Err(
-    last_error.unwrap_or_else(|| IoError::other("All connection attempts failed")),
-  )
-}
-
 /// Start a connection attempt to a single address.
 async fn start_connect(
   addr: SocketAddr,
@@ -149,7 +138,9 @@ async fn start_connect(
     TcpStream::connect(addr)
       .or_cancel(&cancel)
       .await
-      .map_err(|_| IoError::new(ErrorKind::Interrupted, "Connection cancelled"))??
+      .map_err(|_| {
+        IoError::new(ErrorKind::Interrupted, "Connection cancelled")
+      })??
   } else {
     TcpStream::connect(addr).await?
   };
@@ -162,6 +153,8 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::SocketAddrV4;
   use std::net::SocketAddrV6;
+
+  use tokio::net::TcpListener;
 
   use super::*;
 
@@ -267,8 +260,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_connect_single_address_succeeds() {
-    use tokio::net::TcpListener;
-
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
@@ -279,14 +270,13 @@ mod tests {
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result.addr, addr);
-    assert_eq!(result.attempted_addresses, vec![addr.to_string()]);
+    assert_eq!(result.attempted_addresses, vec![addr]);
   }
 
   /// Returns a socket address that will refuse connections.
   /// Note: There's a small race window where another process could bind
   /// to this port, but it's acceptable for test purposes.
   async fn get_refusing_addr() -> SocketAddr {
-    use tokio::net::TcpListener;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);
@@ -306,8 +296,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_connect_fallback_to_second() {
-    use tokio::net::TcpListener;
-
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let good_addr = listener.local_addr().unwrap();
     let bad_addr = get_refusing_addr().await;
@@ -342,8 +330,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_connect_timeout_moves_to_next() {
-    use tokio::net::TcpListener;
-
     // Use a non-routable IP that will hang (black hole)
     let hanging_addr: SocketAddr = "10.255.255.1:80".parse().unwrap();
 
@@ -368,8 +354,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_connect_cancellation() {
-    use tokio::net::TcpListener;
-
     let cancel = CancelHandle::new_rc();
     cancel.cancel();
 
@@ -389,8 +373,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_parallel_second_wins() {
-    use tokio::net::TcpListener;
-
     // First address hangs (non-routable), second is a valid listener
     let hanging_addr: SocketAddr = "10.255.255.1:80".parse().unwrap();
 
@@ -398,9 +380,10 @@ mod tests {
     let good_addr = listener.local_addr().unwrap();
 
     let start = std::time::Instant::now();
+    let attempt_delay = Duration::from_millis(50);
     let result = connect_happy_eyeballs(
       vec![hanging_addr, good_addr],
-      Duration::from_millis(50), // Short delay before starting second attempt
+      attempt_delay,
       None,
     )
     .await;
@@ -413,13 +396,11 @@ mod tests {
     // Both addresses should be in attempted list (parallel attempts)
     assert_eq!(result.attempted_addresses.len(), 2);
     // Should complete in roughly delay + connection time, not full timeout
-    assert!(elapsed < Duration::from_millis(500));
+    assert!(attempt_delay < elapsed && elapsed < Duration::from_millis(500));
   }
 
   #[tokio::test]
   async fn test_parallel_first_wins_if_faster() {
-    use tokio::net::TcpListener;
-
     // Both addresses are valid listeners, first should win
     let listener1 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr1 = listener1.local_addr().unwrap();
@@ -429,7 +410,7 @@ mod tests {
 
     let result = connect_happy_eyeballs(
       vec![addr1, addr2],
-      Duration::from_millis(250), // Second attempt starts after 250ms
+      Duration::from_millis(250),
       None,
     )
     .await;

@@ -92,17 +92,17 @@ pub struct TcpConnectOptions {
   #[serde(default = "default_auto_select_family")]
   pub auto_select_family: bool,
 
-  /// Timeout in milliseconds for each connection attempt. Default: 250
-  #[serde(default = "default_attempt_timeout")]
-  pub auto_select_family_attempt_timeout: u64,
+  /// Delay in milliseconds between connection attempts. Default: 250
+  #[serde(default = "default_attempt_delay")]
+  pub auto_select_family_attempt_delay: u64,
 }
 
 fn default_auto_select_family() -> bool {
   true
 }
 
-fn default_attempt_timeout() -> u64 {
-  crate::happy_eyeballs::DEFAULT_ATTEMPT_TIMEOUT_MS
+fn default_attempt_delay() -> u64 {
+  crate::happy_eyeballs::DEFAULT_ATTEMPT_DELAY_MS
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -555,11 +555,11 @@ pub async fn op_net_connect_tcp_inner(
 
   // Use Happy Eyeballs if enabled and multiple addresses available
   let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
-    let timeout =
-      Duration::from_millis(options.auto_select_family_attempt_timeout);
+    let attempt_delay =
+      Duration::from_millis(options.auto_select_family_attempt_delay);
     let result = crate::happy_eyeballs::connect_happy_eyeballs(
       addrs,
-      timeout,
+      attempt_delay,
       cancel_handle.clone(),
     )
     .await
