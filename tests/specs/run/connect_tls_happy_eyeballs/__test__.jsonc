@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "basic_connect_tls": {
+      "args": "run --allow-net --allow-read --cert RootCA.pem --config deno.json connect_tls_basic.ts",
+      "output": "connect_tls_basic.out"
+    },
+    "connect_tls_disabled": {
+      "args": "run --allow-net --allow-read --cert RootCA.pem --config deno.json connect_tls_disabled.ts",
+      "output": "connect_tls_disabled.out"
+    }
+  }
+}
