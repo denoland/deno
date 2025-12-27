@@ -355,6 +355,22 @@ declare namespace Deno {
     transport?: "tcp";
     /** An {@linkcode AbortSignal} to close the tcp connection. */
     signal?: AbortSignal;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Timeout in milliseconds for each connection attempt when using
+     * Happy Eyeballs. If a connection attempt times out, the next address
+     * will be tried.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptTimeout?: number;
   }
 
   /**
@@ -477,6 +493,22 @@ declare namespace Deno {
      * @default {false}
      */
     unsafelyDisableHostnameVerification?: boolean;
+    /**
+     * Enable Happy Eyeballs algorithm (RFC 8305) for automatic address family
+     * selection. When enabled, the connection will try both IPv6 and IPv4
+     * addresses with interleaving for faster connection establishment.
+     *
+     * @default {true}
+     */
+    autoSelectFamily?: boolean;
+    /**
+     * Timeout in milliseconds for each connection attempt when using
+     * Happy Eyeballs. If a connection attempt times out, the next address
+     * will be tried.
+     *
+     * @default {250}
+     */
+    autoSelectFamilyAttemptTimeout?: number;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

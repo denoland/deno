@@ -59,6 +59,8 @@ async function connectTls({
   cert = undefined,
   key = undefined,
   unsafelyDisableHostnameVerification = false,
+  autoSelectFamily = true,
+  autoSelectFamilyAttemptTimeout = 250,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -76,6 +78,7 @@ async function connectTls({
     { hostname, port },
     { caCerts, alpnProtocols, serverName, unsafelyDisableHostnameVerification },
     keyPair,
+    { autoSelectFamily, autoSelectFamilyAttemptTimeout },
   );
   localAddr.transport = "tcp";
   remoteAddr.transport = "tcp";

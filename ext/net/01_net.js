@@ -716,6 +716,11 @@ async function connect(args) {
             },
             undefined,
             cancelRid,
+            {
+              autoSelectFamily: args.autoSelectFamily ?? true,
+              autoSelectFamilyAttemptTimeout:
+                args.autoSelectFamilyAttemptTimeout ?? 250,
+            },
           );
         localAddr.transport = "tcp";
         remoteAddr.transport = "tcp";

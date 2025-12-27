@@ -51,9 +51,12 @@ use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use crate::happy_eyeballs::DEFAULT_ATTEMPT_TIMEOUT_MS;
+use crate::happy_eyeballs::connect_happy_eyeballs;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::NetError;
+use crate::ops::TcpConnectOptions;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
@@ -408,6 +411,7 @@ pub async fn op_net_connect_tls(
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
+  #[serde] options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
@@ -461,11 +465,30 @@ pub async fn op_net_connect_tls(
     ServerName::try_from(addr.hostname.clone())
   }
   .map_err(|_| NetError::InvalidHostname(addr.hostname.clone()))?;
-  let connect_addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(connect_addr).await?;
+
+  // Use Happy Eyeballs for connection
+  let options = options.unwrap_or_default();
+  let addrs: Vec<_> = resolve_addr(&addr.hostname, addr.port).await?.collect();
+
+  if addrs.is_empty() {
+    return Err(NetError::NoResolvedAddress);
+  }
+
+  // Use Happy Eyeballs if enabled and multiple addresses available
+  let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
+    let timeout_ms = options.auto_select_family_attempt_timeout;
+    let timeout = std::time::Duration::from_millis(if timeout_ms > 0 {
+      timeout_ms
+    } else {
+      DEFAULT_ATTEMPT_TIMEOUT_MS
+    });
+    let result = connect_happy_eyeballs(addrs, timeout, None).await?;
+    result.stream
+  } else {
+    // Single address or Happy Eyeballs disabled - use first address
+    TcpStream::connect(addrs[0]).await?
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
