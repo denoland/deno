@@ -364,13 +364,13 @@ declare namespace Deno {
      */
     autoSelectFamily?: boolean;
     /**
-     * Timeout in milliseconds for each connection attempt when using
-     * Happy Eyeballs. If a connection attempt times out, the next address
-     * will be tried.
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
      *
      * @default {250}
      */
-    autoSelectFamilyAttemptTimeout?: number;
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /**
@@ -502,13 +502,13 @@ declare namespace Deno {
      */
     autoSelectFamily?: boolean;
     /**
-     * Timeout in milliseconds for each connection attempt when using
-     * Happy Eyeballs. If a connection attempt times out, the next address
-     * will be tried.
+     * Delay in milliseconds between starting new connection attempts when
+     * using Happy Eyeballs. A new connection attempt is started every
+     * `autoSelectFamilyAttemptDelay` milliseconds until one succeeds.
      *
      * @default {250}
      */
-    autoSelectFamilyAttemptTimeout?: number;
+    autoSelectFamilyAttemptDelay?: number;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

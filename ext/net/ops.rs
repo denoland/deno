@@ -567,10 +567,7 @@ pub async fn op_net_connect_tcp_inner(
     result.stream
   } else {
     // Single address or Happy Eyeballs disabled - use first address
-    let addr = addrs
-      .into_iter()
-      .next()
-      .expect("addrs is non-empty, checked above");
+    let addr = addrs[0];
     let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
       TcpStream::connect(&addr).or_cancel(cancel_handle).await?
     } else {

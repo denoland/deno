@@ -380,8 +380,6 @@ export class TCP extends ConnectionWrap {
     op_net_connect_tcp(
       { hostname: address ?? "127.0.0.1", port },
       this.#netPermToken,
-      undefined, // resource_abort_id
-      undefined, // options - uses default (Happy Eyeballs enabled)
     ).then(
       ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
         // Incorrect / backwards, but correcting the local address and port with
