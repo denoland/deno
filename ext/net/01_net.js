@@ -718,8 +718,8 @@ async function connect(args) {
             cancelRid,
             {
               autoSelectFamily: args.autoSelectFamily ?? true,
-              autoSelectFamilyAttemptDelay:
-                args.autoSelectFamilyAttemptDelay ?? 250,
+              autoSelectFamilyAttemptDelay: args.autoSelectFamilyAttemptDelay ??
+                250,
             },
           );
         localAddr.transport = "tcp";
