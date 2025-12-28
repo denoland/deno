@@ -620,12 +620,13 @@ impl MainWorker {
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
+      let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
+      js_runtime.op_state().borrow_mut().put(inspector_url);
     }
 
     let (
