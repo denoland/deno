@@ -4,7 +4,9 @@ use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
+use test_util::eprintln;
 use test_util::itest;
+use test_util::test;
 use url::Url;
 use util::TestContextBuilder;
 use util::assert_contains;
@@ -1356,9 +1358,11 @@ fn top_level_install_package_json_explicit_opt_in() {
     "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",
-    "Packages: 1\n",
+    "Installed 1 package in [WILDCARD]\n",
+    "Reused 0 packages from cache\n",
+    "Downloaded 0 packages from JSR\n",
+    "Downloaded 1 package from npm\n",
     "+\n",
-    "Resolved: 0, reused: 0, downloaded: 2, added: 1\n",
     "\n",
     "Dependencies:\n",
     "+ npm:@denotest/esm-basic 1.0.0\n",
@@ -1431,8 +1435,7 @@ console.log(getKind());
 "#,
   );
   let output = test_context.new_command().args("run --check main.ts").run();
-  output
-    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
+  output.assert_matches_text("Check main.ts\n2\n1\n2\nesm\n");
 
   // should not have created the .deno directory
   assert!(!dir.path().join("node_modules/.deno").exists());
@@ -1527,7 +1530,7 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("5\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text("Check main.ts\n");
 }
 
 #[test]
@@ -1651,7 +1654,7 @@ console.log(add(1, 2));
     .new_command()
     .args("check ./project-b/main.ts")
     .run();
-  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+  output.assert_matches_text("Check project-b/main.ts\n");
 
   // Now a file in the main directory should just be able to
   // import it via node resolution even though a package.json
@@ -1668,7 +1671,7 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text("Check main.ts\n");
 }
 
 #[test]
@@ -1750,7 +1753,7 @@ console.log(add(1, 2));
     .new_command()
     .args("check ./project-b/main.ts")
     .run();
-  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+  output.assert_matches_text("Check project-b/main.ts\n");
 
   // Now a file in the main directory should just be able to
   // import it via node resolution even though a package.json
@@ -1767,7 +1770,7 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text("Check main.ts\n");
 }
 
 #[test]
@@ -1782,7 +1785,7 @@ fn check_css_package_json_exports() {
     .new_command()
     .args("check main.ts")
     .run()
-    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck main.ts\n")
     .assert_exit_code(0);
 }
 
@@ -1974,7 +1977,7 @@ fn run_cjs_in_node_modules_folder() {
     .assert_matches_text("hi\n");
 }
 
-#[tokio::test]
+#[test]
 async fn test_private_npm_registry() {
   let _server = http_server();
 

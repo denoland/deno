@@ -69,6 +69,7 @@ function parseFileMode(value, name, def) {
   return value;
 }
 
+/** @type {(buffer: unknown, name?: string) => asserts buffer is ArrayBufferView} */
 const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   if (!isArrayBufferView(buffer)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
@@ -79,6 +80,7 @@ const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInteger = hideStackFrames(
   (
     value,
@@ -99,14 +101,14 @@ const validateInteger = hideStackFrames(
 );
 
 /**
- * @param {unknown} value
- * @param {string} name
- * @param {{
+ * @typedef {{
  *   allowArray?: boolean,
  *   allowFunction?: boolean,
- *   nullable?: boolean
- * }} [options]
+ *   nullable?: boolean,
+ * }} ValidateObjectOptions
  */
+/** @typedef {(value: unknown, name: string, options?: ValidateObjectOptions) => asserts value is object} ValidateObject */
+/** @type {ValidateObject} */
 const validateObject = hideStackFrames((value, name, options) => {
   const useDefaultOptions = options == null;
   const allowArray = useDefaultOptions ? false : options.allowArray;
@@ -123,6 +125,7 @@ const validateObject = hideStackFrames((value, name, options) => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInt32 = hideStackFrames(
   (value, name, min = -2147483648, max = 2147483647) => {
     // The defaults for min and max correspond to the limits of 32-bit integers.
@@ -144,6 +147,9 @@ const validateInt32 = hideStackFrames(
   },
 );
 
+/**
+ * @type {(value: unknown, name: string, positive?: boolean) => asserts value is number}
+ */
 const validateUint32 = hideStackFrames(
   (value, name, positive) => {
     if (!isUint32(value)) {
@@ -177,11 +183,9 @@ function validateString(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
-function validateNumber(value, name, min = undefined, max) {
+/** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
+/** @type {ValidateNumber} */
+const validateNumber = hideStackFrames((value, name, min = undefined, max) => {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
   }
@@ -198,7 +202,7 @@ function validateNumber(value, name, min = undefined, max) {
       value,
     );
   }
-}
+});
 
 /**
  * @param {unknown} value

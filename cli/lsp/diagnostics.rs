@@ -1012,17 +1012,6 @@ fn diagnose_resolution(
                           module_name.to_string(),
                         ));
                       }
-                    } else if let Some(npm_resolver) = managed_npm_resolver {
-                      // check that a @types/node package exists in the resolver
-                      let types_node_req =
-                        PackageReq::from_str("@types/node").unwrap();
-                      if !npm_resolver.is_pkg_req_folder_cached(&types_node_req)
-                      {
-                        diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-                          types_node_req,
-                          ModuleSpecifier::parse("npm:@types/node").unwrap(),
-                        ));
-                      }
                     }
                   } else {
                     // When the document is not available, it means that it cannot be found
@@ -1074,6 +1063,22 @@ fn diagnose_dependency(
     .in_node_modules(&referrer_module.specifier)
   {
     return; // ignore, surface typescript errors instead
+  }
+
+  if referrer_module.media_type.is_declaration() {
+    let compiler_options_data = snapshot
+      .compiler_options_resolver
+      .for_key(&referrer_module.compiler_options_key);
+    if compiler_options_data.is_none() {
+      lsp_warn!(
+        "Key was not in sync with resolver while checking `skipLibCheck`. This should be impossible."
+      );
+      #[cfg(debug_assertions)]
+      unreachable!();
+    }
+    if compiler_options_data.is_some_and(|d| d.skip_lib_check) {
+      return;
+    }
   }
 
   let import_map = snapshot
@@ -1685,7 +1690,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1695,7 +1700,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1705,7 +1710,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.d.ts\" not a dependency",
             },
           ],
         ],

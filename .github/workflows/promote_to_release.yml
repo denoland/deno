@@ -18,7 +18,7 @@ jobs:
   # Handle Windows binary patching and re-signing in a separate job
   promote-to-release-windows:
     name: Promote Windows to Release
-    runs-on: windows-latest
+    runs-on: windows-2022
     if: github.repository == 'denoland/deno'
     permissions:
       contents: write
@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.DENOBOT_PAT }}
-          submodules: recursive
+          submodules: false
 
       - name: Install deno
         uses: denoland/setup-deno@v2
@@ -46,20 +46,8 @@ jobs:
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
 
       - name: Run patchver for Windows
-        shell: pwsh
         run: |
-          deno install -A -n patchver https://deno.land/x/patchver@0.2.0/cli.ts
-          $CHANNEL="${{github.event.inputs.releaseKind}}"
-          # Patch deno.exe
-          Move-Item -Path "deno.exe" -Destination "deno_original.exe"
-          patchver "deno_original.exe" "deno.exe" $CHANNEL
-          # Patch denort.exe
-          Move-Item -Path "denort.exe" -Destination "denort_original.exe"
-          patchver "denort_original.exe" "denort.exe" $CHANNEL
-
-          # Rename files to match expected pattern
-          Move-Item -Path "deno.exe" -Destination "deno-x86_64-pc-windows-msvc-$CHANNEL.exe"
-          Move-Item -Path "denort.exe" -Destination "denort-x86_64-pc-windows-msvc-$CHANNEL.exe"
+          deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
 
       - name: Authenticate with Azure
         uses: azure/login@v1
@@ -72,11 +60,13 @@ jobs:
       - name: Code sign deno.exe
         uses: azure/trusted-signing-action@v0
         with:
+          cache-dependencies: false
+          trace: true
           endpoint: https://eus.codesigning.azure.net/
           trusted-signing-account-name: deno-cli-code-signing
           certificate-profile-name: deno-cli-code-signing-cert
           files-folder: .
-          files-folder-filter: deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe
+          files-folder-filter: deno.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -93,12 +83,12 @@ jobs:
         run: |
           $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           $SignToolPath = $SignTool.FullName
-          & $SignToolPath verify /pa /v "deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe"
+          & $SignToolPath verify /pa /v "deno.exe"
 
       - name: Create archives
         run: |
-          Compress-Archive -Path "deno-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force
-          Compress-Archive -Path "denort-x86_64-pc-windows-msvc-${{github.event.inputs.releaseKind}}.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force
+          Compress-Archive -Path "deno.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force
+          Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force
 
       - name: Upload Windows archives
         uses: actions/upload-artifact@v4

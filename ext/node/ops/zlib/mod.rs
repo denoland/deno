@@ -273,7 +273,7 @@ impl ZlibInner {
 
   fn check_error(
     error_info: Option<(i32, String)>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     this: &v8::Global<v8::Object>,
   ) -> bool {
     let Some((err, msg)) = error_info else {
@@ -302,7 +302,10 @@ pub struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GarbageCollected for Zlib {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Zlib {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Zlib"
   }
@@ -410,7 +413,7 @@ impl Zlib {
   pub fn write_sync(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -445,7 +448,7 @@ impl Zlib {
   fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -561,7 +564,10 @@ pub struct BrotliEncoder {
   ctx: Rc<RefCell<Option<BrotliEncoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BrotliEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliEncoder"
   }
@@ -627,7 +633,7 @@ impl BrotliEncoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: u8,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -726,7 +732,10 @@ pub struct BrotliDecoder {
   ctx: Rc<RefCell<Option<BrotliDecoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliDecoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BrotliDecoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliDecoder"
   }
@@ -734,7 +743,7 @@ impl deno_core::GarbageCollected for BrotliDecoder {
 
 fn decoder_param(
   i: u32,
-) -> ffi::decompressor::ffi::interface::BrotliDecoderParameter {
+) -> Option<ffi::decompressor::ffi::interface::BrotliDecoderParameter> {
   const _: () = {
     assert!(
       std::mem::size_of::<
@@ -743,8 +752,11 @@ fn decoder_param(
         == std::mem::size_of::<u32>(),
     );
   };
-  // SAFETY: `i` is a valid u32 value that corresponds to a BrotliDecoderParameter.
-  unsafe { std::mem::transmute(i) }
+  match i {
+    0 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION),
+    1 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW),
+    _ => None
+  }
 }
 
 #[op2]
@@ -771,11 +783,11 @@ impl BrotliDecoder {
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
-        ffi::decompressor::ffi::BrotliDecoderSetParameter(
-          state,
-          decoder_param(i as u32),
-          value,
-        );
+        if let Some(param) = decoder_param(i as u32) {
+          ffi::decompressor::ffi::BrotliDecoderSetParameter(
+            state, param, value,
+          );
+        }
       }
 
       state
@@ -801,7 +813,7 @@ impl BrotliDecoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] _flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -911,7 +923,7 @@ impl BrotliDecoder {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32_string(#[string] data: &str, value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
@@ -919,7 +931,7 @@ pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32(#[buffer] data: &[u8], value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32

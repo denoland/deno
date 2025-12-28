@@ -12,7 +12,9 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::TransferredResource;
 use deno_core::op2;
+use deno_error::JsErrorBox;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -37,10 +39,14 @@ pub enum MessagePortError {
   #[class(inherit)]
   #[error(transparent)]
   Resource(deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Generic(JsErrorBox),
 }
 
 pub enum Transferable {
-  MessagePort(MessagePort),
+  Resource(String, Box<dyn TransferredResource>),
+  MultiResource(String, Vec<Box<dyn TransferredResource>>),
   ArrayBuffer(u32),
 }
 
@@ -130,6 +136,24 @@ impl Resource for MessagePortResource {
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
   }
+
+  fn transfer(
+    self: Rc<Self>,
+  ) -> Result<Box<dyn TransferredResource>, JsErrorBox> {
+    self.cancel.cancel();
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| JsErrorBox::from_err(MessagePortError::NotReady))?;
+    Ok(Box::new(resource.port))
+  }
+}
+
+impl TransferredResource for MessagePort {
+  fn receive(self: Box<Self>) -> Rc<dyn Resource> {
+    Rc::new(MessagePortResource {
+      port: *self,
+      cancel: CancelHandle::new(),
+    })
+  }
 }
 
 #[op2]
@@ -155,9 +179,9 @@ pub fn op_message_port_create_entangled(
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
 pub enum JsTransferable {
-  #[serde(rename_all = "camelCase")]
-  MessagePort(ResourceId),
   ArrayBuffer(u32),
+  Resource(String, ResourceId),
+  MultiResource(String, Vec<ResourceId>),
 }
 
 pub fn deserialize_js_transferables(
@@ -167,15 +191,25 @@ pub fn deserialize_js_transferables(
   let mut transferables = Vec::with_capacity(js_transferables.len());
   for js_transferable in js_transferables {
     match js_transferable {
-      JsTransferable::MessagePort(id) => {
+      JsTransferable::Resource(name, rid) => {
         let resource = state
           .resource_table
-          .take::<MessagePortResource>(id)
+          .take_any(rid)
           .map_err(|_| MessagePortError::InvalidTransfer)?;
-        resource.cancel.cancel();
-        let resource =
-          Rc::try_unwrap(resource).map_err(|_| MessagePortError::NotReady)?;
-        transferables.push(Transferable::MessagePort(resource.port));
+        let tx = resource.transfer().map_err(MessagePortError::Generic)?;
+        transferables.push(Transferable::Resource(name, tx));
+      }
+      JsTransferable::MultiResource(name, rids) => {
+        let mut txs = Vec::with_capacity(rids.len());
+        for rid in rids {
+          let resource = state
+            .resource_table
+            .take_any(rid)
+            .map_err(|_| MessagePortError::InvalidTransfer)?;
+          let tx = resource.transfer().map_err(MessagePortError::Generic)?;
+          txs.push(tx);
+        }
+        transferables.push(Transferable::MultiResource(name, txs));
       }
       JsTransferable::ArrayBuffer(id) => {
         transferables.push(Transferable::ArrayBuffer(id));
@@ -192,12 +226,17 @@ pub fn serialize_transferables(
   let mut js_transferables = Vec::with_capacity(transferables.len());
   for transferable in transferables {
     match transferable {
-      Transferable::MessagePort(port) => {
-        let rid = state.resource_table.add(MessagePortResource {
-          port,
-          cancel: CancelHandle::new(),
-        });
-        js_transferables.push(JsTransferable::MessagePort(rid));
+      Transferable::Resource(name, tx) => {
+        let rx = tx.receive();
+        let rid = state.resource_table.add_rc_dyn(rx);
+        js_transferables.push(JsTransferable::Resource(name, rid));
+      }
+      Transferable::MultiResource(name, txs) => {
+        let rids = txs
+          .into_iter()
+          .map(|tx| state.resource_table.add_rc_dyn(tx.receive()))
+          .collect();
+        js_transferables.push(JsTransferable::MultiResource(name, rids));
       }
       Transferable::ArrayBuffer(id) => {
         js_transferables.push(JsTransferable::ArrayBuffer(id));
@@ -220,7 +259,7 @@ pub fn op_message_port_post_message(
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   for js_transferable in &data.transferables {
-    if let JsTransferable::MessagePort(id) = js_transferable
+    if let JsTransferable::Resource(_name, id) = js_transferable
       && *id == rid
     {
       return Err(MessagePortError::TransferSelf);

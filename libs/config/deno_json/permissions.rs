@@ -71,6 +71,26 @@ pub struct AllowDenyPermissionConfig {
   pub deny: Option<PermissionConfigValue>,
 }
 
+impl AllowDenyPermissionConfig {
+  pub fn is_none(&self) -> bool {
+    self.allow.is_none() && self.deny.is_none()
+  }
+}
+
+#[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq, Hash)]
+#[serde(default, deny_unknown_fields)]
+pub struct AllowDenyIgnorePermissionConfig {
+  pub allow: Option<PermissionConfigValue>,
+  pub deny: Option<PermissionConfigValue>,
+  pub ignore: Option<PermissionConfigValue>,
+}
+
+impl AllowDenyIgnorePermissionConfig {
+  pub fn is_none(&self) -> bool {
+    self.allow.is_none() && self.deny.is_none() && self.ignore.is_none()
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum AllowDenyPermissionConfigValue {
@@ -101,7 +121,46 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
         deny: None,
       }
     }
-    AllowDenyPermissionConfigValue::Object(allow_deny) => allow_deny,
+    AllowDenyPermissionConfigValue::Object(obj) => obj,
+  })
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum AllowDenyIgnorePermissionConfigValue {
+  Boolean(bool),
+  AllowList(Vec<String>),
+  Object(AllowDenyIgnorePermissionConfig),
+}
+
+fn deserialize_allow_deny_ignore<'de, D: serde::Deserializer<'de>>(
+  de: D,
+) -> Result<AllowDenyIgnorePermissionConfig, D::Error> {
+  AllowDenyIgnorePermissionConfigValue::deserialize(de).map(|value| match value
+  {
+    AllowDenyIgnorePermissionConfigValue::Boolean(b) => {
+      AllowDenyIgnorePermissionConfig {
+        allow: Some(if b {
+          PermissionConfigValue::All
+        } else {
+          PermissionConfigValue::None
+        }),
+        deny: None,
+        ignore: None,
+      }
+    }
+    AllowDenyIgnorePermissionConfigValue::AllowList(allow) => {
+      AllowDenyIgnorePermissionConfig {
+        allow: Some(if allow.is_empty() {
+          PermissionConfigValue::None
+        } else {
+          PermissionConfigValue::Some(allow)
+        }),
+        deny: None,
+        ignore: None,
+      }
+    }
+    AllowDenyIgnorePermissionConfigValue::Object(obj) => obj,
   })
 }
 
@@ -123,14 +182,14 @@ pub struct PermissionsObjectWithBase {
 pub struct PermissionsObject {
   #[serde(default)]
   pub all: Option<bool>,
-  #[serde(default, deserialize_with = "deserialize_allow_deny")]
-  pub read: AllowDenyPermissionConfig,
+  #[serde(default, deserialize_with = "deserialize_allow_deny_ignore")]
+  pub read: AllowDenyIgnorePermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub write: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub import: AllowDenyPermissionConfig,
-  #[serde(default, deserialize_with = "deserialize_allow_deny")]
-  pub env: AllowDenyPermissionConfig,
+  #[serde(default, deserialize_with = "deserialize_allow_deny_ignore")]
+  pub env: AllowDenyIgnorePermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub net: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
@@ -139,6 +198,21 @@ pub struct PermissionsObject {
   pub ffi: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub sys: AllowDenyPermissionConfig,
+}
+
+impl PermissionsObject {
+  /// Returns true if the permissions object is empty (no permissions are set).
+  pub fn is_empty(&self) -> bool {
+    self.all.is_none()
+      && self.read.is_none()
+      && self.write.is_none()
+      && self.import.is_none()
+      && self.env.is_none()
+      && self.net.is_none()
+      && self.run.is_none()
+      && self.ffi.is_none()
+      && self.sys.is_none()
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -219,9 +293,10 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: Some(true),
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: None,
+          ignore: None,
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::All),
@@ -231,9 +306,10 @@ mod test {
           allow: Some(PermissionConfigValue::All),
           deny: None,
         },
-        env: AllowDenyPermissionConfig {
+        env: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: None,
+          ignore: None,
         },
         net: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::All),
@@ -268,9 +344,10 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
-          deny: None
+          deny: None,
+          ignore: None,
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
@@ -280,9 +357,10 @@ mod test {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: None,
         },
-        env: AllowDenyPermissionConfig {
+        env: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: None,
+          ignore: None,
         },
         net: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
@@ -308,6 +386,7 @@ mod test {
         "read": {
           "allow": ["test"],
           "deny": ["test-deny"],
+          "ignore": ["test-ignore"],
         },
         "write": [],
         "sys": {
@@ -317,11 +396,14 @@ mod test {
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
           deny: Some(PermissionConfigValue::Some(vec![
             "test-deny".to_string()
           ])),
+          ignore: Some(PermissionConfigValue::Some(vec![
+            "test-ignore".to_string()
+          ]))
         },
         write: AllowDenyPermissionConfig {
           allow: Some(PermissionConfigValue::None),
@@ -340,15 +422,19 @@ mod test {
         "read": {
           "allow": true,
           "deny": ["test-deny"],
+          "ignore": ["test-ignore"],
         },
       }))
       .unwrap(),
       PermissionsObject {
         all: None,
-        read: AllowDenyPermissionConfig {
+        read: AllowDenyIgnorePermissionConfig {
           allow: Some(PermissionConfigValue::All),
           deny: Some(PermissionConfigValue::Some(vec![
             "test-deny".to_string()
+          ])),
+          ignore: Some(PermissionConfigValue::Some(vec![
+            "test-ignore".to_string()
           ])),
         },
         ..Default::default()

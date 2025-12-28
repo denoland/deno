@@ -13,6 +13,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -161,18 +162,29 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
   }
 
   pub fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
+    fn matches_nv(req: &PackageReq, package_nv: &PackageNv) -> bool {
+      // we shouldn't support this being a tag because it's too complicated
+      debug_assert!(req.version_req.tag().is_none());
+      package_nv.name == req.name
+        && req.version_req.matches(&package_nv.version)
+    }
+
     if !self.strategy.can_run_scripts() {
       return false;
     }
-    match &self.config.allowed {
+    let matches_allowed = match &self.config.allowed {
       PackagesAllowedScripts::All => true,
-      // TODO: make this more correct
-      PackagesAllowedScripts::Some(allow_list) => allow_list.iter().any(|s| {
-        let s = s.strip_prefix("npm:").unwrap_or(s);
-        s == package_nv.name || s == package_nv.to_string()
-      }),
+      PackagesAllowedScripts::Some(allow_list) => {
+        allow_list.iter().any(|req| matches_nv(req, package_nv))
+      }
       PackagesAllowedScripts::None => false,
-    }
+    };
+    matches_allowed
+      && !self
+        .config
+        .denied
+        .iter()
+        .any(|req| matches_nv(req, package_nv))
   }
 
   pub fn has_run_scripts(&self, package: &NpmResolutionPackage) -> bool {
@@ -201,6 +213,10 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
         }
       } else if !self.has_run_scripts(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
+        && !(self.config.denied.iter().any(|d| {
+          package.id.nv.name == d.name
+            && d.version_req.matches(&package.id.nv.version)
+        }))
       {
         // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
         // being run, and it's also very popular - any project using Vite would raise warnings.

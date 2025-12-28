@@ -94,7 +94,7 @@ pub struct LocalNpmPackageInstaller<
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
-  lifecycle_scripts_config: LifecycleScriptsConfig,
+  lifecycle_scripts_config: Arc<LifecycleScriptsConfig>,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
@@ -149,7 +149,7 @@ impl<
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
     node_modules_folder: PathBuf,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
     install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {
@@ -468,6 +468,12 @@ impl<
       }
     }
 
+    // Wait for all npm package installations to complete before applying patches
+    // This prevents race conditions where npm packages could overwrite patch files
+    while let Some(result) = cache_futures.next().await {
+      result?; // surface the first error
+    }
+
     // 2. Setup the patch packages
     for patch_pkg in self.npm_install_deps_provider.patch_pkgs() {
       // there might be multiple ids per package due to peer dep copy packages
@@ -492,7 +498,7 @@ impl<
             let sys = self.sys.clone();
             crate::rt::spawn_blocking({
               move || {
-                clone_dir_recrusive_except_node_modules_child(
+                clone_dir_recursive_except_node_modules_child(
                   &sys, &from_path, &target,
                 )
               }
@@ -978,7 +984,7 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn clone_dir_recrusive_except_node_modules_child(
+fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
@@ -1000,7 +1006,7 @@ fn clone_dir_recrusive_except_node_modules_child(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      clone_dir_recursive(sys, &new_from, &new_to)?;
+      clone_dir_recursive_except_node_modules_child(sys, &new_from, &new_to)?;
     } else if file_type.is_file() {
       hard_link_file(sys, &new_from, &new_to).or_else(|_| {
         sys
@@ -1058,49 +1064,40 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
     use std::fmt::Write;
+    let mut output = String::new();
+
     if !packages.is_empty() {
-      let mut output = String::new();
-      let _ = writeln!(
+      _ = writeln!(
         &mut output,
-        "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-        colors::yellow("Warning"),
-        colors::gray("preinstall/install/postinstall"),
+        "{} {}",
+        colors::yellow("╭"),
+        colors::yellow_bold("Warning")
+      );
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+      _ = writeln!(
+        &mut output,
+        "{}  Ignored build scripts for packages:",
+        colors::yellow("│"),
       );
 
       for (package, _) in packages {
-        let _ = writeln!(
+        _ = writeln!(
           &mut output,
-          "┠─ {}",
-          colors::gray(format!("npm:{}", package.id.nv))
+          "{}  {}",
+          colors::yellow("│"),
+          colors::italic(format!("npm:{}", package.id.nv))
         );
       }
 
-      let _ = writeln!(&mut output, "┃");
-      let _ = writeln!(
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+
+      _ = writeln!(
         &mut output,
-        "┠─ {}",
-        colors::italic("This may cause the packages to not work correctly.")
+        "{}  Run \"{}\" to run build scripts.",
+        colors::yellow("│"),
+        colors::bold("deno approve-scripts")
       );
-      let _ = writeln!(
-        &mut output,
-        "┖─ {}",
-        colors::italic(
-          "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
-        )
-      );
-      let packages_comma_separated = packages
-        .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv))
-        .collect::<Vec<_>>()
-        .join(",");
-      let _ = write!(
-        &mut output,
-        "   {}",
-        colors::bold(format!(
-          "deno install --allow-scripts={}",
-          packages_comma_separated
-        ))
-      );
+      _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
       if let Some(install_reporter) = &self.install_reporter {
         let paths = packages
@@ -1118,7 +1115,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
           ),
         );
       } else {
-        log::warn!("{}", output);
+        log::info!("{}", output);
         for (package, _) in packages {
           let _ignore_err = create_initialized_file(
             self.sys,

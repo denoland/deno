@@ -6,6 +6,8 @@ use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::println;
+use util::test;
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -122,7 +124,7 @@ fn ts_no_recheck_on_redirect() {
 
   // run once
   let output = check_command.run();
-  output.assert_matches_text("[WILDCARD]Check file://[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Check [WILDCARD]");
 
   // run again
   let output = check_command.run();
@@ -199,7 +201,7 @@ impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
   }
 }
 
-#[tokio::test]
+#[test]
 async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()

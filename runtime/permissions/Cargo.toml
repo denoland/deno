@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.73.0"
+version = "0.84.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
@@ -41,4 +42,4 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }

@@ -357,6 +357,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       | MediaType::Dmts
       | MediaType::Dcts
       | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
@@ -528,7 +530,7 @@ fn transpile(
   let transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
-      // debug_assert!(false, "Transpile owned failed.");
+      debug_assert!(false, "Transpile owned failed.");
       source
     }
   };

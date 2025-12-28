@@ -14,9 +14,9 @@ use deno_core::futures::StreamExt;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
-use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deps::KeyPath;
@@ -35,10 +35,16 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
+mod approve_scripts;
+mod audit;
 mod cache_deps;
 pub(crate) mod deps;
+pub(crate) mod interactive_picker;
 mod outdated;
 
+pub use approve_scripts::approve_scripts;
+pub use audit::audit;
+pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
@@ -249,6 +255,19 @@ impl ConfigUpdater {
     removed
   }
 
+  fn set_allow_scripts_value(
+    &mut self,
+    value: jsonc_parser::cst::CstInputValue,
+  ) {
+    if let Some(prop) = self.root_object.get("allowScripts") {
+      prop.set_value(value);
+    } else {
+      let index = self.root_object.properties().len();
+      self.root_object.insert(index, "allowScripts", value);
+    }
+    self.modified = true;
+  }
+
   fn commit(&self) -> Result<(), AnyError> {
     if !self.modified {
       return Ok(());
@@ -438,9 +457,15 @@ pub async fn add(
   let npmrc = cli_factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver =
-    Arc::new(NpmFetchResolver::new(deps_file_fetcher, npmrc.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    cli_factory.jsr_version_resolver()?.clone(),
+  ));
+  let npm_resolver = Arc::new(NpmFetchResolver::new(
+    deps_file_fetcher,
+    npmrc.clone(),
+    cli_factory.npm_version_resolver()?.clone(),
+  ));
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
@@ -455,12 +480,24 @@ pub async fn add(
     match req {
       Ok(add_req) => package_reqs.push(add_req),
       Err(package_req) => {
-        if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        if jsr_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
           bail!(
             "{entry_text} is missing a prefix. Did you mean `{}`?",
             crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
           )
-        } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        } else if npm_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
           bail!(
             "{entry_text} is missing a prefix. Did you mean `{}`?",
             crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}"))
@@ -562,7 +599,14 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
+  npm_install_after_modification(
+    flags,
+    Some(jsr_resolver),
+    CacheTopLevelDepsOptions {
+      lockfile_only: add_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   Ok(())
 }
@@ -609,19 +653,25 @@ trait PackageInfoProvider {
   const SPECIFIER_PREFIX: &str;
   /// The help to return if a package is found by this provider
   const HELP: NotFoundHelp;
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv>;
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version>;
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError>;
+  async fn latest_version(&self, name: &PackageName) -> Option<Version>;
 }
 
 impl PackageInfoProvider for Arc<JsrFetchResolver> {
   const HELP: NotFoundHelp = NotFoundHelp::JsrPackage;
   const SPECIFIER_PREFIX: &str = "jsr";
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
-    (**self).req_to_nv(req).await
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError> {
+    Ok((**self).req_to_nv(req).await?)
   }
 
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
-    let info = self.package_info(&req.name).await?;
+  async fn latest_version(&self, name: &PackageName) -> Option<Version> {
+    let info = self.package_info(name).await?;
     best_version(
       info
         .versions
@@ -636,13 +686,17 @@ impl PackageInfoProvider for Arc<JsrFetchResolver> {
 impl PackageInfoProvider for Arc<NpmFetchResolver> {
   const HELP: NotFoundHelp = NotFoundHelp::NpmPackage;
   const SPECIFIER_PREFIX: &str = "npm";
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError> {
     (**self).req_to_nv(req).await
   }
 
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
-    let info = self.package_info(&req.name).await?;
-    best_version(info.versions.keys()).cloned()
+  async fn latest_version(&self, name: &PackageName) -> Option<Version> {
+    let info = self.package_info(name).await?;
+    best_version(self.applicable_version_infos(&info).map(|vi| &vi.version))
+      .cloned()
   }
 }
 
@@ -662,33 +716,45 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let Some(nv) = main_resolver.req_to_nv(req).await else {
-      if fallback_resolver.req_to_nv(req).await.is_some() {
-        // it's in the other registry
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          help: Some(help_if_found_in_fallback),
-          package_req: req.clone(),
-        });
-      }
-      if req.version_req.version_text() == "*"
-        && let Some(pre_release_version) =
-          main_resolver.latest_version(req).await
-      {
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          package_req: req.clone(),
-          help: Some(NotFoundHelp::PreReleaseVersion(
-            pre_release_version.clone(),
-          )),
-        });
-      }
+    let nv = match main_resolver.req_to_nv(req).await {
+      Ok(Some(nv)) => nv,
+      Ok(None) => {
+        if fallback_resolver
+          .req_to_nv(req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          // it's in the other registry
+          return Ok(PackageAndVersion::NotFound {
+            package: prefixed_name,
+            help: Some(help_if_found_in_fallback),
+            package_req: req.clone(),
+          });
+        }
 
-      return Ok(PackageAndVersion::NotFound {
-        package: prefixed_name,
-        help: None,
-        package_req: req.clone(),
-      });
+        return Ok(PackageAndVersion::NotFound {
+          package: prefixed_name,
+          help: None,
+          package_req: req.clone(),
+        });
+      }
+      Err(err) => {
+        if req.version_req.version_text() == "*"
+          && let Some(pre_release_version) =
+            main_resolver.latest_version(&req.name).await
+        {
+          return Ok(PackageAndVersion::NotFound {
+            package: prefixed_name,
+            package_req: req.clone(),
+            help: Some(NotFoundHelp::PreReleaseVersion(
+              pre_release_version.clone(),
+            )),
+          });
+        }
+        return Err(err);
+      }
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
@@ -808,18 +874,7 @@ impl AddRmPackageReq {
       Prefix::Npm => {
         let req_ref =
           NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let mut package_req = req_ref.into_inner().req;
-        // deno_semver defaults to a version req of `*` if none is specified
-        // we want to default to `latest` instead
-        if package_req.version_req == *deno_semver::WILDCARD_VERSION_REQ
-          && package_req.version_req.version_text() == "*"
-          && !entry_text.contains("@*")
-        {
-          package_req.version_req = VersionReq::from_raw_text_and_inner(
-            "latest".into(),
-            deno_semver::RangeSetOrTag::Tag("latest".into()),
-          );
-        }
+        let package_req = req_ref.into_inner().req;
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
@@ -874,7 +929,14 @@ pub async fn remove(
       config.commit()?;
     }
 
-    npm_install_after_modification(flags, None).await?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: remove_flags.lockfile_only,
+      },
+    )
+    .await?;
   }
 
   Ok(())
@@ -884,6 +946,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
@@ -891,16 +954,19 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
+  let start = std::time::Instant::now();
   let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
-  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver, cache_options)
+    .await?;
 
   if let Some(install_reporter) = cli_factory.install_reporter()? {
     let workspace = cli_factory.workspace_resolver().await?;
     let npm_resolver = cli_factory.npm_resolver().await?;
     super::installer::print_install_report(
       &cli_factory.sys(),
+      start.elapsed(),
       install_reporter,
       workspace,
       npm_resolver,
@@ -939,7 +1005,7 @@ mod test {
       (("alias@jsr:foo", None), jsr_pkg_req("alias", "foo")),
       (
         ("@alias/pkg@npm:foo", None),
-        npm_pkg_req("@alias/pkg", "foo@latest"),
+        npm_pkg_req("@alias/pkg", "foo@*"),
       ),
       (
         ("@alias/pkg@jsr:foo", None),
@@ -949,17 +1015,11 @@ mod test {
         ("alias@jsr:foo@^1.5.0", None),
         jsr_pkg_req("alias", "foo@^1.5.0"),
       ),
-      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@latest")),
+      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@*")),
       (("foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
-      (
-        ("npm:foo", Some(Prefix::Npm)),
-        npm_pkg_req("foo", "foo@latest"),
-      ),
+      (("npm:foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
-      (
-        ("npm:foo", Some(Prefix::Jsr)),
-        npm_pkg_req("foo", "foo@latest"),
-      ),
+      (("npm:foo", Some(Prefix::Jsr)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
     ];
 

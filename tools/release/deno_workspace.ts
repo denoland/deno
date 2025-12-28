@@ -6,8 +6,8 @@ export class DenoWorkspace {
   #repo: Repo;
 
   static get rootDirPath() {
-    const currentDirPath = $.path.dirname($.path.fromFileUrl(import.meta.url));
-    return $.path.resolve(currentDirPath, "../../");
+    const currentDirPath = $.path(import.meta.dirname!);
+    return currentDirPath.parentOrThrow().parentOrThrow();
   }
 
   static async load(): Promise<DenoWorkspace> {
@@ -35,7 +35,7 @@ export class DenoWorkspace {
   getCliDependencyCrates() {
     return this.getCliCrate()
       .descendantDependenciesInRepo()
-      .filter((c) => c.name !== "test_server");
+      .filter((c) => c.name !== "test_server" && c.name !== "test_macro");
   }
 
   getCliCrate() {
@@ -56,7 +56,7 @@ export class DenoWorkspace {
 
   getReleasesMdFile() {
     return new ReleasesMdFile(
-      $.path.join(DenoWorkspace.rootDirPath, "Releases.md"),
+      DenoWorkspace.rootDirPath.join("Releases.md").toString(),
     );
   }
 

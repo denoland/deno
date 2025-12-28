@@ -108,6 +108,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
+- [ ] This will trigger a publish CI run. Verify that it completes sucessfully.
 
 ## Update MDN
 
@@ -115,6 +116,18 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/mdn/browser-compat-data has been updated to reflect API
       changes in this release. If in doubt message @bartlomieju and skip this
       step.
+
+## Add `deno upgrade` banner
+
+- [ ] You can optionally add a banner that will be printed when users run
+      `deno
+      upgrade`. This is useful in situation when you want to inform
+      users about a need to run a command to enjoy a new feature or a breaking
+      change.
+  - Create `banner.txt` file with the content you want to print - _it must be
+    plaintext_.
+  - Run
+    `gsutil -h "Cache-Control: public, max-age=3600" cp banner.txt gs://dl.deno.land/release/v$VERSION/banner.txt`
 
 ## All done!
 

@@ -48,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -59,6 +60,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -93,7 +104,8 @@
               "mac",
               "linux",
               "windows",
-              "unix"
+              "unix",
+              "notMacIntel"
             ]
           },
           "repeat": {
@@ -107,6 +119,16 @@
           },
           "ignore": {
             "type": "boolean"
+          },
+          "variants": {
+            "type": "object",
+            "patternProperties": {
+              ".*": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }, {
@@ -165,6 +187,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

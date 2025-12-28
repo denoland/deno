@@ -2260,7 +2260,7 @@ Deno.test(
     const resp1 = await fetch("http://localhost/ping", { client });
     assertEquals(resp1.status, 200);
     assertEquals(resp1.headers.get("content-type"), "text/plain");
-    assertEquals(await resp1.text(), "http+unix://localhost/ping");
+    assertEquals(await resp1.text(), "http://localhost/ping");
 
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
@@ -2314,6 +2314,38 @@ Deno.test(
 Deno.test(
   {
     permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5Url() {
+    // Test that socks5 transport accepts socks5:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5hUrl() {
+    // Test that socks5 transport accepts socks5h:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5h://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
     ignore: Deno.build.os === "windows",
   },
   function createHttpClientWithVsockProxy() {
@@ -2326,5 +2358,53 @@ Deno.test(
       },
     });
     assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchTcpProxy() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      transport: "tcp",
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    const port = await started.promise;
+
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: "localhost",
+        port,
+      },
+    });
+
+    const resp1 = await fetch("https://example.com/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "https://example.com/ping");
+
+    const resp2 = await fetch("http://localhost:42424/ping", { client });
+    assertEquals(resp2.status, 200);
+    assertEquals(resp2.headers.get("content-type"), "text/plain");
+    assertEquals(await resp2.text(), "http://localhost:42424/ping");
+
+    const resp3 = await fetch("http://localhost:42424/not-found", { client });
+    assertEquals(resp3.status, 404);
+    assertEquals(await resp3.text(), "Not found");
   },
 );

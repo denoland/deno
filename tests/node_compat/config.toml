@@ -86,7 +86,7 @@
 "parallel/test-buffer-constructor-node-modules-paths.js" = {}
 "parallel/test-buffer-constructor-node-modules.js" = {}
 "parallel/test-buffer-constructor-outside-node-modules.js" = {}
-"parallel/test-buffer-copy.js" = {}
+"parallel/test-buffer-copy.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31637" }
 "parallel/test-buffer-equals.js" = {}
 "parallel/test-buffer-failed-alloc-typed-arrays.js" = {}
 "parallel/test-buffer-fakes.js" = {}
@@ -135,6 +135,10 @@
 "parallel/test-buffer-zero-fill-cli.js" = {}
 "parallel/test-buffer-zero-fill-reset.js" = {}
 "parallel/test-buffer-zero-fill.js" = {}
+"parallel/test-child-process-advanced-serialization.js" = {}
+# TODO(nathanwhit): figure out why this is failing on windows
+"parallel/test-child-process-advanced-serialization-largebuffer.js" = { windows = false }
+"parallel/test-child-process-advanced-serialization-splitted-length-field.js" = {}
 "parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
 "parallel/test-child-process-default-options.js" = {}
 "parallel/test-child-process-detached.js" = {}
@@ -198,7 +202,7 @@
 "parallel/test-crypto-dh-leak.js" = {}
 "parallel/test-crypto-dh-odd-key.js" = {}
 "parallel/test-crypto-dh-shared.js" = {}
-"parallel/test-crypto-domain.js" = {}
+"parallel/test-crypto-domain.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31636" }
 "parallel/test-crypto-ecb.js" = {}
 "parallel/test-crypto-from-binary.js" = {}
 "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js" = {}
@@ -301,8 +305,8 @@
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = { flaky = true }
-"parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = { flaky = true }
+"parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
+"parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -333,6 +337,8 @@
 "parallel/test-diagnostics-channel-udp.js" = {}
 "parallel/test-disable-sigusr1.js" = {}
 "parallel/test-dns-default-order-ipv4.js" = {}
+"parallel/test-dns-lookupService.js" = {}
+"parallel/test-dns-lookupService-promises.js" = {}
 "parallel/test-dns-multi-channel.js" = {}
 "parallel/test-dns-promises-exists.js" = {}
 "parallel/test-dns-resolvens-typeerror.js" = {}
@@ -424,10 +430,16 @@
 "parallel/test-file-read-noexist.js" = {}
 "parallel/test-file-validate-mode-flag.js" = {}
 "parallel/test-file-write-stream5.js" = {}
+"parallel/test-filehandle-close.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
+"parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# related to Unix socket path being too long
+# "parallel/test-fs-cp.mjs" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
 # but it's actually not included in 24.2 https://github.com/nodejs/node/pull/55862
 # "parallel/test-fs-constants.js" = {}
@@ -435,20 +447,32 @@
 "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
+"parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-make-callback.js" = {}
 "parallel/test-fs-makeStatsCallback.js" = {}
+"parallel/test-fs-mkdtemp-prefix-check.js" = {}
+"parallel/test-fs-mkdtemp.js" = {}
 "parallel/test-fs-open-flags.js" = {}
 "parallel/test-fs-open-no-close.js" = {}
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
+# TODO(bartlomieju): crashes constantly on CI, disabling for now
+# "parallel/test-fs-promises-file-handle-readFile.js" = { flaky = true }
+"parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
+"parallel/test-fs-read-empty-buffer.js" = {}
+"parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
+"parallel/test-fs-read-offset-null.js" = {}
+"parallel/test-fs-read-optional-params.js" = {}
+"parallel/test-fs-read-promises-optional-params.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
@@ -468,10 +492,15 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readlink-type-check.js" = {}
+"parallel/test-fs-readSync-optional-params.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
+"parallel/test-fs-realpath-buffer-encoding.js" = {}
 "parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
+"parallel/test-fs-stat-bigint.js" = {}
+"parallel/test-fs-statfs.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
 "parallel/test-fs-symlink-buffer-path.js" = {}
@@ -483,7 +512,9 @@
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
+"parallel/test-fs-write-optional-params.js" = {}
 "parallel/test-fs-write-stream-encoding.js" = {}
+"parallel/test-fs-write-sync-optional-params.js" = {}
 "parallel/test-global-console-exists.js" = {}
 "parallel/test-global-domexception.js" = {}
 "parallel/test-global-encoder.js" = {}
@@ -777,6 +808,7 @@
 "parallel/test-net-persistent-keepalive.js" = {}
 "parallel/test-net-persistent-nodelay.js" = {}
 "parallel/test-net-persistent-ref-unref.js" = {}
+"parallel/test-net-pipe-connect-errors.js" = {}
 "parallel/test-net-pipe-with-long-path.js" = {}
 "parallel/test-net-reconnect.js" = {}
 "parallel/test-net-remote-address-port.js" = {}
@@ -832,6 +864,7 @@
 "parallel/test-path-basename.js" = {}
 "parallel/test-path-dirname.js" = {}
 "parallel/test-path-extname.js" = {}
+"parallel/test-path-glob.js" = {}
 "parallel/test-path-isabsolute.js" = {}
 "parallel/test-path-makelong.js" = {}
 "parallel/test-path-normalize.js" = {}
@@ -863,6 +896,8 @@
 "parallel/test-process-emitwarning.js" = {}
 "parallel/test-process-env-allowed-flags.js" = {}
 "parallel/test-process-env-delete.js" = {}
+"parallel/test-process-env-deprecation.js" = {}
+"parallel/test-process-env-ignore-getter-setter.js" = {}
 "parallel/test-process-env-sideeffects.js" = {}
 "parallel/test-process-env-tz.js" = {}
 "parallel/test-process-env-windows-error-reset.js" = {}
@@ -906,6 +941,7 @@
 "parallel/test-readline-interface-escapecodetimeout.js" = {}
 "parallel/test-readline-interface-no-trailing-newline.js" = {}
 "parallel/test-readline-interface-recursive-writes.js" = {}
+"parallel/test-readline-line-separators.js" = {}
 "parallel/test-readline-position.js" = {}
 "parallel/test-readline-reopen.js" = {}
 "parallel/test-readline-set-raw-mode.js" = {}
@@ -943,6 +979,16 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-custom-functions.js" = {}
+"parallel/test-sqlite-data-types.js" = {}
+"parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-database-sync.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31634" }
+"parallel/test-sqlite-named-parameters.js" = {}
+"parallel/test-sqlite-session.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31635" }
+"parallel/test-sqlite-statement-sync-columns.js" = {}
+"parallel/test-sqlite-timeout.js" = {}
+"parallel/test-sqlite-transactions.js" = {}
+"parallel/test-sqlite-typed-array-and-data-view.js" = {}
 "parallel/test-stdin-hang.js" = {}
 "parallel/test-stdin-pause-resume-sync.js" = {}
 "parallel/test-stdin-pause-resume.js" = {}
@@ -1157,7 +1203,17 @@
 "parallel/test-timers-clear-timeout-interval-equivalent.js" = {}
 "parallel/test-timers-clearImmediate-als.js" = {}
 "parallel/test-timers-clearImmediate.js" = {}
-"parallel/test-timers-immediate-queue.js" = {}
+# TODO(bartlomieju): need to rearrange code for this one
+# "parallel/test-timers-immediate-promisified.js" = {}
+# TODO(bartlomieju): doesn't work correctly because of `node:domain`
+# error handling
+# "parallel/test-timers-immediate-queue-throw.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is properly supported
+# after the https://github.com/denoland/deno/pull/31643 revert
+# "parallel/test-timers-immediate-queue.js" = {}
+"parallel/test-timers-immediate-unref-nested-once.js" = {}
+"parallel/test-timers-immediate-unref-simple.js" = {}
+"parallel/test-timers-immediate-unref.js" = {}
 "parallel/test-timers-immediate.js" = {}
 "parallel/test-timers-interval-throw.js" = {}
 "parallel/test-timers-non-integer-delay.js" = {}
@@ -1228,14 +1284,14 @@
 "parallel/test-url-parse-format.js" = {}
 "parallel/test-url-parse-query.js" = {}
 "parallel/test-url-relative.js" = {}
-"parallel/test-url-urltooptions.js" = {}
+"parallel/test-url-urltooptions.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31633" }
 "parallel/test-utf8-scripts.js" = {}
 "parallel/test-util-deprecate-invalid-code.js" = {}
 # TODO(bartlomieju): disabled due to missing `pendingDeprecate` function
 # "parallel/test-util-deprecate.js" = {}
 "parallel/test-util-inherits.js" = {}
 "parallel/test-util-inspect-getters-accessing-this.js" = {}
-"parallel/test-util-isDeepStrictEqual.js" = {}
+"parallel/test-util-isDeepStrictEqual.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31632" }
 "parallel/test-util-primordial-monkeypatching.js" = {}
 "parallel/test-util-text-decoder.js" = {}
 "parallel/test-util-types-exists.js" = {}
@@ -1297,7 +1353,7 @@
 "parallel/test-vm-util-lazy-properties.js" = {}
 "parallel/test-warn-sigprof.js" = {}
 "parallel/test-weakref.js" = {}
-"parallel/test-webcrypto-encrypt-decrypt.js" = {}
+"parallel/test-webcrypto-encrypt-decrypt.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31631" }
 "parallel/test-websocket.js" = {}
 "parallel/test-webstream-string-tag.js" = {}
 "parallel/test-webstreams-compose.js" = {}
@@ -1413,15 +1469,6 @@
 "sequential/test-require-cache-without-stat.js" = {}
 "sequential/test-resolution-inspect-brk.js" = {}
 "sequential/test-runner-run-inspect.mjs" = {}
-"sequential/test-single-executable-application-assets-raw.js" = {}
-"sequential/test-single-executable-application-assets.js" = {}
-"sequential/test-single-executable-application-disable-experimental-sea-warning.js" = {}
-"sequential/test-single-executable-application-empty.js" = {}
-"sequential/test-single-executable-application-snapshot-and-code-cache.js" = {}
-"sequential/test-single-executable-application-snapshot-worker.js" = {}
-"sequential/test-single-executable-application-snapshot.js" = {}
-"sequential/test-single-executable-application-use-code-cache.js" = {}
-"sequential/test-single-executable-application.js" = {}
 "sequential/test-stream2-fs.js" = {}
 "sequential/test-tls-lookup.js" = {}
 "sequential/test-tls-psk-client.js" = {}

@@ -34,7 +34,7 @@ const {
   TypeError,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_url/00_url.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -439,10 +439,6 @@ function pathFromURL(pathOrUrl) {
 // it in unit tests
 internals.pathFromURL = pathFromURL;
 
-// deno-lint-ignore prefer-primordials
-export const SymbolDispose = Symbol.dispose;
-// deno-lint-ignore prefer-primordials
-export const SymbolAsyncDispose = Symbol.asyncDispose;
 // deno-lint-ignore prefer-primordials
 export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 

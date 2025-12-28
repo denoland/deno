@@ -24,6 +24,17 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_net_unix_stream_from_fd,
+  op_node_file_from_fd,
+  op_pipe_connect,
+  op_pipe_open,
+  op_pipe_windows_wait,
+} from "ext:core/ops";
+import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
+
+const { internalRidSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -32,12 +43,12 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { delay } from "ext:deno_node/_util/async.ts";
 import {
-  kStreamBaseField,
-  StreamBase,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+  codeMap,
+  mapSysErrnoToUvErrno,
+} from "ext:deno_node/internal_binding/uv.ts";
+import { delay } from "ext:deno_node/_util/async.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
@@ -45,20 +56,73 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
-import { primordials } from "ext:core/mod.js";
 
 const {
+  ErrorPrototype,
   FunctionPrototypeCall,
   MapPrototypeGet,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   ReflectHas,
+  StringPrototypeIncludes,
+  queueMicrotask,
 } = primordials;
 
 export enum socketType {
   SOCKET,
   SERVER,
   IPC,
+}
+
+/**
+ * A wrapper for file-based streams (PTYs, pipes, etc.) that provides
+ * the interface expected by LibuvStreamWrap.
+ */
+class FileStreamConn {
+  #rid: number;
+  #closed = false;
+
+  constructor(rid: number) {
+    this.#rid = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+  }
+
+  async read(buf: Uint8Array): Promise<number | null> {
+    // Loop to handle EAGAIN/EWOULDBLOCK for non-blocking fds (PTYs, pipes)
+    while (!this.#closed) {
+      try {
+        const nread = await core.read(this.#rid, buf);
+        return nread === 0 ? null : nread;
+      } catch (e) {
+        // Handle EAGAIN/EWOULDBLOCK by waiting and retrying
+        if (
+          ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
+          ((e as Error).name === "WouldBlock" ||
+            (e as { code?: string }).code === "EAGAIN")
+        ) {
+          // Wait a bit before retrying to avoid busy-looping
+          await delay(10);
+          continue;
+        }
+        throw e;
+      }
+    }
+    return null;
+  }
+
+  async write(data: Uint8Array): Promise<number> {
+    return await core.write(this.#rid, data);
+  }
+
+  close(): void {
+    this.#closed = true;
+    core.tryClose(this.#rid);
+  }
 }
 
 export class Pipe extends ConnectionWrap {
@@ -76,6 +140,7 @@ export class Pipe extends ConnectionWrap {
 
   #closed = false;
   #acceptBackoffDelay?: number;
+  #serverPipeRid?: number;
 
   constructor(type: number, conn?: Deno.UnixConn | StreamBase) {
     let provider: providerType;
@@ -118,9 +183,47 @@ export class Pipe extends ConnectionWrap {
     }
   }
 
-  open(_fd: number): number {
-    // REF: https://github.com/denoland/deno/issues/6529
-    notImplemented("Pipe.prototype.open");
+  open(fd: number): number {
+    if (isWindows) {
+      // Windows named pipes don't support opening from fd
+      notImplemented("Pipe.prototype.open on Windows");
+    }
+    try {
+      // First, try to open as a Unix socket (for actual Unix domain sockets)
+      const rid = op_net_unix_stream_from_fd(fd);
+      this[kStreamBaseField] = new UnixConn(rid, null, null);
+      return 0;
+    } catch (e) {
+      // If the fd is not a socket (e.g., PTY, pipe), fall back to file-based I/O
+      if (
+        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
+        (StringPrototypeIncludes((e as Error).message, "not a socket") ||
+          StringPrototypeIncludes((e as Error).message, "ENOTSOCK"))
+      ) {
+        try {
+          const rid = op_node_file_from_fd(fd);
+          this[kStreamBaseField] = new FileStreamConn(rid);
+          return 0;
+        } catch (e2) {
+          if (
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, e2) &&
+            ReflectHas(e2 as Error, "code")
+          ) {
+            return codeMap.get((e2 as { code: string }).code) ??
+              codeMap.get("UNKNOWN")!;
+          }
+          return codeMap.get("UNKNOWN")!;
+        }
+      }
+      if (
+        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
+        ReflectHas(e as Error, "code")
+      ) {
+        return codeMap.get((e as { code: string }).code) ??
+          codeMap.get("UNKNOWN")!;
+      }
+      return codeMap.get("UNKNOWN")!;
+    }
   }
 
   /**
@@ -146,8 +249,73 @@ export class Pipe extends ConnectionWrap {
    */
   connect(req: PipeConnectWrap, address: string) {
     if (isWindows) {
-      // REF: https://github.com/denoland/deno/issues/10244
-      notImplemented("Pipe.prototype.connect - Windows");
+      // On Windows, use the named pipe API
+      try {
+        const rid = op_pipe_connect(
+          address,
+          true,
+          true,
+          "net.createConnection()",
+        );
+        this[kStreamBaseField] = new PipeConn(rid);
+        this.#address = req.address = address;
+
+        // Use queueMicrotask to match async behavior
+        queueMicrotask(() => {
+          try {
+            this.afterConnect(req, 0);
+          } catch {
+            // swallow callback errors.
+          }
+        });
+      } catch (e: unknown) {
+        // Handle Windows named pipe errors
+        // Map the error to UV error codes
+        let code;
+        const err = e as {
+          code?: string;
+          message?: string;
+          rawOsError?: number;
+          cause?: { rawOsError?: number };
+        };
+        if (err.code !== undefined) {
+          code = MapPrototypeGet(codeMap, err.code) ??
+            MapPrototypeGet(codeMap, "UNKNOWN")!;
+        } else {
+          // Check error message for known patterns
+          const msg = err.message ?? "";
+          if (StringPrototypeIncludes(msg, "ENOTSOCK")) {
+            code = MapPrototypeGet(codeMap, "ENOTSOCK")!;
+          } else if (
+            StringPrototypeIncludes(msg, "ENOENT") ||
+            StringPrototypeIncludes(msg, "NotFound")
+          ) {
+            code = MapPrototypeGet(codeMap, "ENOENT")!;
+          } else {
+            // Try to extract Windows error codes from the error
+            // Windows error 2 = ERROR_FILE_NOT_FOUND -> ENOENT
+            // Windows error 3 = ERROR_PATH_NOT_FOUND -> ENOENT
+            // Windows error 231 = ERROR_PIPE_BUSY -> EAGAIN
+            // Windows error 232 = ERROR_NO_DATA -> EPIPE
+            const rawOsError = err.rawOsError ?? err.cause?.rawOsError;
+            if (rawOsError !== undefined) {
+              code = mapSysErrnoToUvErrno(rawOsError);
+            } else {
+              code = MapPrototypeGet(codeMap, "UNKNOWN")!;
+            }
+          }
+        }
+
+        queueMicrotask(() => {
+          try {
+            this.afterConnect(req, code);
+          } catch {
+            // swallow callback errors.
+          }
+        });
+      }
+
+      return 0;
     }
 
     const connectOptions: Deno.UnixConnectOptions = {
@@ -190,14 +358,33 @@ export class Pipe extends ConnectionWrap {
    * @return An error status code.
    */
   listen(backlog: number): number {
-    if (isWindows) {
-      // REF: https://github.com/denoland/deno/issues/10244
-      notImplemented("Pipe.prototype.listen - Windows");
-    }
-
     this.#backlog = isWindows
       ? this.#pendingInstances
       : ceilPowOf2(backlog + 1);
+
+    if (isWindows) {
+      try {
+        const rid = op_pipe_open(
+          this.#address!,
+          this.#pendingInstances,
+          false,
+          true,
+          true,
+          "net.Server.listen()",
+        );
+
+        this.#serverPipeRid = rid;
+        this.#acceptWindows();
+
+        return 0;
+      } catch (e) {
+        if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+          throw e;
+        }
+        return MapPrototypeGet(codeMap, e.code ?? "UNKNOWN") ??
+          MapPrototypeGet(codeMap, "UNKNOWN")!;
+      }
+    }
 
     const listenOptions = {
       path: this.#address!,
@@ -284,8 +471,8 @@ export class Pipe extends ConnectionWrap {
     return 0;
   }
 
-  /** Handle backoff delays following an unsuccessful accept. */
-  async #acceptBackoff() {
+  /** Calculate and apply backoff delay following an unsuccessful accept. */
+  async #acceptBackoff(): Promise<void> {
     // Backoff after transient errors to allow time for the system to
     // recover, and avoid blocking up the event loop with a continuously
     // running loop.
@@ -300,60 +487,101 @@ export class Pipe extends ConnectionWrap {
     }
 
     await delay(this.#acceptBackoffDelay);
+  }
 
-    this.#accept();
+  /** Accept new connections on Windows named pipes. */
+  async #acceptWindows(): Promise<void> {
+    while (!this.#closed) {
+      try {
+        // Wait for a client to connect
+        await op_pipe_windows_wait(this.#serverPipeRid!);
+
+        // Connection established, wrap it
+        const connectionHandle = new Pipe(socketType.SOCKET);
+        connectionHandle[kStreamBaseField] = new PipeConn(this.#serverPipeRid!);
+
+        this.#connections++;
+
+        try {
+          this.onconnection!(0, connectionHandle);
+        } catch {
+          // swallow callback errors.
+        }
+
+        // Reset the backoff delay upon successful accept.
+        this.#acceptBackoffDelay = undefined;
+
+        // Create a new server pipe for the next connection
+        const newRid = op_pipe_open(
+          this.#address!,
+          this.#pendingInstances,
+          false,
+          true,
+          true,
+          "net.Server.listen()",
+        );
+
+        this.#serverPipeRid = newRid;
+      } catch {
+        if (this.#closed) {
+          return;
+        }
+
+        try {
+          this.onconnection!(MapPrototypeGet(codeMap, "UNKNOWN")!, undefined);
+        } catch {
+          // swallow callback errors.
+        }
+
+        await delay(this.#acceptBackoffDelay || INITIAL_ACCEPT_BACKOFF_DELAY);
+      }
+    }
   }
 
   /** Accept new connections. */
   async #accept(): Promise<void> {
-    if (this.#closed) {
-      return;
-    }
-
-    if (this.#connections > this.#backlog!) {
-      this.#acceptBackoff();
-
-      return;
-    }
-
-    let connection: Deno.Conn;
-
-    try {
-      connection = await this.#listener.accept();
-    } catch (e) {
-      if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) &&
-        this.#closed
-      ) {
-        // Listener and server has closed.
-        return;
+    while (!this.#closed) {
+      if (this.#connections > this.#backlog!) {
+        await this.#acceptBackoff();
+        continue;
       }
 
+      let connection: Deno.Conn;
+
       try {
-        // TODO(cmorten): map errors to appropriate error codes.
-        this.onconnection!(MapPrototypeGet(codeMap, "UNKNOWN")!, undefined);
+        connection = await this.#listener.accept();
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) &&
+          this.#closed
+        ) {
+          // Listener and server has closed.
+          return;
+        }
+
+        try {
+          // TODO(cmorten): map errors to appropriate error codes.
+          this.onconnection!(MapPrototypeGet(codeMap, "UNKNOWN")!, undefined);
+        } catch {
+          // swallow callback errors.
+        }
+
+        await this.#acceptBackoff();
+        continue;
+      }
+
+      // Reset the backoff delay upon successful accept.
+      this.#acceptBackoffDelay = undefined;
+
+      const connectionHandle = new Pipe(socketType.SOCKET, connection);
+      this.#connections++;
+
+      try {
+        this.onconnection!(0, connectionHandle);
       } catch {
         // swallow callback errors.
       }
-
-      this.#acceptBackoff();
-
-      return;
     }
-
-    // Reset the backoff delay upon successful accept.
-    this.#acceptBackoffDelay = undefined;
-
-    const connectionHandle = new Pipe(socketType.SOCKET, connection);
-    this.#connections++;
-
-    try {
-      this.onconnection!(0, connectionHandle);
-    } catch {
-      // swallow callback errors.
-    }
-
-    return this.#accept();
   }
 
   /** Handle server closure. */
@@ -368,6 +596,11 @@ export class Pipe extends ConnectionWrap {
     this.#acceptBackoffDelay = undefined;
 
     if (this.provider === providerType.PIPESERVERWRAP) {
+      if (this.#serverPipeRid !== undefined) {
+        core.tryClose(this.#serverPipeRid);
+        this.#serverPipeRid = undefined;
+      }
+
       try {
         this.#listener.close();
       } catch {

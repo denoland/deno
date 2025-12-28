@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
@@ -36,14 +38,13 @@ use crate::cache::TypeCheckCache;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
-use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -104,9 +105,11 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
+  package_json_resolver: Arc<CliPackageJsonResolver>,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  tsgo_path: Option<PathBuf>,
 }
 
 impl TypeChecker {
@@ -118,9 +121,11 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
+    package_json_resolver: Arc<CliPackageJsonResolver>,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
+    tsgo_path: Option<PathBuf>,
   ) -> Self {
     Self {
       caches,
@@ -129,9 +134,11 @@ impl TypeChecker {
       module_graph_builder,
       node_resolver,
       npm_resolver,
+      package_json_resolver,
       sys,
       compiler_options_resolver,
       code_cache,
+      tsgo_path,
     }
   }
 
@@ -232,8 +239,14 @@ impl TypeChecker {
         graph,
         sys: &self.sys,
         cjs_tracker: &self.cjs_tracker,
+        jsx_import_source_config_resolver: Arc::new(
+          JsxImportSourceConfigResolver::from_compiler_options_resolver(
+            &self.compiler_options_resolver,
+          )?,
+        ),
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
+        package_json_resolver: &self.package_json_resolver,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -245,6 +258,12 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
+        tsgo_path: self.tsgo_path.clone(),
+        initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
+        current_dir: deno_path_util::url_from_directory_path(
+          self.cli_options.initial_cwd(),
+        )
+        .map_err(|e| CheckError::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
@@ -283,10 +302,7 @@ impl TypeChecker {
           imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
-          referrer: self
-            .cli_options
-            .workspace()
-            .resolve_member_dir(root)
+          referrer: dir
             .maybe_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
@@ -361,8 +377,10 @@ struct DiagnosticsByFolderRealIterator<'a> {
   graph: Arc<ModuleGraph>,
   sys: &'a CliSys,
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
+  jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
+  package_json_resolver: &'a Arc<CliPackageJsonResolver>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -372,6 +390,9 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  tsgo_path: Option<PathBuf>,
+  initial_cwd: PathBuf,
+  current_dir: Url,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -428,12 +449,15 @@ impl DiagnosticsByFolderRealIterator<'_> {
     &self,
     check_group: &CheckGroup,
   ) -> Result<Diagnostics, CheckError> {
-    fn log_provided_roots(provided_roots: &[Url]) {
+    fn log_provided_roots(provided_roots: &[Url], current_dir: &Url) {
       for root in provided_roots {
         log::info!(
           "{} {}",
           colors::green("Check"),
-          to_percent_decoded_str(root.as_str())
+          crate::util::path::relative_specifier_path_for_display(
+            current_dir,
+            root
+          ),
         );
       }
     }
@@ -470,7 +494,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     if root_names.is_empty() {
       if missing_diagnostics.has_diagnostic() {
-        log_provided_roots(&check_group.roots);
+        log_provided_roots(&check_group.roots, &self.current_dir);
       }
       return Ok(missing_diagnostics);
     }
@@ -486,7 +510,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     }
 
     // log out the roots that we're checking
-    log_provided_roots(&check_group.roots);
+    log_provided_roots(&check_group.roots, &self.current_dir);
 
     // the first root will always either be the specifier that the user provided
     // or the first specifier in a directory
@@ -518,17 +542,23 @@ impl DiagnosticsByFolderRealIterator<'_> {
         config: check_group.compiler_options.clone(),
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
+        jsx_import_source_config_resolver: self
+          .jsx_import_source_config_resolver
+          .clone(),
         hash_data: compiler_options_hash_data,
         maybe_npm: Some(tsc::RequestNpmState {
           cjs_tracker: self.cjs_tracker.clone(),
           node_resolver: self.node_resolver.clone(),
           npm_resolver: self.npm_resolver.clone(),
+          package_json_resolver: self.package_json_resolver.clone(),
         }),
         maybe_tsbuildinfo,
         root_names,
         check_mode: self.options.type_check_mode,
+        initial_cwd: self.initial_cwd.clone(),
       },
       code_cache,
+      self.tsgo_path.as_deref(),
     )?;
 
     let ambient_modules = response.ambient_modules;
@@ -708,7 +738,14 @@ impl<'a> GraphWalker<'a> {
   /// redirects resolved. We need to include all the emittable files in
   /// the roots, so they get type checked and optionally emitted,
   /// otherwise they would be ignored if only imported into JavaScript.
-  pub fn into_tsc_roots(self) -> TscRoots {
+  pub fn into_tsc_roots(mut self) -> TscRoots {
+    if self.has_seen_node_builtin && !self.roots.is_empty() {
+      // inject a specifier that will force node types to be resolved
+      self.roots.push((
+        ModuleSpecifier::parse("asset:///reference_types_node.d.ts").unwrap(),
+        MediaType::Dts,
+      ));
+    }
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
@@ -771,12 +808,16 @@ impl<'a> GraphWalker<'a> {
         Module::Node(_) => {
           if !self.has_seen_node_builtin {
             self.has_seen_node_builtin = true;
-            // inject a specifier that will resolve node types
-            self.roots.push((
-              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-              MediaType::Dts,
-            ));
           }
+        }
+      }
+
+      if module.media_type().is_declaration() {
+        let compiler_options_data = self
+          .compiler_options_resolver
+          .for_specifier(module.specifier());
+        if compiler_options_data.skip_lib_check() {
+          continue;
         }
       }
 
@@ -792,7 +833,9 @@ impl<'a> GraphWalker<'a> {
               }
             }
           }
-
+          if dep.is_dynamic {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -801,16 +844,10 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
-            && let Some(err) =
-              resolution_error_for_tsc_diagnostic(resolution_error)
+            && let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                err.specifier,
-                err.maybe_range,
-                None,
-              ));
+            self.missing_diagnostics.push(diagnostic);
           }
         }
       }
@@ -853,6 +890,8 @@ impl<'a> GraphWalker<'a> {
             }
           }
           MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css
           | MediaType::Html
@@ -969,6 +1008,8 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Dmts
     | MediaType::Tsx
     | MediaType::Json
+    | MediaType::Jsonc
+    | MediaType::Json5
     | MediaType::Wasm
     | MediaType::Css
     | MediaType::Html

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/has-patch-versions": "npm:@denotest/has-patch-versions@~0.1.0"
+  }
+}

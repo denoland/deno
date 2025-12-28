@@ -322,7 +322,7 @@ impl<'a> TsResponseImportMapper<'a> {
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
     if let Some(dep_name) =
-      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+      scoped_resolver.resource_url_to_configured_dep_key(specifier, referrer)
     {
       return Some(dep_name);
     }
@@ -547,6 +547,7 @@ impl<'a> TsResponseImportMapper<'a> {
     specifier: &str,
     referrer: &ModuleSpecifier,
     resolution_mode: ResolutionMode,
+    new_file_hints: &[Url],
   ) -> Option<String> {
     let specifier_stem = specifier.strip_suffix(".js").unwrap_or(specifier);
     let specifiers = std::iter::once(Cow::Borrowed(specifier)).chain(
@@ -569,9 +570,10 @@ impl<'a> TsResponseImportMapper<'a> {
         .ok()
         .and_then(|s| self.tsc_specifier_map.normalize(s.as_str()).ok())
         .filter(|s| {
-          self
-            .document_modules
-            .specifier_exists(s, self.scope.as_deref())
+          new_file_hints.contains(s)
+            || self
+              .document_modules
+              .specifier_exists(s, self.scope.as_deref())
         })
         && let Some(specifier) = self
           .check_specifier(&specifier, referrer)
@@ -692,6 +694,11 @@ pub fn fix_ts_import_changes(
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
+  let new_file_hints = changes
+    .iter()
+    .filter(|c| c.is_new_file.unwrap_or(false))
+    .filter_map(|c| resolve_url(&c.file_name).ok())
+    .collect::<Vec<_>>();
   for change in changes {
     if token.is_cancelled() {
       return Err(anyhow!("request cancelled"));
@@ -733,6 +740,7 @@ pub fn fix_ts_import_changes(
                 specifier,
                 &target_specifier,
                 resolution_mode,
+                &new_file_hints,
               )
             {
               line.replace(specifier, &new_specifier)
@@ -762,7 +770,7 @@ pub fn fix_ts_import_changes(
 pub fn fix_ts_import_changes_for_file_rename(
   changes: Vec<tsc::FileTextChanges>,
   new_uri: &str,
-  module: &DocumentModule,
+  old_module: &DocumentModule,
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
@@ -772,7 +780,7 @@ pub fn fix_ts_import_changes_for_file_rename(
   if !new_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
     return Ok(Vec::new());
   }
-  let new_url = uri_to_url(&new_uri);
+  let new_file_hints = [uri_to_url(&new_uri)];
   let mut r = Vec::with_capacity(changes.len());
   for mut change in changes {
     if token.is_cancelled() {
@@ -781,13 +789,24 @@ pub fn fix_ts_import_changes_for_file_rename(
     let Ok(target_specifier) = resolve_url(&change.file_name) else {
       continue;
     };
-    let import_mapper = language_server.get_ts_response_import_mapper(module);
+    let Some(target_module) =
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        old_module.scope.as_deref(),
+        Some(&old_module.compiler_options_key),
+      )
+    else {
+      continue;
+    };
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&target_module);
     for text_change in &mut change.text_changes {
-      if let Some(new_specifier) = import_mapper
-        .check_specifier(&new_url, &target_specifier)
-        .or_else(|| relative_specifier(&target_specifier, &new_url))
-        .filter(|s| !s.contains("/node_modules/"))
-      {
+      if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
+        &text_change.new_text,
+        &target_module.specifier,
+        target_module.resolution_mode,
+        &new_file_hints,
+      ) {
         text_change.new_text = new_specifier;
       }
     }
@@ -822,6 +841,12 @@ fn fix_ts_import_action<'a>(
     specifier,
     &module.specifier,
     module.resolution_mode,
+    &action
+      .changes
+      .iter()
+      .filter(|c| c.is_new_file.unwrap_or(false))
+      .filter_map(|c| resolve_url(&c.file_name).ok())
+      .collect::<Vec<_>>(),
   ) {
     let description = action.description.replace(specifier, &new_specifier);
     let changes = action
@@ -1075,51 +1100,59 @@ impl CodeActionCollection {
       .actions
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
-    // Disable a lint error for the entire file.
-    let maybe_ignore_comment = module
+    let parsed_source = module
       .open_data
       .as_ref()
-      .and_then(|d| d.parsed_source.as_ref())
-      .and_then(|ps| {
-        let ps = ps.as_ref().ok()?;
-        // Note: we can use ps.get_leading_comments() but it doesn't
-        // work when shebang is present at the top of the file.
-        ps.comments().get_vec().iter().find_map(|c| {
-          let comment_text = c.text.trim();
-          comment_text.split_whitespace().next().and_then(|prefix| {
-            if prefix == "deno-lint-ignore-file" {
-              Some(c.clone())
-            } else {
-              None
-            }
-          })
+      .and_then(|d| d.parsed_source.as_ref()?.as_ref().ok());
+    let next_leading_comment_range = {
+      let line = parsed_source
+        .and_then(|ps| {
+          let last_comment = ps.get_leading_comments()?.iter().last()?;
+          Some(module.text_info().line_index(last_comment.end()) as u32 + 1)
         })
-      });
-
-    let mut new_text = format!("// deno-lint-ignore-file {code}\n");
-    let mut range = lsp::Range {
-      start: lsp::Position {
-        line: 0,
-        character: 0,
-      },
-      end: lsp::Position {
-        line: 0,
-        character: 0,
-      },
+        .unwrap_or(0);
+      let position = lsp::Position { line, character: 0 };
+      lsp::Range {
+        start: position,
+        end: position,
+      }
     };
+
+    // Disable a lint error for the entire file.
+    let maybe_ignore_comment = parsed_source.and_then(|ps| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
+        let comment_text = c.text.trim();
+        comment_text.split_whitespace().next().and_then(|prefix| {
+          if prefix == "deno-lint-ignore-file" {
+            Some(c.clone())
+          } else {
+            None
+          }
+        })
+      })
+    });
+
+    let new_text;
+    let range;
     // If ignore file comment already exists, append the lint code
     // to the existing comment.
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = text_info.line_and_column_index(ignore_comment.end());
+      let index = text_info.line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
-        line: line.line_index as u32,
-        character: line.column_index as u32,
+        line: index.line_index as u32,
+        character: index.column_index as u32,
       };
-      // Set the edit range to the end of the comment.
-      range.start = position;
-      range.end = position;
+      range = lsp::Range {
+        start: position,
+        end: position,
+      };
+    } else {
+      new_text = format!("// deno-lint-ignore-file {code}\n");
+      range = next_leading_comment_range;
     }
 
     let mut changes = HashMap::new();
@@ -1147,16 +1180,7 @@ impl CodeActionCollection {
       uri.clone(),
       vec![lsp::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
-        range: lsp::Range {
-          start: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-          end: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-        },
+        range: next_leading_comment_range,
       }],
     );
     let ignore_file_action = lsp::CodeAction {

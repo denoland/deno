@@ -427,7 +427,7 @@ interface TextDecoder extends TextDecoderCommon {
   /** Turns binary data, often in the form of a Uint8Array, into a string given
    * the encoding.
    */
-  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+  decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string;
 }
 
 /** @category Encoding */
@@ -492,7 +492,7 @@ interface TextEncoderCommon {
 /** @category Encoding */
 interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
-  readonly writable: WritableStream<BufferSource>;
+  readonly writable: WritableStream<AllowSharedBufferSource>;
 }
 
 /** @category Encoding */
@@ -503,7 +503,7 @@ declare var TextDecoderStream: {
 
 /** @category Encoding */
 interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<string>;
 }
 
@@ -681,9 +681,9 @@ interface Blob {
   readonly size: number;
   readonly type: string;
   arrayBuffer(): Promise<ArrayBuffer>;
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
   slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream<Uint8Array>;
+  stream(): ReadableStream<Uint8Array<ArrayBuffer>>;
   text(): Promise<string>;
 }
 
@@ -737,7 +737,7 @@ type ReadableStreamController<T> =
 
 /** @category Streams */
 interface ReadableStreamGenericReader {
-  readonly closed: Promise<undefined>;
+  readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
 }
 
@@ -788,7 +788,9 @@ interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
 /** @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
-  new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
+  new (
+    stream: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): ReadableStreamBYOBReader;
 };
 
 /** @category Streams */
@@ -973,7 +975,7 @@ declare var ReadableStream: {
   new (
     underlyingSource: UnderlyingByteSource,
     strategy?: { highWaterMark?: number },
-  ): ReadableStream<Uint8Array>;
+  ): ReadableStream<Uint8Array<ArrayBuffer>>;
   new <R = any>(
     underlyingSource: UnderlyingDefaultSource<R>,
     strategy?: QueuingStrategy<R>,
@@ -1077,9 +1079,9 @@ declare var WritableStreamDefaultController: {
  * @category Streams
  */
 interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<undefined>;
+  readonly closed: Promise<void>;
   readonly desiredSize: number | null;
-  readonly ready: Promise<undefined>;
+  readonly ready: Promise<void>;
   abort(reason?: any): Promise<void>;
   close(): Promise<void>;
   releaseLock(): void;
@@ -1212,10 +1214,50 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBuffer;
+type Transferable =
+  | MessagePort
+  | ArrayBuffer
+  | ReadableStream
+  | WritableStream
+  | TransformStream;
 
-/** @category Platform */
+/**
+ * Options that control structured serialization operations such as
+ * `structuredClone(value, options)` and `MessagePort.postMessage(message, options)`.
+ *
+ * The optional `transfer` array lists {@link Transferable} objects whose
+ * underlying resources should be moved (transferred) to the receiving side
+ * instead of being cloned. After a successful transfer:
+ *
+ * - For an `ArrayBuffer`, the original buffer becomes neutered (its
+ *   `byteLength` is set to `0`).
+ * - For a `MessagePort`, the port becomes unusable on the sending side and
+ *   future events will arrive only on the transferred port at the receiver.
+ *
+ * Validation rules:
+ * - Each transferable may appear only once in the `transfer` list.
+ * - A `MessagePort` cannot be listed together with its counterpart port from
+ *   the same `MessageChannel` in the same transfer operation.
+ * - Duplicate or otherwise invalid entries will cause a `DataCloneError`
+ *   `DOMException` to be thrown.
+ *
+ * Transferring improves performance for large binary data and allows moving
+ * communication endpoints without copying.
+ *
+ * @example
+ * ```ts
+ * // Transferring an ArrayBuffer (zero-copy for large data)
+ * const buffer = new ArrayBuffer(16);
+ * const cloned = structuredClone(buffer, { transfer: [buffer] });
+ *
+ * // After transfer, the original buffer is neutered
+ * console.log(buffer.byteLength); // 0
+ * console.log(cloned.byteLength); // 16
+ *
+ * @category Platform
+ */
 interface StructuredSerializeOptions {
+  /** List of transferable objects whose ownership is moved instead of cloned. */
   transfer?: Transferable[];
 }
 
@@ -1353,7 +1395,7 @@ declare function structuredClone<T = any>(
  * @category Streams
  */
 interface CompressionStream extends GenericTransformStream {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<BufferSource>;
 }
 
@@ -1400,7 +1442,7 @@ declare var CompressionStream: {
  * @category Streams
  */
 interface DecompressionStream extends GenericTransformStream {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<BufferSource>;
 }
 
@@ -1456,16 +1498,26 @@ declare function reportError(
 type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Platform */
+type ImageDataArray =
+  | Uint8ClampedArray<ArrayBuffer>
+  | Float16Array<ArrayBuffer>;
+
+/** @category Platform */
+type ImageDataPixelFormat = "rgba-unorm8" | "rgba-float16";
+
+/** @category Platform */
 interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
+  readonly pixelFormat?: ImageDataPixelFormat;
 }
 
 /** @category Platform */
 interface ImageData {
-  readonly colorSpace: PredefinedColorSpace;
-  readonly data: Uint8ClampedArray;
-  readonly height: number;
   readonly width: number;
+  readonly height: number;
+  readonly data: ImageDataArray;
+  readonly pixelFormat: ImageDataPixelFormat;
+  readonly colorSpace: PredefinedColorSpace;
 }
 
 /** @category Platform */
@@ -1473,7 +1525,7 @@ declare var ImageData: {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
-    data: Uint8ClampedArray,
+    data: ImageDataArray,
     sw: number,
     sh?: number,
     settings?: ImageDataSettings,
@@ -1531,7 +1583,7 @@ interface WebTransport {
     WebTransportReceiveStream
   >;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/ready) */
-  readonly ready: Promise<undefined>;
+  readonly ready: Promise<void>;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/close) */
   close(closeInfo?: WebTransportCloseInfo): void;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createBidirectionalStream) */

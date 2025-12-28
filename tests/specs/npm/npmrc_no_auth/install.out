@@ -2,9 +2,11 @@ Add npm:@denotest3/basic@1.0.0
 Download http://localhost:4263/@denotest3%2fbasic
 Download http://localhost:4263/@denotest3/basic/1.0.0.tgz
 Initialize @denotest3/basic@1.0.0
-Packages: 1
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
 +
-Resolved: 0, reused: 0, downloaded: 2, added: 1
 
 Dependencies:
 + npm:@denotest3/basic 1.0.0

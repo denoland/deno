@@ -10,7 +10,6 @@ use std::rc::Rc;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::KillSignal;
@@ -18,8 +17,6 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
 use deno_task_shell::ShellPipeWriter;
-use lazy_regex::Lazy;
-use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -248,7 +245,9 @@ impl ShellCommand for NpmCommand {
       );
       return ExecutableCommand::new(
         "deno".to_string(),
-        std::env::current_exe().unwrap(),
+        std::env::current_exe()
+          .and_then(|p| p.canonicalize())
+          .unwrap(),
       )
       .execute(ShellCommandContext {
         args,
@@ -277,7 +276,9 @@ impl Default for DenoCommand {
   fn default() -> Self {
     Self(ExecutableCommand::new(
       "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
     ))
   }
 }
@@ -326,12 +327,17 @@ impl ShellCommand for NodeCommand {
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
     );
-    ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
-      .execute(ShellCommandContext {
-        args,
-        state,
-        ..context
-      })
+    ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
+    )
+    .execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    })
   }
 }
 
@@ -353,12 +359,14 @@ impl ShellCommand for NodeGypCommand {
         "{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)",
         crate::colors::yellow("Warning")
       );
+      Box::pin(std::future::ready(ExecuteResult::from_exit_code(0)))
+    } else {
+      ExecutableCommand::new(
+        "node-gyp".to_string(),
+        "node-gyp".to_string().into(),
+      )
+      .execute(context)
     }
-    ExecutableCommand::new(
-      "node-gyp".to_string(),
-      "node-gyp".to_string().into(),
-    )
-    .execute(context)
   }
 }
 
@@ -400,37 +408,6 @@ impl ShellCommand for NpxCommand {
   }
 }
 
-#[derive(Clone)]
-struct NpmPackageBinCommand {
-  name: String,
-  npm_package: PackageNv,
-}
-
-impl ShellCommand for NpmPackageBinCommand {
-  fn execute(
-    &self,
-    context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args: Vec<OsString> = vec![
-      "run".into(),
-      "-A".into(),
-      if self.npm_package.name == self.name {
-        format!("npm:{}", self.npm_package)
-      } else {
-        format!("npm:{}/{}", self.npm_package, self.name)
-      }
-      .into(),
-    ];
-
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    executable_command.execute(ShellCommandContext { args, ..context })
-  }
-}
-
 /// Runs a module in the node_modules folder.
 #[derive(Clone)]
 pub struct NodeModulesFileRunCommand {
@@ -452,7 +429,9 @@ impl ShellCommand for NodeModulesFileRunCommand {
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .unwrap(),
     );
     // set this environment variable so that the launched process knows the npm command name
     context.state.apply_env_var(
@@ -464,16 +443,17 @@ impl ShellCommand for NodeModulesFileRunCommand {
 }
 
 pub fn resolve_custom_commands(
-  npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
+  npm_resolver: &CliNpmResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
     CliNpmResolver::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      resolve_npm_commands_from_bin_dir(node_modules_dir)
+      let bin_dir = node_modules_dir.join(".bin");
+      resolve_npm_commands_from_bin_dir(&bin_dir, node_resolver)
     }
     CliNpmResolver::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(npm_resolver, node_resolver)?
+      resolve_managed_npm_commands(node_resolver, npm_resolver)?
     }
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
@@ -481,113 +461,42 @@ pub fn resolve_custom_commands(
 }
 
 pub fn resolve_npm_commands_from_bin_dir(
-  node_modules_dir: &Path,
+  bin_dir: &Path,
+  node_resolver: &CliNodeResolver,
 ) -> HashMap<String, Rc<dyn ShellCommand>> {
-  let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
-  let bin_dir = node_modules_dir.join(".bin");
-  log::debug!("Resolving commands in '{}'.", bin_dir.display());
-  match std::fs::read_dir(&bin_dir) {
-    Ok(entries) => {
-      for entry in entries {
-        let Ok(entry) = entry else {
-          continue;
-        };
-        if let Some(command) = resolve_bin_dir_entry_command(entry) {
-          result.insert(command.command_name.clone(), Rc::new(command));
-        }
-      }
-    }
-    Err(err) => {
-      log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
-    }
-  }
-  result
-}
-
-fn resolve_bin_dir_entry_command(
-  entry: std::fs::DirEntry,
-) -> Option<NodeModulesFileRunCommand> {
-  if entry.path().extension().is_some() {
-    return None; // only look at files without extensions (even on Windows)
-  }
-  let file_type = entry.file_type().ok()?;
-  let path = if file_type.is_file() {
-    entry.path()
-  } else if file_type.is_symlink() {
-    entry.path().canonicalize().ok()?
-  } else {
-    return None;
-  };
-  let text = std::fs::read_to_string(&path).ok()?;
-  let command_name = entry.file_name().to_string_lossy().into_owned();
-  if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
-    log::debug!(
-      "Resolved npx command '{}' to '{}'.",
-      command_name,
-      path.display()
-    );
-    Some(NodeModulesFileRunCommand { command_name, path })
-  } else {
-    log::debug!("Failed resolving npx command '{}'.", command_name);
-    None
-  }
-}
-
-/// This is not ideal, but it works ok because it allows us to bypass
-/// the shebang and execute the script directly with Deno.
-fn resolve_execution_path_from_npx_shim(
-  file_path: PathBuf,
-  text: &str,
-) -> Option<PathBuf> {
-  static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
-
-  let maybe_first_line = {
-    let index = text.find("\n")?;
-    Some(&text[0..index])
-  };
-
-  if let Some(first_line) = maybe_first_line {
-    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
-    // where Node is run without any args. If there are args then we use `NodeCommand`
-    // struct.
-    if first_line == "#!/usr/bin/env node"
-      || first_line == "#!/usr/bin/env -S node"
-    {
-      // launch this file itself because it's a JS file
-      return Some(file_path);
-    }
-  }
-
-  // Search for...
-  // > "$basedir/../next/dist/bin/next" "$@"
-  // ...which is what it will look like on Windows
-  SCRIPT_PATH_RE
-    .captures(text)
-    .and_then(|c| c.get(1))
-    .map(|relative_path| {
-      file_path.parent().unwrap().join(relative_path.as_str())
+  let bin_commands = node_resolver.resolve_npm_commands_from_bin_dir(bin_dir);
+  bin_commands
+    .into_iter()
+    .map(|(command_name, path)| {
+      (
+        command_name.clone(),
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
+      )
     })
+    .collect()
 }
 
 fn resolve_managed_npm_commands(
-  npm_resolver: &CliManagedNpmResolver,
   node_resolver: &CliNodeResolver,
+  npm_resolver: &CliManagedNpmResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
-    let bin_commands =
-      node_resolver.resolve_binary_commands(&package_folder)?;
-    for bin_command in bin_commands {
-      result.insert(
-        bin_command.to_string(),
-        Rc::new(NpmPackageBinCommand {
-          name: bin_command,
-          npm_package: id.nv.clone(),
+    let bins =
+      node_resolver.resolve_npm_binary_commands_for_package(&package_folder)?;
+    result.extend(bins.into_iter().map(|(command_name, path)| {
+      (
+        command_name.clone(),
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
         }) as Rc<dyn ShellCommand>,
-      );
-    }
+      )
+    }));
   }
   if !result.contains_key("npx") {
     result.insert("npx".to_string(), Rc::new(NpxCommand));
@@ -703,47 +612,6 @@ mod test {
     assert_eq!(
       env_vars,
       HashMap::from([("PATH".into(), "/example".into())])
-    );
-  }
-
-  #[test]
-  fn test_resolve_execution_path_from_npx_shim() {
-    // example shim on unix
-    let unix_shim = r#"#!/usr/bin/env node
-"use strict";
-console.log('Hi!');
-"#;
-    let path = PathBuf::from("/node_modules/.bin/example");
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
-      path
-    );
-    // example shim on unix
-    let unix_shim = r#"#!/usr/bin/env -S node
-"use strict";
-console.log('Hi!');
-"#;
-    let path = PathBuf::from("/node_modules/.bin/example");
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
-      path
-    );
-    // example shim on windows
-    let windows_shim = r#"#!/bin/sh
-basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
-
-case `uname` in
-    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
-esac
-
-if [ -x "$basedir/node" ]; then
-  exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else
-  exec node  "$basedir/../example/bin/example" "$@"
-fi"#;
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), windows_shim).unwrap(),
-      path.parent().unwrap().join("../example/bin/example")
     );
   }
 }

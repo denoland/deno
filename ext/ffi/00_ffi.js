@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isArrayBuffer,
   isDataView,
@@ -14,6 +14,7 @@ import {
   op_ffi_cstr_read,
   op_ffi_get_buf,
   op_ffi_get_static,
+  op_ffi_get_turbocall_target,
   op_ffi_load,
   op_ffi_ptr_create,
   op_ffi_ptr_equals,
@@ -562,8 +563,15 @@ function dlopen(path, symbols) {
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 
+function getTurbocallTarget() {
+  return op_ffi_get_turbocall_target();
+}
+
+internals.getTurbocallTarget = getTurbocallTarget;
+
 export {
   dlopen,
+  getTurbocallTarget,
   UnsafeCallback,
   UnsafeFnPointer,
   UnsafePointer,

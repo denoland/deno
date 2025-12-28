@@ -1787,6 +1787,15 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
       console.log("client socket closed");
       clientSocketClosed.resolve();
     });
+
+    socket.on("error", (e) => {
+      if (!("code" in e) || e.code !== "ECONNRESET") {
+        throw e;
+      }
+      console.log("client socket closed");
+      clientSocketClosed.resolve();
+    });
+
     socket.on("data", async (data) => {
       // receives pong message
       assertEquals(data, Buffer.from("8104706f6e67", "hex"));
@@ -1796,10 +1805,6 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       console.log("process closed");
       serverProcessClosed.resolve();
-
-      // sending some additional message
-      socket.write(Buffer.from("81847de88e01", "hex"));
-      socket.write(Buffer.from("0d81e066", "hex"));
     });
 
     // sending ping message
@@ -2175,4 +2180,83 @@ Deno.test("[node/http] server.listen respects signal option", async () => {
     });
   `);
   assertEquals(exitCode, 0);
+});
+
+// Test for empty chunk in chunked POST request
+// Regression test for: https://github.com/denoland/deno/issues/31056
+Deno.test("[node/http] client request with empty write in chunked POST completes", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let requestBody = "";
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      requestBody = body;
+      res.statusCode = 200;
+      res.end("OK");
+    });
+  });
+
+  server.listen(() => {
+    const { port } = server.address() as { port: number };
+
+    const req = http.request({
+      hostname: "localhost",
+      port,
+      path: "/",
+      method: "POST",
+    }, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    // This should complete successfully even with an empty write
+    req.write("");
+    req.end();
+  });
+
+  await promise;
+  assertEquals(requestBody, "");
+});
+
+Deno.test("[node/http] Server.address() includes family property", async () => {
+  // Test IPv4
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "127.0.0.1");
+      assertEquals(addr.family, "IPv4");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  // Test IPv6
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "::1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "::1");
+      assertEquals(addr.family, "IPv6");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
 });

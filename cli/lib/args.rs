@@ -211,6 +211,7 @@ pub struct UnstableConfig {
   pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
+  pub tsgo: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
@@ -234,6 +235,7 @@ impl UnstableConfig {
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
+    maybe_set(&mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
     maybe_set(&mut self.raw_imports, UNSTABLE_ENV_VAR_NAMES.raw_imports);
     maybe_set(
       &mut self.sloppy_imports,
@@ -245,5 +247,8 @@ impl UnstableConfig {
     self.bare_node_builtins = true;
     self.sloppy_imports = true;
     self.detect_cjs = true;
+    if !self.features.iter().any(|f| f == "node-globals") {
+      self.features.push("node-globals".to_string());
+    }
   }
 }

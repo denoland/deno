@@ -13,6 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
+use deno_lib::args::UnstableConfig;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
@@ -29,9 +30,13 @@ use crate::util::progress_bar::ProgressBar;
 
 pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
-    return init_npm(package, init_flags.package_args)
-      .boxed_local()
-      .await;
+    return init_npm(InitNpmOptions {
+      name: package,
+      args: init_flags.package_args,
+      yes: init_flags.yes,
+    })
+    .boxed_local()
+    .await;
   }
 
   let cwd =
@@ -44,7 +49,24 @@ pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
     cwd
   };
 
-  if init_flags.serve {
+  if init_flags.empty {
+    create_file(
+      &dir,
+      "main.ts",
+      r#"console.log('Hello world!');
+"#,
+    )?;
+
+    create_json_file(
+      &dir,
+      "deno.json",
+      &json!({
+        "tasks": {
+          "dev": "deno run --watch main.ts"
+        }
+      }),
+    )?;
+  } else if init_flags.serve {
     create_file(
       &dir,
       "main.ts",
@@ -222,7 +244,16 @@ Deno.test(function addTest() {
     info!("  cd {}", dir);
     info!("");
   }
-  if init_flags.serve {
+  if init_flags.empty {
+    info!("  {}", colors::gray("# Run the program"));
+    info!("  deno run main.ts");
+    info!("");
+    info!(
+      "  {}",
+      colors::gray("# Run the program and watch for file changes")
+    );
+    info!("  deno task dev");
+  } else if init_flags.serve {
     info!("  {}", colors::gray("# Run the server"));
     info!("  deno serve -R main.ts");
     info!("");
@@ -300,49 +331,64 @@ fn npm_name_to_create_package(name: &str) -> String {
   s
 }
 
-async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
-  let script_name = npm_name_to_create_package(name);
+struct InitNpmOptions<'a> {
+  name: &'a str,
+  args: Vec<String>,
+  yes: bool,
+}
+
+async fn init_npm(options: InitNpmOptions<'_>) -> Result<i32, AnyError> {
+  let script_name = npm_name_to_create_package(options.name);
 
   fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
     log::info!(
       "{}",
       cformat!(
-        "You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.",
-        script_name,
-        args.join(" ")
+        "You can initialize project manually by running <u>deno run {}</> and applying desired permissions.",
+        std::iter::once(script_name)
+          .chain(args.iter().map(|a| a.as_ref()))
+          .collect::<Vec<_>>()
+          .join(" ")
       )
     );
     1
   }
 
-  if std::io::stdin().is_terminal() {
-    log::info!(
-      cstr!(
-        "⚠️  Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"
-      ),
-      script_name
-    );
-    loop {
-      let _ = std::io::stdout().write(b"> ")?;
-      std::io::stdout().flush()?;
-      let mut answer = String::new();
-      if std::io::stdin().read_line(&mut answer).is_ok() {
-        let answer = answer.trim().to_ascii_lowercase();
-        if answer != "y" {
-          return Ok(print_manual_usage(&script_name, &args));
-        } else {
-          break;
+  if !options.yes {
+    if std::io::stdin().is_terminal() {
+      log::info!(
+        cstr!(
+          "⚠️  Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"
+        ),
+        script_name
+      );
+      loop {
+        let _ = std::io::stdout().write(b"> ")?;
+        std::io::stdout().flush()?;
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_ok() {
+          let answer = answer.trim().to_ascii_lowercase();
+          if answer != "y" {
+            return Ok(print_manual_usage(&script_name, &options.args));
+          } else {
+            break;
+          }
         }
       }
+    } else {
+      return Ok(print_manual_usage(&script_name, &options.args));
     }
-  } else {
-    return Ok(print_manual_usage(&script_name, &args));
   }
 
-  let temp_node_modules_parent_dir = create_temp_node_modules_parent_dir()
+  let temp_node_modules_parent_tempdir = create_temp_node_modules_parent_dir()
     .context("Failed creating temp directory for node_modules folder.")?;
-  let temp_node_modules_dir =
-    temp_node_modules_parent_dir.path().join("node_modules");
+  let temp_node_modules_parent_dir = temp_node_modules_parent_tempdir
+    .path()
+    .canonicalize()
+    .ok()
+    .map(deno_path_util::strip_unc_prefix)
+    .unwrap_or_else(|| temp_node_modules_parent_tempdir.path().to_path_buf());
+  let temp_node_modules_dir = temp_node_modules_parent_dir.join("node_modules");
   log::debug!(
     "Creating node_modules directory at: {}",
     temp_node_modules_dir.display()
@@ -354,7 +400,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       ..Default::default()
     },
     allow_scripts: PackagesAllowedScripts::All,
-    argv: args,
+    argv: options.args,
     node_modules_dir: Some(NodeModulesDirMode::Auto),
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
@@ -364,6 +410,12 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     internal: InternalFlags {
       lockfile_skip_write: true,
       root_node_modules_dir_override: Some(temp_node_modules_dir),
+      ..Default::default()
+    },
+    unstable_config: UnstableConfig {
+      bare_node_builtins: true,
+      sloppy_imports: true,
+      detect_cjs: true,
       ..Default::default()
     },
     ..Default::default()
@@ -376,7 +428,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     Default::default(),
   )
   .await;
-  drop(temp_node_modules_parent_dir); // explicit drop for clarity
+  drop(temp_node_modules_parent_tempdir); // explicit drop for clarity
   result
 }
 

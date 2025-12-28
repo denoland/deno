@@ -9,11 +9,11 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
-use once_cell::sync::Lazy;
-
+use crate::IS_CI;
+use crate::eprintln;
 use crate::strip_ansi_codes;
 
-static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
+const PTY_ROWS_COLS: (u16, u16) = (500, 800);
 
 /// Points to know about when writing pty tests:
 ///
@@ -61,10 +61,7 @@ impl Pty {
     if is_windows && *IS_CI {
       // the pty tests don't really start up on the windows CI for some reason
       // so ignore them for now
-      #[allow(clippy::print_stderr)]
-      {
-        eprintln!("Ignoring windows CI.");
-      }
+      eprintln!("Ignoring windows CI.");
       false
     } else {
       true
@@ -74,7 +71,7 @@ impl Pty {
   #[track_caller]
   pub fn write_raw(&mut self, line: impl AsRef<str>) {
     let line = if cfg!(windows) {
-      line.as_ref().replace('\n', "\r\n")
+      line.as_ref().replace("\r\n", "\n").replace('\n', "\r\n")
     } else {
       line.as_ref().to_string()
     };
@@ -253,14 +250,11 @@ impl Pty {
     }
 
     let text = self.next_text();
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
-        String::from_utf8_lossy(&self.read_bytes)
-      );
-      eprintln!("Next text: {:?}", text);
-    }
+    eprintln!(
+      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+      String::from_utf8_lossy(&self.read_bytes)
+    );
+    eprintln!("Next text: {:?}", text);
 
     false
   }
@@ -317,6 +311,25 @@ fn setup_pty(fd: i32) {
 }
 
 #[cfg(unix)]
+fn set_winsize(
+  fd: std::os::fd::RawFd,
+  rows: u16,
+  cols: u16,
+) -> std::io::Result<()> {
+  let ws = libc::winsize {
+    ws_row: rows,
+    ws_col: cols,
+    ws_xpixel: 0,
+    ws_ypixel: 0,
+  };
+  // SAFETY: set windows size
+  if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &ws) == -1 } {
+    return Err(std::io::Error::last_os_error());
+  }
+  Ok(())
+}
+
+#[cfg(unix)]
 fn create_pty(
   program: &Path,
   args: &[&str],
@@ -359,11 +372,14 @@ fn create_pty(
       .args(args)
       .envs(env_vars.unwrap_or_default())
       .pre_exec(move || {
+        set_winsize(fds, PTY_ROWS_COLS.0, PTY_ROWS_COLS.1)?;
+
         // Close parent's main handle
         libc::close(fdm);
         libc::dup2(fds, 0);
         libc::dup2(fds, 1);
         libc::dup2(fds, 2);
+
         // Note that we could close `fds` here as well, but this is a short-lived process and
         // we're just not going to worry about "leaking" it
         Ok(())
@@ -471,7 +487,9 @@ mod windows {
   use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
   use winapi::um::winnt::HANDLE;
 
+  use super::PTY_ROWS_COLS;
   use super::SystemPty;
+  use crate::print::spawn_thread;
 
   macro_rules! assert_win_success {
     ($expression:expr) => {
@@ -512,8 +530,8 @@ mod windows {
       // Generous use of winapi to create a PTY (thus large unsafe block).
       unsafe {
         let mut size: COORD = std::mem::zeroed();
-        size.X = 800;
-        size.Y = 500;
+        size.Y = PTY_ROWS_COLS.0 as i16;
+        size.X = PTY_ROWS_COLS.1 as i16;
         let mut console_handle = std::ptr::null_mut();
         let (stdin_read_handle, stdin_write_handle) = create_pipe();
         let (stdout_read_handle, stdout_write_handle) = create_pipe();
@@ -573,7 +591,7 @@ mod windows {
 
         // start a thread that will close the pseudoconsole on process exit
         let thread_handle = WinHandle::new(proc_info.hThread);
-        std::thread::spawn({
+        spawn_thread({
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {

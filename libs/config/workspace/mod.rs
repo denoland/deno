@@ -40,6 +40,7 @@ use url::Url;
 
 use crate::UrlToFilePathError;
 use crate::deno_json;
+use crate::deno_json::AllowScriptsConfig;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
@@ -52,6 +53,7 @@ use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
+use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
 use crate::deno_json::PermissionsConfig;
@@ -103,6 +105,7 @@ pub struct JsrPackageConfig {
   pub member_dir: WorkspaceDirectoryRc,
   pub config_file: ConfigFileRc,
   pub license: Option<String>,
+  pub should_publish: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -173,6 +176,10 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid workspace member name \"{name}\". Ensure the name is in the format '@scope/name'."
   )]
   InvalidMemberName { name: String },
+  #[error(
+    "\"minimumDependencyAge.exclude\" entry \"{entry}\" missing jsr: or npm: prefix."
+  )]
+  MinimumDependencyAgeExcludeMissingPrefix { entry: String },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -742,6 +749,7 @@ impl Workspace {
         name: c.json.name.clone()?,
         config_file: c.clone(),
         license: c.to_license(),
+        should_publish: c.should_publish(),
       })
     })
   }
@@ -1014,6 +1022,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
         });
       }
+      if member_config.json.minimum_dependency_age.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
+        });
+      }
       if member_config.json.node_modules_dir.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
@@ -1048,6 +1062,12 @@ impl Workspace {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
           kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
+        });
+      }
+      if member_config.json.allow_scripts.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
         });
       }
       if let Some(value) = &member_config.json.lint
@@ -1113,7 +1133,25 @@ impl Workspace {
               NodeModulesDirMode::None
             },
           },
-        })
+        });
+      }
+      if let Some(serde_json::Value::Object(obj)) =
+        &config.json.minimum_dependency_age
+        && let Some(serde_json::Value::Array(exclude)) = obj.get("exclude")
+      {
+        for item in exclude {
+          if let serde_json::Value::String(value) = item
+            && !value.starts_with("jsr:")
+            && !value.starts_with("npm:")
+          {
+            diagnostics.push(WorkspaceDiagnostic {
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+                entry: value.to_string()
+              },
+            });
+          }
+        }
       }
     }
 
@@ -1417,6 +1455,30 @@ impl Workspace {
       })
       .transpose()
   }
+
+  pub fn minimum_dependency_age(
+    &self,
+    sys: &impl sys_traits::SystemTimeNow,
+  ) -> Result<
+    MinimumDependencyAgeConfig,
+    deno_json::MinimumDependencyAgeParseError,
+  > {
+    self
+      .root_deno_json()
+      .map(|c| c.to_minimum_dependency_age_config(sys))
+      .transpose()
+      .map(|v| v.unwrap_or_default())
+  }
+
+  pub fn allow_scripts(
+    &self,
+  ) -> Result<AllowScriptsConfig, deno_json::ToInvalidConfigError> {
+    self
+      .root_deno_json()
+      .map(|c| c.to_allow_scripts_config())
+      .transpose()
+      .map(|v| v.unwrap_or_default())
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -1449,16 +1511,11 @@ pub struct WorkspaceDirLintConfig {
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TsTypeLib {
+  #[default]
   DenoWindow,
   DenoWorker,
-}
-
-impl Default for TsTypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -1630,7 +1687,11 @@ impl WorkspaceDirectory {
   ) -> Vec<JsrPackageConfig> {
     // only publish the current folder if it's a package
     if let Some(package_config) = self.maybe_package_config() {
-      return vec![package_config];
+      if package_config.should_publish {
+        return vec![package_config];
+      } else {
+        return Vec::new();
+      }
     }
     if let Some(pkg_json) = &self.pkg_json {
       let dir_path = url_to_file_path(&self.dir_url).unwrap();
@@ -1643,7 +1704,11 @@ impl WorkspaceDirectory {
       }
     }
     if self.dir_url == self.workspace.root_dir_url {
-      self.workspace.jsr_packages().collect()
+      self
+        .workspace
+        .jsr_packages()
+        .filter(|p| p.should_publish)
+        .collect()
     } else {
       // nothing to publish
       Vec::new()
@@ -1691,6 +1756,7 @@ impl WorkspaceDirectory {
       config_file: deno_json.clone(),
       member_dir: self.clone(),
       license: deno_json.to_license(),
+      should_publish: deno_json.should_publish(),
     })
   }
 
@@ -2633,6 +2699,7 @@ pub mod test {
   use std::cell::RefCell;
   use std::collections::HashMap;
 
+  use deno_package_json::PackageJsonCacheResult;
   use deno_path_util::normalize_path;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
@@ -3797,12 +3864,14 @@ pub mod test {
       json!({
         "unstable": ["byonm"],
         "lock": false,
+        "minimumDependencyAge": 120,
         "nodeModulesDir": false,
         "vendor": true,
       }),
       json!({
         "unstable": ["sloppy-imports"],
         "lock": true,
+        "minimumDependencyAge": 120,
         "nodeModulesDir": "auto",
         "vendor": false,
       }),
@@ -3843,6 +3912,11 @@ pub mod test {
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
+          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+            .unwrap(),
+        },
+        WorkspaceDiagnostic {
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
           config_url: Url::from_file_path(root_dir().join("member/deno.json"))
             .unwrap(),
         },
@@ -3990,6 +4064,27 @@ pub mod test {
     );
   }
 
+  #[test]
+  fn test_workspaces_missing_jsr_npm_prefix_excludes() {
+    run_single_json_diagnostics_test(
+      json!({
+        "minimumDependencyAge": {
+          "age": 120,
+          "exclude": [
+            "jsr:@scope/name",
+            "npm:package",
+            "@scope/name"
+          ]
+        },
+      }),
+      vec![
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+          entry: "@scope/name".to_string(),
+        },
+      ],
+    );
+  }
+
   fn run_single_json_diagnostics_test(
     json: serde_json::Value,
     kinds: Vec<WorkspaceDiagnosticKind>,
@@ -4099,7 +4194,7 @@ pub mod test {
     sys.fs_insert_json(
       root_dir().join("deno.json"),
       json!({
-        "workspace": ["./a", "./b", "./c", "./d"]
+        "workspace": ["./a", "./b", "./c", "./d", "./e"]
       }),
     );
     sys.fs_insert_json(
@@ -4128,6 +4223,15 @@ pub mod test {
       json!({
         "name": "pkg",
         "version": "1.0.0",
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("e/deno.json"),
+      json!({
+        "name": "@scope/e",
+        "version": "1.0.0",
+        "exports": "./main.ts",
+        "publish": false,
       }),
     );
     // root
@@ -5836,11 +5940,18 @@ pub mod test {
   struct PkgJsonMemCache(RefCell<HashMap<PathBuf, PackageJsonRc>>);
 
   impl deno_package_json::PackageJsonCache for PkgJsonMemCache {
-    fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-      self.0.borrow().get(path).cloned()
+    fn get(&self, path: &Path) -> PackageJsonCacheResult {
+      match self.0.borrow().get(path).cloned() {
+        Some(value) => PackageJsonCacheResult::Hit(Some(value)),
+        None => PackageJsonCacheResult::NotCached,
+      }
     }
 
-    fn set(&self, path: PathBuf, value: PackageJsonRc) {
+    fn set(&self, path: PathBuf, value: Option<PackageJsonRc>) {
+      let Some(value) = value else {
+        // Don't cache misses (no negative cache).
+        return;
+      };
       self.0.borrow_mut().insert(path, value);
     }
   }

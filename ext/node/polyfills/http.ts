@@ -68,6 +68,7 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
+import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -538,6 +539,10 @@ class ClientRequest extends OutgoingMessage {
             caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
           }, keyPair);
+
+          // Simulates "secure" event on TLSSocket
+          // This makes yarn v1's https client working
+          this.socket.authorized = true;
         }
 
         this._req = await op_node_http_request_with_conn(
@@ -547,7 +552,6 @@ class ClientRequest extends OutgoingMessage {
           headers,
           this._bodyWriteRid,
           baseConnRid,
-          this._encrypted,
         );
         this._flushBuffer();
 
@@ -646,25 +650,25 @@ class ClientRequest extends OutgoingMessage {
           if (this.method === "CONNECT") {
             throw new Error("not implemented CONNECT");
           }
-          const upgradeRid = await op_node_http_fetch_response_upgrade(
-            res.responseRid,
-          );
+          const { 0: upgradeRid, 1: info } =
+            await op_node_http_fetch_response_upgrade(
+              res.responseRid,
+            );
           const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
-              hostname: res.remoteAddrIp,
-              port: res.remoteAddrIp,
+              hostname: info[0],
+              port: info[1],
             },
-            // TODO(bartlomieju): figure out actual values
             {
               transport: "tcp",
-              hostname: "127.0.0.1",
-              port: 80,
+              hostname: info[2],
+              port: info[3],
             },
           );
           const socket = new Socket({
-            handle: new TCP(constants.SERVER, conn),
+            handle: new TCP(constants.SOCKET, conn),
           });
 
           this.upgradeOrConnect = true;
@@ -2229,10 +2233,10 @@ export class ServerImpl extends EventEmitter {
 
   address() {
     if (this.#addr === null) return null;
-    return {
-      port: this.#addr.port,
-      address: this.#addr.hostname,
-    };
+    const addr = this.#addr.hostname;
+    // Match Node.js: family is undefined for non-IP addresses (isIP returns 0)
+    const family = getIPFamily(addr);
+    return { port: this.#addr.port, address: addr, family };
   }
 }
 

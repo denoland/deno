@@ -98,7 +98,6 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
-mod websocket_upgrade;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -108,7 +107,6 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
-pub use websocket_upgrade::WebSocketUpgradeError;
 
 struct OtelCollectors {
   duration: Histogram<f64>,
@@ -944,19 +942,16 @@ impl Resource for HttpStreamWriteResource {
 }
 
 /// The read half of an HTTP stream.
+#[derive(Default)]
 pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(HeaderMap<HeaderValue>, Peekable<Body>),
+  #[default]
   Closed,
 }
 
-impl Default for HttpRequestReader {
-  fn default() -> Self {
-    Self::Closed
-  }
-}
-
 /// The write half of an HTTP stream.
+#[derive(Default)]
 enum HttpResponseWriter {
   Headers(oneshot::Sender<Response<Body>>),
   Body {
@@ -964,13 +959,8 @@ enum HttpResponseWriter {
     shutdown_handle: ShutdownHandle,
   },
   BodyUncompressed(BodyUncompressedSender),
+  #[default]
   Closed,
-}
-
-impl Default for HttpResponseWriter {
-  fn default() -> Self {
-    Self::Closed
-  }
 }
 
 struct BodyUncompressedSender(Option<hyper_v014::body::Sender>);

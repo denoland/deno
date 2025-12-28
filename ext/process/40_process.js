@@ -17,6 +17,7 @@ const {
   ObjectEntries,
   SafeArrayIterator,
   String,
+  SymbolAsyncDispose,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
@@ -26,11 +27,7 @@ const {
 
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import {
-  assert,
-  pathFromURL,
-  SymbolAsyncDispose,
-} from "ext:deno_web/00_infra.js";
+import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
 import { packageData } from "ext:deno_fetch/22_body.js";
 import {
   addSignalAlgorithm,
@@ -168,6 +165,7 @@ function run({
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
+export const kSerialization = Symbol("serialization");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -184,6 +182,7 @@ function spawnChildInner(command, apiName, {
   stderr = "piped",
   windowsRawArguments = false,
   detached = false,
+  [kSerialization]: serialization = "json",
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
@@ -201,6 +200,7 @@ function spawnChildInner(command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
+    serialization,
     extraStdio,
     detached,
     needsNpmProcessState,

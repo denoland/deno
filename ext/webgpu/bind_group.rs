@@ -6,8 +6,8 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
-use deno_core::v8::HandleScope;
 use deno_core::v8::Local;
+use deno_core::v8::PinScope;
 use deno_core::v8::Value;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -36,7 +36,10 @@ impl WebIdlInterfaceConverter for GPUBindGroup {
   const NAME: &'static str = "GPUBindGroup";
 }
 
-impl GarbageCollected for GPUBindGroup {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUBindGroup {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUBindGroup"
   }
@@ -101,7 +104,7 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut HandleScope<'a>,
+    scope: &mut PinScope<'a, '_>,
     value: Local<'a, Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,

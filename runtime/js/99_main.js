@@ -3,7 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_console/01_console.js";
+import * as internalConsole from "ext:deno_web/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -27,7 +27,6 @@ import {
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   Error,
@@ -39,18 +38,15 @@ const {
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectKeys,
-  ObjectGetOwnPropertyDescriptor,
-  ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
-  RangeError,
   StringPrototypePadEnd,
   Symbol,
+  SymbolDispose,
   SymbolIterator,
   TypeError,
-  uncurryThis,
 } = primordials;
 const {
   isNativeError,
@@ -68,9 +64,9 @@ import {
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_console/01_console.js";
+} from "ext:deno_web/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_url/00_url.js";
+import * as url from "ext:deno_web/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {
@@ -92,7 +88,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
@@ -463,17 +459,17 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis_.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new event.Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
   return globalThis_.dispatchEvent(
-    new Event("beforeunload", { cancelable: true }),
+    new event.Event("beforeunload", { cancelable: true }),
   );
 }
 
 function dispatchUnloadEvent() {
-  globalThis_.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new event.Event("unload"));
 }
 
 let hasBootstrapped = false;
@@ -497,181 +493,6 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
       ObjectDefineProperties(globalThis, { ...props });
     }
   }
-}
-
-function updateTemporal() {
-  // Removes the obsoleted `Temporal` API.
-  // https://github.com/tc39/proposal-temporal/pull/2895
-  // https://github.com/tc39/proposal-temporal/pull/2914
-  // https://github.com/tc39/proposal-temporal/pull/2925
-  if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-    throw "V8 removes obsoleted Temporal API now, no need to delete them";
-  }
-  delete globalThis.Temporal.Instant.fromEpochSeconds;
-  delete globalThis.Temporal.Instant.fromEpochMicroseconds;
-  delete globalThis.Temporal.Instant.prototype.epochSeconds;
-  delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
-  delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
-  delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
-  delete globalThis.Temporal.PlainDate.prototype.getISOFields;
-  delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
-  delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
-  delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
-  delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
-  delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
-  delete globalThis.Temporal.PlainTime.prototype.calendar;
-  delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
-  delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
-  delete globalThis.Temporal.PlainTime.prototype.getISOFields;
-  delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
-  delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
-  delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
-  delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
-  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
-  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
-  delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
-  delete globalThis.Temporal.Now.zonedDateTime;
-  delete globalThis.Temporal.Now.plainDateTime;
-  delete globalThis.Temporal.Now.plainDate;
-  delete globalThis.Temporal.Calendar;
-  delete globalThis.Temporal.TimeZone;
-
-  // Modify `Temporal.Calendar` to calendarId string
-  ArrayPrototypeForEach([
-    globalThis.Temporal.PlainDate,
-    globalThis.Temporal.PlainDateTime,
-    globalThis.Temporal.PlainMonthDay,
-    globalThis.Temporal.PlainYearMonth,
-    globalThis.Temporal.ZonedDateTime,
-  ], (target) => {
-    const getCalendar =
-      ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
-    ObjectDefineProperty(target.prototype, "calendarId", {
-      __proto__: null,
-      get: function calendarId() {
-        return FunctionPrototypeCall(getCalendar, this).id;
-      },
-      enumerable: false,
-      configurable: true,
-    });
-    delete target.prototype.calendar;
-  });
-
-  // Modify `Temporal.TimeZone` to timeZoneId string
-  {
-    const getTimeZone = ObjectGetOwnPropertyDescriptor(
-      globalThis.Temporal.ZonedDateTime.prototype,
-      "timeZone",
-    ).get;
-    ObjectDefineProperty(
-      globalThis.Temporal.ZonedDateTime.prototype,
-      "timeZoneId",
-      {
-        __proto__: null,
-        get: function timeZoneId() {
-          return FunctionPrototypeCall(getTimeZone, this).id;
-        },
-        enumerable: false,
-        configurable: true,
-      },
-    );
-    ObjectAssign(globalThis.Temporal.ZonedDateTime.prototype, {
-      getTimeZoneTransition(options) {
-        if (options === undefined) {
-          throw new TypeError("options parameter is required");
-        }
-        if (typeof options === "string") {
-          options = {
-            direction: options,
-          };
-        }
-        const direction = options.direction;
-        if (direction === undefined) {
-          throw new TypeError("direction option is required");
-        }
-        const tz = FunctionPrototypeCall(getTimeZone, this);
-        let resultInstant;
-        switch (direction) {
-          case "next":
-            resultInstant = tz.getNextTransition(this.toInstant());
-            break;
-          case "previous":
-            resultInstant = tz.getPreviousTransition(this.toInstant());
-            break;
-          default:
-            throw new RangeError(
-              `direction must be one of next, previous, not ${options.direction}`,
-            );
-        }
-        return resultInstant?.toZonedDateTimeISO(tz.id) ?? null;
-      },
-    });
-    delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
-  }
-  {
-    const nowTimeZone = globalThis.Temporal.Now.timeZone;
-    ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
-      __proto__: null,
-      value: function timeZoneId() {
-        return nowTimeZone().id;
-      },
-      writable: true,
-      enumerable: false,
-      configurable: true,
-    });
-    delete globalThis.Temporal.Now.timeZone;
-  }
-
-  // deno-lint-ignore prefer-primordials
-  if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
-    throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
-  }
-  shimTemporalDurationToLocaleString();
-}
-
-function shimTemporalDurationToLocaleString() {
-  const DurationFormat = Intl.DurationFormat;
-  if (!DurationFormat) {
-    // Intl.DurationFormat can be disabled with --v8-flags=--no-harmony-intl-duration-format
-    return;
-  }
-  const DurationFormatPrototype = DurationFormat.prototype;
-  const formatDuration = uncurryThis(DurationFormatPrototype.format);
-
-  const Duration = Temporal.Duration;
-  const DurationPrototype = Duration.prototype;
-  const desc = ObjectGetOwnPropertyDescriptors(DurationPrototype);
-  const assertDuration = uncurryThis(desc.toLocaleString.value);
-  const getYears = uncurryThis(desc.years.get);
-  const getMonths = uncurryThis(desc.months.get);
-  const getWeeks = uncurryThis(desc.weeks.get);
-  const getDays = uncurryThis(desc.days.get);
-  const getHours = uncurryThis(desc.hours.get);
-  const getMinutes = uncurryThis(desc.minutes.get);
-  const getSeconds = uncurryThis(desc.seconds.get);
-  const getMilliseconds = uncurryThis(desc.milliseconds.get);
-  const getMicroseconds = uncurryThis(desc.microseconds.get);
-  const getNanoseconds = uncurryThis(desc.nanoseconds.get);
-
-  ObjectAssign(DurationPrototype, {
-    toLocaleString(locales = undefined, options) {
-      assertDuration(this);
-      const durationFormat = new DurationFormat(locales, options);
-      const duration = {
-        years: getYears(this),
-        months: getMonths(this),
-        weeks: getWeeks(this),
-        days: getDays(this),
-        hours: getHours(this),
-        minutes: getMinutes(this),
-        seconds: getSeconds(this),
-        milliseconds: getMilliseconds(this),
-        microseconds: getMicroseconds(this),
-        nanoseconds: getNanoseconds(this),
-      };
-      return formatDuration(durationFormat, duration);
-    },
-  });
 }
 
 // NOTE(bartlomieju): remove all the ops that have already been imported using
@@ -919,7 +740,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
@@ -929,6 +749,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
     bootstrapOtel(otelConfig);
@@ -984,8 +805,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
-    } else {
-      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1044,7 +863,6 @@ function bootstrapWorkerRuntime(
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     if (workerType === "node") {
       delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
       delete workerRuntimeGlobalProperties["self"];
@@ -1063,6 +881,7 @@ function bootstrapWorkerRuntime(
         core.propWritable(importScripts),
       );
     }
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     bootstrapOtel(otelConfig);
@@ -1111,8 +930,6 @@ function bootstrapWorkerRuntime(
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
-    } else {
-      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

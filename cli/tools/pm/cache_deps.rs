@@ -8,6 +8,9 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::url::Url;
+use deno_graph::JsrPackageReqNotFoundError;
+use deno_graph::packages::JsrPackageVersionInfo;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_semver::Version;
@@ -20,10 +23,15 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 
+pub struct CacheTopLevelDepsOptions {
+  pub lockfile_only: bool,
+}
+
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let _clear_guard = factory
     .text_only_progress_bar()
@@ -45,6 +53,7 @@ pub async fn cache_top_level_deps(
     } else {
       Arc::new(crate::jsr::JsrFetchResolver::new(
         factory.file_fetcher()?.clone(),
+        factory.jsr_version_resolver()?.clone(),
       ))
     };
     let mut graph_permit = factory
@@ -128,15 +137,22 @@ pub async fn cache_top_level_deps(
 
           let jsr_resolver = jsr_resolver.clone();
           info_futures.push(async move {
-            let nv = if let Some(req) = resolved_req {
-              Cow::Borrowed(req)
+            let nv = if let Some(nv) = resolved_req {
+              Cow::Borrowed(nv)
+            } else if let Some(nv) =
+              jsr_resolver.req_to_nv(req_ref.req()).await?
+            {
+              Cow::Owned(nv)
             } else {
-              Cow::Owned(jsr_resolver.req_to_nv(req_ref.req()).await?)
+              return Result::<
+                Option<(Url, Arc<JsrPackageVersionInfo>)>,
+                JsrPackageReqNotFoundError,
+              >::Ok(None);
             };
             if let Some(info) = jsr_resolver.package_version_info(&nv).await {
-              return Some((specifier.clone(), info));
+              return Ok(Some((specifier.clone(), info)));
             }
-            None
+            Ok(None)
           });
         }
         "npm" => {
@@ -176,7 +192,7 @@ pub async fn cache_top_level_deps(
     }
 
     while let Some(info_future) = info_futures.next().await {
-      if let Some((specifier, info)) = info_future {
+      if let Some((specifier, info)) = info_future? {
         let exports = info.exports();
         for (k, _) in exports {
           if let Ok(spec) = specifier.join(k) {
@@ -203,7 +219,13 @@ pub async fn cache_top_level_deps(
       graph_builder.graph_roots_valid(graph, &roots, true, true);
   }
 
-  npm_installer.cache_packages(PackageCaching::All).await?;
+  if options.lockfile_only {
+    // do a resolution install if the npm snapshot is in a
+    // pending state due to a config file change
+    npm_installer.install_resolution_if_pending().await?;
+  } else {
+    npm_installer.cache_packages(PackageCaching::All).await?;
+  }
 
   maybe_graph_error?;
 

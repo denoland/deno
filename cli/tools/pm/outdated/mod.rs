@@ -15,6 +15,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
+use super::CacheTopLevelDepsOptions;
 use super::deps::Dep;
 use super::deps::DepId;
 use super::deps::DepKind;
@@ -202,9 +203,12 @@ pub async fn outdated(
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
     factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
-  let jsr_fetch_resolver =
-    Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
 
   if !cli_options.start_dir.has_deno_json()
     && !cli_options.start_dir.has_pkg_json()
@@ -249,8 +253,17 @@ pub async fn outdated(
     crate::args::OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only,
     } => {
-      update(deps, latest, &filter_set, interactive, flags).await?;
+      update(
+        deps,
+        latest,
+        &filter_set,
+        interactive,
+        flags,
+        CacheTopLevelDepsOptions { lockfile_only },
+      )
+      .await?;
     }
     crate::args::OutdatedKind::PrintOutdated { compatible } => {
       print_outdated(&mut deps, compatible)?;
@@ -302,13 +315,23 @@ fn choose_new_version_req(
         latest_available: false,
       };
     };
-    let exact = if let Some(range) = dep.req.version_req.range() {
-      range.0[0].start == range.0[0].end
+    // Detect the original operator to preserve it
+    let version_req_str = dep.req.version_req.to_string();
+    let operator = if version_req_str.starts_with('~') {
+      "~"
+    } else if version_req_str.starts_with('^') {
+      "^"
     } else {
-      false
+      // Check if it's an exact version (no operator)
+      let exact = if let Some(range) = dep.req.version_req.range() {
+        range.0[0].start == range.0[0].end
+      } else {
+        false
+      };
+      if exact { "" } else { "^" }
     };
     let candidate_version_req = VersionReq::parse_from_specifier(
-      format!("{}{}", if exact { "" } else { "^" }, preferred.version).as_str(),
+      format!("{}{}", operator, preferred.version).as_str(),
     )
     .unwrap();
     if preferred.version <= resolved.version
@@ -340,6 +363,7 @@ async fn update(
   filter_set: &filter::FilterSet,
   interactive: bool,
   flags: Arc<Flags>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let mut to_update = Vec::new();
 
@@ -412,6 +436,7 @@ async fn update(
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
+      cache_options,
     )
     .await?;
 
@@ -515,6 +540,7 @@ async fn dep_manager_args(
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
     npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
     progress_bar: factory.text_only_progress_bar().clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory

@@ -323,6 +323,8 @@ impl TestRun {
             specifier,
             // Executing tests in the LSP currently doesn't support preload option
             vec![],
+            // Executing tests in the LSP currently doesn't support require option
+            vec![],
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
@@ -550,12 +552,12 @@ impl LspTestDescription {
     &self,
     tests: &IndexMap<usize, LspTestDescription>,
   ) -> lsp_custom::TestIdentifier {
-    let uri = uri_parse_unencoded(&self.location().file_name).unwrap();
-    let static_id = self.static_id();
     let mut root_desc = self;
     while let Some(parent_id) = root_desc.parent_id() {
       root_desc = tests.get(&parent_id).unwrap();
     }
+    let uri = uri_parse_unencoded(&root_desc.location().file_name).unwrap();
+    let static_id = self.static_id();
     let root_static_id = root_desc.static_id();
     lsp_custom::TestIdentifier {
       text_document: lsp::TextDocumentIdentifier { uri },
@@ -729,7 +731,17 @@ impl LspTestReporter {
 
   async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
     let mut files = self.files.lock().await;
-    let specifier = ModuleSpecifier::parse(&desc.location.file_name).unwrap();
+    let file_name = self
+      .current_test
+      .and_then(|i| {
+        let mut root_desc = self.tests.get(&i)?;
+        while let Some(parent_id) = root_desc.parent_id() {
+          root_desc = self.tests.get(&parent_id)?;
+        }
+        Some(&root_desc.location().file_name)
+      })
+      .unwrap_or(&desc.location.file_name);
+    let specifier = ModuleSpecifier::parse(file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));

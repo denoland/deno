@@ -66,6 +66,16 @@ export function isIP(ip: string) {
   return 0;
 }
 
+export function getIPFamily(ip: string): "IPv4" | "IPv6" | undefined {
+  if (isIPv4(ip)) {
+    return "IPv4";
+  }
+  if (isIPv6(ip)) {
+    return "IPv6";
+  }
+  return undefined;
+}
+
 export function makeSyncWrite(fd: number) {
   return function (
     // deno-lint-ignore no-explicit-any

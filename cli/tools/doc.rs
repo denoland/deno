@@ -79,7 +79,9 @@ async fn generate_doc_nodes_for_builtin_types(
         passthrough_jsr_specifiers: false,
         executor: Default::default(),
         file_system: &NullFileSystem,
+        jsr_metadata_store: None,
         jsr_url_provider: Default::default(),
+        jsr_version_resolver: Default::default(),
         locker: None,
         module_analyzer: analyzer,
         module_info_cacher: Default::default(),
@@ -160,6 +162,7 @@ pub async fn doc(
         GraphWalkErrorsOptions {
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
+          will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
         },

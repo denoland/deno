@@ -34,6 +34,7 @@ use deno_core::op2;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
@@ -49,7 +50,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::DefaultTlsOptions;
-use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use crate::resolve_addr::resolve_addr_sync;
 
@@ -216,7 +216,10 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {
+// SAFETY: we're sure `EndpointResource` can be GCed
+unsafe impl GarbageCollected for EndpointResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EndpointResource"
   }
@@ -224,23 +227,23 @@ impl GarbageCollected for EndpointResource {
 
 #[op2]
 #[cppgc]
-pub(crate) fn op_quic_endpoint_create<NP>(
+pub(crate) fn op_quic_endpoint_create(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: Addr,
   can_listen: bool,
-) -> Result<EndpointResource, QuicError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<EndpointResource, QuicError> {
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
 
   if can_listen {
-    state.borrow_mut().borrow_mut::<NP>().check_net(
-      &(&addr.ip().to_string(), Some(addr.port())),
-      "new Deno.QuicEndpoint()",
-    )?;
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(
+        &(&addr.ip().to_string(), Some(addr.port())),
+        "new Deno.QuicEndpoint()",
+      )?
   } else {
     // If this is not a can-listen, assert that we will bind to an ephemeral port.
     assert_eq!(
@@ -301,7 +304,10 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {
+// SAFETY: we're sure `ListenerResource` can be GCed
+unsafe impl GarbageCollected for ListenerResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ListenerResource"
   }
@@ -356,7 +362,10 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {
+// SAFETY: we're sure `ConnectionResource` can be GCed
+unsafe impl GarbageCollected for ConnectionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectionResource"
   }
@@ -367,7 +376,10 @@ struct IncomingResource(
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {
+// SAFETY: we're sure `Incoming` can be GCed
+unsafe impl GarbageCollected for IncomingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"IncomingResource"
   }
@@ -500,7 +512,10 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {
+// SAFETY: we're sure `ConnectingResource` can be GCed
+unsafe impl GarbageCollected for ConnectingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectingResource"
   }
@@ -525,20 +540,20 @@ struct CertificateHash {
 
 #[op2]
 #[cppgc]
-pub(crate) fn op_quic_endpoint_connect<NP>(
+pub(crate) fn op_quic_endpoint_connect(
   state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
   #[serde] args: ConnectArgs,
   #[serde] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<ConnectingResource, QuicError>
-where
-  NP: NetPermissions + 'static,
-{
-  state.borrow_mut().borrow_mut::<NP>().check_net(
-    &(&args.addr.hostname, Some(args.addr.port)),
-    "Deno.connectQuic()",
-  )?;
+) -> Result<ConnectingResource, QuicError> {
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net(
+      &(&args.addr.hostname, Some(args.addr.port)),
+      "Deno.connectQuic()",
+    )?;
 
   let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()

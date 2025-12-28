@@ -60,9 +60,10 @@ const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
+use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::flags_from_vec;
+use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -119,6 +120,14 @@ async fn run_subcommand(
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
     }),
+    DenoSubcommand::Audit(audit_flags) => {
+      spawn_subcommand(async { tools::pm::audit(flags, audit_flags).await })
+    }
+    DenoSubcommand::ApproveScripts(approve_scripts_flags) => {
+      spawn_subcommand(async move {
+        tools::pm::approve_scripts(flags, approve_scripts_flags).await
+      })
+    }
     DenoSubcommand::Remove(remove_flags) => {
       spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
     }
@@ -138,8 +147,8 @@ async fn run_subcommand(
       );
       tools::bundle::bundle(flags, bundle_flags).await
     }),
-    DenoSubcommand::Deploy => spawn_subcommand(async {
-      tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await
+    DenoSubcommand::Deploy(deploy_flags) => spawn_subcommand(async move {
+      tools::deploy::deploy(Arc::unwrap_or_clone(flags), deploy_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
@@ -148,8 +157,14 @@ async fn run_subcommand(
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      tools::installer::install_from_entrypoints(flags, &cache_flags.files)
-        .await
+      tools::installer::install_from_entrypoints(
+        flags,
+        self::args::InstallEntrypointsFlags {
+          entrypoints: cache_flags.files,
+          lockfile_only: false,
+        },
+      )
+      .await
     }),
     DenoSubcommand::Check(check_flags) => {
       spawn_subcommand(
@@ -242,6 +257,9 @@ async fn run_subcommand(
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
+    DenoSubcommand::X(x_flags) => spawn_subcommand(async move {
+      tools::x::run(flags, x_flags, unconfigured_runtime, roots).await
+    }),
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
         let task_flags = TaskFlags {
@@ -410,7 +428,16 @@ async fn run_subcommand(
     }
     DenoSubcommand::Completions(completions_flags) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)
+        match completions_flags {
+          CompletionsFlags::Static(buf) => {
+            display::write_to_stdout_ignore_sigpipe(&buf)
+              .map_err(AnyError::from)
+          }
+          CompletionsFlags::Dynamic(f) => {
+            f()?;
+            Ok(())
+          }
+        }
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
@@ -545,9 +572,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   deno_runtime::exit(code);
 }
 
-fn exit_for_error(error: AnyError) -> ! {
+fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
   let error_string = match js_error_downcast_ref(&error) {
-    Some(e) => format_js_error(e),
+    Some(e) => {
+      let initial_cwd = initial_cwd
+        .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
+      format_js_error(e, initial_cwd.as_ref())
+    }
     None => format!("{error:?}"),
   };
 
@@ -560,6 +591,19 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
     feature
   );
   deno_runtime::exit(70);
+}
+
+fn maybe_setup_permission_broker() {
+  let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") else {
+    return;
+  };
+  log::warn!(
+    "{} Permission broker is an experimental feature",
+    colors::yellow("Warning")
+  );
+  let broker =
+    deno_runtime::deno_permissions::broker::PermissionBroker::new(socket_path);
+  deno_runtime::deno_permissions::broker::set_broker(broker);
 }
 
 pub fn main() {
@@ -577,10 +621,12 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
-  deno_runtime::deno_permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  maybe_setup_permission_broker();
 
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
@@ -591,62 +637,88 @@ pub fn main() {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured_runtime, waited_args) =
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
       match wait_for_start(&args, roots.clone()) {
         Some(f) => match f.await {
           Ok(v) => match v {
-            Some((u, a)) => (Some(u), Some(a)),
-            None => (None, None),
+            Some((u, a, c)) => (Some(u), Some(a), Some(c)),
+            None => (None, None, None),
           },
           Err(e) => {
             panic!("Failure from control sock: {e}");
           }
         },
-        None => (None, None),
+        None => (None, None, None),
       };
 
     #[cfg(not(unix))]
-    let (waited_unconfigured_runtime, waited_args) = (None, None);
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
+      (None, None, None);
 
     let args = waited_args.unwrap_or(args);
+    let initial_cwd = waited_cwd.map(Some).unwrap_or_else(|| {
+      match std::env::current_dir().with_context(|| "Failed getting cwd.") {
+        Ok(cwd) => Some(cwd),
+        Err(err) => {
+          log::error!("Failed getting cwd: {err}");
+          None
+        }
+      }
+    });
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
-    let flags = resolve_flags_and_init(args).await?;
+    let flags = match resolve_flags_and_init(args, initial_cwd.clone()).await {
+      Ok(flags) => flags,
+      Err(err) => return (Err(err), initial_cwd),
+    };
 
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
 
-    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
+    (
+      run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await,
+      initial_cwd,
+    )
   };
 
-  let result = create_and_run_current_thread_with_maybe_metrics(future);
+  let (result, initial_cwd) =
+    create_and_run_current_thread_with_maybe_metrics(future);
 
   #[cfg(feature = "dhat-heap")]
   drop(profiler);
 
   match result {
     Ok(exit_code) => deno_runtime::exit(exit_code),
-    Err(err) => exit_for_error(err),
+    Err(err) => exit_for_error(err, initial_cwd.as_deref()),
   }
 }
 
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
+  initial_cwd: Option<std::path::PathBuf>,
 ) -> Result<Flags, AnyError> {
-  let mut flags = match flags_from_vec(args) {
-    Ok(flags) => flags,
-    Err(err @ clap::Error { .. })
-      if err.kind() == clap::error::ErrorKind::DisplayVersion =>
-    {
-      // Ignore results to avoid BrokenPipe errors.
-      let _ = err.print();
-      deno_runtime::exit(0);
-    }
-    Err(err) => exit_for_error(AnyError::from(err)),
-  };
+  // this env var is used by clap to enable dynamic completions, it's set by the shell when
+  // executing deno to get dynamic completions.
+  if std::env::var("COMPLETE").is_ok() {
+    crate::args::handle_shell_completion()?;
+    deno_runtime::exit(0);
+  }
+
+  let mut flags =
+    match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
+      Ok(flags) => flags,
+      Err(err @ clap::Error { .. })
+        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
+      {
+        // Ignore results to avoid BrokenPipe errors.
+        let _ = err.print();
+        deno_runtime::exit(0);
+      }
+      Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
+    };
   // preserve already loaded env variables
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
@@ -656,6 +728,25 @@ async fn resolve_flags_and_init(
     .as_ref()
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+    flags.tunnel = true;
+  }
+
+  // Tunnel sets up env vars and OTEL, so connect before everything else.
+  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy(_)) {
+    if let Err(err) = initialize_tunnel(&flags).await {
+      exit_for_error(
+        err.context("Failed to start with tunnel"),
+        initial_cwd.as_deref(),
+      );
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", "1");
+    }
+  }
+
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -667,22 +758,6 @@ async fn resolve_flags_and_init(
       .split(",")
       .map(|c| c.trim().to_string())
       .collect();
-  }
-
-  // Tunnel is initialized before OTEL since
-  // OTEL data is submitted via the tunnel.
-  if let Some(host) = flags
-    .connected
-    .clone()
-    .or_else(|| env::var("DENO_CONNECTED").ok())
-  {
-    if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
-    }
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_CONNECTED", &host);
-    }
   }
 
   let otel_config = flags.otel_config();
@@ -705,6 +780,15 @@ async fn resolve_flags_and_init(
       "{} The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
       colors::yellow("Warning")
     );
+  }
+
+  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
+    let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
+      deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
+    );
+    if audit_file.is_err() {
+      log::warn!("⚠️  {}", colors::yellow("Audit file is already set"));
+    }
   }
 
   Ok(flags)
@@ -765,7 +849,7 @@ fn wait_for_start(
 ) -> Option<
   impl Future<
     Output = Result<
-      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>, PathBuf)>,
       AnyError,
     >,
   > + use<>,
@@ -884,7 +968,7 @@ fn wait_for_start(
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(cmd.cwd)?;
+    std::env::set_current_dir(&cmd.cwd)?;
 
     for (k, v) in cmd.env {
       // SAFETY: We're doing this before any threads are created.
@@ -896,13 +980,38 @@ fn wait_for_start(
       .chain(cmd.args.into_iter().map(Into::into))
       .collect();
 
-    Ok(Some((unconfigured, args)))
+    Ok(Some((unconfigured, args, PathBuf::from(cmd.cwd))))
   })
 }
 
-async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
+#[derive(serde::Deserialize)]
+struct AuthTunnelOutput {
+  org: String,
+  app: String,
+  token: String,
+}
+
+async fn auth_tunnel(
+  no_config: bool,
+  env_token: Option<String>,
+) -> Result<AuthTunnelOutput, deno_core::anyhow::Error> {
+  let file = tempfile::NamedTempFile::new()?;
+
+  let mut args = vec![];
+  if let Some(token) = &env_token {
+    args.push("--token".to_string());
+    args.push(token.clone());
+  }
+  if no_config {
+    args.push("--really-no-config".into());
+  }
+
   let mut child = tokio::process::Command::new(env::current_exe()?)
-    .args(["deploy", "tunnel-login"])
+    .arg("deploy")
+    .arg("tunnel-login")
+    .arg("--out")
+    .arg(file.path())
+    .args(args)
     .spawn()?;
   let out = child.wait().await?;
 
@@ -910,53 +1019,50 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  let contents = tokio::fs::read(file.path()).await?;
+  let output: AuthTunnelOutput = deno_core::serde_json::from_slice(&contents)?;
+
+  Ok(output)
 }
 
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
-  host: &str,
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
-  let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
-  let mut cli_options = factory.cli_options()?;
+  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
-  let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
-    token
+  let no_config = flags.config_flag == crate::args::ConfigFlag::Disabled;
+
+  let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
+    .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
+
+  let env_token = env::var("DENO_DEPLOY_TOKEN").ok();
+  let env_org = env::var("DENO_DEPLOY_ORG").ok();
+  let env_app = env::var("DENO_DEPLOY_APP").ok();
+
+  let storage_token = tools::deploy::get_token_entry()
+    .and_then(|e| e.get_password())
+    .ok();
+
+  let (token, org, app) = if let (Some(token), Some(org), Some(app)) =
+    (&env_token, env_org, env_app)
+  {
+    (token.clone(), org, app)
+  } else if let Some(deploy_config) = &deploy_config
+    && let Some(app) = &deploy_config.app
+    && let Some(token) = &env_token
+  {
+    (token.clone(), deploy_config.org.clone(), app.clone())
+  } else if let Some(deploy_config) = deploy_config
+    && let Some(token) = storage_token
+    && let Some(app) = deploy_config.app
+  {
+    (token, deploy_config.org, app)
   } else {
-    match tools::deploy::get_token_entry()?.get_password() {
-      Ok(token) => token,
-      Err(keyring::Error::NoEntry) => {
-        let token = auth_tunnel().await?;
-
-        if deploy_config.is_none() {
-          // we regenerate the factory & CliOptions since auth_tunnel updates
-          // the config file with the deploy config, only if it was not set previously.
-          factory = CliFactory::from_flags(Arc::new(flags.clone()));
-          cli_options = factory.cli_options()?;
-        }
-
-        token
-      }
-      Err(e) => {
-        exit_for_error(e.into());
-      }
-    }
-  };
-
-  let (org, app) = if let (Ok(org), Ok(app)) = (
-    std::env::var("DENO_DEPLOY_ORG"),
-    std::env::var("DENO_DEPLOY_APP"),
-  ) {
-    (org, app)
-  } else {
-    let deploy_config = cli_options
-      .start_dir
-      .to_deploy_config()?
-      .expect("auth to be called");
-
-    (deploy_config.org, deploy_config.app)
+    let o = auth_tunnel(no_config, env_token.clone()).await?;
+    (o.token, o.org, o.app)
   };
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
@@ -985,14 +1091,28 @@ async fn initialize_tunnel(
     "hostname".into(),
     deno_runtime::deno_os::sys_info::hostname(),
   );
-  if let Some(entrypoint) = match &flags.subcommand {
-    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
-    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
-    DenoSubcommand::Repl(_) => Some("<repl>".into()),
-    DenoSubcommand::Eval(_) => Some("<eval>".into()),
-    _ => None,
-  } {
-    metadata.insert("entrypoint".into(), entrypoint);
+  match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => {
+      metadata.insert("subcommand".into(), "run".into());
+      metadata.insert("entrypoint".into(), run_flags.script.clone());
+    }
+    DenoSubcommand::Serve(serve_flags) => {
+      metadata.insert("subcommand".into(), "serve".into());
+      metadata.insert("entrypoint".into(), serve_flags.script.clone());
+    }
+    DenoSubcommand::Task(task_flags) => {
+      metadata.insert("subcommand".into(), "task".into());
+      if let Some(task) = &task_flags.task {
+        metadata.insert("task".into(), task.clone());
+      }
+    }
+    DenoSubcommand::Repl(_) => {
+      metadata.insert("subcommand".into(), "repl".into());
+    }
+    DenoSubcommand::Eval(_) => {
+      metadata.insert("subcommand".into(), "eval".into());
+    }
+    _ => {}
   }
 
   let on_event = |event| {
@@ -1005,9 +1125,11 @@ async fn initialize_tunnel(
           format!("https://{}:{}", addr.hostname(), addr.port())
         };
 
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        eprintln!(
           "{}",
-          colors::green(format!("You are connected to {endpoint}!"))
+          colors::green(format!("You are connected to {endpoint}"))
         );
       }
       Event::Reconnect(duration, reason) => {
@@ -1016,7 +1138,9 @@ async fn initialize_tunnel(
         } else {
           "".into()
         };
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        eprintln!(
           "{}",
           colors::green(format!(
             "Reconnecting tunnel in {}s...{}",
@@ -1045,14 +1169,20 @@ async fn initialize_tunnel(
   {
     Ok(res) => res,
     Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
-      tools::deploy::get_token_entry()?.delete_credential()?;
+      if let Ok(e) = tools::deploy::get_token_entry() {
+        let _ = e.delete_credential();
+      }
 
-      let token = auth_tunnel().await?;
+      let output = auth_tunnel(no_config, env_token).await?;
       deno_runtime::deno_net::tunnel::TunnelConnection::connect(
         addr,
         hostname.to_owned(),
         tls_config,
-        deno_runtime::deno_net::tunnel::Authentication::App { token, org, app },
+        deno_runtime::deno_net::tunnel::Authentication::App {
+          token: output.token,
+          org: output.org,
+          app: output.app,
+        },
         metadata.clone(),
         on_event,
       )

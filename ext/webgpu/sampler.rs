@@ -24,7 +24,10 @@ impl WebIdlInterfaceConverter for GPUSampler {
   const NAME: &'static str = "GPUSampler";
 }
 
-impl GarbageCollected for GPUSampler {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUSampler {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSampler"
   }

@@ -22,6 +22,7 @@ use sys_traits::FsRead;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::unfurl::PositionOrSourceRangeRef;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 use crate::sys::CliSys;
@@ -91,6 +92,8 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           | MediaType::Html
           | MediaType::Sql
           | MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css => {
             // not unfurlable data
@@ -249,7 +252,9 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
             import_source,
             resolution_kind,
             text_info,
-            &deno_graph::PositionRange::zeroed(),
+            PositionOrSourceRangeRef::PositionRange(
+              &deno_graph::PositionRange::zeroed(),
+            ),
             diagnostic_reporter,
           );
         maybe_import_source.unwrap_or_else(|| import_source.to_string())

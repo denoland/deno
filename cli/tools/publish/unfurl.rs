@@ -4,7 +4,9 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_ast::ParsedSource;
+use deno_ast::SourcePos;
 use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
 use deno_ast::TextChange;
@@ -16,6 +18,15 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlight;
 use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
+use deno_ast::swc::ast::Callee;
+use deno_ast::swc::ast::Expr;
+use deno_ast::swc::ast::Lit;
+use deno_ast::swc::ast::MemberProp;
+use deno_ast::swc::ast::MetaPropKind;
+use deno_ast::swc::atoms::Atom;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_graph::analysis::DependencyDescriptor;
@@ -39,6 +50,11 @@ use crate::sys::CliSys;
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
   UnanalyzableDynamicImport {
+    specifier: ModuleSpecifier,
+    text_info: SourceTextInfo,
+    range: SourceRange,
+  },
+  UnanalyzableImportMetaResolve {
     specifier: ModuleSpecifier,
     text_info: SourceTextInfo,
     range: SourceRange,
@@ -70,6 +86,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => {
         DiagnosticLevel::Warning
       }
+      SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve { .. } => {
+        DiagnosticLevel::Warning
+      }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         DiagnosticLevel::Error
       }
@@ -85,6 +104,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
   fn code(&self) -> Cow<'_, str> {
     match self {
       Self::UnanalyzableDynamicImport { .. } => "unanalyzable-dynamic-import",
+      Self::UnanalyzableImportMetaResolve { .. } => {
+        "unanalyzable-import-meta-resolve"
+      }
       Self::ResolvingNpmWorkspacePackage { .. } => "npm-workspace-package",
       Self::UnsupportedPkgJsonFileSpecifier { .. } => {
         "unsupported-file-specifier"
@@ -100,6 +122,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
     match self {
       Self::UnanalyzableDynamicImport { .. } => {
         "unable to analyze dynamic import".into()
+      }
+      Self::UnanalyzableImportMetaResolve { .. } => {
+        "unable to analyze import.meta.resolve".into()
       }
       Self::ResolvingNpmWorkspacePackage {
         package_name,
@@ -126,6 +151,15 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
   fn location(&self) -> deno_ast::diagnostics::DiagnosticLocation<'_> {
     match self {
       SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
+        specifier,
+        text_info,
+        range,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+      },
+      SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve {
         specifier,
         text_info,
         range,
@@ -184,6 +218,21 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
           description: Some("the unanalyzable dynamic import".into()),
         }],
       }),
+      SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve {
+        text_info,
+        range,
+        ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Warning,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the unanalyzable import.meta.resolve call".into()),
+        }],
+      }),
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
         text_info,
         range,
@@ -234,7 +283,7 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
 
   fn hint(&self) -> Option<Cow<'_, str>> {
     match self {
-      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => {
+      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } | SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve { .. } => {
         None
       }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => Some(
@@ -270,6 +319,19 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
           ),
         ])
       }
+      SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve { .. } => {
+        Cow::Borrowed(&[
+          Cow::Borrowed(
+            "after publishing this package, import.meta.resolve calls from the local import map / package.json do not work",
+          ),
+          Cow::Borrowed(
+            "import.meta.resolve calls that can not be analyzed at publish time will not be rewritten automatically",
+          ),
+          Cow::Borrowed(
+            "make sure the import.meta.resolve call is resolvable at runtime without an import map / package.json",
+          ),
+        ])
+      }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         Cow::Borrowed(&[])
       }
@@ -300,14 +362,23 @@ enum UnfurlSpecifierError {
   },
 }
 
-pub struct SpecifierUnfurler<TSys: FsMetadata + FsRead = CliSys> {
+#[derive(Copy, Clone)]
+pub enum PositionOrSourceRangeRef<'a> {
+  PositionRange(&'a deno_graph::PositionRange),
+  SourceRange(SourceRange<SourcePos>),
+}
+
+#[sys_traits::auto_impl]
+pub trait SpecifierUnfurlerSys: FsMetadata + FsRead {}
+
+pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   // optional for testing
   node_resolver: Option<Arc<CliNodeResolver>>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
 
-impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
+impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   pub fn new(
     node_resolver: Option<Arc<CliNodeResolver>>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
@@ -330,17 +401,22 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     specifier: &str,
     resolution_kind: deno_resolver::workspace::ResolutionKind,
     text_info: &SourceTextInfo,
-    range: &deno_graph::PositionRange,
+    range: PositionOrSourceRangeRef<'_>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> Option<String> {
     match self.unfurl_specifier(referrer, specifier, resolution_kind) {
       Ok(maybe_unfurled) => maybe_unfurled,
       Err(diagnostic) => {
-        let range = to_range(text_info, range);
-        let range = SourceRange::new(
-          text_info.start_pos() + range.start,
-          text_info.start_pos() + range.end,
-        );
+        let range = match range {
+          PositionOrSourceRangeRef::PositionRange(position_range) => {
+            let range = to_range(text_info, position_range);
+            SourceRange::new(
+              text_info.start_pos() + range.start,
+              text_info.start_pos() + range.end,
+            )
+          }
+          PositionOrSourceRangeRef::SourceRange(source_range) => source_range,
+        };
         match diagnostic {
           UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
             package_name,
@@ -626,7 +702,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           specifier,
           deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
           text_info,
-          &dep.argument_range,
+          PositionOrSourceRangeRef::PositionRange(&dep.argument_range),
           diagnostic_reporter,
         );
         if let Some(unfurled) = maybe_unfurled {
@@ -655,7 +731,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
               specifier,
               deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
               text_info,
-              &dep.argument_range,
+              PositionOrSourceRangeRef::PositionRange(&dep.argument_range),
               diagnostic_reporter,
             );
             let Some(unfurled) = unfurled else {
@@ -699,7 +775,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     let text_info = parsed_source.text_info_lazy();
     let analyze_specifier =
       |specifier: &str,
-       range: &deno_graph::PositionRange,
+       range: PositionOrSourceRangeRef,
        resolution_kind: deno_resolver::workspace::ResolutionKind,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
@@ -712,7 +788,14 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           diagnostic_reporter,
         ) {
           text_changes.push(deno_ast::TextChange {
-            range: to_range(text_info, range),
+            range: match range {
+              PositionOrSourceRangeRef::PositionRange(position_range) => {
+                to_range(text_info, position_range)
+              }
+              PositionOrSourceRangeRef::SourceRange(source_range) => {
+                source_range.as_byte_range(parsed_source.start_pos())
+              }
+            },
             new_text: unfurled,
           });
         }
@@ -726,12 +809,14 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
                 deno_resolver::workspace::ResolutionKind::Execution
               }
               StaticDependencyKind::ExportType
-              | StaticDependencyKind::ImportType => {
+              | StaticDependencyKind::ImportType
+              | StaticDependencyKind::MaybeTsModuleAugmentation => {
                 deno_resolver::workspace::ResolutionKind::Types
               }
             }
@@ -739,7 +824,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
 
           analyze_specifier(
             &dep.specifier,
-            &dep.specifier_range,
+            PositionOrSourceRangeRef::PositionRange(&dep.specifier_range),
             resolution_kind,
             text_changes,
             diagnostic_reporter,
@@ -777,7 +862,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
       };
       analyze_specifier(
         &specifier_with_range.text,
-        &specifier_with_range.range,
+        PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
         text_changes,
         diagnostic_reporter,
@@ -786,7 +871,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     for jsdoc in &module_info.jsdoc_imports {
       analyze_specifier(
         &jsdoc.specifier.text,
-        &jsdoc.specifier.range,
+        PositionOrSourceRangeRef::PositionRange(&jsdoc.specifier.range),
         deno_resolver::workspace::ResolutionKind::Types,
         text_changes,
         diagnostic_reporter,
@@ -795,7 +880,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     if let Some(specifier_with_range) = &module_info.jsx_import_source {
       analyze_specifier(
         &specifier_with_range.text,
-        &specifier_with_range.range,
+        PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Execution,
         text_changes,
         diagnostic_reporter,
@@ -804,10 +889,31 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     if let Some(specifier_with_range) = &module_info.jsx_import_source_types {
       analyze_specifier(
         &specifier_with_range.text,
-        &specifier_with_range.range,
+        PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
         text_changes,
         diagnostic_reporter,
+      );
+    }
+
+    let mut collector = ImportMetaResolveCollector::default();
+    parsed_source.program().visit_with(&mut collector);
+    for (range, specifier) in collector.specifiers {
+      analyze_specifier(
+        &specifier,
+        PositionOrSourceRangeRef::SourceRange(range),
+        deno_resolver::workspace::ResolutionKind::Execution,
+        text_changes,
+        diagnostic_reporter,
+      );
+    }
+    for range in collector.diagnostic_ranges {
+      diagnostic_reporter(
+        SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve {
+          specifier: url.to_owned(),
+          range,
+          text_info: text_info.clone(),
+        },
       );
     }
   }
@@ -847,6 +953,40 @@ fn to_range(
     range.end -= 1;
   }
   range
+}
+
+#[derive(Default)]
+struct ImportMetaResolveCollector {
+  specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
+  diagnostic_ranges: Vec<SourceRange<SourcePos>>,
+}
+
+impl Visit for ImportMetaResolveCollector {
+  noop_visit_type!();
+
+  fn visit_call_expr(&mut self, node: &deno_ast::swc::ast::CallExpr) {
+    if node.args.len() == 1
+      && let Some(first_arg) = node.args.first()
+      && let Callee::Expr(callee) = &node.callee
+      && let Expr::Member(member) = &**callee
+      && let Expr::MetaProp(prop) = &*member.obj
+      && prop.kind == MetaPropKind::ImportMeta
+      && let MemberProp::Ident(ident) = &member.prop
+      && ident.sym == "resolve"
+      && first_arg.spread.is_none()
+    {
+      if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
+        let range = arg.range();
+        self.specifiers.push((
+          // remove quotes
+          SourceRange::new(range.start + 1, range.end - 1),
+          arg.value.to_atom_lossy().into_owned(),
+        ));
+      } else {
+        self.diagnostic_ranges.push(first_arg.expr.range());
+      }
+    }
+  }
 }
 
 #[cfg(test)]
@@ -958,6 +1098,9 @@ const test6 = await import(`./lib/something.ts`);
 // will warn
 const warn1 = await import(`lib${expr}`);
 const warn2 = await import(`${expr}`);
+
+import.meta.resolve("chalk");
+import.meta.resolve(nonAnalyzable);
 "#;
       let specifier =
         ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
@@ -966,7 +1109,7 @@ const warn2 = await import(`${expr}`);
       let mut reporter = |diagnostic| d.push(diagnostic);
       let unfurled_source =
         unfurl(&unfurler, &specifier, &source, &mut reporter);
-      assert_eq!(d.len(), 2);
+      assert_eq!(d.len(), 3);
       assert!(
         matches!(
           d[0],
@@ -982,6 +1125,14 @@ const warn2 = await import(`${expr}`);
         ),
         "{:?}",
         d[1]
+      );
+      assert!(
+        matches!(
+          d[2],
+          SpecifierUnfurlerDiagnostic::UnanalyzableImportMetaResolve { .. }
+        ),
+        "{:?}",
+        d[2]
       );
       let expected_source = r#"import express from "npm:express@5";"
 import foo from "./lib/foo.ts";
@@ -1011,6 +1162,9 @@ const test6 = await import(`./lib/something.ts`);
 // will warn
 const warn1 = await import(`lib${expr}`);
 const warn2 = await import(`${expr}`);
+
+import.meta.resolve("npm:chalk@5");
+import.meta.resolve(nonAnalyzable);
 "#;
       assert_eq!(unfurled_source, expected_source);
     }
