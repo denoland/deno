@@ -3028,9 +3028,12 @@ pub mod test {
       assert_eq!(
         tasks_config,
         WorkspaceTasksConfig {
-          root: None,
-          member: Some(WorkspaceMemberTasksConfig {
+          root: Some(WorkspaceMemberTasksConfig {
             deno_json: root_deno_json.clone(),
+            package_json: None,
+          }),
+          member: Some(WorkspaceMemberTasksConfig {
+            deno_json: None,
             package_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("pkg_json"))
                 .unwrap(),
