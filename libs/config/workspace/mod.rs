@@ -52,6 +52,7 @@ use crate::deno_json::DeployConfig;
 use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
+use crate::deno_json::LintConfig;
 use crate::deno_json::LintRulesConfig;
 use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
@@ -883,34 +884,28 @@ impl Workspace {
               let root = self.config_folders.get(&self.root_dir_url).unwrap();
               root.pkg_json.as_ref().map(|c| (&self.root_dir_url, c))
             });
-          let maybe_root_folder = self
-                  .config_folders
-                  .get(&self.root_dir_url);
+          let maybe_root_folder = self.config_folders.get(&self.root_dir_url);
           WorkspaceDirectory {
             dir_url: member_url.clone(),
             pkg_json: WorkspaceDirConfig {
-                root: maybe_root_folder
-                  .and_then(|dir| dir.pkg_json.clone()),
-                member: maybe_pkg_json.and_then(|(member_url, pkg_json)| {
-                  if *member_url == self.root_dir_url {
-                      None
-                    } else {
-                    Some(pkg_json.clone())
-                    }
-                  }
-                ),
+              root: maybe_root_folder.and_then(|dir| dir.pkg_json.clone()),
+              member: maybe_pkg_json.and_then(|(member_url, pkg_json)| {
+                if *member_url == self.root_dir_url {
+                  None
+                } else {
+                  Some(pkg_json.clone())
+                }
+              }),
             },
             deno_json: WorkspaceDirConfig {
-                root: maybe_root_folder
-                  .and_then(|dir| dir.deno_json.clone()),
-                member: maybe_deno_json.and_then(|(member_url, deno_json)| {
-                  if *member_url == self.root_dir_url {
-                      None
-                    } else {
-                    Some(deno_json.clone())
-                    }
-                  }
-                ),
+              root: maybe_root_folder.and_then(|dir| dir.deno_json.clone()),
+              member: maybe_deno_json.and_then(|(member_url, deno_json)| {
+                if *member_url == self.root_dir_url {
+                  None
+                } else {
+                  Some(deno_json.clone())
+                }
+              }),
             },
             workspace: self.clone(),
             cached: Default::default(),
@@ -1494,11 +1489,6 @@ impl<T> WorkspaceDirConfig<T> {
   pub fn is_none(&self) -> bool {
     self.member.is_none() && self.root.is_none()
   }
-
-  #[allow(clippy::disallowed_types)]
-  pub fn member(&self) -> Option<&deno_maybe_sync::MaybeArc<T>> {
-    self.member.as_ref().or(self.root.as_ref())
-  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -1679,7 +1669,7 @@ impl WorkspaceDirectory {
         root: None,
         member: root_folder.pkg_json.clone(),
       },
-      deno_json:WorkspaceDirConfig {
+      deno_json: WorkspaceDirConfig {
         root: None,
         member: root_folder.deno_json.clone(),
       },
@@ -1730,29 +1720,45 @@ impl WorkspaceDirectory {
   }
 
   pub fn has_deno_or_pkg_json(&self) -> bool {
-    self.has_pkg_json() || self.has_deno_json()
+    self.deno_json.is_some() || self.pkg_json.is_some()
   }
 
-  pub fn has_deno_json(&self) -> bool {
-    self.deno_json.is_some()
+  /// Resolves the folder's deno.json.
+  ///
+  /// This will exclude the root deno.json in a member.
+  pub fn member_deno_json(&self) -> Option<&ConfigFileRc> {
+    self.deno_json.member.as_ref()
   }
 
-  pub fn has_pkg_json(&self) -> bool {
-    self.pkg_json.is_some()
+  /// Resolves the folder's package.json.
+  ///
+  /// This will exclude the root package.json in a member.
+  pub fn member_pkg_json(&self) -> Option<&PackageJsonRc> {
+    self.pkg_json.member.as_ref()
   }
 
-  pub fn maybe_deno_json(&self) -> Option<&ConfigFileRc> {
-    self.deno_json.member()
+  /// Resolves the member or root deno.json
+  pub fn member_or_root_deno_json(&self) -> Option<&ConfigFileRc> {
+    self
+      .deno_json
+      .member
+      .as_ref()
+      .or(self.deno_json.root.as_ref())
   }
 
-  pub fn maybe_pkg_json(&self) -> Option<&PackageJsonRc> {
-    self.pkg_json.member()
+  /// Resolves the member or root package.json
+  pub fn member_or_root_pkg_json(&self) -> Option<&PackageJsonRc> {
+    self
+      .pkg_json
+      .member
+      .as_ref()
+      .or(self.pkg_json.root.as_ref())
   }
 
   pub fn maybe_package_config(
     self: &WorkspaceDirectoryRc,
   ) -> Option<JsrPackageConfig> {
-    let deno_json = self.maybe_deno_json()?;
+    let deno_json = self.deno_json.member.as_ref()?;
     let pkg_name = deno_json.json.name.as_ref()?;
     if !deno_json.is_package() {
       return None;
@@ -1771,16 +1777,23 @@ impl WorkspaceDirectory {
   pub fn to_configured_compiler_options_sources(
     &self,
   ) -> Vec<CompilerOptionsSource> {
-    self.deno_json.root.as_ref().into_iter().chain(self.deno_json.member.as_ref().into_iter()).map(|d| CompilerOptionsSource {
-      specifier: new_rc(d.specifier.clone()),
-      compiler_options: d
-        .json
-        .compiler_options
-        .as_ref()
-        .filter(|v| !v.is_null())
-        .cloned()
-        .map(CompilerOptions),
-    }).collect()
+    self
+      .deno_json
+      .root
+      .as_ref()
+      .into_iter()
+      .chain(self.deno_json.member.as_ref())
+      .map(|d| CompilerOptionsSource {
+        specifier: new_rc(d.specifier.clone()),
+        compiler_options: d
+          .json
+          .compiler_options
+          .as_ref()
+          .filter(|v| !v.is_null())
+          .cloned()
+          .map(CompilerOptions),
+      })
+      .collect()
   }
 
   pub fn to_lint_config(
@@ -1797,15 +1810,20 @@ impl WorkspaceDirectory {
   fn to_lint_config_inner(
     &self,
   ) -> Result<WorkspaceDirLintConfig, ToInvalidConfigError> {
-    let default_lint_config = || WorkspaceDirLintConfig {
-      rules: Default::default(),
-      plugins: Default::default(),
-      files: FilePatterns::new_with_base(
-        url_to_file_path(&self.dir_url).unwrap(),
-      ),
-    };
-    let member_config = self.deno_json.member.as_ref().map(|member| member.to_lint_config()).transpose()?;
-    let root_config = self.deno_json
+    let member_config = self
+      .deno_json
+      .member
+      .as_ref()
+      .map(|member| member.to_lint_config())
+      .transpose()?
+      .unwrap_or_else(|| LintConfig {
+        options: Default::default(),
+        files: FilePatterns::new_with_base(
+          url_to_file_path(&self.dir_url).unwrap(),
+        ),
+      });
+    let root_config = self
+      .deno_json
       .root
       .as_ref()
       .map(|root| root.to_lint_config())
@@ -1822,14 +1840,12 @@ impl WorkspaceDirectory {
       .iter()
       .filter(|plugin| plugin.specifier.starts_with('!'))
       .map(|plugin| {
-        deno_json
-          .member
-          .specifier
-          .join(&plugin.specifier[1..])
-          .map_err(|err| ToInvalidConfigError::InvalidConfig {
+        plugin.base.join(&plugin.specifier[1..]).map_err(|err| {
+          ToInvalidConfigError::InvalidConfig {
             config: "lint",
             source: err.into(),
-          })
+          }
+        })
       })
       .collect::<Result<HashSet<_>, _>>()?;
 
@@ -2138,10 +2154,10 @@ impl WorkspaceDirectory {
     Ok(WorkspaceTasksConfig {
       root: to_member_tasks_config(
         self.deno_json.root.as_ref(),
-        self.pkg_json.root.as_ref()
+        self.pkg_json.root.as_ref(),
       )?,
       member: to_member_tasks_config(
-        self.deno_json.root.as_ref(),
+        self.deno_json.member.as_ref(),
         self.pkg_json.member.as_ref(),
       )?,
     })
@@ -2238,17 +2254,17 @@ impl WorkspaceDirectory {
   fn to_test_config_inner_no_cache(
     &self,
   ) -> Result<TestConfig, ToInvalidConfigError> {
-    let Some(deno_json) = self.deno_json.as_ref() else {
-      return Ok(TestConfig {
+    let permissions = self.to_permissions_config()?;
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_test_config(permissions)?,
+      None => TestConfig {
         files: FilePatterns::new_with_base(
           url_to_file_path(&self.dir_url).unwrap(),
         ),
         permissions: None,
-      });
+      },
     };
-    let permissions = self.to_permissions_config()?;
-    let member_config = deno_json.member.to_test_config(permissions)?;
-    let root_config = match &deno_json.root {
+    let root_config = match &self.deno_json.root {
       Some(root) => root.to_test_config(permissions)?,
       None => return Ok(member_config),
     };
@@ -2266,20 +2282,18 @@ impl WorkspaceDirectory {
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    let config = if let Some(deno_json) = self.deno_json.as_ref() {
-      if let Some(config) = deno_json.member.to_deploy_config()? {
-        Some(config)
-      } else {
-        match &deno_json.root {
-          Some(root) => root.to_deploy_config()?,
-          None => None,
-        }
-      }
-    } else {
-      None
-    };
-
-    Ok(config)
+    if let Some(deno_json) = &self.deno_json.member
+      && let Some(config) = deno_json.to_deploy_config()?
+    {
+      return Ok(Some(config));
+    }
+    self
+      .deno_json
+      .root
+      .as_ref()
+      .map(|deno_json| deno_json.to_deploy_config())
+      .transpose()
+      .map(|v| v.flatten())
   }
 
   /// Removes any "include" patterns from the root files that have
