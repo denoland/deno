@@ -2476,32 +2476,24 @@ impl WorkspaceTasksConfig {
   }
 
   pub fn task_names(&self) -> impl Iterator<Item = &str> {
-    self.member.task_names()
-      .chain(
-        self
-          .root.task_names()
-          .filter(|root_key| {
-            self
-              .member .task(root_key).is_none()
-          }),
-      )
+    self.member.task_names().chain(
+      self
+        .root
+        .task_names()
+        .filter(|root_key| self.member.task(root_key).is_none()),
+    )
   }
 
   pub fn task(&self, name: &str) -> Option<TaskOrScript<'_>> {
-    self
-      .member
-      .task(name)
-      .or_else(|| self.root.task(name))
+    self.member.task(name).or_else(|| self.root.task(name))
   }
 
   pub fn is_empty(&self) -> bool {
-    self.root.is_empty()
-      && self.member.is_empty()
+    self.root.is_empty() && self.member.is_empty()
   }
 
   pub fn tasks_count(&self) -> usize {
-    self.root.tasks_count()
-      + self.member.tasks_count()
+    self.root.tasks_count() + self.member.tasks_count()
   }
 }
 

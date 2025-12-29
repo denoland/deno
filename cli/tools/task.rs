@@ -627,12 +627,10 @@ fn sort_tasks_topo<'a>(
 
   impl TasksConfig for WorkspaceTasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
-      if let Some(task_or_script) = self.member.task(name)
-      {
+      if let Some(task_or_script) = self.member.task(name) {
         return Some((task_or_script, self as &dyn TasksConfig));
       }
-      if let Some(task_or_script) = self.root.task(name)
-      {
+      if let Some(task_or_script) = self.root.task(name) {
         // switch to only using the root tasks for the dependencies
         return Some((task_or_script, &self.root as &dyn TasksConfig));
       }
