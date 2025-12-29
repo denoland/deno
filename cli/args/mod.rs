@@ -799,7 +799,7 @@ impl CliOptions {
   pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
     if let Some(location) = &self.flags.location {
       StorageKeyResolver::from_flag(location)
-    } else if let Some(deno_json) = self.start_dir.maybe_deno_json() {
+    } else if let Some(deno_json) = self.start_dir.member_or_root_deno_json() {
       StorageKeyResolver::from_config_file_url(&deno_json.specifier)
     } else {
       StorageKeyResolver::new_use_main_module()

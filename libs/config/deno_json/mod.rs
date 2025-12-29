@@ -766,7 +766,7 @@ impl SerializedCompileConfig {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
