@@ -2116,8 +2116,8 @@ impl WorkspaceDirectory {
     fn to_member_tasks_config(
       maybe_deno_json: Option<&ConfigFileRc>,
       maybe_pkg_json: Option<&PackageJsonRc>,
-    ) -> Result<Option<WorkspaceMemberTasksConfig>, ToTasksConfigError> {
-      let config = WorkspaceMemberTasksConfig {
+    ) -> Result<WorkspaceMemberTasksConfig, ToTasksConfigError> {
+      Ok(WorkspaceMemberTasksConfig {
         deno_json: match maybe_deno_json {
           Some(deno_json) => deno_json
             .to_tasks_config()
@@ -2144,11 +2144,7 @@ impl WorkspaceDirectory {
           }),
           None => None,
         },
-      };
-      if config.deno_json.is_none() && config.package_json.is_none() {
-        return Ok(None);
-      }
-      Ok(Some(config))
+      })
     }
 
     Ok(WorkspaceTasksConfig {
@@ -2385,7 +2381,7 @@ pub struct WorkspaceMemberTasksConfigFile<TValue> {
   pub tasks: IndexMap<String, TValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberTasksConfig {
   pub deno_json: Option<WorkspaceMemberTasksConfigFile<TaskDefinition>>,
   pub package_json: Option<WorkspaceMemberTasksConfigFile<String>>,
@@ -2467,36 +2463,26 @@ impl WorkspaceMemberTasksConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceTasksConfig {
-  pub root: Option<WorkspaceMemberTasksConfig>,
-  pub member: Option<WorkspaceMemberTasksConfig>,
+  pub root: WorkspaceMemberTasksConfig,
+  pub member: WorkspaceMemberTasksConfig,
 }
 
 impl WorkspaceTasksConfig {
   pub fn with_only_pkg_json(self) -> Self {
     WorkspaceTasksConfig {
-      root: self.root.map(|c| c.with_only_pkg_json()),
-      member: self.member.map(|c| c.with_only_pkg_json()),
+      root: self.root.with_only_pkg_json(),
+      member: self.member.with_only_pkg_json(),
     }
   }
 
   pub fn task_names(&self) -> impl Iterator<Item = &str> {
-    self
-      .member
-      .as_ref()
-      .into_iter()
-      .flat_map(|r| r.task_names())
+    self.member.task_names()
       .chain(
         self
-          .root
-          .as_ref()
-          .into_iter()
-          .flat_map(|m| m.task_names())
+          .root.task_names()
           .filter(|root_key| {
             self
-              .member
-              .as_ref()
-              .map(|m| m.task(root_key).is_none())
-              .unwrap_or(true)
+              .member .task(root_key).is_none()
           }),
       )
   }
@@ -2504,19 +2490,18 @@ impl WorkspaceTasksConfig {
   pub fn task(&self, name: &str) -> Option<TaskOrScript<'_>> {
     self
       .member
-      .as_ref()
-      .and_then(|m| m.task(name))
-      .or_else(|| self.root.as_ref().and_then(|r| r.task(name)))
+      .task(name)
+      .or_else(|| self.root.task(name))
   }
 
   pub fn is_empty(&self) -> bool {
-    self.root.as_ref().map(|r| r.is_empty()).unwrap_or(true)
-      && self.member.as_ref().map(|r| r.is_empty()).unwrap_or(true)
+    self.root.is_empty()
+      && self.member.is_empty()
   }
 
   pub fn tasks_count(&self) -> usize {
-    self.root.as_ref().map(|r| r.tasks_count()).unwrap_or(0)
-      + self.member.as_ref().map(|r| r.tasks_count()).unwrap_or(0)
+    self.root.tasks_count()
+      + self.member.tasks_count()
   }
 }
 
@@ -2969,17 +2954,17 @@ pub mod test {
         ("overwrite".to_string(), "echo overwrite".into()),
       ]),
     });
-    let root = Some(WorkspaceMemberTasksConfig {
+    let root = WorkspaceMemberTasksConfig {
       deno_json: root_deno_json.clone(),
       package_json: None,
-    });
+    };
     // root
     {
       let tasks_config = workspace_dir.to_tasks_config().unwrap();
       assert_eq!(
         tasks_config,
         WorkspaceTasksConfig {
-          root: None,
+          root: Default::default(),
           // the root context will have the root config as the member config
           member: root.clone(),
         }
@@ -2999,7 +2984,7 @@ pub mod test {
         tasks_config,
         WorkspaceTasksConfig {
           root: root.clone(),
-          member: Some(WorkspaceMemberTasksConfig {
+          member: WorkspaceMemberTasksConfig {
             deno_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("member"))
                 .unwrap(),
@@ -3010,7 +2995,7 @@ pub mod test {
               ]),
             }),
             package_json: None,
-          }),
+          },
         }
       );
       assert_eq!(
@@ -3028,11 +3013,11 @@ pub mod test {
       assert_eq!(
         tasks_config,
         WorkspaceTasksConfig {
-          root: Some(WorkspaceMemberTasksConfig {
+          root: WorkspaceMemberTasksConfig {
             deno_json: root_deno_json.clone(),
             package_json: None,
-          }),
-          member: Some(WorkspaceMemberTasksConfig {
+          },
+          member: WorkspaceMemberTasksConfig {
             deno_json: None,
             package_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("pkg_json"))
@@ -3043,12 +3028,12 @@ pub mod test {
                 "echo 1".to_string()
               )]),
             }),
-          })
+          }
         }
       );
       assert_eq!(
         tasks_config.task_names().collect::<Vec<_>>(),
-        ["hi", "overwrite", "script"]
+        ["script", "hi", "overwrite"]
       );
     }
   }
