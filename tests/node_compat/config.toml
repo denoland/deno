@@ -86,7 +86,7 @@
 "parallel/test-buffer-constructor-node-modules-paths.js" = {}
 "parallel/test-buffer-constructor-node-modules.js" = {}
 "parallel/test-buffer-constructor-outside-node-modules.js" = {}
-"parallel/test-buffer-copy.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31637" }
+"parallel/test-buffer-copy.js" = {}
 "parallel/test-buffer-equals.js" = {}
 "parallel/test-buffer-failed-alloc-typed-arrays.js" = {}
 "parallel/test-buffer-fakes.js" = {}
