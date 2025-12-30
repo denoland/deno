@@ -1211,7 +1211,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
     })
   }
 
