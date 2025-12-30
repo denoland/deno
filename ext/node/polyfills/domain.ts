@@ -7,6 +7,7 @@ import { primordials } from "ext:core/mod.js";
 import { ERR_UNHANDLED_ERROR } from "ext:deno_node/internal/errors.ts";
 const {
   ArrayPrototypeIndexOf,
+  ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
@@ -25,6 +26,11 @@ function emitError(e) {
 let stack = [];
 export let _stack = stack;
 export let active = null;
+
+// Track the most recently active domain for error handling
+// NOTE: This is a workaround since Deno's async_hooks don't fully track async context
+// for all operations (timers, crypto, etc.). Concurrent domains may not work correctly.
+let lastActiveDomain: Domain | null = null;
 
 export function create() {
   return new Domain();
@@ -108,12 +114,18 @@ export class Domain extends EventEmitter {
   }
 
   run(fn) {
+    this.enter();
     try {
-      return fn();
+      return FunctionPrototypeApply(
+        fn,
+        null,
+        ArrayPrototypeSlice(arguments, 1),
+      );
     } catch (e) {
       FunctionPrototypeCall(emitError, this, e);
+    } finally {
+      this.exit();
     }
-    return this;
   }
 
   dispose() {
@@ -122,16 +134,56 @@ export class Domain extends EventEmitter {
   }
 
   enter() {
+    active = process.domain = this;
+    lastActiveDomain = this;
+    ArrayPrototypePush(stack, this);
+    updateExceptionCapture();
     return this;
   }
 
   exit() {
+    const index = ArrayPrototypeLastIndexOf(stack, this);
+    if (index === -1) return this;
+    ArrayPrototypeSplice(stack, index, 1);
+    active = stack.length === 0 ? null : stack[stack.length - 1];
+    process.domain = active;
+    updateExceptionCapture();
     return this;
+  }
+
+  _errorHandler(er) {
+    let caught = false;
+
+    if (this.listenerCount("error") > 0) {
+      try {
+        this.emit("error", er);
+        caught = true;
+      } catch (e) {
+        // The error handler threw, so we need to propagate
+        er = e;
+        caught = false;
+      }
+    }
+
+    return caught;
   }
 }
 
 function updateExceptionCapture() {
-  // TODO(kt3k): implement this
+  // Check if any domain has error listeners
+  const hasErrorListeners = lastActiveDomain !== null &&
+    lastActiveDomain.listenerCount("error") > 0;
+
+  if (!hasErrorListeners) {
+    process.setUncaughtExceptionCaptureCallback(null);
+  } else {
+    process.setUncaughtExceptionCaptureCallback(null);
+    process.setUncaughtExceptionCaptureCallback((er) => {
+      // Try process.domain first, then fall back to lastActiveDomain
+      const domain = process.domain ?? lastActiveDomain;
+      return domain?._errorHandler(er) ?? false;
+    });
+  }
 }
 
 let patched = false;

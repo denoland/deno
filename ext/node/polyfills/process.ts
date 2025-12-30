@@ -891,6 +891,11 @@ process.noDeprecation = false;
 
 process.moduleLoadList = [];
 
+process.setUncaughtExceptionCaptureCallback =
+  setUncaughtExceptionCaptureCallback;
+process.hasUncaughtExceptionCaptureCallback =
+  hasUncaughtExceptionCaptureCallback;
+
 if (isWindows) {
   delete process.getgid;
   delete process.getuid;
@@ -916,6 +921,35 @@ let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
+
+// deno-lint-ignore no-explicit-any
+let uncaughtExceptionCaptureCallback: ((err: any) => boolean) | null = null;
+
+export function setUncaughtExceptionCaptureCallback(
+  // deno-lint-ignore no-explicit-any
+  fn: ((err: any) => boolean) | null,
+) {
+  if (fn === null) {
+    uncaughtExceptionCaptureCallback = null;
+    synchronizeListeners();
+    return;
+  }
+  if (typeof fn !== "function") {
+    throw new ERR_INVALID_ARG_TYPE("fn", ["Function", "null"], fn);
+  }
+  if (uncaughtExceptionCaptureCallback !== null) {
+    throw new Error(
+      "uncaughtExceptionCaptureCallback is already set. " +
+        "Call setUncaughtExceptionCaptureCallback(null) first to unset it.",
+    );
+  }
+  uncaughtExceptionCaptureCallback = fn;
+  synchronizeListeners();
+}
+
+export function hasUncaughtExceptionCaptureCallback(): boolean {
+  return uncaughtExceptionCaptureCallback !== null;
+}
 
 process.on("newListener", (event: string) => {
   switch (event) {
@@ -964,6 +998,13 @@ process.on("removeListener", (event: string) => {
 });
 
 function processOnError(event: ErrorEvent) {
+  // If there's a capture callback, call it first
+  if (uncaughtExceptionCaptureCallback !== null) {
+    event.preventDefault();
+    uncaughtExceptionCaptureCallback(event.error);
+    return;
+  }
+
   if (process.listenerCount("uncaughtException") > 0) {
     event.preventDefault();
   }
@@ -988,9 +1029,18 @@ function synchronizeListeners() {
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 ||
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionCaptureCallback !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
+      // If there's a capture callback, use it for unhandled rejections too
+      if (uncaughtExceptionCaptureCallback !== null) {
+        event.preventDefault();
+        uncaughtExceptionCaptureCallback(event.reason);
+        return;
+      }
+
       if (process.listenerCount("unhandledRejection") === 0) {
         // The Node.js default behavior is to raise an uncaught exception if
         // an unhandled rejection occurs and there are no unhandledRejection
@@ -1018,7 +1068,10 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0) {
+  if (
+    uncaughtExceptionListenerCount > 0 ||
+    uncaughtExceptionCaptureCallback !== null
+  ) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);

@@ -4,6 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
+import process from "node:process";
 
 export const MAX_RANDOM_VALUES = 65536;
 export const MAX_SIZE = 4294967295;
@@ -44,6 +45,9 @@ export default function randomBytes(
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
   if (typeof cb === "function") {
+    // Capture the current domain for async callback
+    const domain = process.domain;
+
     let err: Error | null = null, bytes: Buffer;
     try {
       bytes = generateRandomBytes(size);
@@ -62,10 +66,23 @@ export default function randomBytes(
       }
     }
     setTimeout(() => {
-      if (err) {
-        cb(err);
+      if (domain) {
+        domain.enter();
+        try {
+          if (err) {
+            cb(err);
+          } else {
+            cb(null, bytes);
+          }
+        } finally {
+          domain.exit();
+        }
       } else {
-        cb(null, bytes);
+        if (err) {
+          cb(err);
+        } else {
+          cb(null, bytes);
+        }
       }
     }, 0);
   } else {
