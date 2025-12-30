@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::rc::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::ToV8;
@@ -67,7 +66,7 @@ pub type InnerStatementPtr = Rc<Cell<Option<*mut ffi::sqlite3_stmt>>>;
 #[derive(Debug)]
 pub struct StatementSync {
   pub inner: InnerStatementPtr,
-  pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
@@ -432,8 +431,7 @@ impl StatementSync {
         self.ignore_next_sqlite_error.set(false);
         return Ok(());
       }
-      let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-      let db = db_rc.borrow();
+      let db = self.db.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
       // SAFETY: db.handle() is valid
@@ -618,8 +616,7 @@ impl StatementSync {
     scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
-    let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-    let db = db_rc.borrow();
+    let db = self.db.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     self.bind_params(scope, params)?;
