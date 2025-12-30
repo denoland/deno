@@ -978,12 +978,12 @@ Deno.test("[node/sqlite] backup has correct name and length", () => {
 });
 
 Deno.test("[node/sqlite] Database GC should not invalidate statements and sessions", () => {
-  const db = new DatabaseSync(':memory:');
-  const stmt = db.prepare(`SELECT 1`);
+  const db = new DatabaseSync(":memory:");
+  const stmt = db.prepare("SELECT 1");
   const sess = db.createSession();
   const a = [];
   for (let i = 0; i < 100; i++) {
-    for (let i = 0; i < 1000000; i++) a.push(0);  // Try to trigger GC
+    for (let i = 0; i < 1000000; i++) a.push(0); // Try to trigger GC
     stmt.run();
     sess.changeset();
   }
