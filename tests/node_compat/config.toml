@@ -544,8 +544,10 @@
 "parallel/test-http-chunked-smuggling.js" = {}
 "parallel/test-http-chunked.js" = {}
 "parallel/test-http-client-abort-event.js" = {}
+"parallel/test-http-client-abort-keep-alive-destroy-res.js" = {}
 "parallel/test-http-client-abort-no-agent.js" = {}
 "parallel/test-http-client-abort-response-event.js" = {}
+"parallel/test-http-client-abort-unix-socket.js" = {}
 "parallel/test-http-client-abort2.js" = {}
 "parallel/test-http-client-abort3.js" = {}
 "parallel/test-http-client-agent-abort-close-event.js" = {}
