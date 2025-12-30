@@ -109,13 +109,13 @@ ObjectDefineProperties(AbortSignal.prototype, {
     value: function removeEventListener() {
       FunctionPrototypeApply(removeEventListener_, this, arguments);
       if (getListenerCount(this, "abort") === 0) {
-        if (this[timerId] !== null) {
+        if (this[timerId] != null) {
           unrefTimer(this[timerId]);
         } else {
           const sourceSignals = op_event_get_source_signals(this);
           for (let i = 0; i < sourceSignals.length; ++i) {
             const sourceSignal = sourceSignals[i];
-            if (sourceSignal[timerId] !== null) {
+            if (sourceSignal[timerId] != null) {
               // Check that all dependent signals of the timer signal do not have listeners
               if (
                 ArrayPrototypeEvery(
