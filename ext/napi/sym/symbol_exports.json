@@ -94,6 +94,7 @@
     "napi_get_value_bool",
     "napi_reference_ref",
     "napi_create_object",
+    "napi_create_object_with_properties",
     "napi_create_promise",
     "napi_create_int32",
     "napi_escape_handle",

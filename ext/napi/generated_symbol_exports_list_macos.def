@@ -92,6 +92,7 @@ _napi_get_buffer_info
 _napi_get_value_bool
 _napi_reference_ref
 _napi_create_object
+_napi_create_object_with_properties
 _napi_create_promise
 _napi_create_int32
 _napi_escape_handle
