@@ -68,6 +68,7 @@ fn sqlite_extension_test() {
     .arg("--allow-read")
     .arg("--allow-write")
     .arg("--allow-ffi")
+    .arg("--allow-run")
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-check")
