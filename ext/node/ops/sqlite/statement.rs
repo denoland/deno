@@ -432,7 +432,7 @@ impl StatementSync {
         return Ok(());
       }
       let db = self.db.borrow();
-      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
       // SAFETY: db.handle() is valid
       unsafe {
@@ -617,7 +617,7 @@ impl StatementSync {
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
     let db = self.db.borrow();
-    let db = db.as_ref().ok_or(SqliteError::InUse)?;
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     self.bind_params(scope, params)?;
 
