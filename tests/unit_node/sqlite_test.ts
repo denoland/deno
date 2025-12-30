@@ -452,15 +452,18 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
-Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
+  const errMessageClosed = "database is not open";
 
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE test (value INTEGER)");
   const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  const sess = db.createSession();
   stmt.run(1, 2);
   db.close();
 
+  assertThrows(() => stmt.run(), Error, errMessageClosed);
   assertThrows(() => stmt.all(), Error, errMessage);
   assertThrows(() => stmt.expandedSQL, Error, errMessage);
   assertThrows(() => stmt.get(), Error, errMessage);
@@ -473,6 +476,9 @@ Deno.test("[node/sqlite] calling StatementSync methods after connection has clos
   );
   assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
   assertThrows(() => stmt.sourceSQL, Error, errMessage);
+
+  assertThrows(() => sess.changeset(), Error, errMessageClosed);
+  assertThrows(() => sess.patchset(), Error, errMessageClosed);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144
@@ -969,4 +975,16 @@ Deno.test("[node/sqlite] backup fails when path cannot be opened", async () => {
 Deno.test("[node/sqlite] backup has correct name and length", () => {
   assertEquals(backup.name, "backup");
   assertEquals(backup.length, 2);
+});
+
+Deno.test("[node/sqlite] Database GC should not invalidate statements and sessions", () => {
+  const db = new DatabaseSync(':memory:');
+  const stmt = db.prepare(`SELECT 1`);
+  const sess = db.createSession();
+  const a = [];
+  for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000000; i++) a.push(0);  // Try to trigger GC
+    stmt.run();
+    sess.changeset();
+  }
 });
