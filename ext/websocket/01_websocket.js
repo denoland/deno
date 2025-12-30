@@ -56,8 +56,8 @@ import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 import {
-  createEventTargetBranded,
   CloseEvent,
+  createEventTargetBranded,
   defineEventHandler,
   dispatch,
   ErrorEvent,

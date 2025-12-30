@@ -20,7 +20,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "./01_console.js";
-import { EventTarget, createEventTargetBranded } from "./02_event.js";
+import { createEventTargetBranded, EventTarget } from "./02_event.js";
 import { DOMException } from "./01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");

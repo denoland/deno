@@ -405,14 +405,14 @@ function fetch(input, init = { __proto__: null }) {
       let responseObject = null;
       // 9.
       let locallyAborted = false;
-      // 10.
+      // 11.
       function onAbort() {
         locallyAborted = true;
         reject(
           abortFetch(request, responseObject, requestObject.signal.reason),
         );
       }
-      addSignalAlgorithm(requestObject, onAbort);
+      addSignalAlgorithm(requestObject.signal, onAbort);
 
       if (!requestObject.headers.has("Accept")) {
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
@@ -438,7 +438,7 @@ function fetch(input, init = { __proto__: null }) {
                   requestObject.signal.reason,
                 ),
               );
-              removeSignalAlgorithm(requestObject, onAbort);
+              removeSignalAlgorithm(requestObject.signal, onAbort);
               return;
             }
             // 12.3.
@@ -447,7 +447,7 @@ function fetch(input, init = { __proto__: null }) {
                 "Fetch failed: " + (response.error ?? "unknown error"),
               );
               reject(err);
-              removeSignalAlgorithm(requestObject, onAbort);
+              removeSignalAlgorithm(requestObject.signal, onAbort);
               return;
             }
             responseObject = fromInnerResponse(response, "immutable");
@@ -457,12 +457,12 @@ function fetch(input, init = { __proto__: null }) {
             }
 
             resolve(responseObject);
-            removeSignalAlgorithm(requestObject, onAbort);
+            removeSignalAlgorithm(requestObject.signal, onAbort);
           },
         ),
         (err) => {
           reject(err);
-          removeSignalAlgorithm(requestObject, onAbort);
+          removeSignalAlgorithm(requestObject.signal, onAbort);
         },
       );
     });

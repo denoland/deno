@@ -118,7 +118,10 @@ pub struct Event {
   time_stamp: f64,
 }
 
-impl GarbageCollected for Event {
+// SAFETY: we're sure `Event` can be GCed
+unsafe impl GarbageCollected for Event {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Event"
   }
@@ -160,7 +163,7 @@ impl Event {
   // https://dom.spec.whatwg.org/#concept-event-dispatch
   fn dispatch<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
@@ -269,7 +272,7 @@ impl Event {
   #[inline]
   fn invoke<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
@@ -330,7 +333,7 @@ impl Event {
   #[inline]
   fn inner_invoke<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target_object: v8::Global<v8::Object>,
@@ -380,34 +383,35 @@ impl Event {
       }
 
       // 11.
-      let scope = &mut v8::TryCatch::new(scope);
+      let scope = std::pin::pin!(v8::TryCatch::new(scope));
+      let mut scope = scope.init();
 
-      let callback = v8::Local::new(scope, listener.callback.clone());
-      let key = v8::String::new(scope, "handleEvent").unwrap();
-      if let Some(handle_event) = callback.get(scope, key.into())
+      let callback = v8::Local::new(&scope, listener.callback.clone());
+      let key = v8::String::new(&scope, "handleEvent").unwrap();
+      if let Some(handle_event) = callback.get(&scope, key.into())
         && let Ok(handle_event) =
           v8::Local::<v8::Function>::try_from(handle_event)
       {
-        let recv = v8::Local::new(scope, &target_object);
-        handle_event.call(scope, recv.into(), &[event_object.into()]);
+        let recv = v8::Local::new(&scope, &target_object);
+        handle_event.call(&scope, recv.into(), &[event_object.into()]);
       } else {
         match v8::Local::<v8::Function>::try_from(callback) {
           Ok(callback) => {
-            let recv = v8::Local::new(scope, &target_object);
-            callback.call(scope, recv.into(), &[event_object.into()]);
+            let recv = v8::Local::new(&scope, &target_object);
+            callback.call(&scope, recv.into(), &[event_object.into()]);
           }
           // 11.1.
           Err(error) => {
-            let message = v8::String::new(scope, &error.to_string()).unwrap();
-            let exception = v8::Exception::type_error(scope, message);
-            report_exception(scope, state, exception);
+            let message = v8::String::new(&scope, &error.to_string()).unwrap();
+            let exception = v8::Exception::type_error(&scope, message);
+            report_exception(&mut scope, state, exception);
           }
         }
       }
 
       // 11.1.
       if let Some(exception) = scope.exception() {
-        report_exception(scope, state, exception);
+        report_exception(&mut scope, state, exception);
       }
 
       // 12.
@@ -442,7 +446,7 @@ impl Event {
   #[required(1)]
   fn init_event<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     #[webidl] bubbles: Option<bool>,
     #[webidl] cancelable: Option<bool>,
@@ -490,7 +494,7 @@ impl Event {
 
   fn composed_path<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Array> {
     let path = self.path.borrow();
     if path.is_empty() {
@@ -685,7 +689,7 @@ impl Event {
 
 #[op2(fast)]
 pub fn op_event_set_is_trusted<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   event: v8::Local<'a, v8::Value>,
   value: bool,
 ) {
@@ -696,7 +700,7 @@ pub fn op_event_set_is_trusted<'a>(
 
 #[op2]
 pub fn op_event_set_target<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   event: v8::Local<'a, v8::Value>,
   #[global] value: v8::Global<v8::Object>,
 ) {
@@ -707,7 +711,7 @@ pub fn op_event_set_target<'a>(
 
 #[op2(reentrant)]
 pub fn op_event_dispatch<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   state: Rc<RefCell<OpState>>,
   #[global] target_object: v8::Global<v8::Object>,
   event_object: v8::Local<'a, v8::Object>,
@@ -735,7 +739,10 @@ pub struct CustomEvent {
   detail: RefCell<Option<v8::Global<v8::Value>>>,
 }
 
-impl GarbageCollected for CustomEvent {
+// SAFETY: we're sure `CustomEvent` can be GCed
+unsafe impl GarbageCollected for CustomEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"CustomEvent"
   }
@@ -756,7 +763,7 @@ impl CustomEvent {
   #[required(1)]
   #[cppgc]
   fn constructor<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     init: v8::Local<'a, v8::Value>,
   ) -> Result<(Event, CustomEvent), EventError> {
@@ -787,7 +794,7 @@ impl CustomEvent {
   #[required(1)]
   fn init_custom_event<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     #[webidl] bubbles: Option<bool>,
     #[webidl] cancelable: Option<bool>,
@@ -849,7 +856,10 @@ pub struct ErrorEvent {
   error: Option<v8::Global<v8::Value>>,
 }
 
-impl GarbageCollected for ErrorEvent {
+// SAFETY: we're sure `ErrorEvent` can be GCed
+unsafe impl GarbageCollected for ErrorEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ErrorEvent"
   }
@@ -887,7 +897,7 @@ impl ErrorEvent {
   #[required(1)]
   #[cppgc]
   fn constructor<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     init: v8::Local<'a, v8::Value>,
   ) -> Result<(Event, ErrorEvent), EventError> {
@@ -948,7 +958,7 @@ impl ErrorEvent {
   #[getter]
   fn error<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
     if let Some(error) = &self.error {
       v8::Local::new(scope, error)
@@ -964,7 +974,10 @@ pub struct PromiseRejectionEvent {
   reason: Option<v8::Global<v8::Value>>,
 }
 
-impl GarbageCollected for PromiseRejectionEvent {
+// SAFETY: we're sure `PromiseRejectionEvent` can be GCed
+unsafe impl GarbageCollected for PromiseRejectionEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"PromiseRejectionEvent"
   }
@@ -986,7 +999,7 @@ impl PromiseRejectionEvent {
   #[required(1)]
   #[cppgc]
   fn constructor<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     init: v8::Local<'a, v8::Object>,
   ) -> Result<(Event, PromiseRejectionEvent), EventError> {
@@ -1030,7 +1043,7 @@ impl PromiseRejectionEvent {
   #[getter]
   fn reason<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
     if let Some(reason) = &self.reason {
       v8::Local::new(scope, reason)
@@ -1064,7 +1077,10 @@ pub struct CloseEvent {
   reason: String,
 }
 
-impl GarbageCollected for CloseEvent {
+// SAFETY: we're sure `CloseEvent` can be GCed
+unsafe impl GarbageCollected for CloseEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"CloseEvent"
   }
@@ -1157,7 +1173,10 @@ pub struct MessageEvent {
   ports: RefCell<v8::Global<v8::Array>>,
 }
 
-impl GarbageCollected for MessageEvent {
+// SAFETY: we're sure `MessageEvent` can be GCed
+unsafe impl GarbageCollected for MessageEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"MessageEvent"
   }
@@ -1197,7 +1216,7 @@ impl MessageEvent {
   #[required(1)]
   #[cppgc]
   fn constructor<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     init: v8::Local<'a, v8::Value>,
   ) -> Result<(Event, MessageEvent), EventError> {
@@ -1287,7 +1306,7 @@ impl MessageEvent {
   #[undefined]
   fn init_message_event<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     #[webidl] bubbles: Option<bool>,
     #[webidl] cancelable: Option<bool>,
@@ -1403,7 +1422,10 @@ pub struct ProgressEvent {
   total: f64,
 }
 
-impl GarbageCollected for ProgressEvent {
+// SAFETY: we're sure `ProgressEvent` can be GCed
+unsafe impl GarbageCollected for ProgressEvent {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ProgressEvent"
   }
@@ -1473,7 +1495,7 @@ pub(crate) struct ReportExceptionStackedCalls(u32);
 
 // https://html.spec.whatwg.org/#report-the-exception
 fn report_exception<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   state: &Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) {
@@ -1557,7 +1579,7 @@ fn report_exception<'a>(
 
 #[op2(fast, reentrant, required(1))]
 pub fn op_event_report_exception<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   state: Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) {
@@ -1567,7 +1589,7 @@ pub fn op_event_report_exception<'a>(
 #[op2(fast, reentrant, required(1))]
 pub fn op_event_report_error<'a>(
   #[this] this: v8::Global<v8::Object>,
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   state: Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) -> Result<(), EventError> {
@@ -1581,7 +1603,7 @@ pub fn op_event_report_error<'a>(
 
 #[inline]
 fn get_value<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
   key: &str,
 ) -> Option<v8::Local<'a, v8::Value>> {
@@ -1633,7 +1655,10 @@ pub struct EventTarget {
   listeners: Rc<RefCell<HashMap<String, Vec<Rc<EventListener>>>>>,
 }
 
-impl GarbageCollected for EventTarget {
+// SAFETY: we're sure `EventTarget` can be GCed
+unsafe impl GarbageCollected for EventTarget {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EventTarget"
   }
@@ -1660,7 +1685,7 @@ impl EventTarget {
   #[undefined]
   fn add_event_listener<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     callback: Option<v8::Local<'a, v8::Value>>,
     options: Option<v8::Local<'a, v8::Value>>,
@@ -1777,7 +1802,7 @@ impl EventTarget {
     });
 
     if let Some(ref signal) = signal {
-      let abort_callback = |_scope: &mut v8::HandleScope,
+      let abort_callback = |_scope: &mut v8::PinScope,
                             args: v8::FunctionCallbackArguments,
                             _rv: v8::ReturnValue| {
         let context = v8::Local::<v8::External>::try_from(args.data())
@@ -1809,7 +1834,7 @@ impl EventTarget {
   #[undefined]
   fn remove_event_listener<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] typ: String,
     callback: Option<v8::Local<'a, v8::Object>>,
     options: Option<v8::Local<'a, v8::Value>>,
@@ -1865,12 +1890,12 @@ impl EventTarget {
   fn dispatch_event<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Value>,
   ) -> Result<bool, EventError> {
     let Some(event) =
-      cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
+      cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object)
     else {
       return Err(EventError::ExpectedEvent);
     };
@@ -1910,14 +1935,14 @@ impl EventTarget {
 
 #[op2]
 pub fn op_event_create_empty_event_target<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
 ) -> v8::Local<'a, v8::Object> {
   cppgc::make_cppgc_empty_object::<EventTarget>(scope)
 }
 
 #[inline]
 pub fn set_event_target_data<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
 ) {
   cppgc::wrap_object1(scope, obj, EventTarget::new());
@@ -1925,7 +1950,7 @@ pub fn set_event_target_data<'a>(
 
 #[op2(fast)]
 pub fn op_event_wrap_event_target<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
 ) {
   set_event_target_data(scope, obj);
@@ -1933,13 +1958,16 @@ pub fn op_event_wrap_event_target<'a>(
 
 #[op2]
 pub fn op_event_get_target_listeners<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   event_target: v8::Local<'a, v8::Value>,
   #[string] typ: String,
 ) -> v8::Local<'a, v8::Array> {
-  let event_target =
+  let Some(event_target) =
     cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, event_target)
-      .unwrap();
+  else {
+    return v8::Array::new(scope, 0);
+  };
+
   let listeners = event_target.listeners.borrow();
   match listeners.get(&typ) {
     Some(listeners) => {
@@ -1955,7 +1983,7 @@ pub fn op_event_get_target_listeners<'a>(
 
 #[op2(fast)]
 pub fn op_event_get_target_listener_count<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   event_target: v8::Local<'a, v8::Value>,
   #[string] typ: String,
 ) -> u32 {
@@ -1977,7 +2005,10 @@ pub struct AbortSignal {
   dependent_signals: RefCell<Vec<v8::Weak<v8::Value>>>,
 }
 
-impl GarbageCollected for AbortSignal {
+// SAFETY: we're sure `AbortSignal` can be GCed
+unsafe impl GarbageCollected for AbortSignal {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"AbortSignal"
   }
@@ -1997,7 +2028,7 @@ impl AbortSignal {
 
   // https://dom.spec.whatwg.org/#create-a-dependent-abort-signal
   fn new_with_dependent<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     result_signal_object: v8::Local<'a, v8::Object>,
     signal_values: Vec<v8::Local<'a, v8::Value>>,
     prefix: Cow<'static, str>,
@@ -2074,7 +2105,7 @@ impl AbortSignal {
   // https://dom.spec.whatwg.org/#abortsignal-signal-abort
   fn signal_abort<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: &Rc<RefCell<OpState>>,
     signal_object: v8::Local<'a, v8::Object>,
     reason: Option<v8::Local<'a, v8::Value>>,
@@ -2133,7 +2164,7 @@ impl AbortSignal {
   #[inline]
   fn run_abort_steps<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: &Rc<RefCell<OpState>>,
     signal_object: v8::Local<'a, v8::Object>,
   ) {
@@ -2175,7 +2206,7 @@ impl AbortSignal {
 
   #[static_method]
   fn abort<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     reason: Option<v8::Local<'a, v8::Value>>,
   ) -> v8::Local<'a, v8::Object> {
     let event_target = EventTarget::new();
@@ -2202,7 +2233,7 @@ impl AbortSignal {
   #[required(1)]
   #[static_method]
   fn any<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     signals: v8::Local<'a, v8::Array>,
   ) -> Result<v8::Local<'a, v8::Object>, EventError> {
     let prefix = "Failed to execute 'AbortSignal.any'";
@@ -2233,7 +2264,7 @@ impl AbortSignal {
 
   fn throw_if_aborted<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
     if let Some(reason) = &*self.reason.borrow() {
       let reason = v8::Local::new(scope, reason);
@@ -2250,7 +2281,7 @@ impl AbortSignal {
   #[getter]
   fn reason<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
     if let Some(reason) = &*self.reason.borrow() {
       v8::Local::new(scope, reason)
@@ -2264,7 +2295,10 @@ pub struct AbortController {
   signal: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for AbortController {
+// SAFETY: we're sure `AbortController` can be GCed
+unsafe impl GarbageCollected for AbortController {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"AbortController"
   }
@@ -2274,7 +2308,7 @@ impl GarbageCollected for AbortController {
 impl AbortController {
   #[constructor]
   #[cppgc]
-  fn constructor<'a>(scope: &mut v8::HandleScope<'a>) -> AbortController {
+  fn constructor<'a>(scope: &mut v8::PinScope<'a, '_>) -> AbortController {
     let event_target = EventTarget::new();
     let abort_signal = AbortSignal::new();
     let signal = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
@@ -2290,9 +2324,10 @@ impl AbortController {
     self.signal.clone()
   }
 
+  #[reentrant]
   fn abort<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
     reason: Option<v8::Local<'a, v8::Value>>,
   ) -> v8::Local<'a, v8::Primitive> {
@@ -2310,7 +2345,7 @@ impl AbortController {
 
 #[op2]
 pub fn op_event_create_abort_signal<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
 ) -> v8::Local<'a, v8::Object> {
   let event_target = EventTarget::new();
   let abort_signal = AbortSignal::new();
@@ -2320,7 +2355,7 @@ pub fn op_event_create_abort_signal<'a>(
 
 #[op2]
 pub fn op_event_create_dependent_abort_signal<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   signals: v8::Local<'a, v8::Array>,
   #[string] prefix: String,
 ) -> Result<v8::Local<'a, v8::Object>, EventError> {
@@ -2350,7 +2385,7 @@ pub fn op_event_create_dependent_abort_signal<'a>(
 
 #[op2]
 pub fn op_event_add_abort_algorithm<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   signal: v8::Local<'a, v8::Value>,
   #[global] algorithm: v8::Global<v8::Function>,
 ) {
@@ -2361,7 +2396,7 @@ pub fn op_event_add_abort_algorithm<'a>(
 
 #[op2]
 pub fn op_event_remove_abort_algorithm<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   signal: v8::Local<'a, v8::Value>,
   #[global] algorithm: v8::Global<v8::Function>,
 ) {
@@ -2370,9 +2405,9 @@ pub fn op_event_remove_abort_algorithm<'a>(
   signal.remove(algorithm);
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_event_signal_abort<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   state: Rc<RefCell<OpState>>,
   signal_object: v8::Local<'a, v8::Object>,
   reason: Option<v8::Local<'a, v8::Value>>,
@@ -2387,7 +2422,7 @@ pub fn op_event_signal_abort<'a>(
 
 #[op2]
 pub fn op_event_get_source_signals<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   signal: v8::Local<'a, v8::Value>,
 ) -> v8::Local<'a, v8::Array> {
   let signal =
@@ -2404,7 +2439,7 @@ pub fn op_event_get_source_signals<'a>(
 
 #[op2]
 pub fn op_event_get_dependent_signals<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   signal: v8::Local<'a, v8::Value>,
 ) -> v8::Local<'a, v8::Array> {
   let signal =

@@ -87,13 +87,13 @@ ObjectDefineProperties(AbortSignal.prototype, {
     value: function addEventListener() {
       FunctionPrototypeApply(addEventListener_, this, arguments);
       if (getListenerCount(this, "abort") > 0) {
-        if (this[timerId] !== null) {
+        if (this[timerId] != null) {
           refTimer(this[timerId]);
         } else {
           const sourceSignals = op_event_get_source_signals(this);
           for (let i = 0; i < sourceSignals.length; ++i) {
             const sourceSignal = sourceSignals[i];
-            if (sourceSignal[timerId] !== null) {
+            if (sourceSignal[timerId] != null) {
               refTimer(sourceSignal[timerId]);
             }
           }
