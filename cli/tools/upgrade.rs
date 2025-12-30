@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_lib::shared::ReleaseChannel;

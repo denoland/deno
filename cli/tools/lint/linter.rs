@@ -12,7 +12,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
 use deno_graph::ModuleGraph;

@@ -9,7 +9,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_ast::TextChange;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::cache::LazyGraphSourceParser;

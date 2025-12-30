@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use deno_config::deno_json::NodeModulesDirMode;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_path_util::ResolveUrlOrPathError;
 use deno_runtime::WorkerExecutionMode;

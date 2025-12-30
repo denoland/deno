@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 

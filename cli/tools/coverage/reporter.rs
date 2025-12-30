@@ -9,7 +9,7 @@ use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
