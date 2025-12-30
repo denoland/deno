@@ -202,7 +202,7 @@
 "parallel/test-crypto-dh-leak.js" = {}
 "parallel/test-crypto-dh-odd-key.js" = {}
 "parallel/test-crypto-dh-shared.js" = {}
-"parallel/test-crypto-domain.js" = {}
+"parallel/test-crypto-domain.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31636" }
 "parallel/test-crypto-ecb.js" = {}
 "parallel/test-crypto-from-binary.js" = {}
 "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js" = {}

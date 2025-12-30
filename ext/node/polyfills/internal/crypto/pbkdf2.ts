@@ -10,7 +10,6 @@ import {
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
-import process from "node:process";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 import {
   validateFunction,
@@ -130,12 +129,6 @@ export function pbkdf2(
   digest = digest.toLowerCase() as NormalizedAlgorithms;
   op_node_pbkdf2_validate(digest);
 
-  // Capture the current domain for async callback
-  const domain = process.domain;
-
-  // Track if callback was already invoked (to avoid calling twice if callback throws)
-  let callbackInvoked = false;
-
   op_node_pbkdf2_async(
     password,
     salt,
@@ -143,36 +136,9 @@ export function pbkdf2(
     digest,
     keylen,
   ).then(
-    (DK) => {
-      callbackInvoked = true;
-      if (domain) {
-        domain.enter();
-        try {
-          callback(null, Buffer.from(DK));
-        } finally {
-          domain.exit();
-        }
-      } else {
-        callback(null, Buffer.from(DK));
-      }
-    },
+    (DK) => callback(null, Buffer.from(DK)),
   )
-    .catch((err) => {
-      // Don't call callback again if error was thrown by the callback itself
-      if (callbackInvoked) {
-        throw err;
-      }
-      if (domain) {
-        domain.enter();
-        try {
-          callback(err);
-        } finally {
-          domain.exit();
-        }
-      } else {
-        callback(err);
-      }
-    });
+    .catch((err) => callback(err));
 }
 
 export default {
