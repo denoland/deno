@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
@@ -286,15 +289,14 @@ export class FileHandle extends EventEmitter {
     this[kLocked] = true;
 
     const autoClose = options?.autoClose ?? false;
-    const handle = this;
     let done = false;
 
     const ondone = async () => {
       if (done) return;
       done = true;
-      handle[kUnref]();
+      this[kUnref]();
       if (autoClose) {
-        await handle.close().catch(() => {});
+        await this.close().catch(() => {});
       }
     };
 
@@ -302,10 +304,10 @@ export class FileHandle extends EventEmitter {
       type: "bytes",
       autoAllocateChunkSize: 16384,
 
-      async pull(controller) {
+      pull: async (controller) => {
         try {
           const view = controller.byobRequest!.view! as Uint8Array;
-          const { bytesRead } = await handle.read(
+          const { bytesRead } = await this.read(
             view,
             0,
             view.byteLength,
@@ -326,7 +328,7 @@ export class FileHandle extends EventEmitter {
         }
       },
 
-      async cancel() {
+      cancel: async () => {
         await ondone();
       },
     });
