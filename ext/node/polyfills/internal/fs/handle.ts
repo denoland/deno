@@ -303,22 +303,27 @@ export class FileHandle extends EventEmitter {
       autoAllocateChunkSize: 16384,
 
       async pull(controller) {
-        const view = controller.byobRequest!.view! as Uint8Array;
-        const { bytesRead } = await handle.read(
-          view,
-          0,
-          view.byteLength,
-          null,
-        );
+        try {
+          const view = controller.byobRequest!.view! as Uint8Array;
+          const { bytesRead } = await handle.read(
+            view,
+            0,
+            view.byteLength,
+            null,
+          );
 
-        if (bytesRead === 0) {
-          controller.close();
-          controller.byobRequest!.respond(0);
+          if (bytesRead === 0) {
+            controller.close();
+            controller.byobRequest!.respond(0);
+            await ondone();
+            return;
+          }
+
+          controller.byobRequest!.respond(bytesRead);
+        } catch (err) {
+          controller.error(err);
           await ondone();
-          return;
         }
-
-        controller.byobRequest!.respond(bytesRead);
       },
 
       async cancel() {
