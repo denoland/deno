@@ -335,6 +335,11 @@ export class FileHandle extends EventEmitter {
 
     this[kRef]();
 
+    // Cancel the stream when FileHandle is closed
+    this.once("close", () => {
+      readable.cancel().catch(() => {});
+    });
+
     return readable;
   }
 
