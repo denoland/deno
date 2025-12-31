@@ -448,7 +448,7 @@ Deno.test(
     const fileHandle = await fs.open(testData);
 
     // First call should succeed
-    fileHandle.readableWebStream();
+    const stream = fileHandle.readableWebStream();
 
     // Second call should throw
     let threw = false;
@@ -457,11 +457,13 @@ Deno.test(
     } catch (e) {
       threw = true;
       assert(e instanceof Error);
-      assert(e.message.includes("locked"));
+      assertEquals((e as NodeJS.ErrnoException).code, "ERR_INVALID_STATE");
     }
 
     assertEquals(threw, true);
 
+    // Cancel the stream to avoid resource leak
+    await stream.cancel();
     await fileHandle.close();
   },
 );
