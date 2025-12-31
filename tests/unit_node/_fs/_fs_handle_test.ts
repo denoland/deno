@@ -3,7 +3,6 @@ import * as path from "@std/path";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import type { EventEmitter } from "node:events";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -409,7 +408,7 @@ Deno.test(
     const fileHandle = await fs.open(testData);
     const { promise: closePromise, resolve: closeResolve } = Promise
       .withResolvers<void>();
-    (fileHandle as unknown as EventEmitter).once("close", closeResolve);
+    fileHandle.once("close", closeResolve);
 
     const webStream = fileHandle.readableWebStream({ autoClose: true });
 
@@ -495,7 +494,7 @@ Deno.test(
     const fileHandle = await fs.open(testData);
     const { promise: closePromise, resolve: closeResolve } = Promise
       .withResolvers<void>();
-    (fileHandle as unknown as EventEmitter).once("close", closeResolve);
+    fileHandle.once("close", closeResolve);
 
     const stream = fileHandle.readableWebStream({ autoClose: true });
 
