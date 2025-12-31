@@ -1063,7 +1063,7 @@ pub fn handle_log(record: &log::Record) {
       let value = if let Some(v) = value.to_bool() {
         Some(AnyValue::Boolean(v))
       } else if let Some(v) = value.to_borrowed_str() {
-        Some(AnyValue::String(v.to_string().into()))
+        Some(AnyValue::String(v.to_owned().into()))
       } else if let Some(v) = value.to_f64() {
         Some(AnyValue::Double(v))
       } else if let Some(v) = value.to_i64() {
