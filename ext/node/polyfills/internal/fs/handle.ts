@@ -13,7 +13,6 @@ import {
   write as writeAsync,
   WriteStream,
 } from "node:fs";
-import { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
@@ -287,16 +286,45 @@ export class FileHandle extends EventEmitter {
     this[kLocked] = true;
 
     const autoClose = options?.autoClose ?? false;
-    const stream = this.createReadStream({ autoClose: false });
-    const webStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+    const handle = this;
 
-    if (autoClose) {
-      stream.once("end", () => {
-        void this.close().catch(() => {});
-      });
-    }
+    const ondone = async () => {
+      handle[kUnref]();
+      if (autoClose) {
+        await handle.close().catch(() => {});
+      }
+    };
 
-    return webStream;
+    const readable = new ReadableStream({
+      type: "bytes",
+      autoAllocateChunkSize: 16384,
+
+      async pull(controller) {
+        const view = controller.byobRequest!.view! as Uint8Array;
+        const { bytesRead } = await handle.read(
+          view,
+          0,
+          view.byteLength,
+          null,
+        );
+
+        if (bytesRead === 0) {
+          controller.close();
+          await ondone();
+          return;
+        }
+
+        controller.byobRequest!.respond(bytesRead);
+      },
+
+      async cancel() {
+        await ondone();
+      },
+    });
+
+    this[kRef]();
+
+    return readable;
   }
 
   [SymbolAsyncDispose]() {

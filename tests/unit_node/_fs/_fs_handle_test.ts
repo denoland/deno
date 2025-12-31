@@ -467,3 +467,44 @@ Deno.test(
     await fileHandle.close();
   },
 );
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] cancel without autoClose keeps fd open",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.readableWebStream({ autoClose: false });
+
+    // Cancel the stream
+    await stream.cancel();
+
+    // fd should still be valid (not -1)
+    assert(fileHandle.fd !== -1);
+
+    // FileHandle should still be usable
+    const stat = await fileHandle.stat();
+    assertEquals(stat.isFile(), true);
+
+    await fileHandle.close();
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] cancel with autoClose closes fd",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const { promise: closePromise, resolve: closeResolve } = Promise
+      .withResolvers<void>();
+    fileHandle.once("close", closeResolve);
+
+    const stream = fileHandle.readableWebStream({ autoClose: true });
+
+    // Cancel the stream - this should trigger autoClose
+    await stream.cancel();
+
+    // Wait for close event
+    await closePromise;
+
+    // fd should be -1
+    assertEquals(fileHandle.fd, -1);
+  },
+);
