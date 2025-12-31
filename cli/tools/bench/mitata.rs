@@ -305,15 +305,15 @@ pub mod reporter {
       );
     }
     if options.percentiles {
+      let p75_str = format!("{:>8}", fmt_duration(stats.p75));
+      let p99_str = format!("{:>8}", fmt_duration(stats.p99));
+      let p995_str = format!("{:>8}", fmt_duration(stats.p995));
       let _ = write!(
         s,
-        "{}",
-        colors::magenta(format!(
-          " {:>8} | {:>8} | {:>8} |",
-          fmt_duration(stats.p75),
-          fmt_duration(stats.p99),
-          fmt_duration(stats.p995)
-        ))
+        " {} | {} | {} |",
+        colors::magenta(&p75_str),
+        colors::magenta(&p99_str),
+        colors::magenta(&p995_str)
       );
     }
 

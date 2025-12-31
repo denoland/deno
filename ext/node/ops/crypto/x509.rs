@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::fmt::Write;
 use std::ops::Deref;
 
 use deno_core::ToJsBuffer;
@@ -125,7 +126,6 @@ impl Certificate {
       if i > 0 {
         hex.push(':');
       }
-      use std::fmt::Write;
       let _ = write!(hex, "{:02X}", byte);
     }
     Some(hex)
