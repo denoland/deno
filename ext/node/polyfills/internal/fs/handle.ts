@@ -290,6 +290,7 @@ export class FileHandle extends EventEmitter {
 
     const autoClose = options?.autoClose ?? false;
     let done = false;
+    let streamController: ReadableByteStreamController | null = null;
 
     const ondone = async () => {
       if (done) return;
@@ -303,6 +304,10 @@ export class FileHandle extends EventEmitter {
     const readable = new ReadableStream({
       type: "bytes",
       autoAllocateChunkSize: 16384,
+
+      start: (controller) => {
+        streamController = controller;
+      },
 
       pull: async (controller) => {
         try {
@@ -335,9 +340,16 @@ export class FileHandle extends EventEmitter {
 
     this[kRef]();
 
-    // Cancel the stream when FileHandle is closed
+    // When FileHandle is closed, error the stream (works even when locked)
     this.once("close", () => {
-      readable.cancel().catch(() => {});
+      if (!done && streamController) {
+        try {
+          streamController.error(new Error("FileHandle was closed"));
+        } catch {
+          // Stream may already be closed/errored
+        }
+        void ondone();
+      }
     });
 
     return readable;

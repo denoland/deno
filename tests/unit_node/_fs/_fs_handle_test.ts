@@ -508,3 +508,28 @@ Deno.test(
     assertEquals(fileHandle.fd, -1);
   },
 );
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] close FileHandle while reader is active",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.readableWebStream();
+    const reader = stream.getReader({ mode: "byob" });
+
+    // Close the FileHandle while reader is active
+    await fileHandle.close();
+
+    // fd should be -1
+    assertEquals(fileHandle.fd, -1);
+
+    // Reader should eventually get done or error
+    const buffer = new ArrayBuffer(1024);
+    try {
+      const result = await reader.read(new Uint8Array(buffer));
+      // If no error, should be done
+      assertEquals(result.done, true);
+    } catch {
+      // Error is also acceptable (FileHandle was closed)
+    }
+  },
+);
