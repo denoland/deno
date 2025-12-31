@@ -369,3 +369,71 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] Create a readable web stream",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const webStream = fileHandle.readableWebStream();
+
+    assert(webStream instanceof ReadableStream);
+
+    const reader = webStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    const result = new Uint8Array(
+      chunks.reduce((acc, chunk) => acc + chunk.length, 0),
+    );
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    assertEquals(decoder.decode(result), "hello world");
+
+    await fileHandle.close();
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] With autoClose option",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const webStream = fileHandle.readableWebStream({ autoClose: true });
+
+    assert(webStream instanceof ReadableStream);
+
+    const reader = webStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    const result = new Uint8Array(
+      chunks.reduce((acc, chunk) => acc + chunk.length, 0),
+    );
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    assertEquals(decoder.decode(result), "hello world");
+
+    // Wait a bit for autoClose to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // File should be closed, so calling close() again should be a no-op
+    await fileHandle.close();
+  },
+);

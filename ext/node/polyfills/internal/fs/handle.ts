@@ -13,6 +13,7 @@ import {
   write as writeAsync,
   WriteStream,
 } from "node:fs";
+import { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
@@ -263,6 +264,24 @@ export class FileHandle extends EventEmitter {
       input: this.createReadStream({ ...options, autoClose: false }),
       crlfDelay: Infinity,
     });
+  }
+
+  readableWebStream(
+    options?: { type?: "bytes"; autoClose?: boolean },
+  ): ReadableStream<Uint8Array> {
+    assertNotClosed(this.fd, "readableWebStream");
+
+    const autoClose = options?.autoClose ?? false;
+    const stream = this.createReadStream({ autoClose: false });
+    const webStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+
+    if (autoClose) {
+      stream.once("close", () => {
+        this.close();
+      });
+    }
+
+    return webStream;
   }
 
   [SymbolAsyncDispose]() {
