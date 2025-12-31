@@ -287,8 +287,11 @@ export class FileHandle extends EventEmitter {
 
     const autoClose = options?.autoClose ?? false;
     const handle = this;
+    let done = false;
 
     const ondone = async () => {
+      if (done) return;
+      done = true;
       handle[kUnref]();
       if (autoClose) {
         await handle.close().catch(() => {});
@@ -310,6 +313,7 @@ export class FileHandle extends EventEmitter {
 
         if (bytesRead === 0) {
           controller.close();
+          controller.byobRequest!.respond(0);
           await ondone();
           return;
         }
