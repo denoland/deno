@@ -406,6 +406,10 @@ Deno.test(
   "[node/fs filehandle.readableWebStream] With autoClose option",
   async function () {
     const fileHandle = await fs.open(testData);
+    const { promise: closePromise, resolve: closeResolve } = Promise
+      .withResolvers<void>();
+    fileHandle.once("close", closeResolve);
+
     const webStream = fileHandle.readableWebStream({ autoClose: true });
 
     assert(webStream instanceof ReadableStream);
@@ -430,10 +434,34 @@ Deno.test(
 
     assertEquals(decoder.decode(result), "hello world");
 
-    // Wait a bit for autoClose to complete
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Wait for autoClose to complete by waiting for the close event
+    await closePromise;
 
-    // File should be closed, so calling close() again should be a no-op
+    // File should be closed
+    assertEquals(fileHandle.fd, -1);
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] Throws when called twice",
+  async function () {
+    const fileHandle = await fs.open(testData);
+
+    // First call should succeed
+    fileHandle.readableWebStream();
+
+    // Second call should throw
+    let threw = false;
+    try {
+      fileHandle.readableWebStream();
+    } catch (e) {
+      threw = true;
+      assert(e instanceof Error);
+      assert(e.message.includes("locked"));
+    }
+
+    assertEquals(threw, true);
+
     await fileHandle.close();
   },
 );

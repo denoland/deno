@@ -35,7 +35,10 @@ import {
   CreateWriteStreamOptions,
 } from "node:fs/promises";
 import assert from "node:assert";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_STATE,
+} from "ext:deno_node/internal/errors.ts";
 
 const {
   Error,
@@ -57,6 +60,7 @@ const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
 const kRef = Symbol("kRef");
 const kUnref = Symbol("kUnref");
+const kLocked = Symbol("kLocked");
 
 interface WriteResult {
   bytesWritten: number;
@@ -74,6 +78,7 @@ export class FileHandle extends EventEmitter {
   [kClosePromise]?: Promise<void> | null;
   [kCloseResolve]?: () => void;
   [kCloseReject]?: (err: Error) => void;
+  [kLocked]: boolean;
 
   constructor(rid: number) {
     super();
@@ -81,6 +86,7 @@ export class FileHandle extends EventEmitter {
 
     this[kRefs] = 1;
     this[kClosePromise] = null;
+    this[kLocked] = false;
   }
 
   get fd() {
@@ -267,17 +273,26 @@ export class FileHandle extends EventEmitter {
   }
 
   readableWebStream(
-    options?: { type?: "bytes"; autoClose?: boolean },
+    options?: { autoClose?: boolean },
   ): ReadableStream<Uint8Array> {
-    assertNotClosed(this.fd, "readableWebStream");
+    if (this.fd === -1) {
+      throw new ERR_INVALID_STATE("The FileHandle is closed");
+    }
+    if (this[kClosePromise]) {
+      throw new ERR_INVALID_STATE("The FileHandle is closing");
+    }
+    if (this[kLocked]) {
+      throw new ERR_INVALID_STATE("The FileHandle is locked");
+    }
+    this[kLocked] = true;
 
     const autoClose = options?.autoClose ?? false;
     const stream = this.createReadStream({ autoClose: false });
     const webStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
 
     if (autoClose) {
-      stream.once("close", () => {
-        this.close();
+      stream.once("end", () => {
+        void this.close().catch(() => {});
       });
     }
 
