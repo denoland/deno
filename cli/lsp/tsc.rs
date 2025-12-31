@@ -5046,7 +5046,7 @@ fn op_make_span(
   }
   let sp = super::logging::lsp_tracing_info_span!(
     "js",
-    otel.name = format!("js::{_s}").as_str()
+    otel.name = format!("js::{_s}")
   );
   let span = if needs_context {
     span_with_context(state, sp)

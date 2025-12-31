@@ -5079,6 +5079,70 @@ impl Inner {
       server_docs.sort_by_cached_key(|d| d.uri.to_string());
       let measures = self.performance.to_vec();
 
+      // Build workspace settings string
+      let workspace_settings = {
+        let mut s = String::new();
+        for (title, settings) in self
+          .config
+          .settings
+          .by_workspace_folder
+          .iter()
+          .filter_map(|(folder_url, settings)| {
+            Some((format!("\"{folder_url}\""), settings.as_ref()?))
+          })
+          .chain(std::iter::once((
+            "Unscoped".to_string(),
+            &self.config.settings.unscoped,
+          )))
+        {
+          if !s.is_empty() {
+            s.push_str("\n\n");
+          }
+          let _ = write!(
+            s,
+            "<details><summary>{title}</summary>\n\n```json\n{}\n```\n\n</details>",
+            serde_json::to_string_pretty(settings).unwrap()
+          );
+        }
+        s
+      };
+
+      // Build open docs string
+      let open_docs_str = {
+        let mut s = String::new();
+        for doc in open_docs.iter() {
+          if !s.is_empty() {
+            s.push('\n');
+          }
+          let _ = write!(s, "- {}", doc.uri.as_str());
+        }
+        s
+      };
+
+      // Build server docs string
+      let server_docs_str = {
+        let mut s = String::new();
+        for doc in server_docs.iter() {
+          if !s.is_empty() {
+            s.push('\n');
+          }
+          let _ = write!(s, "- {}", doc.uri.as_str());
+        }
+        s
+      };
+
+      // Build measures string
+      let measures_str = {
+        let mut s = String::new();
+        for m in measures.iter() {
+          if !s.is_empty() {
+            s.push('\n');
+          }
+          let _ = write!(s, "- {m}");
+        }
+        s
+      };
+
       write!(
         contents,
         r#"# Deno Language Server Status
@@ -5109,23 +5173,13 @@ impl Inner {
 
 </details>
 "#,
-        self.config.settings.by_workspace_folder
-          .iter()
-          .filter_map(|(folder_url, settings)| Some((format!("\"{folder_url}\""), settings.as_ref()?)))
-          .chain(std::iter::once(("Unscoped".to_string(), &self.config.settings.unscoped)))
-          .map(|(title, settings)| format!("<details><summary>{title}</summary>\n\n```json\n{}\n```\n\n</details>", serde_json::to_string_pretty(settings).unwrap()))
-          .collect::<Vec<_>>()
-          .join("\n\n"),
+        workspace_settings,
         open_docs.len(),
-        open_docs.iter().map(|d| format!("- {}", d.uri.as_str())).collect::<Vec<_>>().join("\n"),
+        open_docs_str,
         server_docs.len(),
-        server_docs.iter().map(|d| format!("- {}", d.uri.as_str())).collect::<Vec<_>>().join("\n"),
+        server_docs_str,
         measures.len(),
-        measures
-          .iter()
-          .map(|m| format!("- {m}"))
-          .collect::<Vec<_>>()
-          .join("\n"),
+        measures_str,
       )
       .unwrap();
 

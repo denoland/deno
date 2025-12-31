@@ -7,6 +7,7 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use crate::colors;
+use std::fmt::Write;
 
 /// Taken from https://stackoverflow.com/a/76572321
 fn precision_f64(x: f64, decimals: u32) -> f64 {
@@ -221,21 +222,22 @@ pub mod reporter {
   pub fn br(options: &Options) -> String {
     let mut s = String::new();
 
-    s.push_str(&format!("| {} |", "-".repeat(options.size)));
+    let _ = write!(s, "| {} |", "-".repeat(options.size));
 
     if options.avg {
-      s.push_str(&format!(" {} | {} |", "-".repeat(15), "-".repeat(13)));
+      let _ = write!(s, " {} | {} |", "-".repeat(15), "-".repeat(13));
     }
     if options.min_max {
-      s.push_str(&format!(" {} |", "-".repeat(21)));
+      let _ = write!(s, " {} |", "-".repeat(21));
     }
     if options.percentiles {
-      s.push_str(&format!(
+      let _ = write!(
+        s,
         " {} | {} | {} |",
         "-".repeat(8),
         "-".repeat(8),
         "-".repeat(8)
-      ));
+      );
     }
 
     s
@@ -245,8 +247,8 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("{:<size$}", n));
-    s.push_str(&format!(" {}: {}", colors::red("error"), e.message));
+    let _ = write!(s, "{:<size$}", n);
+    let _ = write!(s, " {}: {}", colors::red("error"), e.message);
 
     if let Some(ref stack) = e.stack {
       s.push('\n');
@@ -261,16 +263,16 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("| {:<size$} |", "benchmark"));
+    let _ = write!(s, "| {:<size$} |", "benchmark");
     if options.avg {
-      s.push_str(&format!(" {:<15} |", "time/iter (avg)"));
-      s.push_str(&format!(" {:>13} |", "iter/s"));
+      let _ = write!(s, " {:<15} |", "time/iter (avg)");
+      let _ = write!(s, " {:>13} |", "iter/s");
     }
     if options.min_max {
-      s.push_str(&format!(" {:^21} |", "(min … max)"));
+      let _ = write!(s, " {:^21} |", "(min … max)");
     }
     if options.percentiles {
-      s.push_str(&format!(" {:>8} | {:>8} | {:>8} |", "p75", "p99", "p995"));
+      let _ = write!(s, " {:>8} | {:>8} | {:>8} |", "p75", "p99", "p995");
     }
 
     s
@@ -284,31 +286,34 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("| {:<size$} |", name));
+    let _ = write!(s, "| {:<size$} |", name);
 
     if options.avg {
-      s.push_str(&format!(
+      let _ = write!(
+        s,
         " {} |",
         colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
-      ));
-      s.push_str(&format!(" {:>13} |", &avg_to_iter_per_s(stats.avg)));
+      );
+      let _ = write!(s, " {:>13} |", &avg_to_iter_per_s(stats.avg));
     }
     if options.min_max {
-      s.push_str(&format!(
+      let _ = write!(
+        s,
         " ({} … {}) |",
         colors::cyan(format!("{:>8}", fmt_duration(stats.min))),
         colors::magenta(format!("{:>8}", fmt_duration(stats.max)))
-      ));
+      );
     }
     if options.percentiles {
-      s.push_str(
-        &colors::magenta(format!(
+      let _ = write!(
+        s,
+        "{}",
+        colors::magenta(format!(
           " {:>8} | {:>8} | {:>8} |",
           fmt_duration(stats.p75),
           fmt_duration(stats.p99),
           fmt_duration(stats.p995)
         ))
-        .to_string(),
       );
     }
 
@@ -324,11 +329,12 @@ pub mod reporter {
       .find(|b| b.baseline)
       .unwrap_or(&benchmarks[0]);
 
-    s.push_str(&format!(
+    let _ = write!(
+      s,
       "{}\n  {}",
       colors::gray("summary"),
       colors::cyan_bold(&baseline.name)
-    ));
+    );
 
     for b in benchmarks.iter().filter(|b| *b != baseline) {
       let faster = b.stats.avg >= baseline.stats.avg;
@@ -345,7 +351,8 @@ pub mod reporter {
       } else {
         &format!("{:>9.2}", x_faster)
       };
-      s.push_str(&format!(
+      let _ = write!(
+        s,
         "\n{}x {} than {}",
         if faster {
           colors::green(diff)
@@ -354,7 +361,7 @@ pub mod reporter {
         },
         if faster { "faster" } else { "slower" },
         colors::cyan_bold(&b.name)
-      ));
+      );
     }
 
     s

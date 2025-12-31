@@ -755,7 +755,7 @@ pub fn fix_ts_import_changes(
 
       text_changes.push(tsc::TextChange {
         span: text_change.span.clone(),
-        new_text: new_lines.join("\n").to_string(),
+        new_text: new_lines.join("\n"),
       });
     }
     r.push(tsc::FileTextChanges {

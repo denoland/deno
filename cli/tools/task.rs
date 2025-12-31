@@ -980,7 +980,7 @@ fn match_tasks(
     }
   }
 
-  matched.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+  matched.into_iter().collect::<Vec<_>>()
 }
 
 fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {

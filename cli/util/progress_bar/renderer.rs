@@ -104,17 +104,19 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     text.push_str(" [");
     if completed_bars != total_bars {
       if completed_bars > 0 {
-        text.push_str(&format!(
+        let _ = write!(
+          text,
           "{}",
           colors::cyan(format!("{}{}", "#".repeat(completed_bars - 1), ">"))
-        ))
+        );
       }
-      text.push_str(&format!(
+      let _ = write!(
+        text,
         "{}",
         colors::intense_blue("-".repeat(total_bars - completed_bars))
-      ))
+      );
     } else {
-      text.push_str(&format!("{}", colors::cyan("#".repeat(completed_bars))))
+      let _ = write!(text, "{}", colors::cyan("#".repeat(completed_bars)));
     }
     text.push(']');
 
@@ -192,7 +194,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       )
     };
 
-    display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
+    let _ = writeln!(display_str, "{}{}", fmt_elapsed_time, total_text);
     if let Some(display_entry) = non_empty_entry {
       let bytes_text = {
         let total_size = display_entry.total_size;
