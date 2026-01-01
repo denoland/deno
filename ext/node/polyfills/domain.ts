@@ -149,18 +149,16 @@ export class Domain extends EventEmitter {
     };
   }
 
-  run(fn) {
+  run(fn, ...args) {
     this.enter();
     try {
-      return FunctionPrototypeApply(
-        fn,
-        this,
-        ArrayPrototypeSlice(arguments, 1),
-      );
-    } catch (e) {
-      FunctionPrototypeCall(emitError, this, e);
-    } finally {
+      const ret = FunctionPrototypeApply(fn, this, args);
       this.exit();
+      return ret;
+    } catch (e) {
+      // Exit the domain BEFORE emitting the error so the error handler
+      this.exit();
+      FunctionPrototypeCall(emitError, this, e);
     }
   }
 
