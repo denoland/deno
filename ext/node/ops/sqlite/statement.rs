@@ -541,20 +541,33 @@ impl StatementSync {
         anon_start += 1;
       }
 
-      let mut anon_idx = 1;
+      // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+      let sql_param_count = unsafe { ffi::sqlite3_bind_parameter_count(raw) };
+
+      let mut positional_idx = 1;
       for i in anon_start..params.length() {
-        // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
-        while !unsafe { ffi::sqlite3_bind_parameter_name(raw, anon_idx) }
-          .is_null()
-        {
-          anon_idx += 1;
+        // Find the next positional parameter slot.
+        // Skip named parameters (:name, $name, @name) but include anonymous (?)
+        // and numbered (?NNN) parameters.
+        while positional_idx <= sql_param_count {
+          // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+          let name_ptr =
+            unsafe { ffi::sqlite3_bind_parameter_name(raw, positional_idx) };
+          if name_ptr.is_null()
+            // SAFETY: short-circuiting guarantees name_ptr is non-null here
+            || unsafe { *name_ptr as u8 == b'?' }
+          {
+            break;
+          }
+          // Named parameter (:name, $name, @name) - skip it
+          positional_idx += 1;
         }
 
         let value = params.get(i);
 
-        self.bind_value(scope, value, anon_idx)?;
+        self.bind_value(scope, value, positional_idx)?;
 
-        anon_idx += 1;
+        positional_idx += 1;
       }
     }
 
