@@ -5,8 +5,10 @@
 
 import { primordials } from "ext:core/mod.js";
 import { ERR_UNHANDLED_ERROR } from "ext:deno_node/internal/errors.ts";
+import { AsyncHook } from "ext:deno_node/internal/async_hooks.ts";
 const {
   ArrayPrototypeIndexOf,
+  ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
@@ -15,6 +17,7 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ReflectApply,
+  SafeMap,
 } = primordials;
 import { EventEmitter } from "node:events";
 
@@ -25,6 +28,44 @@ function emitError(e) {
 let stack = [];
 export let _stack = stack;
 export let active = null;
+
+// Map asyncId -> domain for tracking async operations
+const pairing = new SafeMap();
+
+// Async hook to track domain associations across async operations
+const asyncHook = new AsyncHook({
+  init(asyncId, _type, _triggerAsyncId, resource) {
+    if (process.domain !== null && process.domain !== undefined) {
+      // Record which domain this async operation belongs to
+      pairing.set(asyncId, process.domain);
+      // Attach domain to resource
+      if (typeof resource === "object" && resource !== null) {
+        ObjectDefineProperty(resource, "domain", {
+          __proto__: null,
+          configurable: true,
+          enumerable: false,
+          value: process.domain,
+          writable: true,
+        });
+      }
+    }
+  },
+  before(asyncId) {
+    const domain = pairing.get(asyncId);
+    if (domain !== undefined) {
+      domain.enter();
+    }
+  },
+  after(asyncId) {
+    const domain = pairing.get(asyncId);
+    if (domain !== undefined) {
+      domain.exit();
+    }
+  },
+  destroy(asyncId) {
+    pairing.delete(asyncId);
+  },
+});
 
 export function create() {
   return new Domain();
@@ -40,6 +81,7 @@ export class Domain extends EventEmitter {
   constructor() {
     super();
     patchEventEmitter();
+    asyncHook.enable();
   }
 
   add(ee) {
@@ -108,12 +150,18 @@ export class Domain extends EventEmitter {
   }
 
   run(fn) {
+    this.enter();
     try {
-      return fn();
+      return FunctionPrototypeApply(
+        fn,
+        this,
+        ArrayPrototypeSlice(arguments, 1),
+      );
     } catch (e) {
       FunctionPrototypeCall(emitError, this, e);
+    } finally {
+      this.exit();
     }
-    return this;
   }
 
   dispose() {
@@ -122,10 +170,17 @@ export class Domain extends EventEmitter {
   }
 
   enter() {
+    active = process.domain = this;
+    ArrayPrototypePush(stack, this);
     return this;
   }
 
   exit() {
+    const index = ArrayPrototypeLastIndexOf(stack, this);
+    if (index === -1) return this;
+    ArrayPrototypeSplice(stack, index, 1);
+    active = stack.length === 0 ? null : stack[stack.length - 1];
+    process.domain = active;
     return this;
   }
 }
