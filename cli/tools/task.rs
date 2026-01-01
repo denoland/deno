@@ -627,16 +627,12 @@ fn sort_tasks_topo<'a>(
 
   impl TasksConfig for WorkspaceTasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
-      if let Some(member) = &self.member
-        && let Some(task_or_script) = member.task(name)
-      {
+      if let Some(task_or_script) = self.member.task(name) {
         return Some((task_or_script, self as &dyn TasksConfig));
       }
-      if let Some(root) = &self.root
-        && let Some(task_or_script) = root.task(name)
-      {
+      if let Some(task_or_script) = self.root.task(name) {
         // switch to only using the root tasks for the dependencies
-        return Some((task_or_script, root as &dyn TasksConfig));
+        return Some((task_or_script, &self.root as &dyn TasksConfig));
       }
       None
     }
@@ -807,16 +803,12 @@ fn get_available_tasks(
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<Vec<AvailableTaskDescription>, std::io::Error> {
-  let is_cwd_root_dir = tasks_config.root.is_none();
+  let is_cwd_root_dir = tasks_config.root.is_empty();
 
   let mut seen_task_names = HashSet::with_capacity(tasks_config.tasks_count());
   let mut task_descriptions = Vec::with_capacity(tasks_config.tasks_count());
 
-  for maybe_config in [&tasks_config.member, &tasks_config.root] {
-    let Some(config) = maybe_config else {
-      continue;
-    };
-
+  for config in [&tasks_config.member, &tasks_config.root] {
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
         && config.folder_url
