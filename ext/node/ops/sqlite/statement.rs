@@ -555,15 +555,10 @@ impl StatementSync {
           // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
           let name_ptr =
             unsafe { ffi::sqlite3_bind_parameter_name(raw, positional_idx) };
-          if name_ptr.is_null() {
-            // Anonymous parameter - use this slot
-            break;
-          }
-          // Check if it's a numbered parameter (starts with '?')
-          // SAFETY: name_ptr is not null, checked above.
-          let first_byte = unsafe { *name_ptr as u8 };
-          if first_byte == b'?' {
-            // Numbered parameter like ?1, ?2 - use this slot
+          if name_ptr.is_null()
+            // SAFETY: short-circuiting guarantees name_ptr is non-null here
+            || unsafe { *name_ptr as u8 == b'?' }
+          {
             break;
           }
           // Named parameter (:name, $name, @name) - skip it
