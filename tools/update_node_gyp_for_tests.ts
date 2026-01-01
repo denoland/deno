@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -ERNW --allow-sys
 
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This script updates `test/testdata/assets/node-gyp/*` files that
 // are used by the test registry.

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { hkdf, hkdfSync } from "node:crypto";
 import { assert, assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/0be319a855105188f05c0196a991e2465014244e/types/node/fs.d.ts
 
 interface CopyOptionsBase {
