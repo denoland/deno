@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "default": {
+      "net": ["github.com"]
+    }
+  }
+}

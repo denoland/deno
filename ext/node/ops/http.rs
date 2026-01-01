@@ -28,6 +28,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::oneshot;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
 use deno_core::serde::Serialize;
@@ -37,6 +38,8 @@ use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
+use deno_net::io::TcpStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamReadHalf;
@@ -86,6 +89,7 @@ pub struct NodeHttpClientResponse {
   response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   url: String,
   informational_rx: RefCell<Option<mpsc::Receiver<InformationalResponse>>>,
+  socket_rx: RefCell<Option<oneshot::Receiver<NetworkStream>>>,
 }
 
 impl Debug for NodeHttpClientResponse {
@@ -166,6 +170,15 @@ pub async fn op_node_http_request_with_conn(
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {
+  // Check if this is an upgrade request (e.g., WebSocket)
+  let is_upgrade_request = headers.iter().any(|(name, value)| {
+    name.eq_ignore_ascii_case(b"connection")
+      && value
+        .to_ascii_lowercase()
+        .split(|&b| b == b',')
+        .any(|part| part.trim_ascii() == b"upgrade")
+  });
+
   let stream = take_network_stream_resource(
     &mut state.borrow_mut().resource_table,
     conn_rid,
@@ -173,7 +186,23 @@ pub async fn op_node_http_request_with_conn(
   .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
   let io = TokioIo::new(stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-  tokio::task::spawn(conn.with_upgrades());
+
+  // Create a channel to return the socket after the HTTP response is complete.
+  // This enables keepAlive connection reuse
+  // For upgrade requests, we use with_upgrades() which doesn't return the socket.
+  let (socket_tx, socket_rx) = oneshot::channel();
+  if is_upgrade_request {
+    tokio::task::spawn(async move {
+      let _ = conn.with_upgrades().await;
+      drop(socket_tx);
+    });
+  } else {
+    tokio::task::spawn(async move {
+      if let Ok(parts) = conn.without_shutdown().await {
+        let _ = socket_tx.send(parts.io.into_inner());
+      }
+    });
+  }
 
   // Create the request.
   let method = Method::from_bytes(&method)?;
@@ -291,6 +320,7 @@ pub async fn op_node_http_request_with_conn(
       response: Box::pin(fut),
       url: url.clone(),
       informational_rx: RefCell::new(Some(informational_rx)),
+      socket_rx: RefCell::new(Some(socket_rx)),
     });
 
   let cancel_handle_rid = state
@@ -342,6 +372,9 @@ pub async fn op_node_http_await_response(
     ))
   })?;
 
+  // Extract the socket receiver before awaiting the response.
+  let socket_rx = resource.socket_rx.borrow_mut().take();
+
   let res = resource.response.await??;
   let status = res.status();
   let mut res_headers = Vec::new();
@@ -357,10 +390,15 @@ pub async fn op_node_http_await_response(
 
   let res = http::Response::from_parts(parts, body);
 
-  let response_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(NodeHttpResponseResource::new(res, content_length));
+  let response_rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(NodeHttpResponseResource::new(
+        res,
+        content_length,
+        socket_rx,
+      ));
 
   Ok(NodeHttpResponse {
     status: status.as_u16(),
@@ -371,6 +409,71 @@ pub async fn op_node_http_await_response(
     content_length,
     error: None,
   })
+}
+
+/// Returns the socket after the HTTP response body has been fully consumed.
+/// This enables keepAlive connection reuse for the Node.js HTTP Agent.
+/// Returns the new resource ID for the socket, or None if the connection
+/// cannot be reused (e.g., connection error or already retrieved).
+#[op2(async)]
+#[smi]
+pub async fn op_node_http_response_reclaim_conn(
+  state: Rc<RefCell<OpState>>,
+  #[smi] response_rid: ResourceId,
+) -> Result<Option<ResourceId>, ConnError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NodeHttpResponseResource>(response_rid)
+    .map_err(ConnError::Resource)?;
+
+  // Take the socket receiver - only one caller can retrieve the socket.
+  let socket_rx = resource.socket_rx.borrow_mut().take();
+  drop(resource);
+
+  let Some(rx) = socket_rx else {
+    // Socket was already retrieved or never available.
+    return Ok(None);
+  };
+
+  // Wait for the socket to be returned from the connection task.
+  let stream = match rx.await {
+    Ok(stream) => stream,
+    Err(_) => {
+      // Sender was dropped - connection had an error.
+      return Ok(None);
+    }
+  };
+
+  // Create a new resource from the returned socket.
+  let rid = match stream {
+    NetworkStream::Tcp(tcp_stream) => state
+      .borrow_mut()
+      .resource_table
+      .add(TcpStreamResource::new(tcp_stream.into_split())),
+    NetworkStream::Tls(tls_stream) => state
+      .borrow_mut()
+      .resource_table
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split())),
+    #[cfg(unix)]
+    NetworkStream::Unix(_) => {
+      // Unix sockets are not commonly used for HTTP keepAlive.
+      return Ok(None);
+    }
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    NetworkStream::Vsock(_) => {
+      return Ok(None);
+    }
+    NetworkStream::Tunnel(_) => {
+      return Ok(None);
+    }
+  };
+
+  Ok(Some(rid))
 }
 
 #[op2(async)]
@@ -496,16 +599,22 @@ pub struct NodeHttpResponseResource {
   pub response_reader: AsyncRefCell<NodeHttpFetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
+  socket_rx: RefCell<Option<oneshot::Receiver<NetworkStream>>>,
 }
 
 impl NodeHttpResponseResource {
-  pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
+  pub fn new(
+    response: http::Response<ResBody>,
+    size: Option<u64>,
+    socket_rx: Option<oneshot::Receiver<NetworkStream>>,
+  ) -> Self {
     Self {
       response_reader: AsyncRefCell::new(NodeHttpFetchResponseReader::Start(
         response,
       )),
       cancel: CancelHandle::default(),
       size,
+      socket_rx: RefCell::new(socket_rx),
     }
   }
 

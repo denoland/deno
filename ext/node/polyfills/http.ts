@@ -9,6 +9,7 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_node_http_response_reclaim_conn,
   op_tls_key_null,
   op_tls_key_static,
   op_tls_start,
@@ -83,7 +84,15 @@ import {
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
-import { UpgradedConn } from "ext:deno_net/01_net.js";
+import {
+  kDestroyed,
+  kEnded,
+  kEnding,
+  kErrored,
+  kState,
+} from "ext:deno_node/internal/streams/utils.js";
+import { TcpConn, UpgradedConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
@@ -523,7 +532,10 @@ class ClientRequest extends OutgoingMessage {
         } catch (err) {
           throw (this.socket.errored || err);
         }
-        if (this._encrypted) {
+        // For reused TLS sockets, the connection is already encrypted.
+        // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
+        const needsTlsUpgrade = this._encrypted && !this.socket.encrypted;
+        if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
@@ -543,8 +555,13 @@ class ClientRequest extends OutgoingMessage {
           // Simulates "secure" event on TLSSocket
           // This makes yarn v1's https client working
           this.socket.authorized = true;
+          // Mark the socket as encrypted for keepAlive reuse detection
+          this.socket.encrypted = true;
         }
 
+        // Stop reading and save handle for keepAlive restoration.
+        this.socket?._handle?.readStop();
+        this._socketHandle = this.socket?._handle;
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -704,9 +721,13 @@ class ClientRequest extends OutgoingMessage {
         if (
           err.message.includes("connection closed before message completed")
         ) {
-          // Node.js seems ignoring this error
-        } else if (err.message.includes("The signal has been aborted")) {
-          // Remap this error
+          // Node.js seems ignoring these errors
+        } else if (
+          err.message.includes("The signal has been aborted") ||
+          err.message.includes("Bad resource ID") ||
+          err.message.includes("operation was canceled")
+        ) {
+          // Stale connection - emit ECONNRESET so clients retry.
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
@@ -777,12 +798,14 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
-        socket.once("error", (err) => {
+        const socketErrorListener = (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
           // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
           emitErrorEvent(this, err);
           socket.destroy(err);
-        });
+        };
+        this._socketErrorListener = socketErrorListener;
+        socket.once("error", socketErrorListener);
         if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
@@ -1039,9 +1062,11 @@ export class IncomingMessageForClient extends NodeReadable {
 
     this.on("close", () => {
       // Let the final data flush before closing the socket.
-      this.socket.once("drain", () => {
-        this.socket.emit("close");
-      });
+      if (this.socket) {
+        this.socket.once("drain", () => {
+          this.socket.emit("close");
+        });
+      }
     });
   }
 
@@ -1141,13 +1166,94 @@ export class IncomingMessageForClient extends NodeReadable {
 
     const buf = new Uint8Array(16 * 1024);
 
-    core.read(this._bodyRid, buf).then((bytesRead) => {
+    core.read(this._bodyRid, buf).then(async (bytesRead) => {
       if (bytesRead === 0) {
+        // Return the socket to the agent pool BEFORE pushing null.
+        // This must happen before the stream ends, otherwise the socket
+        // may already be marked as destroyed.
+        await this.#tryReturnSocket();
         this.push(null);
       } else {
         this.push(Buffer.from(buf.subarray(0, bytesRead)));
       }
     });
+  }
+
+  // Try to return the socket to the agent pool for keepAlive reuse.
+  async #tryReturnSocket() {
+    const socket = this.socket;
+    if (!socket) {
+      return;
+    }
+
+    const req = this.req;
+    // Only pool the socket if keepAlive is enabled.
+    if (!req?.shouldKeepAlive) {
+      return;
+    }
+
+    const handle = req?._socketHandle || socket._handle;
+    if (!handle) {
+      return;
+    }
+
+    try {
+      const newRid = await op_node_http_response_reclaim_conn(this._bodyRid);
+      if (newRid == null) {
+        return;
+      }
+
+      const remoteAddr = {
+        hostname: socket.remoteAddress || "",
+        port: socket.remotePort || 0,
+      };
+      const localAddr = {
+        hostname: socket.localAddress || "",
+        port: socket.localPort || 0,
+      };
+
+      const isTls = socket.encrypted === true;
+      const conn = isTls
+        ? new TlsConn(newRid, remoteAddr, localAddr)
+        : new TcpConn(newRid, remoteAddr, localAddr);
+
+      handle[kStreamBaseField] = conn;
+      if (!socket._handle) {
+        socket._handle = handle;
+      }
+
+      // Reset socket state for reuse.
+      if (socket._readableState?.[kState] !== undefined) {
+        socket._readableState[kState] &= ~(kDestroyed | kErrored);
+      }
+      if (socket._writableState?.[kState] !== undefined) {
+        socket._writableState[kState] &=
+          ~(kEnding | kEnded | kDestroyed | kErrored);
+        socket._writableState.writable = true;
+      }
+      handle.destroyed = false;
+
+      // Agent's 'free' handler checks socket._httpMessage.shouldKeepAlive.
+      if (req && !socket._httpMessage) {
+        socket._httpMessage = req;
+      }
+
+      // Remove error listener to prevent accumulation on reused sockets.
+      if (req?._socketErrorListener) {
+        socket.removeListener("error", req._socketErrorListener);
+        req._socketErrorListener = null;
+      }
+
+      socket.emit("free");
+
+      // Clear references so old request/response don't destroy the pooled socket.
+      if (req) {
+        req.socket = null;
+      }
+      this.socket = null;
+    } catch (_e) {
+      // Socket reuse is best-effort.
+    }
   }
 
   // It's possible that the socket will be destroyed, and removed from
