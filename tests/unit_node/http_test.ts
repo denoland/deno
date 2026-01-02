@@ -743,25 +743,29 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test("[node/https] ClientRequest uses HTTP/1.1", async () => {
-  let body = "";
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = https.request("https://localhost:5545/http_version", {
-    method: "POST",
-    headers: { 1: 2 },
-  }, (resp) => {
-    resp.on("data", (chunk) => {
-      body += chunk;
-    });
+Deno.test({
+  name: "[node/https] ClientRequest uses HTTP/1.1",
+  sanitizeResources: false,
+  async fn() {
+    let body = "";
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const req = https.request("https://localhost:5545/http_version", {
+      method: "POST",
+      headers: { 1: 2 },
+    }, (resp) => {
+      resp.on("data", (chunk) => {
+        body += chunk;
+      });
 
-    resp.on("end", () => {
-      resolve();
+      resp.on("end", () => {
+        resolve();
+      });
     });
-  });
-  req.once("error", (e) => reject(e));
-  req.end();
-  await promise;
-  assertEquals(body, "HTTP/1.1");
+    req.once("error", (e) => reject(e));
+    req.end();
+    await promise;
+    assertEquals(body, "HTTP/1.1");
+  },
 });
 
 Deno.test("[node/http] ClientRequest setTimeout", async () => {
@@ -1994,16 +1998,19 @@ Deno.test("[node/http] `request` requires net permission to host and port", {
 
 const ca = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
 
-Deno.test("[node/https] `request` requires net permission to host and port", {
+Deno.test({
+  name: "[node/https] `request` requires net permission to host and port",
   permissions: { net: ["localhost:5545"] },
-}, async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
-    assertEquals(res.statusCode, 200);
-    assertStringIncludes(await text(res), "function echo(");
-    resolve();
-  }).end();
-  await promise;
+  sanitizeResources: false,
+  async fn() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertStringIncludes(await text(res), "function echo(");
+      resolve();
+    }).end();
+    await promise;
+  },
 });
 
 Deno.test(
@@ -2139,22 +2146,25 @@ Deno.test("[node/http] client http over unix socket works", {
   await server.finished;
 });
 
-Deno.test("[node/https] null ca, key and cert req options", {
+Deno.test({
+  name: "[node/https] null ca, key and cert req options",
   permissions: { net: ["localhost:5545"] },
-}, async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  https.request("https://localhost:5545/echo.ts", {
-    ca,
-    // @ts-expect-error - key can be null at runtime
-    key: null,
-    // @ts-expect-error - cert can be null at runtime
-    cert: null,
-  }, async (res) => {
-    assertEquals(res.statusCode, 200);
-    assertStringIncludes(await text(res), "function echo(");
-    resolve();
-  }).end();
-  await promise;
+  sanitizeResources: false,
+  async fn() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    https.request("https://localhost:5545/echo.ts", {
+      ca,
+      // @ts-expect-error - key can be null at runtime
+      key: null,
+      // @ts-expect-error - cert can be null at runtime
+      cert: null,
+    }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertStringIncludes(await text(res), "function echo(");
+      resolve();
+    }).end();
+    await promise;
+  },
 });
 
 Deno.test("[node/http] server.listen respects signal option", async () => {
@@ -2223,4 +2233,40 @@ Deno.test("[node/http] client request with empty write in chunked POST completes
 
   await promise;
   assertEquals(requestBody, "");
+});
+
+Deno.test("[node/http] Server.address() includes family property", async () => {
+  // Test IPv4
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "127.0.0.1");
+      assertEquals(addr.family, "IPv4");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  // Test IPv6
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "::1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "::1");
+      assertEquals(addr.family, "IPv6");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
 });

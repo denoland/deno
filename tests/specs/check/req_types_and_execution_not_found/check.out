@@ -1,0 +1,5 @@
+Check main.ts
+TS2307 [ERROR]: Cannot find module 'package'.
+    at file:///[WILDLINE]/main.ts:1:22
+
+error: Type checking failed.

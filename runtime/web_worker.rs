@@ -65,6 +65,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
 use crate::inspector_server::InspectorServer;
+use crate::inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -377,6 +378,7 @@ pub struct WebWorkerServiceOptions<
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -389,6 +391,7 @@ pub struct WebWorkerServiceOptions<
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WebWorkerOptions {
@@ -522,38 +525,34 @@ impl WebWorker {
       deno_telemetry::deno_telemetry::init(),
       // Web APIs
       deno_webidl::deno_webidl::init(),
-      deno_web::deno_web::init::<PermissionsContainer, InMemoryBroadcastChannel>(
+      deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_canvas::deno_canvas::init(),
-      deno_fetch::deno_fetch::init::<PermissionsContainer>(
-        deno_fetch::Options {
-          user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: services.root_cert_store_provider.clone(),
-          unsafely_ignore_certificate_errors: options
-            .unsafely_ignore_certificate_errors
-            .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          ..Default::default()
-        },
-      ),
+      deno_fetch::deno_fetch::init(deno_fetch::Options {
+        user_agent: options.bootstrap.user_agent.clone(),
+        root_cert_store_provider: services.root_cert_store_provider.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
       deno_cache::deno_cache::init(create_cache),
-      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
+      deno_websocket::deno_websocket::init(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
-      deno_ffi::deno_ffi::init::<PermissionsContainer>(
-        services.deno_rt_native_addon_loader.clone(),
-      ),
-      deno_net::deno_net::init::<PermissionsContainer>(
+      deno_ffi::deno_ffi::init(services.deno_rt_native_addon_loader.clone()),
+      deno_net::deno_net::init(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+        MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -569,19 +568,16 @@ impl WebWorker {
         deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init(LocalCronHandler::new()),
-      deno_napi::deno_napi::init::<PermissionsContainer>(
-        services.deno_rt_native_addon_loader.clone(),
-      ),
+      deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
         ..Default::default()
       }),
       deno_io::deno_io::init(Some(options.stdio)),
-      deno_fs::deno_fs::init::<PermissionsContainer>(services.fs.clone()),
+      deno_fs::deno_fs::init(services.fs.clone()),
       deno_os::deno_os::init(None),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<
-        PermissionsContainer,
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
@@ -596,7 +592,7 @@ impl WebWorker {
       ops::permissions::deno_permissions::init(),
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
-      deno_bundle_runtime::deno_bundle_runtime::init(None),
+      deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -606,10 +602,12 @@ impl WebWorker {
     ];
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -658,6 +656,7 @@ impl WebWorker {
       skip_op_registration: false,
       v8_platform: None,
       is_main: false,
+      worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
@@ -680,12 +679,26 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
+    if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
+        );
+
+      // Send worker proxy to the main runtime
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::debug!("Failed to send inspector session proxy to main runtime");
+      }
+
+      // Send worker proxy to the worker runtime
+      if js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
+        .is_err()
+      {
+        log::debug!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {

@@ -184,12 +184,16 @@ export class Cipheriv extends Transform implements Cipher {
 
   #autoPadding = true;
 
+  #finalized = false;
+
   constructor(
     cipher: string,
     key: CipherKey,
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -202,7 +206,12 @@ export class Cipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(false);
-    this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
@@ -213,12 +222,20 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("final");
+    }
+
     this.#lazyInitDecoder(encoding);
 
     const buf = new FastBuffer(16);
-    if (this.#cache.cache.byteLength == 0) {
+    const hasNoBufferedData = this.#cache.cache.byteLength === 0;
+    const shouldPadEmptyBlock = this.#needsBlockCache && this.#autoPadding;
+
+    if (hasNoBufferedData && !shouldPadEmptyBlock) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
 
@@ -233,9 +250,11 @@ export class Cipheriv extends Transform implements Cipher {
     );
     if (maybeTag) {
       this.#authTag = Buffer.from(maybeTag);
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
 
+    this.#finalized = true;
     if (encoding !== "buffer") {
       return this.#decoder!.end(buf);
     }
@@ -270,6 +289,10 @@ export class Cipheriv extends Transform implements Cipher {
     inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("update");
+    }
+
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
     if (typeof data === "string") {
@@ -391,6 +414,8 @@ export class Decipheriv extends Transform implements Cipher {
 
   #authTag?: BinaryLike;
 
+  #finalized = false;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -427,6 +452,10 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("final");
+    }
+
     this.#lazyInitDecoder(encoding);
 
     let buf = new FastBuffer(16);
@@ -439,6 +468,7 @@ export class Decipheriv extends Transform implements Cipher {
     );
 
     if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
     if (this.#cache.cache.byteLength != 16) {
@@ -446,6 +476,7 @@ export class Decipheriv extends Transform implements Cipher {
     }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+    this.#finalized = true;
     if (encoding !== "buffer") {
       return this.#decoder!.end(buf);
     }
@@ -480,6 +511,10 @@ export class Decipheriv extends Transform implements Cipher {
     inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("update");
+    }
+
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
     if (typeof data === "string") {

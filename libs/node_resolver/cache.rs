@@ -6,12 +6,14 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use sys_traits::BaseFsCanonicalize;
+use sys_traits::BaseFsOpen;
 use sys_traits::BaseFsRead;
 use sys_traits::BaseFsReadDir;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
@@ -194,5 +196,17 @@ impl<TSys: FsRead> BaseFsRead for NodeResolutionSys<TSys> {
     path: &Path,
   ) -> std::io::Result<std::borrow::Cow<'static, [u8]>> {
     self.sys.base_fs_read(path)
+  }
+}
+
+impl<TSys: FsOpen> BaseFsOpen for NodeResolutionSys<TSys> {
+  type File = TSys::File;
+
+  fn base_fs_open(
+    &self,
+    path: &Path,
+    flags: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    self.sys.base_fs_open(path, flags)
   }
 }

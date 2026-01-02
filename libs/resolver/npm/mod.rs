@@ -10,8 +10,8 @@ use deno_error::JsError;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
+use deno_semver::Version;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use node_resolver::InNpmPackageChecker;
@@ -33,7 +33,6 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
 use node_resolver::errors::TypesNotFoundError;
-use node_resolver::types_package_name;
 use thiserror::Error;
 use url::Url;
 
@@ -339,6 +338,28 @@ impl<TSys: NpmResolverSys> NpmPackageFolderResolver for NpmResolver<TSys> {
         .resolve_package_folder_from_package(specifier, referrer),
     }
   }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+    }
+  }
 }
 
 pub struct NpmReqResolverOptions<
@@ -492,41 +513,6 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if err.as_types_not_found().is_some() {
-          let maybe_definitely_typed_req =
-            if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-              let snapshot = npm_resolver.resolution().snapshot();
-              if let Some(nv) = snapshot.package_reqs().get(req) {
-                let type_req = find_definitely_typed_package(
-                  nv,
-                  snapshot.package_reqs().iter(),
-                );
-
-                type_req.map(|(r, _)| r).cloned()
-              } else {
-                None
-              }
-            } else {
-              Some(
-                PackageReq::from_str(&format!(
-                  "{}@*",
-                  types_package_name(&req.name)
-                ))
-                .unwrap(),
-              )
-            };
-          if let Some(req) = maybe_definitely_typed_req
-            && let Ok(resolved) = self.resolve_req_with_sub_path(
-              &req,
-              sub_path,
-              referrer,
-              resolution_mode,
-              resolution_kind,
-            )
-          {
-            return Ok(resolved);
-          }
-        }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
@@ -654,42 +640,4 @@ impl<
       }
     }
   }
-}
-
-/// Attempt to choose the "best" `@types/*` package
-/// if possible. If multiple versions exist, try to match
-/// the major and minor versions of the `@types` package with the
-/// actual package, falling back to the latest @types version present.
-pub fn find_definitely_typed_package<'a>(
-  nv: &'a PackageNv,
-  packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
-) -> Option<(&'a PackageReq, &'a PackageNv)> {
-  let types_name = types_package_name(&nv.name);
-  let mut best_patch = 0;
-  let mut highest: Option<(&PackageReq, &PackageNv)> = None;
-  let mut best = None;
-
-  for (req, type_nv) in packages {
-    if type_nv.name != types_name {
-      continue;
-    }
-    if type_nv.version.major == nv.version.major
-      && type_nv.version.minor == nv.version.minor
-      && type_nv.version.patch >= best_patch
-      && type_nv.version.pre == nv.version.pre
-    {
-      best = Some((req, type_nv));
-      best_patch = type_nv.version.patch;
-    }
-
-    if let Some((_, highest_nv)) = highest {
-      if type_nv.version > highest_nv.version {
-        highest = Some((req, type_nv));
-      }
-    } else {
-      highest = Some((req, type_nv));
-    }
-  }
-
-  best.or(highest)
 }

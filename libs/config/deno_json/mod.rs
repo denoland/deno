@@ -40,6 +40,8 @@ use crate::util::is_skippable_io_error;
 mod permissions;
 mod ts;
 
+pub use permissions::AllowDenyIgnorePermissionConfig;
+pub use permissions::AllowDenyIgnorePermissionConfigValue;
 pub use permissions::AllowDenyPermissionConfig;
 pub use permissions::AllowDenyPermissionConfigValue;
 pub use permissions::PermissionConfigValue;
@@ -764,7 +766,7 @@ impl SerializedCompileConfig {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
@@ -1069,7 +1071,7 @@ impl NodeModulesDirMode {
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {
   pub org: String,
-  pub app: String,
+  pub app: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1542,6 +1544,10 @@ impl ConfigFile {
     self.json.name.is_some() && self.json.exports.is_some()
   }
 
+  pub fn should_publish(&self) -> bool {
+    !matches!(self.json.publish, Some(serde_json::Value::Bool(false)))
+  }
+
   pub fn is_workspace(&self) -> bool {
     self.json.workspace.is_some()
   }
@@ -1910,11 +1916,14 @@ impl ConfigFile {
   pub(crate) fn to_publish_config(
     &self,
   ) -> Result<PublishConfig, ToInvalidConfigError> {
-    match self.json.publish.clone() {
+    match &self.json.publish {
+      Some(serde_json::Value::Bool(_)) | None => Ok(PublishConfig {
+        files: self.to_exclude_files_config()?,
+      }),
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
         let mut serialized: SerializedPublishConfig =
-          serde_json::from_value(config).map_err(|error| {
+          serde_json::from_value(config.clone()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "publish",
               source: error,
@@ -1930,9 +1939,6 @@ impl ConfigFile {
           }
         })
       }
-      None => Ok(PublishConfig {
-        files: self.to_exclude_files_config()?,
-      }),
     }
   }
 

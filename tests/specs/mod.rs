@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -7,8 +8,10 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Context;
+use file_test_runner::NO_CAPTURE;
 use file_test_runner::TestResult;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectTestsError;
@@ -18,17 +21,16 @@ use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
+use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
+use test_util::test_runner::FlakyTestTracker;
+use test_util::test_runner::Parallelism;
+use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
-
-static NO_CAPTURE: Lazy<bool> = Lazy::new(|| {
-  std::env::args().any(|arg| arg == "--no-capture" || arg == "--nocapture")
-});
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -117,6 +119,7 @@ impl MultiTestMetaData {
       collected_tests.push(CollectedTest {
         name: format!("{}::{}", parent_test.name, name),
         path: parent_test.path.clone(),
+        line_and_column: None,
         data: serde_json::Value::Object(json_data),
       });
     }
@@ -253,129 +256,96 @@ pub fn main() {
         map: map_test_within_file,
       }),
       filter_override: None,
-    });
+    })
+    .into_flat_category();
 
   if root_category.is_empty() {
     return; // all tests filtered out
   }
 
   let _http_guard = test_util::http_server();
+  let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
-      parallel: !*NO_CAPTURE,
+      parallelism: parallelism.max_parallelism(),
+      reporter: test_util::test_runner::get_test_reporter(
+        "specs",
+        flaky_test_tracker.clone(),
+      ),
     },
-    run_test,
+    move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
 }
 
-fn map_variants<'a, I>(
-  test_data: &serde_json::Value,
-  test_path: &Path,
-  test_name: &str,
-  variants: I,
-) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError>
-where
-  I: IntoIterator<Item = (&'a String, &'a serde_json::Value)>,
-{
-  let mut children = Vec::with_capacity(2);
-  for (variant_name, variant_data) in variants {
-    let mut child_data = test_data.clone();
-    let child_obj = child_data
-      .as_object_mut()
-      .unwrap()
-      .get_mut("variants")
-      .unwrap()
-      .as_object_mut()
-      .unwrap();
-    child_obj.clear();
-    child_obj.insert(variant_name.clone(), variant_data.clone());
-    children.push(CollectedCategoryOrTest::Test(CollectedTest {
-      name: format!("{}::{}", test_name, variant_name),
-      path: test_path.to_path_buf(),
-      data: child_data,
-    }));
-  }
-  Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
-    children,
-    name: test_name.to_string(),
-    path: test_path.to_path_buf(),
-  }))
-}
-
-/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
-fn map_test_within_file(
-  test: CollectedTest,
-) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
-  let test_path = PathRef::new(&test.path);
-  let metadata_value = test_path.read_jsonc_value();
-  if metadata_value
-    .as_object()
-    .map(|o| o.contains_key("tests"))
-    .unwrap_or(false)
-  {
-    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
-      .with_context(|| format!("Failed deserializing {}", test_path))
-      .map_err(CollectTestsError::Other)?;
-    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
-      children: data.into_collected_tests(&test),
-      name: test.name,
-      path: test.path,
-    }))
-  } else if let Some(variants) = metadata_value
-    .as_object()
-    .and_then(|o| o.get("variants"))
-    .and_then(|v| v.as_object())
-    && !variants.is_empty()
-  {
-    map_variants(&metadata_value, &test.path, &test.name, variants.iter())
-  } else {
-    Ok(CollectedCategoryOrTest::Test(CollectedTest {
-      name: test.name,
-      path: test.path,
-      data: metadata_value,
-    }))
-  }
-}
-
-fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
+fn run_test(
+  test: &CollectedTest<serde_json::Value>,
+  flaky_test_tracker: &FlakyTestTracker,
+  parallelism: &Parallelism,
+) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
+    let substs = variant_substitutions(&BTreeMap::new(), &metadata.variants);
+    let if_cond = metadata
+      .if_cond
+      .as_deref()
+      .map(|s| apply_substs(s, &substs));
+    if metadata.ignore || !should_run(if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
-        run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+        let result = run_test_inner(
+          test,
+          &metadata,
+          &cwd,
+          diagnostic_logger.clone(),
+          flaky_test_tracker,
+          parallelism,
+        );
+        if result.is_failed() {
+          return result;
+        }
       }
-      TestResult::Passed
+      TestResult::Passed { duration: None }
     } else {
-      run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
-      TestResult::Passed
+      run_test_inner(
+        test,
+        &metadata,
+        &cwd,
+        diagnostic_logger.clone(),
+        flaky_test_tracker,
+        parallelism,
+      )
     }
   }));
   match result {
     TestResult::Failed {
+      duration,
       output: panic_output,
     } => {
       let mut output = diagnostic_logger.borrow().clone();
       output.push(b'\n');
       output.extend(panic_output);
-      TestResult::Failed { output }
+      TestResult::Failed { duration, output }
     }
-    TestResult::Passed | TestResult::Ignored | TestResult::SubTests(_) => {
-      result
-    }
+    TestResult::Passed { .. }
+    | TestResult::Ignored
+    | TestResult::SubTests { .. } => result,
   }
 }
 
 fn run_test_inner(
+  test: &CollectedTest<serde_json::Value>,
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-) {
+  flaky_test_tracker: &FlakyTestTracker,
+  parallelism: &Parallelism,
+) -> TestResult {
   let run_fn = || {
     let context =
       test_context_from_metadata(metadata, cwd, diagnostic_logger.clone());
@@ -384,19 +354,32 @@ fn run_test_inner(
       .iter()
       .filter(|s| should_run(s.if_cond.as_deref()))
     {
-      let run_func = || run_step(step, metadata, cwd, &context);
-      if step.flaky {
-        run_flaky(run_func);
-      } else {
-        run_func();
+      let run_func = || {
+        TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+          run_step(step, metadata, cwd, &context);
+          TestResult::Passed { duration: None }
+        }))
+      };
+      let result = run_maybe_flaky_test(
+        &test.name,
+        step.flaky,
+        flaky_test_tracker,
+        None,
+        run_func,
+      );
+      if result.is_failed() {
+        return result;
       }
     }
+    TestResult::Passed { duration: None }
   };
-  if metadata.flaky {
-    run_flaky(run_fn);
-  } else {
-    run_fn();
-  }
+  run_maybe_flaky_test(
+    &test.name,
+    metadata.flaky || *IS_CI,
+    flaky_test_tracker,
+    Some(parallelism),
+    run_fn,
+  )
 }
 
 fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
@@ -484,6 +467,10 @@ fn should_run(if_cond: Option<&str>) -> bool {
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
       "notCI" => std::env::var_os("CI").is_none(),
+      "notMacIntel" => {
+        cfg!(unix)
+          && !(cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
+      }
       value => panic!("Unknown if condition: {}", value),
     }
   } else {
@@ -491,16 +478,193 @@ fn should_run(if_cond: Option<&str>) -> bool {
   }
 }
 
-fn run_flaky(action: impl Fn()) {
-  for _ in 0..2 {
-    let result = std::panic::catch_unwind(AssertUnwindSafe(&action));
-    if result.is_ok() {
-      return;
-    }
-  }
+fn run_step(
+  step: &StepMetaData,
+  metadata: &MultiStepMetaData,
+  cwd: &PathRef,
+  context: &test_util::TestContext,
+) {
+  let substs = variant_substitutions(&step.variants, &metadata.variants);
 
-  // surface error on third try
-  action();
+  let command = if substs.is_empty() {
+    let envs = metadata.envs.iter().chain(step.envs.iter());
+    context.new_command().envs(envs)
+  } else {
+    let mut envs = metadata
+      .envs
+      .iter()
+      .chain(step.envs.iter())
+      .map(|(key, value)| (key.clone(), value.clone()))
+      .collect::<HashMap<_, _>>();
+    substitute_variants_into_envs(&substs, &mut envs);
+    context.new_command().envs(envs)
+  };
+
+  let command = match &step.args {
+    VecOrString::Vec(args) => {
+      if substs.is_empty() {
+        command.args_vec(args)
+      } else {
+        let mut args_replaced = args.clone();
+        for arg in args {
+          for (from, to) in &substs {
+            let arg_replaced = arg.replace(from, to);
+            if arg_replaced.is_empty() && &arg_replaced != arg {
+              continue;
+            }
+            args_replaced.push(arg_replaced);
+          }
+        }
+
+        command.args_vec(args)
+      }
+    }
+    VecOrString::String(text) => {
+      if substs.is_empty() {
+        command.args(text)
+      } else {
+        let text = apply_substs(text, &substs);
+        command.args(text.as_ref())
+      }
+    }
+  };
+  let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
+    Some(cwd) => command.current_dir(cwd),
+    None => command,
+  };
+  let command = match &step.command_name {
+    Some(command_name) => {
+      if substs.is_empty() {
+        command.name(command_name)
+      } else {
+        let command_name = apply_substs(command_name, &substs);
+        command.name(command_name.as_ref())
+      }
+    }
+    None => command,
+  };
+  let command = match *NO_CAPTURE {
+    // deprecated is only to prevent use, so this is fine here
+    #[allow(deprecated)]
+    true => command.show_output(),
+    false => command,
+  };
+  let command = match &step.input {
+    Some(input) => {
+      if input.ends_with(".in") {
+        let test_input_path = cwd.join(input);
+        command.stdin_text(std::fs::read_to_string(test_input_path).unwrap())
+      } else {
+        command.stdin_text(input)
+      }
+    }
+    None => command,
+  };
+  let output = command.run();
+
+  let step_output = {
+    if substs.is_empty() {
+      step.output.clone()
+    } else {
+      let mut output = step.output.clone();
+      for (from, to) in substs {
+        output = output.replace(&from, &to);
+      }
+      output
+    }
+  };
+  if step_output.ends_with(".out") {
+    let test_output_path = cwd.join(&step_output);
+    output.assert_matches_file(test_output_path);
+  } else {
+    assert!(
+      step_output.len() <= 160,
+      "The \"output\" property in your __test__.jsonc file is too long. Please extract this to an `.out` file to improve readability."
+    );
+    output.assert_matches_text(&step_output);
+  }
+  output.assert_exit_code(step.exit_code);
+}
+
+fn resolve_test_and_assertion_files(
+  dir: &PathRef,
+  metadata: &MultiStepMetaData,
+) -> HashSet<PathRef> {
+  let mut result = HashSet::with_capacity(metadata.steps.len() + 1);
+  result.insert(dir.join(MANIFEST_FILE_NAME));
+  result.extend(metadata.steps.iter().map(|step| dir.join(&step.output)));
+  result
+}
+
+fn map_variants<'a, I>(
+  test_data: &serde_json::Value,
+  test_path: &Path,
+  test_name: &str,
+  variants: I,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError>
+where
+  I: IntoIterator<Item = (&'a String, &'a serde_json::Value)>,
+{
+  let mut children = Vec::with_capacity(2);
+  for (variant_name, variant_data) in variants {
+    let mut child_data = test_data.clone();
+    let child_obj = child_data
+      .as_object_mut()
+      .unwrap()
+      .get_mut("variants")
+      .unwrap()
+      .as_object_mut()
+      .unwrap();
+    child_obj.clear();
+    child_obj.insert(variant_name.clone(), variant_data.clone());
+    children.push(CollectedCategoryOrTest::Test(CollectedTest {
+      name: format!("{}::{}", test_name, variant_name),
+      path: test_path.to_path_buf(),
+      line_and_column: None,
+      data: child_data,
+    }));
+  }
+  Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+    children,
+    name: test_name.to_string(),
+    path: test_path.to_path_buf(),
+  }))
+}
+
+/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
+fn map_test_within_file(
+  test: CollectedTest,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
+  let test_path = PathRef::new(&test.path);
+  let metadata_value = test_path.read_jsonc_value();
+  if metadata_value
+    .as_object()
+    .map(|o| o.contains_key("tests"))
+    .unwrap_or(false)
+  {
+    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
+      .with_context(|| format!("Failed deserializing {}", test_path))
+      .map_err(CollectTestsError::Other)?;
+    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+      children: data.into_collected_tests(&test),
+      name: test.name,
+      path: test.path,
+    }))
+  } else if let Some(variants) = metadata_value
+    .as_object()
+    .and_then(|o| o.get("variants"))
+    .and_then(|v| v.as_object())
+    && !variants.is_empty()
+  {
+    map_variants(&metadata_value, &test.path, &test.name, variants.iter())
+  } else {
+    Ok(CollectedCategoryOrTest::Test(CollectedTest {
+      name: test.name,
+      path: test.path,
+      line_and_column: None,
+      data: metadata_value,
+    }))
+  }
 }
 
 // in the future we could consider using https://docs.rs/aho_corasick to do multiple replacements at once
@@ -557,116 +721,17 @@ fn substitute_variants_into_envs(
   }
 }
 
-fn run_step(
-  step: &StepMetaData,
-  metadata: &MultiStepMetaData,
-  cwd: &PathRef,
-  context: &test_util::TestContext,
-) {
-  let substs = variant_substitutions(&step.variants, &metadata.variants);
-
-  let command = if substs.is_empty() {
-    let envs = metadata.envs.iter().chain(step.envs.iter());
-    context.new_command().envs(envs)
+fn apply_substs<'a>(
+  text: &'a str,
+  substs: &'_ [(String, String)],
+) -> Cow<'a, str> {
+  if substs.is_empty() {
+    Cow::Borrowed(text)
   } else {
-    let mut envs = metadata
-      .envs
-      .iter()
-      .chain(step.envs.iter())
-      .map(|(key, value)| (key.clone(), value.clone()))
-      .collect::<HashMap<_, _>>();
-    substitute_variants_into_envs(&substs, &mut envs);
-    context.new_command().envs(envs)
-  };
-
-  let command = match &step.args {
-    VecOrString::Vec(args) => {
-      if substs.is_empty() {
-        command.args_vec(args)
-      } else {
-        let mut args_replaced = args.clone();
-        for arg in args {
-          for (from, to) in &substs {
-            let arg_replaced = arg.replace(from, to);
-            if arg_replaced.is_empty() && &arg_replaced != arg {
-              continue;
-            }
-            args_replaced.push(arg_replaced);
-          }
-        }
-
-        command.args_vec(args)
-      }
+    let mut text = Cow::Borrowed(text);
+    for (from, to) in substs {
+      text = text.replace(from, to).into();
     }
-    VecOrString::String(text) => {
-      if substs.is_empty() {
-        command.args(text)
-      } else {
-        let mut text = text.clone();
-        for (from, to) in &substs {
-          text = text.replace(from, to);
-        }
-        command.args(text)
-      }
-    }
-  };
-  let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
-    Some(cwd) => command.current_dir(cwd),
-    None => command,
-  };
-  let command = match &step.command_name {
-    Some(command_name) => command.name(command_name),
-    None => command,
-  };
-  let command = match *NO_CAPTURE {
-    // deprecated is only to prevent use, so this is fine here
-    #[allow(deprecated)]
-    true => command.show_output(),
-    false => command,
-  };
-  let command = match &step.input {
-    Some(input) => {
-      if input.ends_with(".in") {
-        let test_input_path = cwd.join(input);
-        command.stdin_text(std::fs::read_to_string(test_input_path).unwrap())
-      } else {
-        command.stdin_text(input)
-      }
-    }
-    None => command,
-  };
-  let output = command.run();
-
-  let step_output = {
-    if substs.is_empty() {
-      step.output.clone()
-    } else {
-      let mut output = step.output.clone();
-      for (from, to) in substs {
-        output = output.replace(&from, &to);
-      }
-      output
-    }
-  };
-  if step_output.ends_with(".out") {
-    let test_output_path = cwd.join(&step_output);
-    output.assert_matches_file(test_output_path);
-  } else {
-    assert!(
-      step_output.len() <= 160,
-      "The \"output\" property in your __test__.jsonc file is too long. Please extract this to an `.out` file to improve readability."
-    );
-    output.assert_matches_text(&step_output);
+    text
   }
-  output.assert_exit_code(step.exit_code);
-}
-
-fn resolve_test_and_assertion_files(
-  dir: &PathRef,
-  metadata: &MultiStepMetaData,
-) -> HashSet<PathRef> {
-  let mut result = HashSet::with_capacity(metadata.steps.len() + 1);
-  result.insert(dir.join(MANIFEST_FILE_NAME));
-  result.extend(metadata.steps.iter().map(|step| dir.join(&step.output)));
-  result
 }

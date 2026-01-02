@@ -38,6 +38,8 @@ const kClosed = 1 << 5;
 const kCloseEmitted = 1 << 6;
 const kErrored = 1 << 7;
 const kConstructed = 1 << 8;
+const kEnding = 1 << 12;
+const kEnded = 1 << 30;
 
 function isReadableNodeStream(obj, strict = false) {
   return !!(
@@ -369,6 +371,8 @@ const _defaultExport1 = {
   kCloseEmitted,
   kErrored,
   kConstructed,
+  kEnding,
+  kEnded,
 };
 
 export default _defaultExport1;
@@ -404,6 +408,8 @@ export {
   kControllerErrorFunction,
   kDestroyed,
   kEmitClose,
+  kEnded,
+  kEnding,
   kErrored,
   kErrorEmitted,
   kIsClosedPromise,

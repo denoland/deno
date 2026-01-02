@@ -1700,9 +1700,6 @@ declare namespace Deno {
    *
    * Throws {@linkcode Deno.errors.NotFound} if directory not available.
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function cwd(): string;
@@ -6036,11 +6033,17 @@ declare namespace Deno {
     getFloat64(offset?: number): number;
     /** Gets a pointer at the specified byte offset from the pointer */
     getPointer<T = unknown>(offset?: number): PointerValue<T>;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the pointer. */
+    /** Gets a UTF-8 encoded string at the specified byte offset until 0 byte.
+     *
+     * Returned string doesn't include U+0000 character.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
     getCString(offset?: number): string;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the specified pointer. */
+    /** Gets a UTF-8 encoded string at the specified byte offset from the specified pointer until 0 byte.
+     *
+     * Returned string doesn't include U+0000 character.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
     static getCString(pointer: PointerObject, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */

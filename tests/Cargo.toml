@@ -16,12 +16,23 @@ path = "lib.rs"
 upgrade = []
 
 [[test]]
-name = "integration_tests"
+name = "integration"
 path = "integration/mod.rs"
+harness = false
 
 [[test]]
 name = "specs"
 path = "specs/mod.rs"
+harness = false
+
+[[test]]
+name = "unit"
+path = "unit/mod.rs"
+harness = false
+
+[[test]]
+name = "unit_node"
+path = "unit_node/mod.rs"
 harness = false
 
 [[test]]
@@ -39,7 +50,6 @@ deno_semver.workspace = true
 deno_unsync.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true
-flaky_test.workspace = true
 hickory-proto.workspace = true
 hickory-server.workspace = true
 http.workspace = true
@@ -47,7 +57,6 @@ http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 lazy-regex.workspace = true
-ntest_timeout.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true

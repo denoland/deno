@@ -203,7 +203,11 @@ function close() {
 }
 
 function url() {
-  return op_inspector_url();
+  const u = op_inspector_url();
+  if (u === null) {
+    return undefined;
+  }
+  return u;
 }
 
 function waitForDebugger() {

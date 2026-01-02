@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { op_preview_entries } from "ext:core/ops";
+import {
+  op_get_env_no_permission_check,
+  op_preview_entries,
+} from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { emitWarning } from "node:process";
 const {
   ArrayIsArray,
   ArrayFrom,
@@ -499,7 +503,9 @@ const consoleMethods = {
   clear() {
     // It only makes sense to clear if _stdout is a TTY.
     // Otherwise, do nothing.
-    if (this._stdout.isTTY && process.env.TERM !== "dumb") {
+    if (
+      this._stdout.isTTY && op_get_env_no_permission_check("TERM") !== "dumb"
+    ) {
       cursorTo(this._stdout, 0, 0);
       clearScreenDown(this._stdout);
     }
