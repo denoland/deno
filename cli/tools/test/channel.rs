@@ -634,7 +634,7 @@ mod tests {
         for i in 0..MESSAGE_COUNT {
           worker
             .stderr
-            .write_all(format!("{i:08x}").as_str().as_bytes())
+            .write_all(format!("{i:08x}").as_bytes())
             .unwrap();
           worker
             .sender

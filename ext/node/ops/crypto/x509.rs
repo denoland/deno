@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::fmt::Write;
 use std::ops::Deref;
 
 use deno_core::ToJsBuffer;
@@ -120,11 +121,13 @@ impl Certificate {
     hasher.update(data);
     let bytes = hasher.finalize();
     // OpenSSL returns colon separated upper case hex values.
-    let mut hex = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-      hex.push_str(&format!("{:02X}:", byte));
+    let mut hex = String::with_capacity(bytes.len() * 3 - 1);
+    for (i, byte) in bytes.iter().enumerate() {
+      if i > 0 {
+        hex.push(':');
+      }
+      let _ = write!(hex, "{:02X}", byte);
     }
-    hex.pop();
     Some(hex)
   }
 

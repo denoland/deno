@@ -693,7 +693,7 @@ fn format_embedded_css(
 
     buf.push(chars.as_str());
   }
-  Ok(Some(buf.join("\n").to_string()))
+  Ok(Some(buf.join("\n")))
 }
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
