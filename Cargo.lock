@@ -9952,9 +9952,9 @@ dependencies = [
 
 [[package]]
 name = "urlpattern"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957a88ad1abd5d13336275adb17d4f9b6a2404f3baed2e075e0b026dc0b2b58d"
+checksum = "0f805818f843b548bacc19609eb3619dd2850e54746f5cada37927393c2ef4ec"
 dependencies = [
  "icu_properties 2.1.1",
  "regex",
