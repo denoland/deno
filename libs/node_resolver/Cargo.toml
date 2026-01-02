@@ -1,0 +1,47 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "node_resolver"
+version = "0.63.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Node.js module resolution algorithm used in Deno"
+
+[lib]
+path = "lib.rs"
+
+[features]
+graph = ["deno_graph"]
+sync = ["deno_maybe_sync/sync", "deno_package_json/sync"]
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+boxed_error.workspace = true
+capacity_builder.workspace = true
+dashmap.workspace = true
+deno_error.workspace = true
+deno_graph = { workspace = true, optional = true }
+deno_maybe_sync.workspace = true
+deno_media_type.workspace = true
+deno_package_json.workspace = true
+deno_path_util.workspace = true
+deno_semver.workspace = true
+futures.workspace = true
+lazy-regex.workspace = true
+log.workspace = true
+once_cell.workspace = true
+path-clean.workspace = true
+pretty_assertions.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sys_traits.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["memory"] }

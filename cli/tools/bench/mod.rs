@@ -6,35 +6,36 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use deno_config::glob::WalkEntry;
+use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
+use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::StreamExt;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
-use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::unbounded_channel;
 
 use crate::args::BenchFlags;
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
@@ -43,9 +44,10 @@ use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
-use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
+use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -154,6 +156,8 @@ async fn bench_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
+  preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
@@ -161,19 +165,21 @@ async fn bench_specifier(
     worker_factory,
     permissions_container,
     specifier.clone(),
+    preload_modules,
+    require_modules,
     &sender,
     filter,
   )
   .await
   {
     Ok(()) => Ok(()),
-    Err(CreateCustomWorkerError::Core(CoreError::Js(error))) => {
-      sender.send(BenchEvent::UncaughtError(
-        specifier.to_string(),
-        Box::new(error),
-      ))?;
-      Ok(())
-    }
+    Err(CreateCustomWorkerError::Core(error)) => match error.into_kind() {
+      CoreErrorKind::Js(error) => {
+        sender.send(BenchEvent::UncaughtError(specifier.to_string(), error))?;
+        Ok(())
+      }
+      error => Err(error.into_box().into()),
+    },
     Err(e) => Err(e.into()),
   }
 }
@@ -183,6 +189,8 @@ async fn bench_specifier_inner(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
+  preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), CreateCustomWorkerError> {
@@ -190,6 +198,8 @@ async fn bench_specifier_inner(
     .create_custom_worker(
       WorkerExecutionMode::Bench,
       specifier.clone(),
+      preload_modules,
+      require_modules,
       permissions_container,
       vec![ops::bench::deno_bench::init(sender.clone())],
       Default::default(),
@@ -197,6 +207,7 @@ async fn bench_specifier_inner(
     )
     .await?;
 
+  worker.execute_preload_modules().await?;
   // We execute the main module as a side module so that import.meta.main is not set.
   worker.execute_side_module().await?;
 
@@ -205,7 +216,9 @@ async fn bench_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event().map_err(CoreError::Js)?;
+  worker
+    .dispatch_load_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   let benchmarks = {
     let state_rc = worker.js_runtime.op_state();
@@ -241,40 +254,42 @@ async fn bench_specifier_inner(
       names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
     }))
     .map_err(JsErrorBox::from_err)
-    .map_err(CoreError::JsBox)?;
+    .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
   for (desc, function) in benchmarks {
     sender
       .send(BenchEvent::Wait(desc.id))
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     let call = worker.js_runtime.call(&function);
     let result = worker
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
       .await?;
-    let scope = &mut worker.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut worker.js_runtime);
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<BenchResult>(scope, result)
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     sender
       .send(BenchEvent::Result(desc.id, result))
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
   }
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
   worker
     .dispatch_beforeunload_event()
-    .map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   worker
     .dispatch_process_beforeexit_event()
-    .map_err(CoreError::Js)?;
-  worker.dispatch_unload_event().map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker
+    .dispatch_unload_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   worker
     .dispatch_process_exit_event()
-    .map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
@@ -286,9 +301,11 @@ async fn bench_specifier_inner(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
+  cli_options: &Arc<CliOptions>,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
+  preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
@@ -297,17 +314,32 @@ async fn bench_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permissions_desc_parser.clone(),
-      permissions.clone(),
-    );
+    let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let sender = sender.clone();
     let options = option_for_handles.clone();
+    let preload_modules = preload_modules.clone();
+    let require_modules = require_modules.clone();
+    let cli_options = cli_options.clone();
+    let permission_desc_parser = permission_desc_parser.clone();
     spawn_blocking(move || {
+      // Various test files should not share the same permissions in terms of
+      // `PermissionsContainer` - otherwise granting/revoking permissions in one
+      // file would have impact on other files, which is undesirable.
+      let permissions =
+        cli_options.permissions_options_for_dir(&specifier_dir)?;
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &permissions,
+        )?,
+      );
       let future = bench_specifier(
         worker_factory,
         permissions_container,
         specifier,
+        preload_modules,
+        require_modules,
         sender,
         options.filter,
       );
@@ -434,14 +466,6 @@ pub async fn run_benchmarks(
   let cli_options = factory.cli_options()?;
   let workspace_bench_options =
     cli_options.resolve_workspace_bench_options(&bench_flags);
-  // Various bench files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?.clone();
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
 
   let members_with_bench_options =
     cli_options.resolve_bench_options_for_members(&bench_flags)?;
@@ -449,8 +473,11 @@ pub async fn run_benchmarks(
     .iter()
     .map(|(_, bench_options)| {
       collect_specifiers(
-        bench_options.files.clone(),
-        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        CollectSpecifiersOptions {
+          file_patterns: bench_options.files.clone(),
+          vendor_folder: cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          include_ignored_specified: false,
+        },
         is_supported_bench_path,
       )
     })
@@ -478,14 +505,18 @@ pub async fn run_benchmarks(
     return Ok(());
   }
 
+  let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
   let log_level = cli_options.log_level();
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
     worker_factory,
-    &permissions,
-    &permission_desc_parser,
+    cli_options,
+    factory.permission_desc_parser()?,
     specifiers,
+    preload_modules,
+    require_modules,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&workspace_bench_options.filter),
       json: workspace_bench_options.json,
@@ -546,8 +577,13 @@ pub async fn run_benchmarks_with_watch(
           .iter()
           .map(|(_, bench_options)| {
             collect_specifiers(
-              bench_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              CollectSpecifiersOptions {
+                file_patterns: bench_options.files.clone(),
+                vendor_folder: cli_options
+                  .vendor_dir_path()
+                  .map(ToOwned::to_owned),
+                include_ignored_specified: false,
+              },
               is_supported_bench_path,
             )
           })
@@ -555,15 +591,6 @@ pub async fn run_benchmarks_with_watch(
           .into_iter()
           .flatten()
           .collect::<Vec<_>>();
-
-        // Various bench files should not share the same permissions in terms of
-        // `PermissionsContainer` - otherwise granting/revoking permissions in one
-        // file would have impact on other files, which is undesirable.
-        let permission_desc_parser = factory.permission_desc_parser()?.clone();
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
 
         let graph = module_graph_creator
           .create_graph(
@@ -618,11 +645,15 @@ pub async fn run_benchmarks_with_watch(
         }
 
         let log_level = cli_options.log_level();
+        let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
         bench_specifiers(
           worker_factory,
-          &permissions,
-          &permission_desc_parser,
+          cli_options,
+          factory.permission_desc_parser()?,
           specifiers,
+          preload_modules,
+          require_modules,
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&workspace_bench_options.filter),
             json: workspace_bench_options.json,

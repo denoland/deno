@@ -4,18 +4,19 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::cppgc::SameObject;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::v8;
 use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
-use crate::webidl::features_to_feature_names;
-use crate::webidl::GPUFeatureName;
 use crate::Instance;
+use crate::SameObject;
+use crate::error::GPUGenericError;
+use crate::webidl::GPUFeatureName;
+use crate::webidl::features_to_feature_names;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -60,7 +61,10 @@ impl Drop for GPUAdapter {
   }
 }
 
-impl GarbageCollected for GPUAdapter {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUAdapter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapter"
   }
@@ -68,9 +72,15 @@ impl GarbageCollected for GPUAdapter {
 
 #[op2]
 impl GPUAdapter {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUAdapter, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[global]
-  fn info(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
       let limits = self.instance.adapter_limits(self.id);
@@ -85,7 +95,10 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn features(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.adapter_features(self.id);
       let features = features_to_feature_names(features);
@@ -95,7 +108,7 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
@@ -104,11 +117,10 @@ impl GPUAdapter {
 
   #[async_method(fake)]
   #[global]
-  fn request_device(
+  fn request_device<'s>(
     &self,
     state: &mut OpState,
-    isolate_ptr: *mut v8::Isolate,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
@@ -150,10 +162,6 @@ impl GPUAdapter {
     let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
     let (uncaptured_sender, mut uncaptured_receiver) =
       tokio::sync::mpsc::unbounded_channel();
-    let (
-      uncaptured_sender_is_closed_sender,
-      mut uncaptured_sender_is_closed_receiver,
-    ) = tokio::sync::oneshot::channel::<()>();
 
     let device = GPUDevice {
       instance: self.instance.clone(),
@@ -165,7 +173,6 @@ impl GPUAdapter {
       error_handler: Arc::new(super::error::DeviceErrorHandler::new(
         lost_sender,
         uncaptured_sender,
-        uncaptured_sender_is_closed_sender,
       )),
       adapter: self.id,
       lost_receiver: Mutex::new(Some(lost_receiver)),
@@ -183,53 +190,67 @@ impl GPUAdapter {
     set_event_target_data.call(scope, null.into(), &[device.into()]);
 
     let key = v8::String::new(scope, "dispatchEvent").unwrap();
-    let val = device.get(scope, key.into()).unwrap();
-    let func = v8::Global::new(scope, val.try_cast::<v8::Function>().unwrap());
-    let device = v8::Global::new(scope, device.cast::<v8::Value>());
-    let error_event_class = state.borrow::<crate::ErrorEventClass>().0.clone();
+    let func = device
+      .get(scope, key.into())
+      .unwrap()
+      .cast::<v8::Function>();
 
     let context = scope.get_current_context();
-    let context = v8::Global::new(scope, context);
 
-    let task_device = device.clone();
+    let spawner = state.borrow::<deno_core::V8TaskSpawner>().clone();
+    // Cloning a v8::Global requires a valid isolate, but we don't
+    // know if we have one, so wrap them all in an Rc
+    struct Globals {
+      device: v8::Global<v8::Object>,
+      context: v8::Global<v8::Context>,
+      func: v8::Global<v8::Function>,
+    }
+    let globals = Rc::new(Globals {
+      device: v8::Global::new(scope, device),
+      context: v8::Global::new(scope, context),
+      func: v8::Global::new(scope, func),
+    });
+
     deno_unsync::spawn(async move {
       loop {
-        // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
-        if !matches!(
-          uncaptured_sender_is_closed_receiver.try_recv(),
-          Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ) {
-          break;
-        }
         let Some(error) = uncaptured_receiver.recv().await else {
           break;
         };
 
-        // SAFETY: eh, it's safe
-        let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope = &mut v8::HandleScope::with_context(isolate, &context);
-        let error = deno_core::error::to_v8_error(scope, &error);
+        let globals = globals.clone();
+        spawner.spawn(move |task_scope| {
+          v8::scope_with_context!(scope, task_scope, &globals.context);
+          v8::tc_scope!(let scope, scope);
+          let error = deno_core::error::to_v8_error(scope, &error);
 
-        let error_event_class =
-          v8::Local::new(scope, error_event_class.clone());
-        let constructor =
-          v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
-        let kind = v8::String::new(scope, "uncapturederror").unwrap();
+          let error_event_class = deno_core::JsRuntime::op_state_from(scope)
+            .borrow()
+            .borrow::<crate::ErrorEventClass>()
+            .0
+            .clone();
+          let error_event_class = v8::Local::new(scope, error_event_class);
+          let constructor =
+            v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
+          let kind = v8::String::new(scope, "uncapturederror").unwrap();
 
-        let obj = v8::Object::new(scope);
-        let key = v8::String::new(scope, "error").unwrap();
-        obj.set(scope, key.into(), error);
+          let obj = v8::Object::new(scope);
+          let key = v8::String::new(scope, "error").unwrap();
+          obj.set(scope, key.into(), error);
 
-        let event = constructor
-          .new_instance(scope, &[kind.into(), obj.into()])
-          .unwrap();
+          let event = constructor
+            .new_instance(scope, &[kind.into(), obj.into()])
+            .unwrap();
 
-        let recv = v8::Local::new(scope, task_device.clone());
-        func.open(scope).call(scope, recv, &[event.into()]);
+          let recv = v8::Local::new(scope, globals.device.clone());
+          globals
+            .func
+            .open(scope)
+            .call(scope, recv.into(), &[event.into()]);
+        });
       }
     });
 
-    Ok(device)
+    Ok(v8::Global::new(scope, device.cast::<v8::Value>()))
   }
 }
 
@@ -248,7 +269,10 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
-impl GarbageCollected for GPUSupportedLimits {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUSupportedLimits {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedLimits"
   }
@@ -256,6 +280,12 @@ impl GarbageCollected for GPUSupportedLimits {
 
 #[op2]
 impl GPUSupportedLimits {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSupportedLimits, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   fn maxTextureDimension1D(&self) -> u32 {
     self.0.max_texture_dimension_1d
@@ -409,7 +439,10 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
-impl GarbageCollected for GPUSupportedFeatures {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUSupportedFeatures {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedFeatures"
   }
@@ -417,7 +450,7 @@ impl GarbageCollected for GPUSupportedFeatures {
 
 impl GPUSupportedFeatures {
   pub fn new(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     features: HashSet<GPUFeatureName>,
   ) -> Self {
     let set = v8::Set::new(scope);
@@ -433,6 +466,12 @@ impl GPUSupportedFeatures {
 
 #[op2]
 impl GPUSupportedFeatures {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSupportedFeatures, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[global]
   #[symbol("setlike_set")]
   fn set(&self) -> v8::Global<v8::Value> {
@@ -446,7 +485,10 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
-impl GarbageCollected for GPUAdapterInfo {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUAdapterInfo {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapterInfo"
   }
@@ -454,6 +496,12 @@ impl GarbageCollected for GPUAdapterInfo {
 
 #[op2]
 impl GPUAdapterInfo {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUAdapterInfo, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn vendor(&self) -> String {

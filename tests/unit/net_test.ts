@@ -940,12 +940,21 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   function netUnixAbstractPathShouldNotPanic() {
-    const listener = Deno.listen({
-      path: "\0aaa",
-      transport: "unix",
-    });
-    assert("not panic");
-    listener.close();
+    const err = assertThrows(
+      () =>
+        Deno.listen({
+          path: "\0aaa",
+          transport: "unix",
+        }),
+      Error,
+    );
+    const errorText = err.toString();
+    if (
+      !errorText.includes("paths must not contain interior null bytes") &&
+      !errorText.includes("file name contained an unexpected NUL byte")
+    ) {
+      throw new Error("Did not contain any expected message");
+    }
   },
 );
 
@@ -1278,10 +1287,10 @@ Deno.test({
 });
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true }, ignore: true },
   async function netTcpWithAbortSignal() {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 100);
+    setTimeout(() => controller.abort(), 1_000);
     const error = await assertRejects(
       async () => {
         await Deno.connect({

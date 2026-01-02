@@ -1,10 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::assert_contains;
-use test_util::assert_not_contains;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
+use util::test;
 
 #[test]
 fn install_basic() {
@@ -254,6 +255,7 @@ fn installer_test_local_module_run() {
       "--root",
       temp_dir_str.as_str(),
       echo_ts_str.as_str(),
+      "--",
       "hello",
     ])
     .envs([
@@ -293,7 +295,7 @@ fn installer_test_remote_module_run() {
   let bin_dir = root_dir.join("bin");
   context
     .new_command()
-    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts hello")
+    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts -- hello")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
@@ -332,7 +334,7 @@ fn check_local_by_default() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
@@ -356,7 +358,7 @@ fn check_local_by_default2() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default2.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
@@ -411,8 +413,9 @@ fn show_prefix_hint_on_global_install() {
     output.assert_exit_code(1);
 
     let output_text = output.combined_output();
-    let expected_text =
-      format!("error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?");
+    let expected_text = format!(
+      "error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?"
+    );
     assert_contains!(output_text, &expected_text);
   }
 
@@ -426,4 +429,49 @@ fn show_prefix_hint_on_global_install() {
 
   let output_text = output.combined_output();
   assert_contains!(output_text, "error: Module not found");
+}
+
+#[test]
+fn installer_multiple() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let root_dir = temp_dir.path().join("root");
+  let bin_dir = root_dir.join("bin");
+  context
+    .new_command()
+    .args("install --root ./root -g http://localhost:4545/echo.ts http://localhost:4545/cat.ts")
+    .run()
+    .assert_matches_text("[WILDCARD]Successfully installed echo[WILDCARD]Successfully installed cat[WILDCARD]")
+    .assert_exit_code(0);
+  for name in ["echo", "cat"] {
+    let mut bin_file_path = bin_dir.join(name);
+    if cfg!(windows) {
+      bin_file_path = bin_file_path.with_extension("cmd");
+    }
+    assert!(bin_file_path.exists());
+  }
+}
+
+#[test]
+fn installer_second_module_looks_like_script_argument() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  // in Deno < 3.0, we didn't require `--` before script arguments, so we try to provide a helpful
+  // error message for people migrating
+  context
+    .new_command()
+    .args("install --root ./root -g http://localhost:4545/echo.ts non_existent")
+    .run()
+    .assert_matches_text(concat!(
+      "[WILDCARD]Successfully installed echo[WILDCARD]error: non_existent is missing a prefix. ",
+      "Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
+      "Did you mean `deno install -g http://localhost:4545/echo.ts -- non_existent`? ",
+      "Or maybe provide a `jsr:` or `npm:` prefix?\n"
+    ))
+    .assert_exit_code(1);
 }

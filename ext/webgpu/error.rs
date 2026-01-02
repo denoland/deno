@@ -17,10 +17,10 @@ use wgpu_core::command::CreateRenderBundleError;
 use wgpu_core::command::QueryError;
 use wgpu_core::command::RenderBundleError;
 use wgpu_core::command::RenderPassError;
-use wgpu_core::device::queue::QueueSubmitError;
-use wgpu_core::device::queue::QueueWriteError;
 use wgpu_core::device::DeviceError;
 use wgpu_core::device::WaitIdleError;
+use wgpu_core::device::queue::QueueSubmitError;
+use wgpu_core::device::queue::QueueWriteError;
 use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
@@ -37,36 +37,21 @@ pub type ErrorHandler = std::sync::Arc<DeviceErrorHandler>;
 pub struct DeviceErrorHandler {
   pub is_lost: OnceLock<()>,
   lost_sender: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-  uncaptured_sender_is_closed: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 
   pub uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>,
 
   pub scopes: Mutex<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
 }
 
-impl Drop for DeviceErrorHandler {
-  fn drop(&mut self) {
-    if let Some(sender) =
-      self.uncaptured_sender_is_closed.lock().unwrap().take()
-    {
-      let _ = sender.send(());
-    }
-  }
-}
-
 impl DeviceErrorHandler {
   pub fn new(
     lost_sender: tokio::sync::oneshot::Sender<()>,
     uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>,
-    uncaptured_sender_is_closed: tokio::sync::oneshot::Sender<()>,
   ) -> Self {
     Self {
       is_lost: Default::default(),
       lost_sender: Mutex::new(Some(lost_sender)),
       uncaptured_sender,
-      uncaptured_sender_is_closed: Mutex::new(Some(
-        uncaptured_sender_is_closed,
-      )),
       scopes: Mutex::new(vec![]),
     }
   }
@@ -360,4 +345,11 @@ impl From<WaitIdleError> for GPUError {
   fn from(err: WaitIdleError) -> Self {
     GPUError::Validation(fmt_err(&err))
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GPUGenericError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  InvalidConstructor,
 }

@@ -759,20 +759,32 @@ interface GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
 
-/** @category GPU */
-declare class GPUPipelineError extends DOMException {
-  constructor(message?: string, options?: GPUPipelineErrorInit);
-
-  readonly reason: GPUPipelineErrorReason;
+/**
+ * The **`GPUPipelineError`** interface of the WebGPU API describes a pipeline failure.
+ * Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError)
+ * @category GPU
+ */
+interface GPUPipelineError extends DOMException {
+  /**
+   * The **`reason`** read-only property of the GPUPipelineError interface defines the reason the pipeline creation failed in a machine-readable way.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError/reason)
+   */
+  readonly reason: "validation" | "internal";
 }
+
+/** @category GPU */
+declare var GPUPipelineError: {
+  prototype: GPUPipelineError;
+  new (message: string, options: GPUPipelineErrorInit): GPUPipelineError;
+};
 
 /** @category GPU */
 interface GPUPipelineErrorInit {
-  reason: GPUPipelineErrorReason;
+  reason: "validation" | "internal";
 }
-
-/** @category GPU */
-type GPUPipelineErrorReason = "validation" | "internal";
 
 /**
  * Represents a compiled shader module that can be used to create graphics or compute pipelines.
@@ -1584,25 +1596,55 @@ interface GPUDeviceLostInfo {
   readonly message: string;
 }
 
-/** @category GPU */
-declare class GPUError {
+/**
+ * The **`GPUError`** interface of the WebGPU API is the base interface for errors surfaced by GPUDevice.popErrorScope and the GPUDevice.uncapturederror_event event.
+ * Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError)
+ * @category GPU
+ */
+interface GPUError {
+  /**
+   * The **`message`** read-only property of the A string.
+   * The **`message`** read-only property of the GPUError interface provides a human-readable message that explains why the error occurred.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError/message)
+   */
   readonly message: string;
 }
 
 /** @category GPU */
-declare class GPUOutOfMemoryError extends GPUError {
-  constructor(message: string);
-}
+declare var GPUError: {
+  prototype: GPUError;
+  new (): GPUError;
+};
 
 /** @category GPU */
-declare class GPUValidationError extends GPUError {
-  constructor(message: string);
-}
+interface GPUOutOfMemoryError extends GPUError {}
 
 /** @category GPU */
-declare class GPUInternalError extends GPUError {
-  constructor(message: string);
-}
+declare var GPUOutOfMemoryError: {
+  prototype: GPUOutOfMemoryError;
+  new (message?: string): GPUOutOfMemoryError;
+};
+
+/** @category GPU */
+interface GPUValidationError extends GPUError {}
+
+/** @category GPU */
+declare var GPUValidationError: {
+  prototype: GPUValidationError;
+  new (message?: string): GPUValidationError;
+};
+
+/** @category GPU */
+interface GPUInternalError extends GPUError {}
+
+/** @category GPU */
+declare var GPUInternalError: {
+  prototype: GPUInternalError;
+  new (message?: string): GPUInternalError;
+};
 
 /** @category GPU */
 type GPUErrorFilter = "out-of-memory" | "validation" | "internal";

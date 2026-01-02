@@ -1,0 +1,25 @@
+{
+  "tests": {
+    "import_map": {
+      "args": "check main.ts",
+      "output": "check_import_map.out",
+      "exitCode": 1
+    },
+    "no_import_map": {
+      "args": "check --no-config main.ts",
+      "output": "check_no_import_map.out",
+      "exitCode": 1
+    }
+  },
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
+}

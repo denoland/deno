@@ -3,8 +3,8 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PerfHooksError {
@@ -18,7 +18,10 @@ pub struct EldHistogram {
   started: Cell<bool>,
 }
 
-impl GarbageCollected for EldHistogram {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for EldHistogram {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EldHistogram"
   }

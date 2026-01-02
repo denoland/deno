@@ -15,13 +15,19 @@ const {
   Proxy,
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
+  ReflectDefineProperty,
+  ReflectHas,
   TypeErrorPrototype,
 } = primordials;
-const { build } = core;
+const { build, createLazyLoader } = core;
 
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
+import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
+
+const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
+let nodeProcess: NodeJS.Process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
@@ -63,8 +69,9 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env: InstanceType<ObjectConstructor> & Record<string, string> =
-  new Proxy(Object(), {
+export const env:
+  & InstanceType<ObjectConstructor>
+  & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
       if (typeof prop === "symbol") {
         return target[prop];
@@ -85,7 +92,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
     ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
-      if (value) {
+      if (value !== undefined) {
         return {
           enumerable: true,
           configurable: true,
@@ -93,13 +100,67 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
         };
       }
     },
-    set(_target, prop, value) {
+    set(target, prop, value) {
+      if (typeof prop === "symbol") {
+        target[prop] = value;
+        return true;
+      }
+
+      if (typeof value !== "string") {
+        nodeProcess ??= loadProcess();
+        nodeProcess.emitWarning(
+          "Assigning any value other than a string, number, or boolean to a " +
+            "process.env property is deprecated. Please make sure to convert the value " +
+            "to a string before setting process.env with it.",
+          "DeprecationWarning",
+          "DEP0104",
+        );
+      }
+
       Deno.env.set(String(prop), String(value));
       return true; // success
     },
-    has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
-    deleteProperty(_target, key) {
+    has: (target, prop) => {
+      if (typeof prop === "symbol") {
+        return ReflectHas(target, prop);
+      }
+
+      return typeof denoEnvGet(prop) === "string";
+    },
+    deleteProperty(target, key) {
+      if (typeof key === "symbol") {
+        delete target[key];
+        return true;
+      }
+
       Deno.env.delete(String(key));
+      return true;
+    },
+    defineProperty(target, property, attributes) {
+      if (attributes?.get || attributes?.set) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' does not accept an " +
+            "accessor(getter/setter) descriptor",
+        );
+      }
+
+      if (
+        !attributes?.configurable || !attributes?.enumerable ||
+        !attributes?.writable
+      ) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' only accepts a " +
+            "configurable, writable," +
+            " and enumerable data descriptor",
+        );
+      }
+
+      if (typeof property === "symbol") {
+        ReflectDefineProperty(target, property, attributes);
+        return true;
+      }
+
+      Deno.env.set(String(property), String(attributes?.value));
       return true;
     },
   });
@@ -112,7 +173,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v22.14.0";
+export const version = "v24.2.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -123,7 +184,7 @@ export const version = "v22.14.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "22.14.0",
+  node: "24.2.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",
@@ -139,6 +200,7 @@ export const versions = {
   unicode: "14.0",
   ngtcp2: "0.8.1",
   nghttp3: "0.7.0",
+  sqlite: "3.49.0",
   // Will be filled when calling "__bootstrapNodeProcess()",
   deno: "",
   v8: "",

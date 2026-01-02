@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@denotest/add@1": "1.0.0",
     "jsr:@denotest/multiple-exports@0.7": "0.7.0",

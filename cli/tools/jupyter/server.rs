@@ -11,15 +11,15 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_lib::version::DENO_VERSION_INFO;
-use jupyter_runtime::messaging;
+use jupyter_protocol::messaging;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
@@ -65,19 +65,28 @@ impl JupyterServer {
     let session_id = Uuid::new_v4().to_string();
 
     let mut heartbeat =
-      connection_info.create_kernel_heartbeat_connection().await?;
-    let shell_connection = connection_info
-      .create_kernel_shell_connection(&session_id)
-      .await?;
-    let control_connection = connection_info
-      .create_kernel_control_connection(&session_id)
-      .await?;
-    let mut stdin_connection = connection_info
-      .create_kernel_stdin_connection(&session_id)
-      .await?;
-    let iopub_connection = connection_info
-      .create_kernel_iopub_connection(&session_id)
-      .await?;
+      jupyter_runtime::create_kernel_heartbeat_connection(&connection_info)
+        .await?;
+    let shell_connection = jupyter_runtime::create_kernel_shell_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let control_connection = jupyter_runtime::create_kernel_control_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let mut stdin_connection = jupyter_runtime::create_kernel_stdin_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let iopub_connection = jupyter_runtime::create_kernel_iopub_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));
@@ -733,9 +742,8 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
 
-  word
+  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
 }
 
 // TODO(bartlomieju): dedup with repl::editor

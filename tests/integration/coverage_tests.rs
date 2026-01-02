@@ -1,13 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
+use util::PathRef;
+use util::TempDir;
+use util::TestContext;
+use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_starts_with;
 use util::env_vars_for_npm_tests;
-use util::PathRef;
-use util::TestContext;
-use util::TestContextBuilder;
+use util::eprintln;
+use util::test;
 
 #[test]
 fn branch() {
@@ -106,7 +108,10 @@ fn error_if_invalid_cache() {
   // Expect error
   let error = util::strip_ansi_codes(out).to_string();
   assert_contains!(error, "error: Missing transpiled source code");
-  assert_contains!(error, "Before generating coverage report, run `deno test --coverage` to ensure consistent state.");
+  assert_contains!(
+    error,
+    "Before generating coverage report, run `deno test --coverage` to ensure consistent state."
+  );
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
@@ -158,11 +163,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
   );
-
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -171,6 +175,7 @@ fn multifile_coverage() {
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
 
+  eprintln!("before test");
   let output = context
     .new_command()
     .args_vec(vec![
@@ -180,8 +185,9 @@ fn multifile_coverage() {
       format!("coverage/multifile/"),
     ])
     .run();
-
+  eprintln!("after test");
   output.assert_exit_code(0);
+  eprintln!("output {:#?}", output.print_output());
   output.skip_output_check();
 
   let output = context
@@ -195,6 +201,7 @@ fn multifile_coverage() {
     .run();
 
   // Verify there's no "Check" being printed
+  eprintln!("output2 {:#?}", output.print_output());
   assert!(output.stderr().is_empty());
 
   output.assert_stdout_matches_file(
@@ -212,11 +219,10 @@ fn multifile_coverage() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
   );
-
-  output.assert_exit_code(0);
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
@@ -375,11 +381,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
   );
-
-  output.assert_exit_code(0);
 
   let output = context
     .new_command()
@@ -391,10 +396,10 @@ fn no_transpiled_lines() {
     ])
     .run();
 
+  output.assert_exit_code(0);
   output.assert_matches_file(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
   );
-  output.assert_exit_code(0);
 }
 
 #[test]
@@ -546,8 +551,14 @@ fn test_html_reporter() {
     "<h1><a href='index.html'>All files</a> / foo.ts</h1>"
   );
   // Check that line count has correct title attribute
-  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>");
-  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>");
+  assert_contains!(
+    foo_ts_html,
+    "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>"
+  );
+  assert_contains!(
+    foo_ts_html,
+    "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>"
+  );
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
   assert_contains!(
@@ -557,8 +568,7 @@ fn test_html_reporter() {
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
-  assert_contains!(bar_ts_html, "<a name='L1'></a>");
-  assert_contains!(bar_ts_html, "<a href='#L1'>1</a>");
+  assert_contains!(bar_ts_html, "<a href='#L1' id='L1'>1</a>");
 
   let baz_index_html = tempdir
     .join("html")
@@ -579,7 +589,10 @@ fn test_html_reporter() {
     .join("baz")
     .join("qux.ts.html")
     .read_to_string();
-  assert_contains!(baz_qux_ts_html, "<h1><a href='../index.html'>All files</a> / <a href='../baz/index.html'>baz</a> / qux.ts</h1>");
+  assert_contains!(
+    baz_qux_ts_html,
+    "<h1><a href='../index.html'>All files</a> / <a href='../baz/index.html'>baz</a> / qux.ts</h1>"
+  );
 
   let baz_quux_ts_html = tempdir
     .join("html")
@@ -619,16 +632,13 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "----------------------------------
-File         | Branch % | Line % |
-----------------------------------
- bar.ts      |      0.0 |   57.1 |
- baz/quux.ts |      0.0 |   28.6 |
- baz/qux.ts  |    100.0 |  100.0 |
- foo.ts      |     50.0 |   76.9 |
-----------------------------------
- All files   |     40.0 |   61.0 |
-----------------------------------
+      "| File        | Branch % | Line % |
+| ----------- | -------- | ------ |
+| bar.ts      |      0.0 |   57.1 |
+| baz/quux.ts |      0.0 |   28.6 |
+| baz/qux.ts  |    100.0 |  100.0 |
+| foo.ts      |     50.0 |   76.9 |
+| All files   |     40.0 |   61.0 |
 ",
     );
   }
@@ -646,14 +656,11 @@ File         | Branch % | Line % |
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "---------------------------------
-File        | Branch % | Line % |
----------------------------------
- baz/qux.ts |    100.0 |  100.0 |
- foo.ts     |     50.0 |   76.9 |
----------------------------------
- All files  |     66.7 |   85.0 |
----------------------------------
+      "| File       | Branch % | Line % |
+| ---------- | -------- | ------ |
+| baz/qux.ts |    100.0 |  100.0 |
+| foo.ts     |     50.0 |   76.9 |
+| All files  |     66.7 |   85.0 |
 ",
     );
   }
@@ -710,5 +717,66 @@ fn test_collect_summary_with_no_matches() {
     unexpected_contents.is_empty(),
     "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
     unexpected_contents
+  );
+}
+
+fn worker_coverage_fn(script: &str, expected: &str) {
+  let context = TestContext::with_http_server();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir),
+      script.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
+    .split_output()
+    .run();
+
+  // Verify there's no "Check" being printed
+  assert!(output.stderr().is_empty());
+
+  output.assert_stdout_matches_file(util::testdata_path().join(expected));
+
+  output.assert_exit_code(0);
+}
+
+#[test]
+fn worker_coverage1() {
+  worker_coverage_fn(
+    "coverage/worker/main1.js",
+    "coverage/worker/expected1.out",
+  );
+}
+
+#[test]
+fn worker_coverage2() {
+  worker_coverage_fn(
+    "coverage/worker/main2.js",
+    "coverage/worker/expected2.out",
+  );
+}
+
+#[test]
+fn worker_coverage3() {
+  worker_coverage_fn(
+    "coverage/worker/main3.js",
+    "coverage/worker/expected3.out",
   );
 }

@@ -62,7 +62,7 @@ unsafe impl Send for OutBuffer {}
 unsafe impl Sync for OutBuffer {}
 
 pub fn out_buffer_as_ptr(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Option<OutBuffer> {
   match out_buffer {
@@ -98,25 +98,28 @@ pub union NativeValue {
 
 impl NativeValue {
   pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
-    match native_type {
-      NativeType::Void => unreachable!(),
-      NativeType::Bool => Arg::new(&self.bool_value),
-      NativeType::U8 => Arg::new(&self.u8_value),
-      NativeType::I8 => Arg::new(&self.i8_value),
-      NativeType::U16 => Arg::new(&self.u16_value),
-      NativeType::I16 => Arg::new(&self.i16_value),
-      NativeType::U32 => Arg::new(&self.u32_value),
-      NativeType::I32 => Arg::new(&self.i32_value),
-      NativeType::U64 => Arg::new(&self.u64_value),
-      NativeType::I64 => Arg::new(&self.i64_value),
-      NativeType::USize => Arg::new(&self.usize_value),
-      NativeType::ISize => Arg::new(&self.isize_value),
-      NativeType::F32 => Arg::new(&self.f32_value),
-      NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
-        Arg::new(&self.pointer)
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      match native_type {
+        NativeType::Void => unreachable!(),
+        NativeType::Bool => Arg::new(&self.bool_value),
+        NativeType::U8 => Arg::new(&self.u8_value),
+        NativeType::I8 => Arg::new(&self.i8_value),
+        NativeType::U16 => Arg::new(&self.u16_value),
+        NativeType::I16 => Arg::new(&self.i16_value),
+        NativeType::U32 => Arg::new(&self.u32_value),
+        NativeType::I32 => Arg::new(&self.i32_value),
+        NativeType::U64 => Arg::new(&self.u64_value),
+        NativeType::I64 => Arg::new(&self.i64_value),
+        NativeType::USize => Arg::new(&self.usize_value),
+        NativeType::ISize => Arg::new(&self.isize_value),
+        NativeType::F32 => Arg::new(&self.f32_value),
+        NativeType::F64 => Arg::new(&self.f64_value),
+        NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
+          Arg::new(&self.pointer)
+        }
+        NativeType::Struct(_) => Arg::new(&*self.pointer),
       }
-      NativeType::Struct(_) => Arg::new(&*self.pointer),
     }
   }
 
@@ -124,43 +127,52 @@ impl NativeValue {
   #[inline]
   pub unsafe fn to_v8<'scope>(
     &self,
-    scope: &mut v8::HandleScope<'scope>,
+    scope: &mut v8::PinScope<'scope, '_>,
     native_type: NativeType,
   ) -> v8::Local<'scope, v8::Value> {
-    match native_type {
-      NativeType::Void => v8::undefined(scope).into(),
-      NativeType::Bool => v8::Boolean::new(scope, self.bool_value).into(),
-      NativeType::U8 => {
-        v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into()
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      match native_type {
+        NativeType::Void => v8::undefined(scope).into(),
+        NativeType::Bool => v8::Boolean::new(scope, self.bool_value).into(),
+        NativeType::U8 => {
+          v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into()
+        }
+        NativeType::I8 => v8::Integer::new(scope, self.i8_value as i32).into(),
+        NativeType::U16 => {
+          v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into()
+        }
+        NativeType::I16 => {
+          v8::Integer::new(scope, self.i16_value as i32).into()
+        }
+        NativeType::U32 => {
+          v8::Integer::new_from_unsigned(scope, self.u32_value).into()
+        }
+        NativeType::I32 => v8::Integer::new(scope, self.i32_value).into(),
+        NativeType::U64 => {
+          v8::BigInt::new_from_u64(scope, self.u64_value).into()
+        }
+        NativeType::I64 => {
+          v8::BigInt::new_from_i64(scope, self.i64_value).into()
+        }
+        NativeType::USize => {
+          v8::BigInt::new_from_u64(scope, self.usize_value as u64).into()
+        }
+        NativeType::ISize => {
+          v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
+        }
+        NativeType::F32 => v8::Number::new(scope, self.f32_value as f64).into(),
+        NativeType::F64 => v8::Number::new(scope, self.f64_value).into(),
+        NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
+          let local_value: v8::Local<v8::Value> = if self.pointer.is_null() {
+            v8::null(scope).into()
+          } else {
+            v8::External::new(scope, self.pointer).into()
+          };
+          local_value
+        }
+        NativeType::Struct(_) => v8::null(scope).into(),
       }
-      NativeType::I8 => v8::Integer::new(scope, self.i8_value as i32).into(),
-      NativeType::U16 => {
-        v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into()
-      }
-      NativeType::I16 => v8::Integer::new(scope, self.i16_value as i32).into(),
-      NativeType::U32 => {
-        v8::Integer::new_from_unsigned(scope, self.u32_value).into()
-      }
-      NativeType::I32 => v8::Integer::new(scope, self.i32_value).into(),
-      NativeType::U64 => v8::BigInt::new_from_u64(scope, self.u64_value).into(),
-      NativeType::I64 => v8::BigInt::new_from_i64(scope, self.i64_value).into(),
-      NativeType::USize => {
-        v8::BigInt::new_from_u64(scope, self.usize_value as u64).into()
-      }
-      NativeType::ISize => {
-        v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
-      }
-      NativeType::F32 => v8::Number::new(scope, self.f32_value as f64).into(),
-      NativeType::F64 => v8::Number::new(scope, self.f64_value).into(),
-      NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
-        let local_value: v8::Local<v8::Value> = if self.pointer.is_null() {
-          v8::null(scope).into()
-        } else {
-          v8::External::new(scope, self.pointer).into()
-        };
-        local_value
-      }
-      NativeType::Struct(_) => v8::null(scope).into(),
     }
   }
 }
@@ -240,7 +252,7 @@ pub fn ffi_parse_i32_arg(
 
 #[inline]
 pub fn ffi_parse_u64_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -259,7 +271,7 @@ pub fn ffi_parse_u64_arg(
 
 #[inline]
 pub fn ffi_parse_i64_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -278,7 +290,7 @@ pub fn ffi_parse_i64_arg(
 
 #[inline]
 pub fn ffi_parse_usize_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -297,7 +309,7 @@ pub fn ffi_parse_usize_arg(
 
 #[inline]
 pub fn ffi_parse_isize_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -336,7 +348,7 @@ pub fn ffi_parse_f64_arg(
 
 #[inline]
 pub fn ffi_parse_pointer_arg(
-  _scope: &mut v8::HandleScope,
+  _scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
@@ -396,7 +408,7 @@ pub fn ffi_parse_buffer_arg(
 
 #[inline]
 pub fn ffi_parse_struct_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -430,7 +442,7 @@ pub fn ffi_parse_struct_arg(
 
 #[inline]
 pub fn ffi_parse_function_arg(
-  _scope: &mut v8::HandleScope,
+  _scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
@@ -444,7 +456,7 @@ pub fn ffi_parse_function_arg(
 }
 
 pub fn ffi_parse_args<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   args: v8::Local<v8::Array>,
   parameter_types: &[NativeType],
 ) -> Result<Vec<NativeValue>, IRError>

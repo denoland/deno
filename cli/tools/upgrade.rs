@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -26,8 +26,8 @@ use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::Flags;
-use crate::args::UpgradeFlags;
 use crate::args::UPGRADE_USAGE;
+use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -103,7 +103,7 @@ trait VersionProvider: Clone {
   /// Returns either a semver or git hash. It's up to implementor to
   /// decide which one is appropriate, but in general only "stable"
   /// and "lts" versions use semver.
-  fn current_version(&self) -> Cow<str>;
+  fn current_version(&self) -> Cow<'_, str>;
 
   fn get_current_exe_release_channel(&self) -> ReleaseChannel;
 }
@@ -140,7 +140,7 @@ impl VersionProvider for RealVersionProvider {
     .await
   }
 
-  fn current_version(&self) -> Cow<str> {
+  fn current_version(&self) -> Cow<'_, str> {
     Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
   }
 
@@ -158,10 +158,8 @@ struct UpdateChecker<
   maybe_file: Option<CheckVersionFile>,
 }
 
-impl<
-    TEnvironment: UpdateCheckerEnvironment,
-    TVersionProvider: VersionProvider,
-  > UpdateChecker<TEnvironment, TVersionProvider>
+impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
+  UpdateChecker<TEnvironment, TVersionProvider>
 {
   pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
     let maybe_file = CheckVersionFile::parse(env.read_check_file());
@@ -200,12 +198,11 @@ impl<
       return None;
     }
 
-    if let Ok(current) = Version::parse_standard(&current_version) {
-      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
-        if current >= latest {
-          return None;
-        }
-      }
+    if let Ok(current) = Version::parse_standard(&current_version)
+      && let Ok(latest) = Version::parse_standard(&file.latest_version)
+      && current >= latest
+    {
+      return None;
     }
 
     let last_prompt_age = self
@@ -432,14 +429,12 @@ async fn check_for_upgrades_for_lsp_with_provider(
 
   match release_channel {
     ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
-      if let Ok(current) = Version::parse_standard(&current_version) {
-        if let Ok(latest) =
+      if let Ok(current) = Version::parse_standard(&current_version)
+        && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
-        {
-          if current >= latest {
-            return Ok(None); // nothing to upgrade
-          }
-        }
+        && current >= latest
+      {
+        return Ok(None); // nothing to upgrade
       }
       Ok(Some(LspVersionUpgradeInfo {
         latest_version: latest_version.version_or_hash,
@@ -534,6 +529,12 @@ pub async fn upgrade(
     return Ok(());
   };
 
+  let banner_handle = spawn_banner_task(
+    &selected_version_to_upgrade.version_or_hash,
+    selected_version_to_upgrade.release_channel,
+    http_client_provider.get_or_create()?,
+  );
+
   let download_url = get_download_url(
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
@@ -608,6 +609,10 @@ pub async fn upgrade(
       &client,
     )
     .await;
+  }
+
+  if let Ok(Some(text)) = banner_handle.await {
+    log::info!("\n{}\n", text);
   }
 
   drop(temp_dir); // delete the temp dir
@@ -791,7 +796,7 @@ struct AvailableVersion {
 impl AvailableVersion {
   /// Format display version, appending `v` before version number
   /// for non-canary releases.
-  fn display(&self) -> Cow<str> {
+  fn display(&self) -> Cow<'_, str> {
     match self.release_channel {
       ReleaseChannel::Canary => Cow::Borrowed(&self.version_or_hash),
       _ => Cow::Owned(format!("v{}", self.version_or_hash)),
@@ -884,6 +889,41 @@ fn get_download_url(
       download_url
     )
   })
+}
+
+fn spawn_banner_task(
+  version: &str,
+  release_channel: ReleaseChannel,
+  client: HttpClient,
+) -> deno_core::unsync::JoinHandle<Option<String>> {
+  let banner_url = get_banner_url(version, release_channel);
+  deno_core::unsync::spawn(async move {
+    let banner_url = banner_url?;
+    tokio::select! {
+      result = client.download_text(banner_url) => {
+        result.ok()
+      }
+      _ = tokio::time::sleep(Duration::from_secs(5)) => {
+        None
+      }
+    }
+  })
+}
+
+fn get_banner_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Option<Url> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
+    }
+    ReleaseChannel::Rc | ReleaseChannel::Lts | ReleaseChannel::Canary => {
+      return None;
+    }
+  };
+
+  Url::parse(&download_url).ok()
 }
 
 async fn download_package(
@@ -996,11 +1036,14 @@ fn set_exe_permissions(
   if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
     && !nix::unistd::Uid::effective().is_root()
   {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    bail!(
+      concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ),
+      output_exe_path.display()
+    );
   }
   Ok(permissions)
 }
@@ -1361,7 +1404,7 @@ mod test {
       }
     }
 
-    fn current_version(&self) -> Cow<str> {
+    fn current_version(&self) -> Cow<'_, str> {
       Cow::Owned(self.current_version.borrow().clone())
     }
 

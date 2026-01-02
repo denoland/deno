@@ -5,8 +5,7 @@ use std::env;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
-use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::fmt_errors::format_js_error;
@@ -44,13 +43,10 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{:?}", error);
-
-      if let Some(CoreError::Js(js_error)) =
-        any_and_jserrorbox_downcast_ref::<CoreError>(&error)
-      {
-        error_string = format_js_error(js_error);
-      }
+      let error_string = match js_error_downcast_ref(&error) {
+        Some(js_error) => format_js_error(js_error, None),
+        None => format!("{:?}", error),
+      };
 
       exit_with_message(&error_string, 1);
     }
@@ -60,13 +56,23 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
-      std::env::set_var(env_var.0, env_var.1);
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::set_var(env_var.0, env_var.1)
+      };
     }
   })
 }
 
 fn main() {
+  init_logging(None, None);
+
   deno_runtime::deno_permissions::mark_standalone();
+
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
+
   let args: Vec<_> = env::args_os().collect();
   let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {
@@ -85,10 +91,7 @@ fn main() {
         let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
-      Err(err) => {
-        init_logging(None, None);
-        Err(err)
-      }
+      Err(err) => Err(err),
     }
   };
 

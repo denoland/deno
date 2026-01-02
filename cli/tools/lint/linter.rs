@@ -26,11 +26,11 @@ use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::tokio_util;
 
+use super::ConfiguredRules;
 use super::plugins;
 use super::plugins::PluginHostProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
-use super::ConfiguredRules;
 use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
 use crate::util::text_encoding::Utf16Map;
@@ -329,7 +329,7 @@ fn apply_lint_fixes(
   }
 
   let file_start = text_info.range().start;
-  let mut quick_fixes = diagnostics
+  let quick_fixes = diagnostics
     .iter()
     // use the first quick fix
     .filter_map(|d| d.details.fixes.first())
@@ -343,28 +343,43 @@ fn apply_lint_fixes(
     return None;
   }
 
-  let mut import_fixes = HashSet::new();
-  // remove any overlapping text changes, we'll circle
-  // back for another pass to fix the remaining
-  quick_fixes.sort_by_key(|change| change.range.start);
-  for i in (1..quick_fixes.len()).rev() {
-    let cur = &quick_fixes[i];
-    let previous = &quick_fixes[i - 1];
-    // hack: deduplicate import fixes to avoid creating errors
-    if previous.new_text.trim_start().starts_with("import ") {
-      import_fixes.insert(previous.new_text.trim().to_string());
+  Some(deno_ast::apply_text_changes(
+    text_info.text_str(),
+    // remove any overlapping text changes, we'll circle
+    // back for another pass to fix the remaining
+    filter_overlapping_text_changes(quick_fixes),
+  ))
+}
+
+fn filter_overlapping_text_changes(
+  mut text_changes: Vec<deno_ast::TextChange>,
+) -> Vec<deno_ast::TextChange> {
+  let mut seen_imports = HashSet::new();
+  text_changes.sort_by_key(|change| change.range.start);
+  let mut filtered: Vec<deno_ast::TextChange> =
+    Vec::with_capacity(text_changes.len());
+  for change in text_changes.into_iter() {
+    let overlaps_last = filtered
+      .last()
+      .map(|prev| change.range.start <= prev.range.end)
+      .unwrap_or(false);
+    let is_duplicate_import =
+      change.new_text.trim_start().starts_with("import ")
+        && seen_imports.contains(change.new_text.trim());
+
+    if overlaps_last || is_duplicate_import {
+      // skip this edit
+      continue;
     }
-    let is_overlapping = cur.range.start <= previous.range.end;
-    if is_overlapping
-      || (cur.new_text.trim_start().starts_with("import ")
-        && import_fixes.contains(cur.new_text.trim()))
-    {
-      quick_fixes.remove(i);
+
+    // remember any import we keep so we can drop later duplicates
+    if change.new_text.trim_start().starts_with("import ") {
+      seen_imports.insert(change.new_text.trim().to_owned());
     }
+
+    filtered.push(change);
   }
-  let new_text =
-    deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
-  Some(new_text)
+  filtered
 }
 
 fn run_plugins(
@@ -455,5 +470,32 @@ impl ExternalLinterContainer {
 
   pub fn take_error(&self) -> Option<AnyError> {
     self.error.as_ref().and_then(|e| e.lock().take())
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use deno_ast::TextChange;
+
+  use super::*;
+
+  #[test]
+  fn test_filter_overlapping_text_changes() {
+    let changes = filter_overlapping_text_changes(vec![
+      TextChange {
+        range: 0..125,
+        new_text: "".into(),
+      },
+      TextChange {
+        range: 0..0,
+        new_text: "".into(),
+      },
+      TextChange {
+        range: 81..96,
+        new_text: "".into(),
+      },
+    ]);
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].range, 0..125);
   }
 }

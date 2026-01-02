@@ -8,10 +8,9 @@ members = [
   "cli/lib",
   "cli/rt",
   "cli/snapshot",
-  "ext/broadcast_channel",
+  "ext/bundle",
   "ext/cache",
   "ext/canvas",
-  "ext/console",
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
@@ -26,6 +25,7 @@ members = [
   "ext/net",
   "ext/node",
   "ext/rt_helper",
+  "ext/signals",
   "ext/telemetry",
   "ext/url",
   "ext/web",
@@ -33,109 +33,128 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
-  "resolvers/deno",
-  "resolvers/node",
-  "resolvers/npm_cache",
-  "resolvers/npm_installer",
+  "libs/config",
+  "libs/crypto",
+  "libs/maybe_sync",
+  "libs/node_resolver",
+  "libs/npm_cache",
+  "libs/npm_installer",
+  "libs/package_json",
+  "libs/resolver",
+  "libs/typescript_go_client",
   "runtime",
   "runtime/features",
   "runtime/permissions",
+  "runtime/subprocess_windows",
   "tests",
   "tests/ffi",
   "tests/napi",
   "tests/sqlite_extension_test",
   "tests/util/server",
+  "tests/util/test_macro",
 ]
-exclude = ["tests/util/std/hash/_wasm"]
+# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
+# feature, which is incompatible with the "session" feature used by the rest of the workspace.
+exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
 
 [workspace.package]
 authors = ["the Deno authors"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.47.0", features = ["transpiling"] }
-deno_core = { version = "0.348.0" }
+deno_ast = { version = "=0.52.0", features = ["transpiling"] }
+deno_core = { version = "0.376.0" }
 
-deno_cache_dir = "=0.20.1"
-deno_config = { version = "=0.54.2", features = ["workspace"] }
-deno_doc = "=0.173.0"
-deno_error = "=0.5.7"
-deno_graph = { version = "=0.91.0", default-features = false }
-deno_lint = "=0.75.0"
-deno_lockfile = "=0.28.0"
-deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
+deno_cache_dir = "=0.26.3"
+deno_doc = "=0.188.0"
+deno_error = "=0.7.1"
+deno_graph = { version = "=0.105.0", default-features = false }
+deno_lint = "=0.82.0"
+deno_lockfile = "=0.32.2"
+deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.33.4"
-deno_package_json = { version = "=0.6.0", default-features = false }
-deno_path_util = "=0.3.3"
-deno_semver = "=0.7.1"
-deno_task_shell = "=0.23.0"
-deno_terminal = "=0.2.2"
-deno_unsync = "0.4.3"
+deno_npm = "=0.42.2"
+deno_path_util = "=0.6.4"
+deno_semver = "=0.9.1"
+deno_task_shell = "=0.26.0"
+deno_terminal = "=0.2.3"
+deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
+eszip = "=0.106.0"
 
-denokv_proto = "0.10.0"
-denokv_remote = "0.10.0"
+denokv_proto = "0.13.0"
+denokv_remote = "0.13.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.10.0" }
+denokv_sqlite = { default-features = false, version = "0.13.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.199.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.137.0", path = "./ext/cache" }
-deno_canvas = { version = "0.74.0", path = "./ext/canvas" }
-deno_console = { version = "0.205.0", path = "./ext/console" }
-deno_cron = { version = "0.85.0", path = "./ext/cron" }
-deno_crypto = { version = "0.219.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.229.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.192.0", path = "./ext/ffi" }
-deno_fs = { version = "0.115.0", path = "./ext/fs" }
-deno_http = { version = "0.203.0", path = "./ext/http" }
+deno_bundle_runtime = { version = "0.12.0", path = "./ext/bundle" }
+deno_cache = { version = "0.158.0", path = "./ext/cache" }
+deno_canvas = { version = "0.94.0", path = "./ext/canvas" }
+deno_cron = { version = "0.105.0", path = "./ext/cron" }
+deno_crypto = { version = "0.239.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.249.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.212.0", path = "./ext/ffi" }
+deno_fs = { version = "0.135.0", path = "./ext/fs" }
+deno_http = { version = "0.223.0", path = "./ext/http" }
 deno_image = { version = "0.1.0", path = "./ext/image" }
-deno_io = { version = "0.115.0", path = "./ext/io" }
-deno_kv = { version = "0.113.0", path = "./ext/kv" }
-deno_napi = { version = "0.136.0", path = "./ext/napi" }
-deno_net = { version = "0.197.0", path = "./ext/net" }
-deno_node = { version = "0.143.0", path = "./ext/node" }
-deno_os = { version = "0.22.0", path = "./ext/os" }
-deno_process = { version = "0.20.0", path = "./ext/process" }
-deno_telemetry = { version = "0.27.0", path = "./ext/telemetry" }
-deno_tls = { version = "0.192.0", path = "./ext/tls" }
-deno_url = { version = "0.205.0", path = "./ext/url" }
-deno_web = { version = "0.236.0", path = "./ext/web" }
-deno_webgpu = { version = "0.172.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.205.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.210.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.200.0", path = "./ext/webstorage" }
-denort_helper = { version = "0.3.0", path = "./ext/rt_helper" }
+deno_io = { version = "0.135.0", path = "./ext/io" }
+deno_kv = { version = "0.133.0", path = "./ext/kv" }
+deno_napi = { version = "0.156.0", path = "./ext/napi" }
+deno_net = { version = "0.217.0", path = "./ext/net" }
+deno_node = { version = "0.163.0", path = "./ext/node" }
+deno_os = { version = "0.42.0", path = "./ext/os" }
+deno_process = { version = "0.40.0", path = "./ext/process" }
+deno_signals = { version = "0.16.0", path = "./ext/signals" }
+deno_telemetry = { version = "0.47.0", path = "./ext/telemetry" }
+deno_tls = { version = "0.212.0", path = "./ext/tls" }
+deno_web = { version = "0.256.0", path = "./ext/web" }
+deno_webgpu = { version = "0.192.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.225.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.230.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.220.0", path = "./ext/webstorage" }
+denort_helper = { version = "0.23.0", path = "./ext/rt_helper" }
 
 # workspace libraries
-deno_bench_util = { version = "0.199.0", path = "./bench_util" }
-deno_features = { version = "0.2.0", path = "./runtime/features" }
-deno_lib = { version = "0.22.0", path = "./cli/lib" }
-deno_npm_cache = { version = "0.24.0", path = "./resolvers/npm_cache" }
-deno_npm_installer = { version = "0.0.1", path = "./resolvers/npm_installer" }
-deno_permissions = { version = "0.64.0", path = "./runtime/permissions" }
-deno_resolver = { version = "0.36.0", path = "./resolvers/deno" }
-deno_runtime = { version = "0.213.0", path = "./runtime" }
-deno_snapshots = { version = "0.20.0", path = "./cli/snapshot" }
-napi_sym = { version = "0.135.0", path = "./ext/napi/sym" }
-node_resolver = { version = "0.43.0", path = "./resolvers/node" }
+deno_bench_util = { version = "0.219.0", path = "./bench_util" }
+deno_config = { version = "0.75.0", features = ["workspace"], path = "./libs/config" }
+deno_crypto_provider = { version = "0.19.0", path = "./libs/crypto" }
+deno_features = { version = "0.22.0", path = "./runtime/features" }
+deno_lib = { version = "0.43.0", path = "./cli/lib" }
+deno_maybe_sync = { version = "0.12.0", path = "./libs/maybe_sync" }
+deno_npm_cache = { version = "0.44.0", path = "./libs/npm_cache" }
+deno_npm_installer = { version = "0.20.0", path = "./libs/npm_installer" }
+deno_package_json = { version = "0.27.0", default-features = false, path = "./libs/package_json" }
+deno_permissions = { version = "0.84.0", path = "./runtime/permissions" }
+deno_resolver = { version = "0.56.0", path = "./libs/resolver" }
+deno_runtime = { version = "0.233.0", path = "./runtime" }
+deno_snapshots = { version = "0.40.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.20.0" }
+deno_typescript_go_client_rust = { version = "0.7.0", path = "./libs/typescript_go_client" }
+napi_sym = { version = "0.155.0", path = "./ext/napi/sym" }
+node_resolver = { version = "0.63.0", path = "./libs/node_resolver" }
+test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
+
+deno_tunnel = "0.8.0"
 
 # widely used libraries
 anyhow = "1.0.57"
+arc-swap = "1.7"
 async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
+aws-lc-rs = { version = "1.13.1" }
+aws-lc-sys = { version = "0.29.0" }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
 bencher = "0.1"
 boxed_error = "0.2.3"
-brotli = "6.0.0"
+brotli = { version = "6.0.0", features = ["ffi-api"] }
 bytemuck = "1.17.1"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
@@ -155,47 +174,46 @@ error_reporter = "1"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.7.3"
+file_test_runner = "0.11.1"
 filetime = "0.2.16"
-flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
-fqdn = "0.3.4"
+fqdn = "0.4.6"
 fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"
 h2 = "0.4.6"
-hickory-client = "0.25.0-alpha.4"
-hickory-proto = "0.25.0-alpha.4"
-hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
-hickory-server = "0.25.0-alpha.4"
+hickory-proto = "0.25.2"
+hickory-resolver = { version = "0.25.2", features = ["tokio", "serde"] }
+hickory-server = "0.25.2"
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "1.6.0", features = ["full"] }
-hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
-hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
+hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
-import_map = { version = "0.21.0", features = ["ext"] }
+ignore = "0.4"
+import_map = { version = "0.24.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
+inventory = "0.3.21"
 ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
-jsonc-parser = { version = "=0.26.2", features = ["serde"] }
+jsonc-parser = { version = "0.27.1", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
 libc = "0.2.168"
 libz-sys = { version = "1.1.20", default-features = false }
-log = { version = "0.4.20", features = ["kv"] }
+log = { version = "0.4.28", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
 notify = "=6.1.1"
-ntest_timeout = "0.9.3"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -209,19 +227,19 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
 pretty_assertions = "=1.4.1"
+proc-macro2 = "1.0"
 prost = "0.13"
 prost-build = "0.13"
 quick-junit = "0.3.5"
-quinn = { version = "0.11.6", default-features = false }
+quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
-rayon = "1.8.0"
+rayon = "1.11.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
-ring = "^0.17.14"
-rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
-rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits", "backup"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
+rustls = { version = "=0.23.28", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.5.0"
+rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 rustyline-derive = "=0.7.0"
@@ -234,39 +252,41 @@ serde-value = "0.7"
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.19"
+shlex = "1.3.0"
+signal-hook = "0.3"
 simd-json = "0.14.0"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
-sys_traits = "=0.1.10"
+sys_traits = "=0.1.17"
 tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "2.0.12"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 tokio-eld = "0.2"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
-tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
+tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-socks = "0.5.1"
-tokio-util = "0.7.4"
+tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
 tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "=0.4.3", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"
 tracing-opentelemetry = "0.28.0"
-tracing-subscriber = "0.3.19"
-twox-hash = "=1.6.3"
+tracing-subscriber = "0.3.20"
+twox-hash = { version = "=2.1.0", features = ["std", "xxhash64"], default-features = false }
 typed-arena = "=2.0.2"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
 uuid = { version = "1.3.0", features = ["v4"] }
 walkdir = "=2.5.0"
 weak-table = "0.3.2"
-web-transport-proto = "0.2.3"
+web-transport-proto = "0.2.7"
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
-which = "6"
+which = { version = "8.0.0", default-features = false }
 yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
@@ -284,24 +304,23 @@ lcms2 = "6.1.0"
 # cli
 anstream = "0.6.14"
 bincode = "=1.3.3"
-clap = "=4.5.30"
-clap_complete = "=4.5.45"
+clap = "=4.5.47"
+clap_complete = { version = "=4.5.57", features = ["unstable-dynamic"] }
 clap_complete_fig = "=4.5.2"
 console_static_text = "=0.8.3"
 crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
 dprint-core = "=0.67.4"
-dprint-plugin-json = "=0.20.0"
-dprint-plugin-jupyter = "=0.2.0"
-dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.95.4"
+dprint-plugin-json = "=0.21.0"
+dprint-plugin-jupyter = "=0.2.1"
+dprint-plugin-markdown = "=0.20.0"
+dprint-plugin-typescript = "=0.95.13"
 env_logger = "=0.11.6"
-eszip = "=0.88.0"
 fancy-regex = "=0.14.0"
-libsui = "0.10.0"
-malva = "=0.11.2"
-markup_fmt = "=0.19.1"
+libsui = "0.12.5"
+malva = "=0.12.1"
+markup_fmt = "=0.22.0"
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
@@ -357,8 +376,8 @@ x509-parser = "0.15.0"
 cranelift = "0.116"
 cranelift-native = "0.116"
 dlopen2 = "0.6.1"
-libffi = "=4.0.0"
-libffi-sys = "=3.2.0"
+libffi = "=4.1.2"
+libffi-sys = "=3.3.3"
 memmap2 = "0.9"
 
 # napi
@@ -397,7 +416,7 @@ debug = "line-tables-only"
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
-inherits = "release"
+inherits = "release-lite"
 debug = true
 
 # Faster to compile than `release` but with similar performance.
@@ -414,6 +433,13 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
+# speeds up deno compile tests a lot
+[profile.dev.package.libsui]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.base64-simd]
@@ -425,8 +451,6 @@ opt-level = 3
 [profile.release.package.bytes]
 opt-level = 3
 [profile.release.package.deno_bench_util]
-opt-level = 3
-[profile.release.package.deno_broadcast_channel]
 opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
@@ -448,9 +472,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_tls]
 opt-level = 3
-[profile.release.package.deno_url]
-opt-level = 3
 [profile.release.package.deno_web]
+opt-level = 3
+[profile.release.package.deno_process]
 opt-level = 3
 [profile.release.package.deno_websocket]
 opt-level = 3

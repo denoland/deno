@@ -1,0 +1,64 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_npm_installer"
+version = "0.20.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Installer of npm packages used in Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-once-cell.workspace = true
+async-trait.workspace = true
+bincode.workspace = true
+boxed_error.workspace = true
+capacity_builder.workspace = true
+chrono.workspace = true
+deno_config.workspace = true
+deno_error.workspace = true
+deno_graph.workspace = true
+deno_lockfile.workspace = true
+deno_npm.workspace = true
+deno_npm_cache.workspace = true
+deno_package_json.workspace = true
+deno_path_util.workspace = true
+deno_resolver = { workspace = true, features = ["graph", "sync"] }
+deno_semver.workspace = true
+deno_terminal.workspace = true
+deno_unsync.workspace = true
+dyn-clone.workspace = true
+futures.workspace = true
+lazy-regex.workspace = true
+log.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+pathdiff.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sys_traits = { workspace = true, features = ["getrandom", "real", "winapi", "libc"] }
+thiserror.workspace = true
+twox-hash.workspace = true
+url.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sys_traits = { workspace = true, features = ["real", "wasm"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
+deno_unsync = { workspace = true, features = ["tokio"] }
+tokio.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
+test_util.workspace = true

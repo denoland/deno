@@ -10,7 +10,7 @@ import {
 
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_console/01_console.js";
+import * as console from "ext:deno_web/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
@@ -33,6 +33,7 @@ import * as surface from "ext:deno_canvas/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
 const { ObjectDefineProperties, Float64Array } = primordials;
 
@@ -166,9 +167,14 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
+  telemetry: telemetry.telemetry,
 };
 
 const denoNsUnstableById = { __proto__: null };
+
+denoNsUnstableById[unstableIds.bundle] = {
+  bundle,
+};
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
@@ -228,9 +234,5 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
 });
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
-
-denoNsUnstableById[unstableIds.otel] = {
-  telemetry: telemetry.telemetry,
-};
 
 export { denoNs, denoNsUnstableById, unstableIds };

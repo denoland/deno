@@ -2,13 +2,13 @@
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
+use deno_core::ModuleSpecifier;
 use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
-use deno_core::ModuleSpecifier;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -65,42 +65,39 @@ async fn check_auto_config_registry(
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if workspace_settings.suggest.imports.auto_discover {
-    if let Ok(specifier) = resolve_url(url_str) {
-      let scheme = specifier.scheme();
-      let path = &specifier[Position::BeforePath..];
-      if scheme.starts_with("http")
-        && !path.is_empty()
-        && url_str.ends_with(path)
-      {
-        // check to see if this origin is already explicitly set
-        let in_config =
-          workspace_settings
-            .suggest
-            .imports
-            .hosts
-            .iter()
-            .any(|(h, _)| {
-              resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-            });
-        // if it isn't in the configuration, we will check to see if it supports
-        // suggestions and send a notification to the client.
-        if !in_config {
-          let origin = specifier.origin().ascii_serialization();
-          let suggestions =
-            module_registries.check_origin(&origin).await.is_ok();
-          // we are only sending registry state when enabled now, but changing
-          // the custom notification would make older versions of the plugin
-          // incompatible.
-          // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
-          if suggestions {
-            client.send_registry_state_notification(
-              lsp_custom::RegistryStateNotificationParams {
-                origin,
-                suggestions,
-              },
-            );
-          }
+  if workspace_settings.suggest.imports.auto_discover
+    && let Ok(specifier) = resolve_url(url_str)
+  {
+    let scheme = specifier.scheme();
+    let path = &specifier[Position::BeforePath..];
+    if scheme.starts_with("http") && !path.is_empty() && url_str.ends_with(path)
+    {
+      // check to see if this origin is already explicitly set
+      let in_config =
+        workspace_settings
+          .suggest
+          .imports
+          .hosts
+          .iter()
+          .any(|(h, _)| {
+            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+          });
+      // if it isn't in the configuration, we will check to see if it supports
+      // suggestions and send a notification to the client.
+      if !in_config {
+        let origin = specifier.origin().ascii_serialization();
+        let suggestions = module_registries.check_origin(&origin).await.is_ok();
+        // we are only sending registry state when enabled now, but changing
+        // the custom notification would make older versions of the plugin
+        // incompatible.
+        // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
+        if suggestions {
+          client.send_registry_state_notification(
+            lsp_custom::RegistryStateNotificationParams {
+              origin,
+              suggestions,
+            },
+          );
         }
       }
     }
@@ -161,8 +158,11 @@ pub async fn get_import_completions(
   npm_search_api: &CliNpmSearchApi,
   document_modules: &DocumentModules,
   resolver: &LspResolver,
-  maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
+  let maybe_import_map = resolver
+    .get_scoped_resolver(module.scope.as_deref())
+    .as_workspace_resolver()
+    .maybe_import_map();
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
@@ -180,7 +180,7 @@ pub async fn get_import_completions(
       NodeResolutionKind::Execution,
     )
     .ok();
-  if let Some(completion_list) = get_jsr_completions(
+  match get_jsr_completions(
     &module.specifier,
     text,
     &range,
@@ -190,85 +190,128 @@ pub async fn get_import_completions(
   )
   .await
   {
-    Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_npm_completions(&module.specifier, text, &range, npm_search_api).await
-  {
-    Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_node_completions(text, &range) {
-    Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_import_map_completions(
-    &module.specifier,
-    text,
-    &range,
-    maybe_import_map,
-  ) {
-    // completions for import map specifiers
-    Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_local_completions(
-    &module.specifier,
-    resolution_mode,
-    text,
-    &range,
-    resolver,
-  ) {
-    // completions for local relative modules
-    Some(lsp::CompletionResponse::List(completion_list))
-  } else if !text.is_empty() {
-    // completion of modules from a module registry or cache
-    check_auto_config_registry(
-      text,
-      config.workspace_settings_for_specifier(&module.specifier),
-      client,
-      module_registries,
-    )
-    .await;
-    let maybe_list = module_registries
-      .get_completions(text, &range, resolved.as_ref(), |s| {
-        document_modules.specifier_exists(s, module.scope.as_deref())
-      })
-      .await;
-    let maybe_list = maybe_list
-      .or_else(|| module_registries.get_origin_completions(text, &range));
-    let list = maybe_list.unwrap_or_else(|| CompletionList {
-      items: get_remote_completions(module, text, &range, document_modules),
-      is_incomplete: false,
-    });
-    Some(lsp::CompletionResponse::List(list))
-  } else {
-    // the import specifier is empty, so provide all possible specifiers we are
-    // aware of
-    let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
-      .iter()
-      .map(|s| lsp::CompletionItem {
-        label: s.to_string(),
-        kind: Some(lsp::CompletionItemKind::FOLDER),
-        detail: Some("(local)".to_string()),
-        sort_text: Some("1".to_string()),
-        insert_text: Some(s.to_string()),
-        commit_characters: Some(
-          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-        ),
-        ..Default::default()
-      })
-      .collect();
-    let mut is_incomplete = false;
-    if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(
-        import_map,
-        &module.specifier,
-      ));
+    Some(completion_list) => {
+      Some(lsp::CompletionResponse::List(completion_list))
     }
-    if let Some(origin_items) =
-      module_registries.get_origin_completions(text, &range)
-    {
-      is_incomplete = origin_items.is_incomplete;
-      items.extend(origin_items.items);
+    _ => {
+      match get_npm_completions(&module.specifier, text, &range, npm_search_api)
+        .await
+      {
+        Some(completion_list) => {
+          Some(lsp::CompletionResponse::List(completion_list))
+        }
+        _ => {
+          match get_node_completions(text, &range) {
+            Some(completion_list) => {
+              Some(lsp::CompletionResponse::List(completion_list))
+            }
+            _ => {
+              match get_import_map_completions(
+                &module.specifier,
+                text,
+                &range,
+                maybe_import_map,
+              ) {
+                Some(completion_list) => {
+                  // completions for import map specifiers
+                  Some(lsp::CompletionResponse::List(completion_list))
+                }
+                _ => {
+                  match get_local_completions(
+                    &module.specifier,
+                    resolution_mode,
+                    text,
+                    &range,
+                    resolver,
+                  ) {
+                    Some(completion_list) => {
+                      // completions for local relative modules
+                      Some(lsp::CompletionResponse::List(completion_list))
+                    }
+                    _ => {
+                      if !text.is_empty() {
+                        // completion of modules from a module registry or cache
+                        check_auto_config_registry(
+                          text,
+                          config.workspace_settings_for_specifier(
+                            &module.specifier,
+                          ),
+                          client,
+                          module_registries,
+                        )
+                        .await;
+                        let maybe_list = module_registries
+                          .get_completions(
+                            text,
+                            &range,
+                            resolved.as_ref(),
+                            |s| {
+                              document_modules
+                                .specifier_exists(s, module.scope.as_deref())
+                            },
+                          )
+                          .await;
+                        let maybe_list = maybe_list.or_else(|| {
+                          module_registries.get_origin_completions(text, &range)
+                        });
+                        let list =
+                          maybe_list.unwrap_or_else(|| CompletionList {
+                            items: get_remote_completions(
+                              module,
+                              text,
+                              &range,
+                              document_modules,
+                            ),
+                            is_incomplete: false,
+                          });
+                        Some(lsp::CompletionResponse::List(list))
+                      } else {
+                        // the import specifier is empty, so provide all possible specifiers we are
+                        // aware of
+                        let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
+                          .iter()
+                          .map(|s| lsp::CompletionItem {
+                            label: s.to_string(),
+                            kind: Some(lsp::CompletionItemKind::FOLDER),
+                            detail: Some("(local)".to_string()),
+                            sort_text: Some("1".to_string()),
+                            insert_text: Some(s.to_string()),
+                            commit_characters: Some(
+                              IMPORT_COMMIT_CHARS
+                                .iter()
+                                .map(|&c| c.into())
+                                .collect(),
+                            ),
+                            ..Default::default()
+                          })
+                          .collect();
+                        let mut is_incomplete = false;
+                        if let Some(import_map) = maybe_import_map {
+                          items.extend(get_base_import_map_completions(
+                            import_map,
+                            &module.specifier,
+                          ));
+                        }
+                        if let Some(origin_items) =
+                          module_registries.get_origin_completions(text, &range)
+                        {
+                          is_incomplete = origin_items.is_incomplete;
+                          items.extend(origin_items.items);
+                        }
+                        Some(lsp::CompletionResponse::List(CompletionList {
+                          is_incomplete,
+                          items,
+                        }))
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-    Some(lsp::CompletionResponse::List(CompletionList {
-      is_incomplete,
-      items,
-    }))
   }
 }
 
@@ -322,44 +365,44 @@ fn get_import_map_completions(
   range: &lsp::Range,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<CompletionList> {
-  if !text.is_empty() {
-    if let Some(import_map) = maybe_import_map {
-      let mut specifiers = IndexSet::new();
-      for key in import_map.imports().keys() {
-        // for some reason, the import_map stores keys that begin with `/` as
-        // `file:///` in its index, so we have to reverse that here
-        let key = if key.starts_with("file://") {
-          FILE_PROTO_RE.replace(key, "").to_string()
-        } else {
-          key.to_string()
-        };
-        if key.starts_with(text) && key != text {
-          specifiers.insert(key.trim_end_matches('/').to_string());
-        }
+  if !text.is_empty()
+    && let Some(import_map) = maybe_import_map
+  {
+    let mut specifiers = IndexSet::new();
+    for key in import_map.imports().keys() {
+      // for some reason, the import_map stores keys that begin with `/` as
+      // `file:///` in its index, so we have to reverse that here
+      let key = if key.starts_with("file://") {
+        FILE_PROTO_RE.replace(key, "").to_string()
+      } else {
+        key.to_string()
+      };
+      if key.starts_with(text) && key != text {
+        specifiers.insert(key.trim_end_matches('/').to_string());
       }
-      if !specifiers.is_empty() {
-        let items = specifiers
-          .into_iter()
-          .map(|specifier| lsp::CompletionItem {
-            label: specifier.clone(),
-            kind: Some(lsp::CompletionItemKind::FILE),
-            detail: Some("(import map)".to_string()),
-            sort_text: Some("1".to_string()),
-            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-              range: *range,
-              new_text: specifier,
-            })),
-            commit_characters: Some(
-              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-            ),
-            ..Default::default()
-          })
-          .collect();
-        return Some(CompletionList {
-          items,
-          is_incomplete: false,
-        });
-      }
+    }
+    if !specifiers.is_empty() {
+      let items = specifiers
+        .into_iter()
+        .map(|specifier| lsp::CompletionItem {
+          label: specifier.clone(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(import map)".to_string()),
+          sort_text: Some("1".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: specifier,
+          })),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+        .collect();
+      return Some(CompletionList {
+        items,
+        is_incomplete: false,
+      });
     }
   }
   None
@@ -395,7 +438,7 @@ fn get_local_completions(
     let items = entries
       .filter_map(|de| {
         let de = de.ok()?;
-        let label = de.path().file_name()?.to_string_lossy().to_string();
+        let label = de.path().file_name()?.to_string_lossy().into_owned();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
         if entry_specifier == *referrer {
           return None;
@@ -489,7 +532,7 @@ async fn get_jsr_completions(
       let export_prefix = sub_path.unwrap_or("");
       let req = req_ref.req();
       let nv = match jsr_resolver {
-        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await,
+        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await.ok().flatten(),
         None => None,
       };
       let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;
@@ -818,6 +861,7 @@ mod tests {
   use std::collections::HashMap;
 
   use deno_core::resolve_url;
+  use deno_resolver::deno_json::CompilerOptionsKey;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -836,6 +880,7 @@ mod tests {
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
+      &Default::default(),
       &Default::default(),
       &Default::default(),
       &cache,
@@ -860,7 +905,11 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let module = document_modules.module_for_specifier(&specifier, None);
+      let module = document_modules.module_for_specifier(
+        &specifier,
+        None,
+        Some(&CompilerOptionsKey::WorkspaceConfig(None)),
+      );
       assert!(module.is_some(), "source could not be setup");
     }
     document_modules
@@ -909,8 +958,10 @@ mod tests {
     for item in actual.items {
       match item.text_edit {
         Some(lsp::CompletionTextEdit::Edit(text_edit)) => {
-          assert!(["./b", "./f.mjs", "./g.json"]
-            .contains(&text_edit.new_text.as_str()));
+          assert!(
+            ["./b", "./f.mjs", "./g.json"]
+              .contains(&text_edit.new_text.as_str())
+          );
         }
         _ => unreachable!(),
       }
@@ -943,7 +994,7 @@ mod tests {
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let module = document_modules
-      .module_for_specifier(&specifier, None)
+      .module_for_specifier(&specifier, None, None)
       .unwrap();
     let actual =
       get_remote_completions(&module, "h", &range, &document_modules);

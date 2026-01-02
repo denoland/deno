@@ -11,9 +11,9 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
@@ -21,22 +21,27 @@ use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::InstrumentationScope;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
@@ -57,32 +62,27 @@ use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
-use opentelemetry::InstrumentationScope;
-pub use opentelemetry::Key;
-pub use opentelemetry::KeyValue;
-pub use opentelemetry::StringValue;
-pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
 use opentelemetry_sdk::logs::LogRecord;
-use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
-use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
-use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -162,18 +162,15 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
+  #[default]
   Ignore = 0,
   Capture = 1,
   Replace = 2,
-}
-
-impl Default for OtelConsoleConfig {
-  fn default() -> Self {
-    Self::Ignore
-  }
 }
 
 static OTEL_SHARED_RUNTIME_SPAWN_TASK_TX: Lazy<
@@ -499,63 +496,318 @@ mod hyper_client {
   use std::fmt::Debug;
   use std::pin::Pin;
   use std::task::Poll;
-  use std::task::{self};
 
-  use deno_tls::create_client_config;
-  use deno_tls::load_certs;
-  use deno_tls::load_private_keys;
+  use deno_net::tunnel::TunnelConnection;
+  use deno_net::tunnel::TunnelStream;
+  use deno_net::tunnel::get_tunnel;
   use deno_tls::SocketUse;
   use deno_tls::TlsKey;
   use deno_tls::TlsKeys;
+  use deno_tls::create_client_config;
+  use deno_tls::load_certs;
+  use deno_tls::load_private_keys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
-  use hyper::body::Body as HttpBody;
-  use hyper::body::Frame;
+  use hyper::Uri;
   use hyper_rustls::HttpsConnector;
-  use hyper_util::client::legacy::connect::HttpConnector;
+  use hyper_rustls::MaybeHttpsStream;
   use hyper_util::client::legacy::Client;
+  use hyper_util::client::legacy::connect::Connected;
+  use hyper_util::client::legacy::connect::HttpConnector;
+  use hyper_util::rt::TokioIo;
   use opentelemetry_http::Bytes;
   use opentelemetry_http::HttpError;
   use opentelemetry_http::Request;
   use opentelemetry_http::Response;
   use opentelemetry_http::ResponseExt;
+  use tokio::net::TcpStream;
+  #[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos"
+  ))]
+  use tokio_vsock::VsockAddr;
+  #[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos"
+  ))]
+  use tokio_vsock::VsockStream;
 
   use super::OtelSharedRuntime;
 
-  // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
+  #[derive(Debug, thiserror::Error)]
+  enum Error {
+    #[error(transparent)]
+    StdIo(#[from] std::io::Error),
+    #[error(transparent)]
+    Box(#[from] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    Tunnel(#[from] deno_net::tunnel::Error),
+  }
+
+  #[derive(Debug, Clone)]
+  enum Connector {
+    Http(HttpsConnector<HttpConnector>),
+    Tunnel(TunnelConnection),
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    Vsock(VsockAddr),
+  }
+
+  #[allow(clippy::large_enum_variant)]
+  #[pin_project::pin_project(project = IOProj)]
+  enum IO {
+    Tls(#[pin] TokioIo<MaybeHttpsStream<TokioIo<TcpStream>>>),
+    Tunnel(#[pin] TunnelStream),
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    Vsock(#[pin] VsockStream),
+  }
+
+  impl tokio::io::AsyncRead for IO {
+    fn poll_read(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_read(cx, buf),
+        IOProj::Tunnel(stream) => stream.poll_read(cx, buf),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IOProj::Vsock(stream) => stream.poll_read(cx, buf),
+      }
+    }
+  }
+
+  impl tokio::io::AsyncWrite for IO {
+    fn poll_write(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_write(cx, buf),
+        IOProj::Tunnel(stream) => stream.poll_write(cx, buf),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IOProj::Vsock(stream) => stream.poll_write(cx, buf),
+      }
+    }
+
+    fn poll_flush(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_flush(cx),
+        IOProj::Tunnel(stream) => stream.poll_flush(cx),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IOProj::Vsock(stream) => stream.poll_flush(cx),
+      }
+    }
+
+    fn poll_shutdown(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_shutdown(cx),
+        IOProj::Tunnel(stream) => stream.poll_shutdown(cx),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IOProj::Vsock(stream) => stream.poll_shutdown(cx),
+      }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+      match self {
+        IO::Tls(stream) => stream.is_write_vectored(),
+        IO::Tunnel(stream) => stream.is_write_vectored(),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IO::Vsock(stream) => stream.is_write_vectored(),
+      }
+    }
+
+    fn poll_write_vectored(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<Result<usize, std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_write_vectored(cx, bufs),
+        IOProj::Tunnel(stream) => stream.poll_write_vectored(cx, bufs),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        IOProj::Vsock(stream) => stream.poll_write_vectored(cx, bufs),
+      }
+    }
+  }
+
+  impl hyper_util::client::legacy::connect::Connection for IO {
+    fn connected(&self) -> Connected {
+      match self {
+        Self::Tls(stream) => stream.connected(),
+        Self::Tunnel(_) => Connected::new().proxy(true),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        Self::Vsock(_) => Connected::new().proxy(true),
+      }
+    }
+  }
+
+  impl tower_service::Service<Uri> for Connector {
+    type Response = TokioIo<IO>;
+    type Error = Error;
+    type Future = Pin<
+      Box<
+        dyn std::future::Future<Output = Result<Self::Response, Self::Error>>
+          + Send,
+      >,
+    >;
+
+    fn poll_ready(
+      &mut self,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+      match self {
+        Self::Http(c) => c.poll_ready(cx).map_err(Into::into),
+        Self::Tunnel(_) => Poll::Ready(Ok(())),
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        Self::Vsock(_) => Poll::Ready(Ok(())),
+      }
+    }
+
+    fn call(&mut self, dst: Uri) -> Self::Future {
+      let this = self.clone();
+      Box::pin(async move {
+        match this {
+          Self::Http(mut connector) => {
+            let stream = connector.call(dst).await?;
+            Ok(TokioIo::new(IO::Tls(TokioIo::new(stream))))
+          }
+          Self::Tunnel(listener) => {
+            let stream = listener.create_agent_stream().await?;
+            Ok(TokioIo::new(IO::Tunnel(stream)))
+          }
+          #[cfg(any(
+            target_os = "android",
+            target_os = "linux",
+            target_os = "macos"
+          ))]
+          Self::Vsock(addr) => {
+            let stream = VsockStream::connect(addr).await?;
+            Ok(TokioIo::new(IO::Vsock(stream)))
+          }
+        }
+      })
+    }
+  }
+
   #[derive(Debug, Clone)]
   pub struct HyperClient {
-    inner: Client<HttpsConnector<HttpConnector>, Body>,
+    inner: Client<Connector, Full<Bytes>>,
   }
 
   impl HyperClient {
     pub fn new() -> deno_core::anyhow::Result<Self> {
-      let ca_certs = match std::env::var("OTEL_EXPORTER_OTLP_CERTIFICATE") {
-        Ok(path) => vec![std::fs::read(path)?],
-        _ => vec![],
-      };
-
-      let keys = match (
-        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
-        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
-      ) {
-        (Ok(key_path), Ok(cert_path)) => {
-          let key = std::fs::read(key_path)?;
-          let cert = std::fs::read(cert_path)?;
-
-          let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-          let key = load_private_keys(&key)?.into_iter().next().unwrap();
-
-          TlsKeys::Static(TlsKey(certs, key))
+      let connector = if let Some(tunnel) = get_tunnel() {
+        Connector::Tunnel(tunnel.clone())
+      } else if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
+        #[cfg(not(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        )))]
+        {
+          let _ = addr;
+          deno_core::anyhow::bail!("vsock is not supported on this platform")
         }
-        _ => TlsKeys::Null,
-      };
 
-      let tls_config =
-        create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
-      let mut http_connector = HttpConnector::new();
-      http_connector.enforce_http(false);
-      let connector = HttpsConnector::from((http_connector, tls_config));
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
+        {
+          let Some((cid, port)) = addr.split_once(':') else {
+            deno_core::anyhow::bail!("invalid vsock addr");
+          };
+          let cid = if cid == "-1" { u32::MAX } else { cid.parse()? };
+          let port = port.parse()?;
+          let addr = VsockAddr::new(cid, port);
+          Connector::Vsock(addr)
+        }
+      } else {
+        let ca_certs = match std::env::var("OTEL_EXPORTER_OTLP_CERTIFICATE") {
+          Ok(path) => vec![std::fs::read(path)?],
+          _ => vec![],
+        };
+
+        let keys = match (
+          std::env::var("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
+          std::env::var("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
+        ) {
+          (Ok(key_path), Ok(cert_path)) => {
+            let key = std::fs::read(key_path)?;
+            let cert = std::fs::read(cert_path)?;
+
+            let certs = load_certs(&mut std::io::Cursor::new(cert))?;
+            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+
+            TlsKeys::Static(TlsKey(certs, key))
+          }
+          _ => TlsKeys::Null,
+        };
+
+        let tls_config =
+          create_client_config(deno_tls::TlsClientConfigOptions {
+            root_cert_store: None,
+            ca_certs,
+            unsafely_ignore_certificate_errors: None,
+            unsafely_disable_hostname_verification: false,
+            cert_chain_and_key: keys,
+            socket_use: SocketUse::Http,
+          })?;
+        let mut http_connector = HttpConnector::new();
+        http_connector.enforce_http(false);
+        let connector = HttpsConnector::from((http_connector, tls_config));
+        Connector::Http(connector)
+      };
 
       Ok(Self {
         inner: Client::builder(OtelSharedRuntime).build(connector),
@@ -570,42 +822,12 @@ mod hyper_client {
       request: Request<Vec<u8>>,
     ) -> Result<Response<Bytes>, HttpError> {
       let (parts, body) = request.into_parts();
-      let request = Request::from_parts(parts, Body(Full::from(body)));
-      let mut response = self.inner.request(request).await?;
-      let headers = std::mem::take(response.headers_mut());
-
-      let mut http_response = Response::builder()
-        .status(response.status())
-        .body(response.into_body().collect().await?.to_bytes())?;
-      *http_response.headers_mut() = headers;
-
-      Ok(http_response.error_for_status()?)
-    }
-  }
-
-  #[pin_project::pin_project]
-  pub struct Body(#[pin] Full<Bytes>);
-
-  impl HttpBody for Body {
-    type Data = Bytes;
-    type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-    #[inline]
-    fn poll_frame(
-      self: Pin<&mut Self>,
-      cx: &mut task::Context<'_>,
-    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-      self.project().0.poll_frame(cx).map_err(Into::into)
-    }
-
-    #[inline]
-    fn is_end_stream(&self) -> bool {
-      self.0.is_end_stream()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> hyper::body::SizeHint {
-      self.0.size_hint()
+      let request = Request::from_parts(parts, Full::from(body));
+      let response = self.inner.request(request).await?;
+      let (parts, body) = response.into_parts();
+      let body = body.collect().await?.to_bytes();
+      let response = Response::from_parts(parts, body);
+      Ok(response.error_for_status()?)
     }
   }
 }
@@ -770,24 +992,35 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
+  deno_signals::before_exit(before_exit);
+  deno_net::tunnel::disable_before_exit();
+
   Ok(())
 }
 
-/// This function is called by the runtime whenever it is about to call
-/// `process::exit()`, to ensure that all OpenTelemetry logs are properly
-/// flushed before the process terminates.
-pub fn flush() {
-  if let Some(OtelGlobals {
+fn before_exit() {
+  log::trace!("deno_telemetry::before_exit");
+
+  let Some(OtelGlobals {
     span_processor: spans,
     log_processor: logs,
     meter_provider,
     ..
   }) = OTEL_GLOBALS.get()
-  {
-    let _ = spans.force_flush();
-    let _ = logs.force_flush();
-    let _ = meter_provider.force_flush();
-  }
+  else {
+    return;
+  };
+
+  let r = spans.shutdown();
+  log::trace!("spans={:?}", r);
+
+  let r = logs.shutdown();
+  log::trace!("logs={:?}", r);
+
+  let r = meter_provider.shutdown();
+  log::trace!("meters={:?}", r);
+
+  deno_net::tunnel::before_exit();
 }
 
 pub fn handle_log(record: &log::Record) {
@@ -804,7 +1037,9 @@ pub fn handle_log(record: &log::Record) {
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_severity_number(match record.level() {
     Level::Error => Severity::Error,
     Level::Warn => Severity::Warn,
@@ -904,7 +1139,7 @@ impl DenoIdGenerator {
 }
 
 fn parse_trace_id(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   trace_id: v8::Local<'_, v8::Value>,
 ) -> TraceId {
   if let Ok(string) = trace_id.try_cast() {
@@ -933,7 +1168,7 @@ fn parse_trace_id(
 }
 
 fn parse_span_id(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   span_id: v8::Local<'_, v8::Value>,
 ) -> SpanId {
   if let Ok(string) = span_id.try_cast() {
@@ -1022,7 +1257,7 @@ macro_rules! attr {
 
 #[op2(fast)]
 fn op_otel_log<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   #[smi] level: i32,
   span: v8::Local<'s, v8::Value>,
@@ -1046,7 +1281,9 @@ fn op_otel_log<'s>(
   };
 
   let mut log_record = LogRecord::default();
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   let Ok(message) = message.try_cast() else {
     return;
   };
@@ -1080,7 +1317,7 @@ fn op_otel_log<'s>(
 
 #[op2(fast)]
 fn op_otel_log_foreign(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] message: String,
   #[smi] level: i32,
   trace_id: v8::Local<'_, v8::Value>,
@@ -1110,7 +1347,9 @@ fn op_otel_log_foreign(
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now);
+  log_record.set_observed_timestamp(now);
   log_record.set_body(message.into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
@@ -1147,7 +1386,7 @@ pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
 }
 
 fn owned_string<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   string: v8::Local<'s, v8::String>,
 ) -> String {
   let x = v8::ValueView::new(scope, string);
@@ -1161,7 +1400,10 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelTracer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelTracer"
   }
@@ -1200,7 +1442,7 @@ impl OtelTracer {
   #[cppgc]
   fn start_span<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[cppgc] parent: Option<&OtelSpan>,
     name: v8::Local<'s, v8::Value>,
     #[smi] span_kind: u8,
@@ -1280,7 +1522,7 @@ impl OtelTracer {
   #[cppgc]
   fn start_span_foreign<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     parent_trace_id: v8::Local<'s, v8::Value>,
     parent_span_id: v8::Local<'s, v8::Value>,
     name: v8::Local<'s, v8::Value>,
@@ -1374,7 +1616,10 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelSpan {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelSpan"
   }
@@ -1506,7 +1751,7 @@ fn span_attributes(
 
 #[op2(fast)]
 fn op_otel_span_attribute1<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key: v8::Local<'s, v8::Value>,
@@ -1530,7 +1775,7 @@ fn op_otel_span_attribute1<'s>(
 
 #[op2(fast)]
 fn op_otel_span_attribute2<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -1558,7 +1803,7 @@ fn op_otel_span_attribute2<'s>(
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_span_attribute3<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -1588,7 +1833,7 @@ fn op_otel_span_attribute3<'s>(
 
 #[op2(fast)]
 fn op_otel_span_update_name<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
   name: v8::Local<'s, v8::Value>,
 ) {
@@ -1609,7 +1854,7 @@ fn op_otel_span_update_name<'s>(
 
 #[op2(fast)]
 fn op_otel_span_add_link<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
   trace_id: v8::Local<'s, v8::Value>,
   span_id: v8::Local<'s, v8::Value>,
@@ -1651,7 +1896,10 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelMeter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelMeter"
   }
@@ -1685,7 +1933,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1704,7 +1952,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_up_down_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1723,7 +1971,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_gauge<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1742,7 +1990,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_histogram<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1783,7 +2031,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1804,7 +2052,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_up_down_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1825,7 +2073,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_gauge<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1852,7 +2100,10 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Instrument {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Instrument"
   }
@@ -1861,7 +2112,7 @@ impl GarbageCollected for Instrument {
 fn create_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> InstrumentBuilder<'b, T>,
   cb2: impl FnOnce(InstrumentBuilder<'b, T>) -> Instrument,
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
@@ -1883,7 +2134,7 @@ fn create_instrument<'a, 'b, T>(
 fn create_async_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> AsyncInstrumentBuilder<'b, T, f64>,
   cb2: impl FnOnce(AsyncInstrumentBuilder<'b, T, f64>),
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
@@ -1942,7 +2193,7 @@ fn op_otel_metric_record0(
 #[op2(fast)]
 fn op_otel_metric_record1(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -1982,7 +2233,7 @@ fn op_otel_metric_record1(
 #[op2(fast)]
 fn op_otel_metric_record2(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2030,7 +2281,7 @@ fn op_otel_metric_record2(
 #[op2(fast)]
 fn op_otel_metric_record3(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2101,7 +2352,7 @@ fn op_otel_metric_observable_record0(
 #[op2(fast)]
 fn op_otel_metric_observable_record1(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2134,7 +2385,7 @@ fn op_otel_metric_observable_record1(
 #[op2(fast)]
 fn op_otel_metric_observable_record2(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2173,7 +2424,7 @@ fn op_otel_metric_observable_record2(
 #[op2(fast)]
 fn op_otel_metric_observable_record3(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2217,7 +2468,7 @@ fn op_otel_metric_observable_record3(
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_attribute3<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   #[smi] capacity: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -2270,11 +2521,12 @@ async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
       .expect("mutex poisoned")
       .push(tx);
   }
-  if let Ok(done) = rx.await {
-    state.borrow_mut().put(ObservationDone(done));
-    true
-  } else {
-    false
+  match rx.await {
+    Ok(done) => {
+      state.borrow_mut().put(ObservationDone(done));
+      true
+    }
+    _ => false,
   }
 }
 
@@ -2294,25 +2546,27 @@ struct GcMetricData(RefCell<GcMetricDataInner>);
 
 impl GcMetricData {
   extern "C" fn prologue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     _gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     this.0.borrow_mut().start = Instant::now();
   }
 
   extern "C" fn epilogue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     let this = this.0.borrow_mut();
 
@@ -2344,7 +2598,7 @@ struct HeapMetricData {
 }
 
 #[op2(fast)]
-fn op_otel_enable_isolate_metrics(scope: &mut v8::HandleScope) {
+fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
   if scope.get_slot::<GcMetricData>().is_some() {
     return;
   }
@@ -2406,7 +2660,7 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::HandleScope) {
 }
 
 #[op2(fast)]
-fn op_otel_collect_isolate_metrics(scope: &mut v8::HandleScope) {
+fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
   let data = scope.get_slot::<HeapMetricData>().unwrap().clone();
   for i in 0..scope.get_number_of_data_slots() {
     let Some(space) = scope.get_heap_space_statistics(i as _) else {

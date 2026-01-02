@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -16,39 +15,40 @@ use std::sync::Weak;
 use std::time::SystemTime;
 
 use dashmap::DashMap;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Position;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
 use weak_table::WeakValueHashMap;
 
-use super::cache::calculate_fs_version_at_path;
 use super::cache::LspCache;
+use super::cache::calculate_fs_version_at_path;
 use super::config::Config;
 use super::logging::lsp_warn;
 use super::resolver::LspResolver;
@@ -59,13 +59,15 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
+use super::urls::COMPONENT;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use super::urls::COMPONENT;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsData;
+use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -197,7 +199,7 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
+  let hash = deno_lib::util::checksum::r#gen(&[file_name_str.as_bytes()]);
   Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
     .inspect_err(|err| {
       lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
@@ -410,7 +412,7 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
       .map(|(k, v)| {
-        let doc = Arc::new(ServerDocument::asset(k, v.as_str()));
+        let doc = Arc::new(ServerDocument::asset(k, v.source.as_str()));
         let uri = doc.uri.clone();
         (uri, doc)
       })
@@ -702,12 +704,16 @@ impl Documents {
     if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(&uri) {
-      doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
-      ServerDocument::data_url(&uri, data_url.value().clone())?
-    } else {
-      return None;
+    let doc = match ServerDocument::load(&uri) {
+      Some(doc) => doc,
+      _ => match self.data_urls_by_uri.get(&uri) {
+        Some(data_url) => {
+          ServerDocument::data_url(&uri, data_url.value().clone())?
+        }
+        _ => {
+          return None;
+        }
+      },
     };
     let doc = Arc::new(doc);
     self.server.insert(uri.into_owned(), doc.clone());
@@ -839,6 +845,7 @@ pub struct DocumentModule {
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
+  pub compiler_options_key: CompilerOptionsKey,
   pub media_type: MediaType,
   pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
@@ -853,9 +860,12 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
+    compiler_options_key: CompilerOptionsKey,
+    compiler_options_data: &LspCompilerOptionsData,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
@@ -884,6 +894,7 @@ impl DocumentModule {
           headers.as_ref(),
           media_type,
           scope.as_deref(),
+          compiler_options_data,
           resolver,
         )
       } else {
@@ -909,6 +920,7 @@ impl DocumentModule {
       script_version: document.script_version(),
       specifier,
       scope,
+      compiler_options_key,
       media_type,
       headers,
       text,
@@ -979,10 +991,6 @@ impl WeakDocumentModuleMap {
     }
   }
 
-  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
-    self.by_specifier.read().get(specifier)
-  }
-
   fn contains_specifier(&self, specifier: &Url) -> bool {
     self.by_specifier.read().contains_key(specifier)
   }
@@ -1025,27 +1033,33 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
   config: Arc<Config>,
+  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
+  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
 }
 
 impl DocumentModules {
   pub fn update_config(
     &mut self,
     config: &Config,
+    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
     workspace_files: &Arc<IndexSet<PathBuf>>,
   ) {
     self.config = Arc::new(config.clone());
+    self.compiler_options_resolver = compiler_options_resolver.clone();
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
     self.workspace_files = workspace_files.clone();
@@ -1060,6 +1074,7 @@ impl DocumentModules {
         .collect(),
     );
     self.dep_info_by_scope = Default::default();
+    self.assigned_scopes = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
     NodeResolutionThreadLocalCache::clear();
@@ -1152,8 +1167,15 @@ impl DocumentModules {
     self.documents.close_notebook(uri)
   }
 
-  pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
-    let Some(module) = self.module_for_specifier(specifier, scope) else {
+  pub fn release(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
+  ) {
+    let Some(module) =
+      self.module_for_specifier(specifier, scope, compiler_options_key)
+    else {
       return;
     };
     self.documents.remove_server_doc(&module.uri);
@@ -1173,10 +1195,10 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-      if let Some(remote_specifier) = self.cache.unvendored_specifier(&url) {
-        return Some(Arc::new(remote_specifier));
-      }
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+      && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
+    {
+      return Some(Arc::new(remote_specifier));
     }
     Some(Arc::new(url))
   }
@@ -1186,6 +1208,7 @@ impl DocumentModules {
     document: &Document,
     specifier: Option<&Arc<Url>>,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let modules = self.modules_for_scope(scope)?;
     if let Some(module) = modules.get(document) {
@@ -1194,9 +1217,32 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
+    let scheme = specifier.scheme();
+    let (compiler_options_key, compiler_options_data) = if scheme != "file"
+      || self.resolver.in_node_modules(&specifier)
+      || self.cache.in_global_cache_directory(&specifier)
+    {
+      let key = compiler_options_key?;
+      let value = self
+        .compiler_options_resolver
+        .for_key(key)
+        .expect("Key should be in sync with resolver.");
+      (key, value)
+    } else {
+      self.compiler_options_resolver.entry_for_specifier(
+        if scheme != "file" && scope.is_some() {
+          #[allow(clippy::unnecessary_unwrap)]
+          scope.unwrap()
+        } else {
+          &specifier
+        },
+      )
+    };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
+      compiler_options_key.clone(),
+      compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
       &self.config,
@@ -1212,28 +1258,40 @@ impl DocumentModules {
     document: &Document,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    self.module_inner(document, None, scope)
+    self.module_inner(document, None, scope, None)
   }
 
   pub fn module_for_specifier(
     &self,
     specifier: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
+    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
+      Ok(jsr_req_ref) => {
+        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
+      }
+      _ => Cow::Borrowed(specifier),
     };
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let document =
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(&document, Some(&Arc::new(specifier)), scope)
+    let module = self.module_inner(
+      &document,
+      Some(&Arc::new(specifier)),
+      scope,
+      compiler_options_key,
+    );
+    if let Some(module) = &module {
+      self.assigned_scopes.insert(
+        document.uri().clone(),
+        (module.scope.clone(), module.compiler_options_key.clone()),
+      );
+    }
+    module
   }
 
   pub fn primary_module(
@@ -1242,6 +1300,16 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    if let Some((scope, compiler_options_key)) =
+      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
+    {
+      return self.module_inner(
+        document,
+        None,
+        scope.as_deref(),
+        Some(&compiler_options_key),
+      );
     }
     for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
@@ -1316,25 +1384,6 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_for_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
-    };
-    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
-    let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(&specifier)
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_primary_module(
     &self,
     document: &Document,
@@ -1353,36 +1402,37 @@ impl DocumentModules {
   }
 
   /// This will not store any module entries, only retrieve existing entries or
-  /// create temporary entries for scopes where one doesn't exist.
-  pub fn inspect_or_temp_modules_by_scope(
+  /// create temporary entries for other keys.
+  // TODO(nayeemrmn): Support notebook scopes here.
+  pub fn get_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+  ) -> BTreeMap<CompilerOptionsKey, Arc<DocumentModule>> {
+    let Some(primary_module) = self.primary_module(document) else {
+      return Default::default();
+    };
     let mut result = BTreeMap::new();
-    for (scope, modules) in self.modules_by_scope.iter() {
-      let module = modules.get(document).unwrap_or_else(|| {
+    for (compiler_options_key, compiler_options_data) in
+      self.compiler_options_resolver.entries()
+    {
+      if compiler_options_key == &primary_module.compiler_options_key {
+        continue;
+      }
+      result.insert(
+        compiler_options_key.clone(),
         Arc::new(DocumentModule::new(
           document,
-          Arc::new(uri_to_url(document.uri())),
-          Some(scope.clone()),
+          primary_module.specifier.clone(),
+          compiler_options_key.clone(),
+          compiler_options_data,
+          primary_module.scope.clone(),
           &self.resolver,
           &self.config,
           &self.cache,
-        ))
-      });
-      result.insert(Some(scope.clone()), module);
+        )),
+      );
     }
-    let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
-      Arc::new(DocumentModule::new(
-        document,
-        Arc::new(uri_to_url(document.uri())),
-        None,
-        &self.resolver,
-        &self.config,
-        &self.cache,
-      ))
-    });
-    result.insert(None, module);
+    result.insert(primary_module.compiler_options_key.clone(), primary_module);
     result
   }
 
@@ -1405,11 +1455,18 @@ impl DocumentModules {
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1419,21 +1476,11 @@ impl DocumentModules {
     }
   }
 
-  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    self
-      .modules_by_scope
-      .keys()
-      .cloned()
-      .map(Some)
-      .chain([None])
-      .collect()
-  }
-
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
-    if let Some(modules) = self.modules_for_scope(scope) {
-      if modules.contains_specifier(specifier) {
-        return true;
-      }
+    if let Some(modules) = self.modules_for_scope(scope)
+      && modules.contains_specifier(specifier)
+    {
+      return true;
     }
     if specifier.scheme() == "file" {
       return url_to_file_path(specifier)
@@ -1460,21 +1507,19 @@ impl DocumentModules {
         for dependency in module.dependencies.values() {
           let code_specifier = dependency.get_code();
           let type_specifier = dependency.get_type();
-          if let Some(dep) = code_specifier {
-            if dep.scheme() == "node" {
-              dep_info.has_node_specifier = true;
-            }
+          if let Some(dep) = code_specifier
+            && dep.scheme() == "node"
+          {
+            dep_info.has_node_specifier = true;
           }
-          if dependency.maybe_deno_types_specifier.is_some() {
-            if let (Some(code_specifier), Some(type_specifier)) =
+          if dependency.maybe_deno_types_specifier.is_some()
+            && let (Some(code_specifier), Some(type_specifier)) =
               (code_specifier, type_specifier)
-            {
-              if MediaType::from_specifier(type_specifier).is_declaration() {
-                dep_info
-                  .deno_types_to_code_resolutions
-                  .insert(type_specifier.clone(), code_specifier.clone());
-              }
-            }
+            && MediaType::from_specifier(type_specifier).is_declaration()
+          {
+            dep_info
+              .deno_types_to_code_resolutions
+              .insert(type_specifier.clone(), code_specifier.clone());
           }
         }
       };
@@ -1485,11 +1530,19 @@ impl DocumentModules {
         scope.and_then(|s| self.config.tree.data_by_scope().get(s));
       if let Some(config_data) = config_data {
         (|| {
-          let member_dir = &config_data.member_dir;
-          let jsx_config =
-            member_dir.to_maybe_jsx_import_source_config().ok()??;
-          let import_source_types = jsx_config.import_source_types.as_ref()?;
-          let import_source = jsx_config.import_source.as_ref()?;
+          let compiler_options_data = self
+            .compiler_options_resolver
+            .for_specifier(&config_data.scope);
+          let import_source_types = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source_types
+            .as_ref()?;
+          let import_source = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source
+            .as_ref()?;
           let scoped_resolver =
             self.resolver.get_scoped_resolver(scope.map(|s| s.as_ref()));
           let cli_resolver = scoped_resolver.as_cli_resolver();
@@ -1556,8 +1609,10 @@ impl DocumentModules {
     raw_specifiers: &[(bool, String)],
     referrer: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Vec<Option<(Url, MediaType)>> {
-    let referrer_module = self.module_for_specifier(referrer, scope);
+    let referrer_module =
+      self.module_for_specifier(referrer, scope, compiler_options_key);
     let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
     let mut results = Vec::new();
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
@@ -1566,49 +1621,54 @@ impl DocumentModules {
         true => ResolutionMode::Require,
         false => ResolutionMode::Import,
       };
-      if raw_specifier.starts_with("asset:") {
+      let result = if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = resolve_url(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
-          results.push(Some((specifier, media_type)));
+          Some((specifier, media_type))
         } else {
-          results.push(None);
+          None
         }
       } else if let Some(dep) =
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(
+          self.resolve_dependency(
             specifier,
             referrer,
             resolution_mode,
             scope,
-          ));
+            compiler_options_key,
+          )
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(
+          self.resolve_dependency(
             specifier,
             referrer,
             resolution_mode,
             scope,
-          ));
+            compiler_options_key,
+          )
         } else {
-          results.push(None);
+          None
         }
-      } else if let Ok(specifier) = scoped_resolver.as_cli_resolver().resolve(
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        resolution_mode,
-        NodeResolutionKind::Types,
-      ) {
-        results.push(self.resolve_dependency(
-          &specifier,
-          referrer,
-          resolution_mode,
-          scope,
-        ));
       } else {
-        results.push(None);
-      }
+        match scoped_resolver.as_cli_resolver().resolve(
+          raw_specifier,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
+        ) {
+          Ok(specifier) => self.resolve_dependency(
+            &specifier,
+            referrer,
+            resolution_mode,
+            scope,
+            compiler_options_key,
+          ),
+          _ => None,
+        }
+      };
+      results.push(result);
     }
     results
   }
@@ -1620,14 +1680,15 @@ impl DocumentModules {
     referrer: &Url,
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<(Url, MediaType)> {
-    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        return Some((specifier.clone(), MediaType::Dts));
-      }
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      && deno_node::is_builtin_node_module(module_name)
+    {
+      // return itself for node: specifiers because during type checking
+      // we resolve to the ambient modules in the @types/node package
+      // rather than deno_std/node
+      return Some((specifier.clone(), MediaType::Dts));
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1642,7 +1703,9 @@ impl DocumentModules {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(module) = self.module_for_specifier(&specifier, scope) else {
+    let Some(module) =
+      self.module_for_specifier(&specifier, scope, compiler_options_key)
+    else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
       return Some((specifier, media_type));
@@ -1652,7 +1715,13 @@ impl DocumentModules {
       .as_ref()
       .and_then(|d| d.dependency.maybe_specifier())
     {
-      self.resolve_dependency(types, &specifier, module.resolution_mode, scope)
+      self.resolve_dependency(
+        types,
+        &specifier,
+        module.resolution_mode,
+        scope,
+        compiler_options_key,
+      )
     } else {
       Some((module.specifier.as_ref().clone(), module.media_type))
     }
@@ -1871,17 +1940,18 @@ impl OpenDocumentsGraphLoader<'_> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<deno_graph::source::LoadFuture> {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_modules.get(specifier) {
-        return Some(
-          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: Arc::from(doc.text.as_bytes().to_owned()),
-            specifier: doc.specifier.as_ref().clone(),
-            maybe_headers: None,
-          })))
-          .boxed_local(),
-        );
-      }
+    if specifier.scheme() == "file"
+      && let Some(doc) = self.open_modules.get(specifier)
+    {
+      return Some(
+        future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+          content: Arc::from(doc.text.as_bytes().to_owned()),
+          mtime: None,
+          specifier: doc.specifier.as_ref().clone(),
+          maybe_headers: None,
+        })))
+        .boxed_local(),
+      );
     }
     None
   }
@@ -1898,21 +1968,6 @@ impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
       None => self.inner_loader.load(specifier, options),
     }
   }
-
-  fn cache_module_info(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    self.inner_loader.cache_module_info(
-      specifier,
-      media_type,
-      source,
-      module_info,
-    )
-  }
 }
 
 fn parse_and_analyze_module(
@@ -1920,7 +1975,8 @@ fn parse_and_analyze_module(
   text: Arc<str>,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1932,7 +1988,8 @@ fn parse_and_analyze_module(
     specifier,
     &parsed_source_result,
     maybe_headers,
-    file_referrer,
+    scope,
+    compiler_options_data,
     resolver,
   );
   (
@@ -1962,18 +2019,16 @@ fn analyze_module(
   specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
+      let scoped_resolver = resolver.get_scoped_resolver(scope);
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
-      let config_data = scoped_resolver.as_config_data();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config =
-        config_data.and_then(|d| d.maybe_jsx_import_source_config());
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
@@ -1982,7 +2037,9 @@ fn analyze_module(
         valid_referrer: &valid_referrer,
         module_resolution_mode,
         cli_resolver,
-        jsx_import_source_config: jsx_import_source_config.as_ref(),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
       };
       (
         Ok(deno_graph::parse_module_from_ast(
@@ -1990,6 +2047,7 @@ fn analyze_module(
             graph_kind: deno_graph::GraphKind::TypesOnly,
             specifier,
             maybe_headers,
+            mtime: None,
             parsed_source,
             // use a null file system because there's no need to bother resolving
             // dynamic imports like import(`./dir/${something}`) in the LSP
@@ -2001,9 +2059,14 @@ fn analyze_module(
         module_resolution_mode,
       )
     }
-    Err(err) => (
+    Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+        deno_graph::ModuleErrorKind::Parse {
+          specifier,
+          mtime: None,
+          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+        }
+        .into_box(),
       )),
       ResolutionMode::Import,
     ),
@@ -2047,9 +2110,13 @@ mod tests {
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let compiler_options_resolver =
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
+      &compiler_options_resolver,
       &resolver,
       &cache,
       &Default::default(),
@@ -2192,8 +2259,12 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,
@@ -2234,8 +2305,12 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,

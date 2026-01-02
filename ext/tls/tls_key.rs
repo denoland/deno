@@ -14,15 +14,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::Future;
 use std::future::poll_fn;
 use std::future::ready;
-use std::future::Future;
 use std::io::ErrorKind;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::futures::future::Either;
 use deno_core::futures::FutureExt;
+use deno_core::futures::future::Either;
 use deno_core::unsync::spawn;
 use rustls::ServerConfig;
 use rustls_tokio_stream::ServerConfigProvider;
@@ -68,7 +68,10 @@ pub enum TlsKeys {
 
 pub struct TlsKeysHolder(RefCell<TlsKeys>);
 
-impl deno_core::GarbageCollected for TlsKeysHolder {
+// SAFETY: we're sure `TlsKeysHolder` can be GCed
+unsafe impl deno_core::GarbageCollected for TlsKeysHolder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyHolder"
   }
@@ -198,7 +201,7 @@ impl TlsKeyResolver {
   pub fn resolve(
     &self,
     sni: String,
-  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> {
+  ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> + use<> {
     let mut cache = self.inner.cache.borrow_mut();
     let mut recv = match cache.get(&sni) {
       None => {
@@ -245,7 +248,10 @@ pub struct TlsKeyLookup {
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
-impl deno_core::GarbageCollected for TlsKeyLookup {
+// SAFETY: we're sure `TlsKeyLookup` can be GCed
+unsafe impl deno_core::GarbageCollected for TlsKeyLookup {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyLookup"
   }
@@ -255,13 +261,12 @@ impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
   /// only one `poll`er should be active at any time.
   pub async fn poll(&self) -> Option<String> {
-    if let Some((sni, sender)) =
-      poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await
-    {
-      self.pending.borrow_mut().insert(sni.clone(), sender);
-      Some(sni)
-    } else {
-      None
+    match poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await {
+      Some((sni, sender)) => {
+        self.pending.borrow_mut().insert(sni.clone(), sender);
+        Some(sni)
+      }
+      _ => None,
     }
   }
 
@@ -284,7 +289,7 @@ pub mod tests {
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     let manifest_dir =
-      std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+      std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let sni = sni.replace(".com", "");
     let cert_file = manifest_dir.join(format!("testdata/{}_cert.der", sni));
     let prikey_file = manifest_dir.join(format!("testdata/{}_prikey.der", sni));

@@ -6,11 +6,16 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
   op_node_process_kill,
+  op_node_process_setegid,
+  op_node_process_seteuid,
+  op_node_process_setgid,
+  op_node_process_setuid,
   op_process_abort,
 } from "ext:core/ops";
 
@@ -18,12 +23,15 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
+import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   validateNumber,
   validateObject,
   validateString,
+  validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
 import {
+  denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
@@ -62,7 +70,8 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "ext:deno_node/_next_tick.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+import { runImmediates } from "ext:deno_node/internal/timers.mjs";
+import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
 
@@ -73,6 +82,7 @@ export let arch = "";
 export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
+export let ppid = 0;
 
 let stdin, stdout, stderr;
 
@@ -83,7 +93,6 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-import { setProcess } from "ext:deno_node/_events.mjs";
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
@@ -325,7 +334,8 @@ memoryUsage.rss = function (): number {
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
-    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
+    // the windows implementation is ported from libuv, so the error numbers already match libuv and don't need mapping
+    res === 0 ? res : isWindows ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
@@ -372,16 +382,43 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, getegid, geteuid;
+let getgid, getuid, getegid, geteuid, setegid, seteuid, setgid, setuid;
+
+function wrapIdSetter(
+  syscall: string,
+  fn: (id: number | string) => void,
+): (id: number | string) => void {
+  return function (id: number | string) {
+    if (typeof id === "number") {
+      validateUint32(id, "id");
+      id >>>= 0;
+    } else if (typeof id !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("id", ["number", "string"], id);
+    }
+
+    try {
+      fn(id);
+    } catch (err) {
+      throw denoErrorToNodeError(err as Error, { syscall });
+    }
+  };
+}
 
 if (!isWindows) {
   getgid = () => Deno.gid();
   getuid = () => Deno.uid();
   getegid = () => op_getegid();
   geteuid = () => op_geteuid();
+
+  if (!isAndroid) {
+    setegid = wrapIdSetter("setegid", op_node_process_setegid);
+    seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
+    setgid = wrapIdSetter("setgid", op_node_process_setgid);
+    setuid = wrapIdSetter("setuid", op_node_process_setuid);
+  }
 }
 
-export { getegid, geteuid, getgid, getuid };
+export { getegid, geteuid, getgid, getuid, setegid, seteuid, setgid, setuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -643,6 +680,13 @@ process.exit = exit;
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
 
+// NB(bartlomieju): this is a private API in Node.js, but there are packages like
+// `aws-iot-device-sdk-v2` that depend on it
+// https://github.com/denoland/deno/issues/30115
+process._rawDebug = (...args: unknown[]) => {
+  core.print(`${format(...args)}\n`, true);
+};
+
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
 // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
@@ -712,6 +756,15 @@ process.setSourceMapsEnabled = (_val: boolean) => {
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };
+
+// Source maps are always enabled in Deno.
+Object.defineProperty(process, "sourceMapsEnabled", {
+  get() {
+    return true; // Source maps are always enabled in Deno.
+  },
+  enumerable: true,
+  configurable: true,
+});
 
 /**
  * Returns the current high-resolution real time in a [seconds, nanoseconds]
@@ -783,6 +836,18 @@ process.getegid = getegid;
 /** This method is removed on Windows */
 process.geteuid = geteuid;
 
+/** This method is removed on Windows */
+process.setegid = setegid;
+
+/** This method is removed on Windows */
+process.seteuid = seteuid;
+
+/** This method is removed on Windows */
+process.setgid = setgid;
+
+/** This method is removed on Windows */
+process.setuid = setuid;
+
 process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -823,6 +888,8 @@ process.features = { inspector: false };
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
+
+process.moduleLoadList = [];
 
 if (isWindows) {
   delete process.getgid;
@@ -958,18 +1025,6 @@ function synchronizeListeners() {
   }
 }
 
-// Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule?.startsWith("file:")) {
-      return pathFromURL(new URL(Deno.mainModule));
-    } else {
-      return join(Deno.cwd(), "$deno$node.mjs");
-    }
-  },
-});
-
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
@@ -983,6 +1038,10 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
+    argv[0] = argv0;
+    argv[1] = Deno.mainModule?.startsWith("file:")
+      ? pathFromURL(new URL(Deno.mainModule))
+      : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter
     for (let i = 0; i < args.length; i++) {
       argv[i + 2] = args[i];
@@ -993,14 +1052,9 @@ internals.__bootstrapNodeProcess = function (
     }
 
     core.setNextTickCallback(processTicksAndRejections);
+    core.setImmediateCallback(runImmediates);
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
-
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
 
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
@@ -1022,8 +1076,18 @@ internals.__bootstrapNodeProcess = function (
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
-
+    ppid = Deno.ppid;
     initializeDebugEnv(nodeDebug);
+
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
 
     delete internals.__bootstrapNodeProcess;
   } else {
@@ -1045,7 +1109,5 @@ internals.__bootstrapNodeProcess = function (
     );
   }
 };
-
-setProcess(process);
 
 export default process;

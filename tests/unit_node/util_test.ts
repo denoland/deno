@@ -45,172 +45,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[util] isBoolean",
-  fn() {
-    assert(util.isBoolean(true));
-    assert(!util.isBoolean(new Boolean()));
-    assert(!util.isBoolean(new Boolean(true)));
-    assert(util.isBoolean(false));
-    assert(!util.isBoolean("deno"));
-    assert(!util.isBoolean("true"));
-  },
-});
-
-Deno.test({
-  name: "[util] isNull",
-  fn() {
-    let n;
-    assert(util.isNull(null));
-    assert(!util.isNull(n));
-    assert(!util.isNull(0));
-    assert(!util.isNull({}));
-  },
-});
-
-Deno.test({
-  name: "[util] isNullOrUndefined",
-  fn() {
-    let n;
-    assert(util.isNullOrUndefined(null));
-    assert(util.isNullOrUndefined(n));
-    assert(!util.isNullOrUndefined({}));
-    assert(!util.isNullOrUndefined("undefined"));
-  },
-});
-
-Deno.test({
-  name: "[util] isNumber",
-  fn() {
-    assert(util.isNumber(666));
-    assert(!util.isNumber(new Number(666)));
-    assert(!util.isNumber("999"));
-    assert(!util.isNumber(null));
-  },
-});
-
-Deno.test({
-  name: "[util] isString",
-  fn() {
-    assert(util.isString("deno"));
-    assert(!util.isString(new String("DIO")));
-    assert(!util.isString(1337));
-  },
-});
-
-Deno.test({
-  name: "[util] isSymbol",
-  fn() {
-    assert(util.isSymbol(Symbol()));
-    assert(!util.isSymbol(Object(Symbol())));
-    assert(!util.isSymbol(123));
-    assert(!util.isSymbol("string"));
-  },
-});
-
-Deno.test({
-  name: "[util] isUndefined",
-  fn() {
-    let t;
-    assert(util.isUndefined(t));
-    assert(!util.isUndefined("undefined"));
-    assert(!util.isUndefined({}));
-  },
-});
-
-Deno.test({
-  name: "[util] isObject",
-  fn() {
-    const dio = { stand: "Za Warudo" };
-    assert(util.isObject(dio));
-    assert(util.isObject(new RegExp(/Toki Wo Tomare/)));
-    assert(!util.isObject("Jotaro"));
-  },
-});
-
-Deno.test({
-  name: "[util] isError",
-  fn() {
-    const java = new Error();
-    const nodejs = Reflect.construct(Error, [], Object);
-    const bun = new DOMException();
-    const deno = "Future";
-    assert(util.isError(java));
-    assert(util.isError(nodejs));
-    assert(util.isError(bun));
-    assert(!util.isError(deno));
-  },
-});
-
-Deno.test({
-  name: "[util] isFunction",
-  fn() {
-    const f = function () {};
-    assert(util.isFunction(f));
-    assert(!util.isFunction({}));
-    assert(!util.isFunction(new RegExp(/f/)));
-  },
-});
-
-Deno.test({
-  name: "[util] isRegExp",
-  fn() {
-    assert(util.isRegExp(new RegExp(/f/)));
-    assert(util.isRegExp(/fuManchu/));
-    assert(!util.isRegExp({ evil: "eye" }));
-    assert(!util.isRegExp(null));
-  },
-});
-
-Deno.test({
-  name: "[util] isArray",
-  fn() {
-    assert(util.isArray([]));
-    assert(!util.isArray({ yaNo: "array" }));
-    assert(!util.isArray(null));
-  },
-});
-
-Deno.test({
-  name: "[util] isPrimitive",
-  fn() {
-    const stringType = "hasti";
-    const booleanType = true;
-    const integerType = 2;
-    const symbolType = Symbol("anything");
-
-    const functionType = function doBest() {};
-    const objectType = { name: "ali" };
-    const arrayType = [1, 2, 3];
-
-    assert(util.isPrimitive(stringType));
-    assert(util.isPrimitive(booleanType));
-    assert(util.isPrimitive(integerType));
-    assert(util.isPrimitive(symbolType));
-    assert(util.isPrimitive(null));
-    assert(util.isPrimitive(undefined));
-    assert(!util.isPrimitive(functionType));
-    assert(!util.isPrimitive(arrayType));
-    assert(!util.isPrimitive(objectType));
-  },
-});
-
-Deno.test({
-  name: "[util] isDate",
-  fn() {
-    // Test verifies the method is exposed. See _util/_util_types_test for details
-    assert(util.isDate(new Date()));
-  },
-});
-
-Deno.test({
-  name: "[util] isBuffer",
-  fn() {
-    assert(util.isBuffer(new Buffer(4)));
-    assert(!util.isBuffer(new Uint8Array(4)));
-  },
-});
-
-Deno.test({
   name: "[util] types.isTypedArray",
   fn() {
     assert(util.types.isTypedArray(new Buffer(4)));
@@ -281,6 +115,45 @@ Deno.test({
 
       case "linux":
         assertStrictEquals(util.getSystemErrorName(-98), "EADDRINUSE");
+        break;
+    }
+  },
+});
+
+Deno.test({
+  name: "[util] getSystemErrorMessage()",
+  fn() {
+    type FnTestInvalidArg = (code?: unknown) => void;
+
+    assertThrows(
+      () => (util.getSystemErrorMessage as FnTestInvalidArg)(),
+      TypeError,
+    );
+    assertThrows(
+      () => (util.getSystemErrorMessage as FnTestInvalidArg)(1),
+      RangeError,
+    );
+
+    assertStrictEquals(util.getSystemErrorMessage(-424242), undefined);
+
+    switch (Deno.build.os) {
+      case "windows":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-4091),
+          "address already in use",
+        );
+        break;
+      case "darwin":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-48),
+          "address already in use",
+        );
+        break;
+      case "linux":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-98),
+          "address already in use",
+        );
         break;
     }
   },

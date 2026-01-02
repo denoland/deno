@@ -25,7 +25,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { inspect } from "node:util";
-import { stripColor as removeColors } from "ext:deno_node/_util/std_fmt_colors.ts";
+import { removeColors } from "ext:deno_node/internal/util.mjs";
 import * as io from "ext:deno_io/12_io.js";
 
 function getConsoleWidth(): number {
@@ -348,8 +348,9 @@ export function createErrDiff(
         `${blue}...${defaultColor}`;
     }
   }
-
-  return `${msg}${skipped ? skippedMsg : ""}\n${res}${other}${end}${indicator}`;
+  return `${msg}${
+    skipped ? skippedMsg : ""
+  }\n${res}${other}${end}${indicator}\n`;
 }
 
 export interface AssertionErrorDetailsDescriptor {

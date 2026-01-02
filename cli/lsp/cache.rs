@@ -6,8 +6,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 
 use crate::cache::DenoDir;
@@ -19,7 +19,7 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
 
-/// Calculate a version for for a given path.
+/// Calculate a version for a given path.
 pub fn calculate_fs_version_at_path(path: impl AsRef<Path>) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {

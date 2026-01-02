@@ -10,9 +10,16 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getegid,
   geteuid,
+  getgid,
+  getuid,
   pid as importedPid,
   platform as importedPlatform,
+  setegid,
+  seteuid,
+  setgid,
+  setuid,
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -21,6 +28,7 @@ import {
   assert,
   assertEquals,
   assertFalse,
+  assertMatch,
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
@@ -29,8 +37,22 @@ import {
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
+import { stub } from "@std/testing/mock";
+import { execSync } from "node:child_process";
 
 const testDir = new URL(".", import.meta.url);
+
+function getGroupNameFromSystem(gid: number): string {
+  const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
+  const groupInfo = stdout.trim().split(":")[0];
+  return groupInfo;
+}
+
+function getUserNameFromSystem(uid: number): string {
+  const stdout = execSync(`id -un ${uid}`).toString();
+  const name = stdout.trim();
+  return name;
+}
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -248,9 +270,7 @@ Deno.test(
 
     // kill with signal 0 should keep the process alive in linux (true means no error happened)
     // windows ignore signals
-    if (Deno.build.os !== "windows") {
-      assertEquals(process.kill(p.pid, 0), true);
-    }
+    assertEquals(process.kill(p.pid, 0), true);
     process.kill(p.pid);
     await p.status;
   },
@@ -414,6 +434,14 @@ Deno.test({
       ),
     );
 
+    Object.defineProperty(process.env, "HELLO", {
+      value: "OTHER_WORLD",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    assertEquals(process.env.HELLO, "OTHER_WORLD");
+
     // deno-lint-ignore no-prototype-builtins
     assert(process.env.hasOwnProperty("HELLO"));
     assert("HELLO" in process.env);
@@ -430,6 +458,20 @@ Deno.test({
 
     delete process.env.HELLO;
     assertEquals(process.env.HELLO, undefined);
+  },
+});
+
+// #30701
+Deno.test({
+  name: "process.env handles falsy values correctly",
+  fn() {
+    const key = "TEST_ENV_VAR_EMPTY_STRING";
+    Deno.env.set(key, "");
+
+    assertEquals(process.env[key], "");
+    assertEquals(Object.keys(process.env).includes(key), true);
+    assert(key in process.env);
+    assert(Object.hasOwn(process.env, key));
   },
 });
 
@@ -462,11 +504,59 @@ Deno.test({
 });
 
 Deno.test({
+  "name": "process.env: checking symbol in env should not require permission",
+  permissions: "none",
+  fn() {
+    const symbol = Symbol.for("67");
+    Reflect.has(globalThis.process.env, symbol);
+  },
+});
+
+Deno.test({
+  // NB(Tango992): Node.js does not support using symbols as env keys,
+  // thus this test should be omitted once we align with Node.js behavior.
+  name: "process.env: setting and getting a symbol key",
+  fn() {
+    const symbol = Symbol.for("foo");
+    // @ts-expect-error setting a symbol key
+    process.env[symbol] = "foo";
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "foo");
+    assert(Reflect.has(process.env, symbol));
+
+    // @ts-expect-error deleting a symbol key
+    delete process.env[symbol];
+    assertFalse(Reflect.has(process.env, symbol));
+
+    Object.defineProperty(process.env, symbol, {
+      value: "bar",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "bar");
+  },
+});
+
+Deno.test({
   name: "process.stdin",
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
@@ -945,6 +1035,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process._rawDebug",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--quiet",
+        "./testdata/process_raw_debug.ts",
+      ],
+      cwd: testDir,
+    });
+    const { stdout, stderr } = await command.output();
+
+    assertEquals(stdout.length, 0);
+    const decoder = new TextDecoder();
+    assertEquals(
+      stripAnsiCode(decoder.decode(stderr).trim()),
+      "this should go to stderr { a: 1, b: [ 'a', 2 ] }",
+    );
+  },
+});
+
+Deno.test({
   name: "process.stdout isn't closed when source stream ended",
   async fn() {
     const source = Readable.from(["foo", "bar"]);
@@ -992,6 +1104,51 @@ Deno.test({
     assert(uv.errname);
     assert(typeof uv.errname === "function");
     assertEquals(uv.errname(-1), "EPERM");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMessage",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMessage);
+    assert(typeof uv.getErrorMessage === "function");
+    assertEquals(uv.getErrorMessage(-1), "operation not permitted");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMap);
+    assert(typeof uv.getErrorMap === "function");
+    const errorMap = uv.getErrorMap();
+    assert(errorMap instanceof Map);
+    // errorMap maps error code (number) to [name, message]
+    assertEquals(errorMap.get(-1), ["EPERM", "operation not permitted"]);
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getCodeMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getCodeMap);
+    assert(typeof uv.getCodeMap === "function");
+    const codeMap = uv.getCodeMap();
+    assert(codeMap instanceof Map);
+    // codeMap maps error name (string) to error code (number)
+    assertEquals(codeMap.get("EPERM"), -1);
   },
 });
 
@@ -1107,6 +1264,14 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "process.sourceMapsEnabled",
+  fn() {
+    // @ts-ignore: not available in the types yet.
+    assertEquals(process.sourceMapsEnabled, true);
+  },
+});
+
 // Regression test for https://github.com/denoland/deno/issues/23761
 Deno.test({
   name: "process.uptime without this",
@@ -1215,4 +1380,185 @@ Deno.test("getBuiltinModule", () => {
   assert(process.getBuiltinModule("fs"));
   assert(process.getBuiltinModule("node:fs"));
   assertEquals(process.getBuiltinModule("something"), undefined);
+});
+
+Deno.test("process.emitWarning() prints to stderr", async () => {
+  using writeStub = stub(process.stderr, "write", () => true);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  process.on("warning", () => resolve());
+
+  process.emitWarning("This is a warning", {
+    code: "TEST0001",
+    detail: "This is some additional information",
+  });
+
+  await promise;
+
+  const arg = writeStub.calls[0].args[0];
+  assert(typeof arg === "string");
+  assertMatch(
+    arg,
+    /\(node:\d+\) \[TEST0001\] Warning: This is a warning\nThis is some additional information\n/,
+  );
+});
+
+Deno.test("process.emitWarning() does not print to stderr when it is deprecation warning and noDeprecation is set to true", async () => {
+  using writeStub = stub(process.stderr, "write", () => true);
+
+  // deno-lint-ignore no-explicit-any
+  (process as any).noDeprecation = true; // Set noDeprecation to true
+  process.emitWarning("This is a deprecation warning", {
+    code: "TEST0002",
+    detail: "This is some additional information",
+    type: "DeprecationWarning",
+  });
+
+  await delay(10);
+
+  assertEquals(writeStub.calls.length, 0);
+  // deno-lint-ignore no-explicit-any
+  (process as any).noDeprecation = false; // Reset noDeprecation
+});
+
+Deno.test("process.moduleLoadList", () => {
+  // deno-lint-ignore no-explicit-any
+  const moduleLoadList = (process as any).moduleLoadList;
+  assert(Array.isArray(moduleLoadList));
+  assertEquals(moduleLoadList.length, 0);
+});
+
+Deno.test({
+  name: "process.setegid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEgid = getegid!();
+    const groupName = getGroupNameFromSystem(originalEgid);
+
+    // only assert that it doesn't throw
+    setegid!(originalEgid);
+    setegid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setegid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setegid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setegid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setegid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEuid = geteuid!();
+    const userName = getUserNameFromSystem(originalEuid);
+
+    // calling with original euid to ensure it doesn't throw
+    seteuid!(originalEuid);
+    seteuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        seteuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.seteuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setgid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalGid = getgid!();
+    const groupName = getGroupNameFromSystem(originalGid);
+
+    // Calling with original gid to ensure it doesn't throw
+    setgid!(originalGid);
+    setgid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setgid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setgid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setgid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setgid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalUid = getuid!();
+    const userName = getUserNameFromSystem(originalUid);
+
+    // Calling with original uid to ensure it doesn't throw
+    setuid!(originalUid);
+    setuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.setuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setuid, undefined);
+  },
 });

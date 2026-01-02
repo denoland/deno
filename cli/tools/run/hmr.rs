@@ -3,21 +3,31 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
+use deno_core::LocalInspectorSession;
 use deno_core::error::CoreError;
-use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
 use deno_error::JsErrorBox;
 use deno_terminal::colors;
 use tokio::select;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 
 use crate::cdp;
-use crate::emit::Emitter;
+use crate::module_loader::CliEmitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+fn next_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 fn explain(response: &cdp::SetScriptSourceResponse) -> String {
   match response.status {
@@ -60,6 +70,100 @@ fn should_retry(status: &cdp::Status) -> bool {
   }
 }
 
+#[derive(Debug)]
+enum InspectorMessageState {
+  Ready(serde_json::Value),
+  WaitingFor(oneshot::Sender<serde_json::Value>),
+}
+
+#[derive(Debug)]
+pub struct HmrRunnerInner {
+  watcher_communicator: Arc<WatcherCommunicator>,
+  script_ids: HashMap<String, String>,
+  messages: HashMap<i32, InspectorMessageState>,
+  emitter: Arc<CliEmitter>,
+  exception_tx: UnboundedSender<JsErrorBox>,
+  exception_rx: Option<UnboundedReceiver<JsErrorBox>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct HmrRunnerState(Arc<Mutex<HmrRunnerInner>>);
+
+impl HmrRunnerState {
+  pub fn new(
+    emitter: Arc<CliEmitter>,
+    watcher_communicator: Arc<WatcherCommunicator>,
+  ) -> Self {
+    let (exception_tx, exception_rx) = mpsc::unbounded_channel();
+
+    Self(Arc::new(Mutex::new(HmrRunnerInner {
+      emitter,
+      watcher_communicator,
+      script_ids: HashMap::new(),
+      messages: HashMap::new(),
+      exception_tx,
+      exception_rx: Some(exception_rx),
+    })))
+  }
+
+  pub fn callback(&self, msg: deno_core::InspectorMsg) {
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      let notification = serde_json::from_str(&msg.content).unwrap();
+      self.handle_notification(notification);
+      return;
+    };
+
+    let message: serde_json::Value =
+      serde_json::from_str(&msg.content).unwrap();
+    let mut state = self.0.lock();
+    let Some(message_state) = state.messages.remove(&msg_id) else {
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::Ready(message));
+      return;
+    };
+    let InspectorMessageState::WaitingFor(sender) = message_state else {
+      return;
+    };
+    let _ = sender.send(message);
+  }
+
+  fn handle_notification(&self, notification: cdp::Notification) {
+    if notification.method == "Runtime.exceptionThrown" {
+      let exception_thrown =
+        serde_json::from_value::<cdp::ExceptionThrown>(notification.params)
+          .unwrap();
+      // .map_err(JsErrorBox::from_err)?;
+      let (message, description) = exception_thrown
+        .exception_details
+        .get_message_and_description();
+      let _ = self
+        .0
+        .lock()
+        .exception_tx
+        .send(JsErrorBox::generic(format!("{} {}", message, description)));
+    } else if notification.method == "Debugger.scriptParsed" {
+      let params =
+        serde_json::from_value::<cdp::ScriptParsed>(notification.params)
+          .unwrap();
+      // .map_err(JsErrorBox::from_err)?;
+      if params.url.starts_with("file://") {
+        let file_url = Url::parse(&params.url).unwrap();
+        let file_path = file_url.to_file_path().unwrap();
+        if let Ok(canonicalized_file_path) = file_path.canonicalize() {
+          let canonicalized_file_url =
+            Url::from_file_path(canonicalized_file_path).unwrap();
+          self
+            .0
+            .lock()
+            .script_ids
+            .insert(canonicalized_file_url.into(), params.script_id);
+        }
+      }
+    }
+  }
+}
+
 /// This structure is responsible for providing Hot Module Replacement
 /// functionality.
 ///
@@ -77,57 +181,54 @@ fn should_retry(status: &cdp::Status) -> bool {
 /// force a full restart of a program by notifying the `FileWatcher`.
 pub struct HmrRunner {
   session: LocalInspectorSession,
-  watcher_communicator: Arc<WatcherCommunicator>,
-  script_ids: HashMap<String, String>,
-  emitter: Arc<Emitter>,
+  state: HmrRunnerState,
 }
 
-#[async_trait::async_trait(?Send)]
-impl crate::worker::HmrRunner for HmrRunner {
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn start(&mut self) -> Result<(), CoreError> {
-    self.enable_debugger().await
+impl HmrRunner {
+  pub fn new(state: HmrRunnerState, session: LocalInspectorSession) -> Self {
+    Self { session, state }
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn stop(&mut self) -> Result<(), CoreError> {
+  pub fn start(&mut self) {
     self
-      .watcher_communicator
+      .session
+      .post_message::<()>(next_id(), "Debugger.enable", None);
+    self
+      .session
+      .post_message::<()>(next_id(), "Runtime.enable", None);
+  }
+
+  fn watcher(&self) -> Arc<WatcherCommunicator> {
+    self.state.0.lock().watcher_communicator.clone()
+  }
+
+  pub fn stop(&mut self) {
+    self
+      .watcher()
       .change_restart_mode(WatcherRestartMode::Automatic);
-    self.disable_debugger().await
   }
 
-  async fn run(&mut self) -> Result<(), CoreError> {
+  pub async fn run(&mut self) -> Result<(), CoreError> {
     self
-      .watcher_communicator
+      .watcher()
       .change_restart_mode(WatcherRestartMode::Manual);
-    let mut session_rx = self.session.take_notification_rx();
+    let watcher = self.watcher();
+    let mut exception_rx = self.state.0.lock().exception_rx.take().unwrap();
     loop {
       select! {
         biased;
-        Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<cdp::Notification>(notification).map_err(JsErrorBox::from_err)?;
-          if notification.method == "Runtime.exceptionThrown" {
-            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsErrorBox::from_err)?;
-            let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            break Err(JsErrorBox::generic(format!("{} {}", message, description)).into());
-          } else if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params).map_err(JsErrorBox::from_err)?;
-            if params.url.starts_with("file://") {
-              let file_url = Url::parse(&params.url).unwrap();
-              let file_path = file_url.to_file_path().unwrap();
-              if let Ok(canonicalized_file_path) = file_path.canonicalize() {
-                let canonicalized_file_url = Url::from_file_path(canonicalized_file_path).unwrap();
-                self.script_ids.insert(canonicalized_file_url.to_string(), params.script_id);
-              }
-            }
+
+        maybe_error = exception_rx.recv() => {
+          if let Some(err) = maybe_error {
+            break Err(err.into());
           }
-        }
-        changed_paths = self.watcher_communicator.watch_for_changed_paths() => {
+        },
+
+        changed_paths = watcher.watch_for_changed_paths() => {
           let changed_paths = changed_paths.map_err(JsErrorBox::from_err)?;
 
           let Some(changed_paths) = changed_paths else {
-            let _ = self.watcher_communicator.force_restart();
+            let _ = self.watcher().force_restart();
             continue;
           };
 
@@ -140,140 +241,108 @@ impl crate::worker::HmrRunner for HmrRunner {
           // we can't HMR or an external file that was passed explicitly to
           // `--watch-hmr=<file>` path.
           if filtered_paths.is_empty() {
-            let _ = self.watcher_communicator.force_restart();
+            let _ = self.watcher().force_restart();
             continue;
           }
 
           for path in filtered_paths {
             let Some(path_str) = path.to_str() else {
-              let _ = self.watcher_communicator.force_restart();
+              let _ = self.watcher().force_restart();
               continue;
             };
             let Ok(module_url) = Url::from_file_path(path_str) else {
-              let _ = self.watcher_communicator.force_restart();
+              let _ = self.watcher().force_restart();
               continue;
             };
 
-            let Some(id) = self.script_ids.get(module_url.as_str()).cloned() else {
-              let _ = self.watcher_communicator.force_restart();
+            let Some(id) = self.state.0.lock().script_ids.get(module_url.as_str()).cloned() else {
+              let _ = self.watcher().force_restart();
               continue;
             };
 
-            let source_code = self.emitter.load_and_emit_for_hmr(
+            let source_code = tokio::fs::read_to_string(deno_path_util::url_to_file_path(&module_url).unwrap()).await?;
+            let source_code = self.state.0.lock().emitter.emit_for_hmr(
               &module_url,
-            ).await?;
+              source_code,
+            )?;
 
             let mut tries = 1;
             loop {
-              let result = self.set_script_source(&id, source_code.as_str()).await?;
+              let msg_id = self.set_script_source(&id, source_code.as_str());
+              let value = self.wait_for_response(msg_id).await;
+              let result: cdp::SetScriptSourceResponse = serde_json::from_value(value).map_err(|e| {
+                JsErrorBox::from_err(e)
+              })?;
+
 
               if matches!(result.status, cdp::Status::Ok) {
-                self.dispatch_hmr_event(module_url.as_str()).await?;
-                self.watcher_communicator.print(format!("Replaced changed module {}", module_url.as_str()));
+                self.dispatch_hmr_event(module_url.as_str());
+                self.watcher().print(format!("Replaced changed module {}", module_url.as_str()));
                 break;
               }
 
-              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(&explain(&result))));
+              self.watcher().print(format!("Failed to reload module {}: {}.", module_url, colors::gray(&explain(&result))));
               if should_retry(&result.status) && tries <= 2 {
                 tries += 1;
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 continue;
               }
 
-              let _ = self.watcher_communicator.force_restart();
+              let _ = self.watcher().force_restart();
               break;
             }
           }
         }
-        _ = self.session.receive_from_v8_session() => {}
       }
     }
   }
-}
 
-impl HmrRunner {
-  pub fn new(
-    emitter: Arc<Emitter>,
-    session: LocalInspectorSession,
-    watcher_communicator: Arc<WatcherCommunicator>,
-  ) -> Self {
-    Self {
-      session,
-      emitter,
-      watcher_communicator,
-      script_ids: HashMap::new(),
+  async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
+    if let Some(message_state) = self.state.0.lock().messages.remove(&msg_id) {
+      let InspectorMessageState::Ready(mut value) = message_state else {
+        unreachable!();
+      };
+      return value["result"].take();
     }
+
+    let (tx, rx) = oneshot::channel();
+    self
+      .state
+      .0
+      .lock()
+      .messages
+      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+    let mut value = rx.await.unwrap();
+    value["result"].take()
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
-    self
-      .session
-      .post_message::<()>("Runtime.enable", None)
-      .await?;
-    Ok(())
+  fn set_script_source(&mut self, script_id: &str, source: &str) -> i32 {
+    let msg_id = next_id();
+    self.session.post_message(
+      msg_id,
+      "Debugger.setScriptSource",
+      Some(json!({
+        "scriptId": script_id,
+        "scriptSource": source,
+        "allowTopFrameEditing": true,
+      })),
+    );
+    msg_id
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    self
-      .session
-      .post_message::<()>("Runtime.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn set_script_source(
-    &mut self,
-    script_id: &str,
-    source: &str,
-  ) -> Result<cdp::SetScriptSourceResponse, CoreError> {
-    let result = self
-      .session
-      .post_message(
-        "Debugger.setScriptSource",
-        Some(json!({
-          "scriptId": script_id,
-          "scriptSource": source,
-          "allowTopFrameEditing": true,
-        })),
-      )
-      .await?;
-
-    Ok(
-      serde_json::from_value::<cdp::SetScriptSourceResponse>(result)
-        .map_err(JsErrorBox::from_err)?,
-    )
-  }
-
-  async fn dispatch_hmr_event(
-    &mut self,
-    script_id: &str,
-  ) -> Result<(), CoreError> {
+  fn dispatch_hmr_event(&mut self, script_id: &str) {
     let expr = format!(
       "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
       script_id
     );
 
-    let _result = self
-      .session
-      .post_message(
-        "Runtime.evaluate",
-        Some(json!({
-          "expression": expr,
-          "contextId": Some(1),
-        })),
-      )
-      .await?;
-
-    Ok(())
+    self.session.post_message(
+      next_id(),
+      "Runtime.evaluate",
+      Some(json!({
+        "expression": expr,
+        "contextId": Some(1),
+      })),
+    );
   }
 }

@@ -38,6 +38,14 @@ const generateKeyPairAsync = promisify(
     ),
 );
 
+const testDir = new URL(".", import.meta.url);
+
+const pemBuffer = Buffer.from(
+  await Deno.readTextFile(
+    new URL("../testdata/x509.pem", import.meta.url),
+  ),
+);
+
 Deno.test({
   name: "create secret key",
   fn() {
@@ -230,6 +238,10 @@ Deno.test("createPrivateKey rsa", function () {
   assertEquals(key.asymmetricKeyType, "rsa");
   assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
   assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+  assertEquals(
+    Object.getPrototypeOf(key.asymmetricKeyDetails),
+    Object.prototype,
+  );
 });
 
 Deno.test("createPrivateKey dh", function () {
@@ -754,6 +766,51 @@ Deno.test("X509Certificate checkHost", function () {
   const cert = new X509Certificate(der);
   assertEquals(cert.checkHost("www.google.com"), undefined);
   assertEquals(cert.checkHost("agent1"), "agent1");
+});
+
+Deno.test("X509Certificate inspect", async function () {
+  const scriptPath = "../testdata/inspect-x509.ts";
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "--allow-read", scriptPath],
+    stdin: "null",
+    stdout: "piped",
+    stderr: "null",
+    cwd: testDir,
+  });
+  const { stdout } = await command.output();
+  const trimmedStdout = new TextDecoder().decode(stdout).trim();
+
+  assertEquals(
+    trimmedStdout,
+    `X509Certificate {
+  subject: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=agent1\\nEmail=ry@tinyclouds.org',
+  subjectAltName: undefined,
+  issuer: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=ca1\\nEmail=ry@tinyclouds.org',
+  infoAccess: undefined,
+  validFrom: 'Sep  3 21:40:37 2022 +00:00',
+  validTo: 'Jun 17 21:40:37 2296 +00:00',
+  validFromDate: 2022-09-03T21:40:37.000Z,
+  validToDate: 2296-06-17T21:40:37.000Z,
+  fingerprint: '8B:89:16:C4:99:87:D2:13:1A:64:94:36:38:A5:32:01:F0:95:3B:53',
+  fingerprint256: '2C:62:59:16:91:89:AB:90:6A:3E:98:88:A6:D3:C5:58:58:6C:AE:FF:9C:33:22:7C:B6:77:D3:34:E7:53:4B:05',
+  fingerprint512: '0B:6F:D0:4D:6B:22:53:99:66:62:51:2D:2C:96:F2:58:3F:95:1C:CC:4C:44:9D:B5:59:AA:AD:A8:F6:2A:24:8A:BB:06:A5:26:42:52:30:A3:37:61:30:A9:5A:42:63:E0:21:2F:D6:70:63:07:96:6F:27:A7:78:12:08:02:7A:8B',
+  keyUsage: undefined,
+  serialNumber: '147D36C1C2F74206DE9FAB5F2226D78ADB00A426'
+}`,
+  );
+});
+
+Deno.test("X509Certificate validFromDate validToDate", function () {
+  const x509 = new X509Certificate(pemBuffer);
+  assertEquals(
+    x509.validFromDate,
+    new Date("2022-09-03T21:40:37.000Z"),
+  );
+  assertEquals(
+    x509.validToDate,
+    new Date("2296-06-17T21:40:37.000Z"),
+  );
 });
 
 // https://github.com/denoland/deno/issues/27972

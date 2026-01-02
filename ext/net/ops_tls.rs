@@ -9,12 +9,10 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -23,28 +21,36 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
-use deno_tls::create_client_config;
-use deno_tls::load_certs;
-use deno_tls::load_private_keys;
-use deno_tls::new_resolver;
-use deno_tls::rustls::pki_types::ServerName;
-use deno_tls::rustls::ClientConnection;
-use deno_tls::rustls::ServerConfig;
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
+use deno_tls::create_client_config;
+use deno_tls::load_certs;
+use deno_tls::load_private_keys;
+use deno_tls::new_resolver;
+use deno_tls::rustls::ClientConnection;
+use deno_tls::rustls::ServerConfig;
+use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
-use rustls_tokio_stream::TlsStreamRead;
-use rustls_tokio_stream::TlsStreamWrite;
+pub use rustls_tokio_stream::TlsStreamRead;
+pub use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+use crate::DefaultTlsOptions;
+use crate::UnsafelyIgnoreCertificateErrors;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::NetError;
@@ -53,9 +59,6 @@ use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
-use crate::DefaultTlsOptions;
-use crate::NetPermissions;
-use crate::UnsafelyIgnoreCertificateErrors;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
@@ -67,7 +70,9 @@ pub struct TlsListener {
 }
 
 impl TlsListener {
-  pub async fn accept(&self) -> std::io::Result<(TlsStream, SocketAddr)> {
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(TlsStream<TcpStream>, SocketAddr)> {
     let (tcp, addr) = self.tcp_listener.accept().await?;
     let tls = if let Some(provider) = &self.server_config_provider {
       TlsStream::new_server_side_acceptor(
@@ -90,33 +95,66 @@ impl TlsListener {
 }
 
 #[derive(Debug)]
+enum TlsStreamInner {
+  Tcp {
+    rd: AsyncRefCell<TlsStreamRead<TcpStream>>,
+    wr: AsyncRefCell<TlsStreamWrite<TcpStream>>,
+  },
+}
+
+#[derive(Debug)]
 pub struct TlsStreamResource {
-  rd: AsyncRefCell<TlsStreamRead>,
-  wr: AsyncRefCell<TlsStreamWrite>,
+  inner: TlsStreamInner,
   // `None` when a TLS handshake hasn't been done.
   handshake_info: RefCell<Option<TlsHandshakeInfo>>,
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
 impl TlsStreamResource {
-  pub fn new((rd, wr): (TlsStreamRead, TlsStreamWrite)) -> Self {
+  pub fn new_tcp(
+    (rd, wr): (TlsStreamRead<TcpStream>, TlsStreamWrite<TcpStream>),
+  ) -> Self {
     Self {
-      rd: rd.into(),
-      wr: wr.into(),
+      inner: TlsStreamInner::Tcp {
+        rd: AsyncRefCell::new(rd),
+        wr: AsyncRefCell::new(wr),
+      },
       handshake_info: RefCell::new(None),
       cancel_handle: Default::default(),
     }
   }
 
-  pub fn into_inner(self) -> (TlsStreamRead, TlsStreamWrite) {
-    (self.rd.into_inner(), self.wr.into_inner())
+  pub fn into_tls_stream(self) -> TlsStream<TcpStream> {
+    match self.inner {
+      TlsStreamInner::Tcp { rd, wr } => {
+        let read_half = rd.into_inner();
+        let write_half = wr.into_inner();
+        read_half.unsplit(write_half)
+      }
+    }
+  }
+
+  pub fn peer_certificates(
+    &self,
+  ) -> Option<
+    Vec<rustls_tokio_stream::rustls::pki_types::CertificateDer<'static>>,
+  > {
+    self
+      .handshake_info
+      .borrow()
+      .as_ref()
+      .and_then(|info| info.peer_certificates.clone())
   }
 
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+    let mut rd = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref rd, .. } => rd,
+    })
+    .borrow_mut()
+    .await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
     rd.read(data).try_or_cancel(cancel_handle).await
   }
@@ -125,14 +163,22 @@ impl TlsStreamResource {
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(&self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     wr.shutdown().await?;
     Ok(())
   }
@@ -144,12 +190,20 @@ impl TlsStreamResource {
       return Ok(tls_info.clone());
     }
 
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let mut wr = RcRef::map(self, |r| match r.inner {
+      TlsStreamInner::Tcp { ref wr, .. } => wr,
+    })
+    .borrow_mut()
+    .await;
     let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
     let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
     let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-    let tls_info = TlsHandshakeInfo { alpn_protocol };
+    let peer_certificates = handshake.peer_certificates.clone();
+    let tls_info = TlsHandshakeInfo {
+      alpn_protocol,
+      peer_certificates,
+    };
     self.handshake_info.replace(Some(tls_info.clone()));
     Ok(tls_info)
   }
@@ -159,7 +213,7 @@ impl Resource for TlsStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tlsStream".into()
   }
 
@@ -179,6 +233,7 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
   server_name: Option<String>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -189,6 +244,7 @@ pub struct StartTlsArgs {
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
   reject_unauthorized: Option<bool>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[op2]
@@ -213,7 +269,7 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(
@@ -256,14 +312,11 @@ pub fn op_tls_cert_resolver_resolve_error(
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_tls_start<NP>(
+pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let rid = args.rid;
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
@@ -290,6 +343,9 @@ where
     Some(Vec::new())
   };
 
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
+
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
@@ -314,13 +370,14 @@ where
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let key_pair = key_pair.unwrap_or(&tls_null);
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -338,7 +395,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
@@ -346,31 +403,34 @@ where
 
 #[op2(async, stack_trace)]
 #[serde]
-pub async fn op_net_connect_tls<NP>(
+pub async fn op_net_connect_tls(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
 
   let cert_file = {
     let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
+    let permissions = s.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")
       .map_err(NetError::Permission)?;
     if let Some(path) = cert_file {
       Some(
         permissions
-          .check_read(path, "Deno.connectTls()")
+          .check_open(
+            Cow::Borrowed(Path::new(path)),
+            OpenAccessKind::ReadNoFollow,
+            Some("Deno.connectTls()"),
+          )
           .map_err(NetError::Permission)?,
       )
     } else {
@@ -409,13 +469,14 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -434,7 +495,7 @@ where
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
@@ -447,25 +508,23 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
   #[serde(default)]
   load_balanced: bool,
+  tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_net_listen_tls<NP>(
+pub fn op_net_listen_tls(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   if args.reuse_port {
     super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
   }
 
   {
-    let permissions = state.borrow_mut::<NP>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")
       .map_err(NetError::Permission)?;
@@ -476,9 +535,9 @@ where
     .ok_or(NetError::NoResolvedAddress)?;
 
   let tcp_listener = if args.load_balanced {
-    TcpListener::bind_load_balanced(bind_addr)
+    TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)
   } else {
-    TcpListener::bind_direct(bind_addr, args.reuse_port)
+    TcpListener::bind_direct(bind_addr, args.reuse_port, args.tcp_backlog)
   }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args
@@ -545,7 +604,7 @@ pub async fn op_net_accept_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(TlsStreamResource::new(tls_stream.into_split()))
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
   };
 
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))

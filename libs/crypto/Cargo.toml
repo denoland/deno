@@ -1,0 +1,15 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+[package]
+name = "deno_crypto_provider"
+version = "0.19.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cryptography provider for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+aws-lc-sys.workspace = true

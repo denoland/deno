@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // vendor without a lockfile
+    "args": "install --no-lock -e main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    // now cause a lockfile to be created to cause it
+    // to create the lockfile from the vendor folder
+    "args": "install -e main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    // remove the version metadata file
+    "args": [
+      "eval",
+      "Deno.removeSync('vendor/http_127.0.0.1_4250/@denotest/add/1.0.0_meta.json', { recursive: true })"
+    ],
+    "output": ""
+  }, {
+    // it should still install correctly because the checksum in
+    // the lockfile should be the remote one and not the vendored one
+    "args": "install -e main.ts",
+    "output": "[WILDCARD]"
+  }]
+}

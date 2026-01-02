@@ -14,6 +14,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
@@ -361,11 +362,8 @@ declare namespace WebAssembly {
  * @category Platform
  */
 declare function setTimeout(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -379,11 +377,8 @@ declare function setTimeout(
  * @category Platform
  */
 declare function setInterval(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -456,7 +451,10 @@ interface DOMStringList {
 }
 
 /** @category Platform */
-type BufferSource = ArrayBufferView | ArrayBuffer;
+type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
+
+/** @category Platform */
+type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
 
 /**
  * A global console object that provides methods for logging, debugging, and error reporting.

@@ -1,0 +1,18 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_bundle_runtime"
+version = "0.12.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bundle runtime API for Deno"
+
+[dependencies]
+async-trait.workspace = true
+deno_core.workspace = true
+deno_error.workspace = true
+deno_web.workspace = true
+regex.workspace = true
+serde.workspace = true

@@ -5,11 +5,10 @@ use std::cell::RefCell;
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
-use deno_core::cppgc::SameObject;
+use deno_core::GarbageCollected;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
 use deno_error::JsErrorBox;
 use wgpu_core::binding_model::BindingResource;
 use wgpu_core::pipeline::ProgrammableStageDescriptor;
@@ -25,15 +24,17 @@ use super::queue::GPUQueue;
 use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
+use crate::Instance;
+use crate::SameObject;
 use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
 use crate::command_encoder::GPUCommandEncoder;
+use crate::error::GPUGenericError;
 use crate::query_set::GPUQuerySet;
 use crate::render_bundle::GPURenderBundleEncoder;
 use crate::render_pipeline::GPURenderPipeline;
 use crate::webidl::features_to_feature_names;
-use crate::Instance;
 
 pub struct GPUDevice {
   pub instance: Instance,
@@ -64,7 +65,10 @@ impl WebIdlInterfaceConverter for GPUDevice {
   const NAME: &'static str = "GPUDevice";
 }
 
-impl GarbageCollected for GPUDevice {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDevice {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDevice"
   }
@@ -73,6 +77,12 @@ impl GarbageCollected for GPUDevice {
 // EventTarget is extended in JS
 #[op2]
 impl GPUDevice {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDevice, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -86,7 +96,10 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn features(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.device_features(self.id);
       let features = features_to_feature_names(features);
@@ -96,7 +109,7 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let limits = self.instance.device_limits(self.id);
       GPUSupportedLimits(limits)
@@ -107,7 +120,7 @@ impl GPUDevice {
   #[global]
   fn adapter_info(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> v8::Global<v8::Object> {
     self.adapter_info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.adapter);
@@ -123,7 +136,7 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn queue(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn queue(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.queue_obj.get(scope, |_| GPUQueue {
       id: self.queue,
       error_handler: self.error_handler.clone(),
@@ -282,7 +295,9 @@ impl GPUDevice {
       .count();
 
       if n_entries != 1 {
-        return Err(JsErrorBox::type_error("Only one of 'buffer', 'sampler', 'texture' and 'storageTexture' may be specified"));
+        return Err(JsErrorBox::type_error(
+          "Only one of 'buffer', 'sampler', 'texture' and 'storageTexture' may be specified",
+        ));
       }
 
       let ty = if let Some(buffer) = entry.buffer {
@@ -619,7 +634,7 @@ impl GPUDevice {
   #[global]
   fn pop_error_scope(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<v8::Global<v8::Value>, JsErrorBox> {
     if self.error_handler.is_lost.get().is_some() {
       let val = v8::null(scope).cast::<v8::Value>();
@@ -876,7 +891,10 @@ impl GPUDevice {
 
 pub struct GPUDeviceLostInfo;
 
-impl GarbageCollected for GPUDeviceLostInfo {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDeviceLostInfo {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDeviceLostInfo"
   }
@@ -884,6 +902,12 @@ impl GarbageCollected for GPUDeviceLostInfo {
 
 #[op2]
 impl GPUDeviceLostInfo {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDeviceLostInfo, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn reason(&self) -> &'static str {

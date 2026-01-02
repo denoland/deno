@@ -10,26 +10,30 @@ use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
 use deno_core::serde_json;
+use deno_core::url::Url;
+use deno_graph::JsrPackageReqNotFoundError;
+use deno_graph::packages::JsrPackageVersionInfo;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::StackString;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::StackString;
-use deno_semver::Version;
-use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
@@ -45,6 +49,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,7 +69,7 @@ impl DepLocation {
     matches!(self, DepLocation::DenoJson(..))
   }
 
-  pub fn file_path(&self) -> Cow<std::path::Path> {
+  pub fn file_path(&self) -> Cow<'_, std::path::Path> {
     match self {
       DepLocation::DenoJson(arc, _, kind) => match kind {
         ImportMapKind::Inline => {
@@ -302,7 +307,7 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req.clone(),
+      Ok(req) => req.req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
@@ -351,7 +356,8 @@ fn add_deps_from_package_json(
         }
       };
       match v {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::JsrReq(_) => {
           // ignore
         }
         deno_package_json::PackageJsonDepValue::Req(req) => {
@@ -461,8 +467,10 @@ pub struct DepManager {
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
   npm_resolver: CliNpmResolver,
+  npm_version_resolver: Arc<NpmVersionResolver>,
   npm_installer: Arc<CliNpmInstaller>,
   permissions_container: PermissionsContainer,
+  progress_bar: ProgressBar,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
 }
@@ -473,7 +481,9 @@ pub struct DepManagerArgs {
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
   pub npm_installer: Arc<CliNpmInstaller>,
   pub npm_resolver: CliNpmResolver,
+  pub npm_version_resolver: Arc<NpmVersionResolver>,
   pub permissions_container: PermissionsContainer,
+  pub progress_bar: ProgressBar,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,
 }
@@ -484,6 +494,7 @@ impl DepManager {
     new.latest_versions = self.latest_versions;
     new
   }
+
   fn with_deps_args(deps: Vec<Dep>, args: DepManagerArgs) -> Self {
     let DepManagerArgs {
       module_load_preparer,
@@ -491,6 +502,8 @@ impl DepManager {
       npm_fetch_resolver,
       npm_installer,
       npm_resolver,
+      npm_version_resolver,
+      progress_bar,
       permissions_container,
       main_module_graph_container,
       lockfile,
@@ -505,19 +518,22 @@ impl DepManager {
       npm_fetch_resolver,
       npm_installer,
       npm_resolver,
+      npm_version_resolver,
+      progress_bar,
       permissions_container,
       main_module_graph_container,
       lockfile,
       pending_changes: Vec::new(),
     }
   }
+
   pub fn from_workspace_dir(
     workspace_dir: &Arc<WorkspaceDirectory>,
     dep_filter: impl DepFilter,
     args: DepManagerArgs,
   ) -> Result<Self, AnyError> {
     let mut deps = Vec::with_capacity(256);
-    if let Some(deno_json) = workspace_dir.maybe_deno_json() {
+    if let Some(deno_json) = workspace_dir.member_deno_json() {
       if deno_json.specifier.scheme() != "file" {
         bail!("remote deno.json files are not supported");
       }
@@ -526,12 +542,13 @@ impl DepManager {
         add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
       }
     }
-    if let Some(package_json) = workspace_dir.maybe_pkg_json() {
+    if let Some(package_json) = workspace_dir.member_pkg_json() {
       add_deps_from_package_json(package_json, dep_filter, &mut deps);
     }
 
     Ok(Self::with_deps_args(deps, args))
   }
+
   pub fn from_workspace(
     workspace: &Arc<Workspace>,
     dep_filter: impl DepFilter,
@@ -545,6 +562,7 @@ impl DepManager {
     if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut graph_permit = self
       .main_module_graph_container
@@ -553,9 +571,7 @@ impl DepManager {
     let graph = graph_permit.graph_mut();
     // populate the information from the lockfile
     if let Some(lockfile) = &self.lockfile {
-      let lockfile = lockfile.lock();
-
-      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+      lockfile.fill_graph(graph);
     }
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
@@ -583,26 +599,53 @@ impl DepManager {
           DepKind::Npm => roots.push(
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
-          DepKind::Jsr => info_futures.push(async {
-            if let Some(nv) = self.jsr_fetch_resolver.req_to_nv(&dep.req).await
-            {
+          DepKind::Jsr => {
+            let resolved_nv = graph.packages.mappings().get(&dep.req);
+            let resolved_nv = resolved_nv
+              .and_then(|nv| {
+                let versions =
+                  graph.packages.versions_by_name(&dep.req.name)?;
+                let mut best = nv;
+                for version in versions {
+                  if version.version > best.version
+                    && dep.req.version_req.matches(&version.version)
+                  {
+                    best = version;
+                  }
+                }
+                Some(best)
+              })
+              .cloned();
+            info_futures.push(async {
+              let nv = if let Some(nv) = resolved_nv {
+                nv
+              } else if let Some(nv) =
+                self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
+              {
+                nv
+              } else {
+                return Result::<
+                  Option<(Url, Arc<JsrPackageVersionInfo>)>,
+                  JsrPackageReqNotFoundError,
+                >::Ok(None);
+              };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
               {
                 let specifier =
-                  ModuleSpecifier::parse(&format!("jsr:/{}/", dep.req))
+                  ModuleSpecifier::parse(&format!("jsr:/{}/", &dep.req))
                     .unwrap();
-                return Some((specifier, info));
+                return Ok(Some((specifier, info)));
               }
-            }
-            None
-          }),
+              Ok(None)
+            });
+          }
         }
       }
     }
 
     while let Some(info_future) = info_futures.next().await {
-      if let Some((specifier, info)) = info_future {
+      if let Some((specifier, info)) = info_future? {
         let exports = info.exports();
         for (k, _) in exports {
           if let Ok(spec) = specifier.join(k) {
@@ -619,10 +662,11 @@ impl DepManager {
         &roots,
         crate::module_loader::PrepareModuleLoadOptions {
           is_dynamic: false,
-          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          lib: deno_config::workspace::TsTypeLib::DenoWindow,
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;
@@ -687,23 +731,50 @@ impl DepManager {
           async {
             let semver_req = &dep.req;
             let _permit = npm_sema.acquire().await;
-            let semver_compatible =
-              self.npm_fetch_resolver.req_to_nv(semver_req).await;
+            let mut semver_compatible = self
+              .npm_fetch_resolver
+              .req_to_nv(semver_req)
+              .await
+              .ok()
+              .flatten();
             let info =
               self.npm_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info
               .and_then(|info| {
+                let version_resolver =
+                  self.npm_version_resolver.get_for_package(&info);
                 let latest_tag = info.dist_tags.get("latest")?;
+                let can_use_latest = version_resolver
+                  .version_req_satisfies_and_matches_newest_dependency_date(
+                    &semver_req.version_req,
+                    latest_tag,
+                  )
+                  .ok()?;
+
+                if can_use_latest {
+                  semver_compatible = Some(PackageNv {
+                    name: semver_req.name.clone(),
+                    version: latest_tag.clone(),
+                  });
+                  return Some(latest_tag.clone());
+                }
+
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                if latest_tag >= lower_bound {
+                let latest_matches_newest_dep_date =
+                  version_resolver.matches_newest_dependency_date(latest_tag);
+                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
                   Some(latest_tag.clone())
                 } else {
                   latest_version(
-                    Some(latest_tag),
-                    info.versions.iter().filter_map(
-                      |(version, version_info)| {
+                    if latest_matches_newest_dep_date {
+                      Some(latest_tag)
+                    } else {
+                      None
+                    },
+                    version_resolver.applicable_version_infos().filter_map(
+                      |version_info| {
                         if version_info.deprecated.is_none() {
-                          Some(version)
+                          Some(&version_info.version)
                         } else {
                           None
                         }
@@ -727,17 +798,27 @@ impl DepManager {
           async {
             let semver_req = &dep.req;
             let _permit = jsr_sema.acquire().await;
-            let semver_compatible =
-              self.jsr_fetch_resolver.req_to_nv(semver_req).await;
+            let semver_compatible = self
+              .jsr_fetch_resolver
+              .req_to_nv(semver_req)
+              .await
+              .ok()
+              .flatten();
             let info =
               self.jsr_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info
               .and_then(|info| {
+                let version_resolver = self
+                  .jsr_fetch_resolver
+                  .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
                 latest_version(
                   Some(lower_bound),
                   info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked {
+                    if !version_info.yanked
+                      && version_resolver
+                        .matches_newest_dependency_date(version_info)
+                    {
                       Some(version)
                     } else {
                       None
@@ -880,7 +961,10 @@ impl DepManager {
                   format!("npm:{first}@{version_req}")
                 }
               } else if string_value.contains(":") {
-                bail!("Unexpected package json dependency string: \"{string_value}\" in {}", arc.path.display());
+                bail!(
+                  "Unexpected package json dependency string: \"{string_value}\" in {}",
+                  arc.path.display()
+                );
               } else {
                 version_req.to_string()
               };

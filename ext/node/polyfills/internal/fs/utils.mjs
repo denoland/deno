@@ -1,12 +1,44 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 "use strict";
 
 import { primordials } from "ext:core/mod.js";
-const { DatePrototypeGetTime } = primordials;
+const {
+  ArrayIsArray,
+  BigInt,
+  DataViewPrototype,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteOffset,
+  DataViewPrototypeGetByteLength,
+  Date,
+  DateNow,
+  DatePrototypeGetTime,
+  ErrorCaptureStackTrace,
+  FunctionPrototypeCall,
+  MathMin,
+  Number,
+  NumberIsFinite,
+  NumberIsInteger,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  ObjectIs,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectApply,
+  ReflectOwnKeys,
+  SafeArrayIterator,
+  SafeRegExp,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeReplace,
+  Symbol,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeIncludes,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
 import { Buffer } from "node:buffer";
 import {
   ERR_FS_EISDIR,
@@ -24,7 +56,7 @@ import {
   isDate,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
-import { once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -43,7 +75,7 @@ import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
-
+import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
 import {
   fs as fsConstants,
   os as osConstants,
@@ -87,14 +119,14 @@ const {
 // The access modes can be any of F_OK, R_OK, W_OK or X_OK. Some might not be
 // available on specific systems. They can be used in combination as well
 // (F_OK | R_OK | W_OK | X_OK).
-const kMinimumAccessMode = Math.min(F_OK, W_OK, R_OK, X_OK);
+const kMinimumAccessMode = MathMin(F_OK, W_OK, R_OK, X_OK);
 const kMaximumAccessMode = F_OK | W_OK | R_OK | X_OK;
 
 const kDefaultCopyMode = 0;
 // The copy modes can be any of COPYFILE_EXCL, COPYFILE_FICLONE or
 // COPYFILE_FICLONE_FORCE. They can be used in combination as well
 // (COPYFILE_EXCL | COPYFILE_FICLONE | COPYFILE_FICLONE_FORCE).
-const kMinimumCopyMode = Math.min(
+const kMinimumCopyMode = MathMin(
   kDefaultCopyMode,
   COPYFILE_EXCL,
   COPYFILE_FICLONE,
@@ -124,13 +156,14 @@ export const kMaxUserId = 2 ** 32 - 1;
 export function assertEncoding(encoding) {
   if (encoding && !Buffer.isEncoding(encoding)) {
     const reason = "is invalid encoding";
-    throw new ERR_INVALID_ARG_VALUE(encoding, "encoding", reason);
+    throw new ERR_INVALID_ARG_VALUE("encoding", encoding, reason);
   }
 }
 
 export class Dirent {
-  constructor(name, type) {
+  constructor(name, type, path) {
     this.name = name;
+    this.parentPath = path;
     this[kType] = type;
   }
 
@@ -163,14 +196,28 @@ export class Dirent {
   }
 }
 
-class DirentFromStats extends Dirent {
-  constructor(name, stats) {
-    super(name, null);
+export function direntFromDeno(entry) {
+  let type;
+
+  if (entry.isDirectory) {
+    type = UV_DIRENT_DIR;
+  } else if (entry.isFile) {
+    type = UV_DIRENT_FILE;
+  } else if (entry.isSymlink) {
+    type = UV_DIRENT_LINK;
+  }
+
+  return new Dirent(entry.name, type, entry.parentPath);
+}
+
+export class DirentFromStats extends Dirent {
+  constructor(name, stats, path) {
+    super(name, null, path);
     this[kStats] = stats;
   }
 }
 
-for (const name of Reflect.ownKeys(Dirent.prototype)) {
+for (const name of new SafeArrayIterator(ReflectOwnKeys(Dirent.prototype))) {
   if (name === "constructor") {
     continue;
   }
@@ -198,15 +245,21 @@ function join(path, name) {
   }
 
   if (typeof path === "string" && isUint8Array(name)) {
+    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
     const pathBuffer = Buffer.from(pathModule.join(path, pathModule.sep));
+    // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
+    // deno-lint-ignore prefer-primordials
     return Buffer.concat([pathBuffer, name]);
   }
 
   if (typeof path === "string" && typeof name === "string") {
+    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
     return pathModule.join(path, name);
   }
 
   if (isUint8Array(path) && isUint8Array(name)) {
+    // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
+    // deno-lint-ignore prefer-primordials
     return Buffer.concat([path, bufferSep, name]);
   }
 
@@ -241,13 +294,13 @@ export function getDirents(path, { 0: names, 1: types }, callback) {
             callback(err);
             return;
           }
-          names[idx] = new DirentFromStats(name, stats);
+          names[idx] = new DirentFromStats(name, stats, path);
           if (--toFinish === 0) {
             callback(null, names);
           }
         });
       } else {
-        names[i] = new Dirent(names[i], types[i]);
+        names[i] = new Dirent(names[i], types[i], path);
       }
     }
     if (toFinish === 0) {
@@ -277,20 +330,26 @@ export function getDirent(path, name, type, callback) {
           callback(err);
           return;
         }
-        callback(null, new DirentFromStats(name, stats));
+        callback(null, new DirentFromStats(name, stats, path));
       });
     } else {
-      callback(null, new Dirent(name, type));
+      callback(null, new Dirent(name, type, path));
     }
   } else if (type === UV_DIRENT_UNKNOWN) {
     const stats = lstatSync(join(path, name));
-    return new DirentFromStats(name, stats);
+    return new DirentFromStats(name, stats, path);
   } else {
-    return new Dirent(name, type);
+    return new Dirent(name, type, path);
   }
 }
 
-export function getOptions(options, defaultOptions) {
+/**
+ * @template T
+ * @param {unknown} options
+ * @param {T} [defaultOptions]
+ * @returns {T}
+ */
+export function getOptions(options, defaultOptions = kEmptyObject) {
   if (
     options === null || options === undefined ||
     typeof options === "function"
@@ -322,14 +381,14 @@ export function getOptions(options, defaultOptions) {
 export function handleErrorFromBinding(ctx) {
   if (ctx.errno !== undefined) { // libuv error numbers
     const err = uvException(ctx);
-    Error.captureStackTrace(err, handleErrorFromBinding);
+    ErrorCaptureStackTrace(err, handleErrorFromBinding);
     throw err;
   }
   if (ctx.error !== undefined) { // Errors created in C++ land.
     // TODO(joyeecheung): currently, ctx.error are encoding errors
     // usually caused by memory problems. We need to figure out proper error
     // code(s) for this.
-    Error.captureStackTrace(ctx.error, handleErrorFromBinding);
+    ErrorCaptureStackTrace(ctx.error, handleErrorFromBinding);
     throw ctx.error;
   }
 }
@@ -344,8 +403,8 @@ export const nullCheck = hideStackFrames(
     // We can only perform meaningful checks on strings and Uint8Arrays.
     if (
       (!pathIsString && !pathIsUint8Array) ||
-      (pathIsString && !path.includes("\u0000")) ||
-      (pathIsUint8Array && !path.includes(0))
+      (pathIsString && !StringPrototypeIncludes(path, "\u0000")) ||
+      (pathIsUint8Array && !TypedArrayPrototypeIncludes(path, 0))
     ) {
       return;
     }
@@ -379,7 +438,7 @@ export function preprocessSymlinkDestination(path, type, linkPath) {
     return pathModule.toNamespacedPath(path);
   }
   // Windows symlinks don't tolerate forward slashes.
-  return path.replace(/\//g, "\\");
+  return StringPrototypeReplace(path, new SafeRegExp(/\//g), "\\");
 }
 
 // Constructor for file stats.
@@ -457,6 +516,70 @@ function dateFromMs(ms) {
   return new Date(Number(ms) + 0.5);
 }
 
+const lazyDateFields = {
+  __proto__: null,
+  atime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.atime = dateFromMs(this.atimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "atime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  mtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.mtime = dateFromMs(this.mtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "mtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  ctime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.ctime = dateFromMs(this.ctimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "ctime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  birthtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.birthtime = dateFromMs(this.birthtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "birthtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+};
+
 export function BigIntStats(
   dev,
   mode,
@@ -473,7 +596,7 @@ export function BigIntStats(
   ctimeNs,
   birthtimeNs,
 ) {
-  Reflect.apply(StatsBase, this, [
+  ReflectApply(StatsBase, this, [
     dev,
     mode,
     nlink,
@@ -497,11 +620,11 @@ export function BigIntStats(
   this.atime = dateFromMs(this.atimeMs);
   this.mtime = dateFromMs(this.mtimeMs);
   this.ctime = dateFromMs(this.ctimeMs);
-  this.birthtime = dateFromMs(this.birthtimeMs);
 }
 
-Object.setPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
-Object.setPrototypeOf(BigIntStats, StatsBase);
+ObjectSetPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
+ObjectSetPrototypeOf(BigIntStats, StatsBase);
+ObjectDefineProperties(BigIntStats.prototype, lazyDateFields);
 
 BigIntStats.prototype._checkModeProperty = function (property) {
   if (
@@ -529,7 +652,8 @@ export function Stats(
   ctimeMs,
   birthtimeMs,
 ) {
-  StatsBase.call(
+  FunctionPrototypeCall(
+    StatsBase,
     this,
     dev,
     mode,
@@ -549,11 +673,11 @@ export function Stats(
   this.atime = dateFromMs(atimeMs);
   this.mtime = dateFromMs(mtimeMs);
   this.ctime = dateFromMs(ctimeMs);
-  this.birthtime = dateFromMs(birthtimeMs);
 }
 
-Object.setPrototypeOf(Stats.prototype, StatsBase.prototype);
-Object.setPrototypeOf(Stats, StatsBase);
+ObjectSetPrototypeOf(Stats.prototype, StatsBase.prototype);
+ObjectSetPrototypeOf(Stats, StatsBase);
+ObjectDefineProperties(Stats.prototype, lazyDateFields);
 
 // HACK: Workaround for https://github.com/standard-things/esm/issues/821.
 // TODO(ronag): Remove this as soon as `esm` publishes a fixed version.
@@ -692,9 +816,9 @@ export function toUnixTimestamp(time, name = "time") {
   if (typeof time === "string" && +time == time) {
     return +time;
   }
-  if (Number.isFinite(time)) {
+  if (NumberIsFinite(time)) {
     if (time < 0) {
-      return Date.now() / 1000;
+      return DateNow() / 1000;
     }
     return time;
   }
@@ -761,8 +885,25 @@ export const getValidatedPath = hideStackFrames(
   },
 );
 
+/**
+ * @param {string | Buffer | Uint8Array | URL} fileURLOrPath
+ * @param {string} [propName]
+ * @returns string
+ */
+export const getValidatedPathToString = (fileURLOrPath, propName) => {
+  const path = getValidatedPath(fileURLOrPath, propName);
+  if (isUint8Array(path)) {
+    return new TextDecoder().decode(path);
+  }
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+  return path;
+};
+
 export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {
-  if (Object.is(fd, -0)) {
+  if (ObjectIs(fd, -0)) {
     return 0;
   }
 
@@ -773,7 +914,7 @@ export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {
 
 export const validateBufferArray = hideStackFrames(
   (buffers, propName = "buffers") => {
-    if (!Array.isArray(buffers)) {
+    if (!ArrayIsArray(buffers)) {
       throw new ERR_INVALID_ARG_TYPE(propName, "ArrayBufferView[]", buffers);
     }
 
@@ -792,7 +933,7 @@ let nonPortableTemplateWarn = true;
 export function warnOnNonPortableTemplate(template) {
   // Template strings passed to the mkdtemp() family of functions should not
   // end with 'X' because they are handled inconsistently across platforms.
-  if (nonPortableTemplateWarn && template.endsWith("X")) {
+  if (nonPortableTemplateWarn && StringPrototypeEndsWith(template, "X")) {
     process.emitWarning(
       "mkdtemp() templates ending with X are not portable. " +
         "For details see: https://nodejs.org/api/fs.html",
@@ -801,6 +942,8 @@ export function warnOnNonPortableTemplate(template) {
   }
 }
 
+/** @import { CopyOptionsBase } from "ext:deno_node/_fs/cp/cp.d.ts" */
+/** @type {CopyOptionsBase} */
 const defaultCpOptions = {
   dereference: false,
   errorOnExist: false,
@@ -808,6 +951,7 @@ const defaultCpOptions = {
   force: true,
   preserveTimestamps: false,
   recursive: false,
+  verbatimSymlinks: false,
 };
 
 const defaultRmOptions = {
@@ -823,6 +967,7 @@ const defaultRmdirOptions = {
   recursive: false,
 };
 
+/** @type {(options: CopyOptionsBase | undefined) => CopyOptionsBase} */
 export const validateCpOptions = hideStackFrames((options) => {
   if (options === undefined) {
     return { ...defaultCpOptions };
@@ -834,6 +979,11 @@ export const validateCpOptions = hideStackFrames((options) => {
   validateBoolean(options.force, "options.force");
   validateBoolean(options.preserveTimestamps, "options.preserveTimestamps");
   validateBoolean(options.recursive, "options.recursive");
+  validateBoolean(options.verbatimSymlinks, "options.verbatimSymlinks");
+  options.mode = getValidMode(options.mode, "copyFile");
+  if (options.dereference === true && options.verbatimSymlinks === true) {
+    throw new ERR_INCOMPATIBLE_OPTION_PAIR("dereference", "verbatimSymlinks");
+  }
   if (options.filter !== undefined) {
     validateFunction(options.filter, "options.filter");
   }
@@ -945,7 +1095,7 @@ export const getValidMode = hideStackFrames((mode, type) => {
   if (mode == null) {
     return def;
   }
-  if (Number.isInteger(mode) && mode >= min && mode <= max) {
+  if (NumberIsInteger(mode) && mode >= min && mode <= max) {
     return mode;
   }
   if (typeof mode !== "number") {
@@ -958,6 +1108,7 @@ export const getValidMode = hideStackFrames((mode, type) => {
   );
 });
 
+/** @type {(buffer: unknown, name: string) => asserts value is string} */
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
     if (typeof buffer !== "string") {
@@ -970,31 +1121,41 @@ export const validateStringAfterArrayBufferView = hideStackFrames(
   },
 );
 
-export const validatePosition = hideStackFrames((position) => {
+/** @type {(position: unknown, name: string, length?: number) => asserts position is number | bigint} */
+export const validatePosition = hideStackFrames((position, name, length) => {
   if (typeof position === "number") {
-    validateInteger(position, "position");
+    validateInteger(position, name, -1);
   } else if (typeof position === "bigint") {
-    if (!(position >= -(2n ** 63n) && position <= 2n ** 63n - 1n)) {
+    const maxPosition = 2n ** 63n - 1n - BigInt(length);
+    if (!(position >= -1n && position <= maxPosition)) {
       throw new ERR_OUT_OF_RANGE(
-        "position",
-        `>= ${-(2n ** 63n)} && <= ${2n ** 63n - 1n}`,
+        name,
+        `>= -1 && <= ${maxPosition}`,
         position,
       );
     }
   } else {
-    throw new ERR_INVALID_ARG_TYPE("position", ["integer", "bigint"], position);
+    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], position);
   }
 });
 
 /** @type {(buffer: ArrayBufferView) => Uint8Array} */
 export const arrayBufferViewToUint8Array = hideStackFrames(
   (buffer) => {
-    if (!(buffer instanceof Uint8Array)) {
-      return new Uint8Array(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength,
-      );
+    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buffer)) {
+      if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, buffer)) {
+        return new Uint8Array(
+          DataViewPrototypeGetBuffer(buffer),
+          DataViewPrototypeGetByteOffset(buffer),
+          DataViewPrototypeGetByteLength(buffer),
+        );
+      } else {
+        return new Uint8Array(
+          TypedArrayPrototypeGetBuffer(buffer),
+          TypedArrayPrototypeGetByteOffset(buffer),
+          TypedArrayPrototypeGetByteLength(buffer),
+        );
+      }
     }
     return buffer;
   },

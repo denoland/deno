@@ -2,22 +2,22 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::parking_lot::Condvar;
 use deno_core::parking_lot::Mutex;
-use deno_core::V8CrossThreadTaskSpawner;
 use napi_sym::napi_sym;
 
+use super::util::SendPtr;
 use super::util::get_array_buffer_ptr;
 use super::util::make_external_backing_store;
 use super::util::napi_clear_last_error;
 use super::util::napi_set_last_error;
-use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
 use crate::*;
@@ -128,11 +128,13 @@ fn napi_remove_async_cleanup_hook(
 fn napi_fatal_exception(env: &mut Env, err: napi_value) -> napi_status {
   check_arg!(env, err);
 
-  let report_error = v8::Local::new(&mut env.scope(), &env.report_error);
+  v8::callback_scope!(unsafe scope, env.context());
 
-  let this = v8::undefined(&mut env.scope());
+  let report_error = v8::Local::new(scope, &env.report_error);
+
+  let this = v8::undefined(scope);
   if report_error
-    .call(&mut env.scope(), this.into(), &[err.unwrap()])
+    .call(scope, this.into(), &[err.unwrap()])
     .is_none()
   {
     return napi_generic_failure;
@@ -251,7 +253,9 @@ fn napi_make_callback<'s>(
     check_arg!(env, argv);
   }
 
-  let Some(recv) = recv.and_then(|v| v.to_object(&mut env.scope())) else {
+  v8::callback_scope!(unsafe scope, env.context());
+
+  let Some(recv) = recv.and_then(|v| v.to_object(scope)) else {
     return napi_object_expected;
   };
 
@@ -271,7 +275,7 @@ fn napi_make_callback<'s>(
 
   // TODO: async_context
 
-  let Some(v) = func.call(&mut env.scope(), recv.into(), args) else {
+  let Some(v) = func.call(scope, recv.into(), args) else {
     return napi_generic_failure;
   };
 
@@ -291,13 +295,13 @@ fn napi_create_buffer<'s>(
 ) -> napi_status {
   check_arg!(env, result);
 
-  let ab = v8::ArrayBuffer::new(&mut env.scope(), length);
+  v8::callback_scope!(unsafe scope, env.context());
 
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-  let Some(buffer) =
-    buffer_constructor.new_instance(&mut env.scope(), &[ab.into()])
-  else {
+  let ab = v8::ArrayBuffer::new(scope, length);
+
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -319,7 +323,7 @@ fn napi_create_external_buffer<'s>(
   env: &'s mut Env,
   length: usize,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {
@@ -334,14 +338,12 @@ fn napi_create_external_buffer<'s>(
     finalize_hint,
   );
 
-  let ab =
-    v8::ArrayBuffer::with_backing_store(&mut env.scope(), &store.make_shared());
+  v8::callback_scope!(unsafe scope, env.context());
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
 
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-  let Some(buffer) =
-    buffer_constructor.new_instance(&mut env.scope(), &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -362,13 +364,13 @@ fn napi_create_buffer_copy<'s>(
 ) -> napi_status {
   check_arg!(env, result);
 
-  let ab = v8::ArrayBuffer::new(&mut env.scope(), length);
+  v8::callback_scope!(unsafe scope, env.context());
 
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-  let Some(buffer) =
-    buffer_constructor.new_instance(&mut env.scope(), &[ab.into()])
-  else {
+  let ab = v8::ArrayBuffer::new(scope, length);
+
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -493,32 +495,36 @@ pub(crate) fn napi_create_async_work(
   check_arg!(env, execute);
   check_arg!(env, result);
 
-  let resource = if let Some(v) = *async_resource {
-    let Some(resource) = v.to_object(&mut env.scope()) else {
-      return napi_set_last_error(env, napi_object_expected);
+  let work = {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let resource = if let Some(v) = *async_resource {
+      let Some(resource) = v.to_object(scope) else {
+        return napi_set_last_error(env, napi_object_expected);
+      };
+      resource
+    } else {
+      v8::Object::new(scope)
     };
-    resource
-  } else {
-    v8::Object::new(&mut env.scope())
+
+    let Some(resource_name) =
+      async_resource_name.and_then(|v| v.to_string(scope))
+    else {
+      return napi_set_last_error(env, napi_string_expected);
+    };
+
+    let resource_name = resource_name.to_rust_string_lossy(scope);
+
+    Box::new(AsyncWork {
+      state: AtomicU8::new(AsyncWork::IDLE),
+      env: env_ptr,
+      _async_resource: v8::Global::new(scope, resource),
+      _async_resource_name: resource_name,
+      execute: execute.unwrap(),
+      complete,
+      data,
+    })
   };
-
-  let Some(resource_name) =
-    async_resource_name.and_then(|v| v.to_string(&mut env.scope()))
-  else {
-    return napi_set_last_error(env, napi_string_expected);
-  };
-
-  let resource_name = resource_name.to_rust_string_lossy(&mut env.scope());
-
-  let work = Box::new(AsyncWork {
-    state: AtomicU8::new(AsyncWork::IDLE),
-    env: env_ptr,
-    _async_resource: v8::Global::new(&mut env.scope(), resource),
-    _async_resource_name: resource_name,
-    execute: execute.unwrap(),
-    complete,
-    data,
-  });
 
   unsafe {
     *result = Box::into_raw(work) as _;
@@ -649,13 +655,13 @@ extern "C" fn default_call_js_cb(
   _context: *mut c_void,
   _data: *mut c_void,
 ) {
-  if let Some(js_callback) = *js_callback {
-    if let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback) {
-      let env = unsafe { &mut *(env as *mut Env) };
-      let scope = &mut env.scope();
-      let recv = v8::undefined(scope);
-      js_callback.call(scope, recv.into(), &[]);
-    }
+  if let Some(js_callback) = *js_callback
+    && let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback)
+  {
+    let env = unsafe { &mut *(env as *mut Env) };
+    v8::callback_scope!(unsafe scope, env.context());
+    let recv = v8::undefined(scope);
+    js_callback.call(scope, recv.into(), &[]);
   }
 }
 
@@ -680,10 +686,12 @@ struct TsFn {
 
 impl Drop for TsFn {
   fn drop(&mut self) {
-    assert!(self
-      .is_closed
-      .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-      .is_ok());
+    assert!(
+      self
+        .is_closed
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    );
 
     self.unref();
 
@@ -714,11 +722,7 @@ impl TsFn {
       Ordering::Relaxed,
       Ordering::Relaxed,
       |x| {
-        if x == 0 {
-          None
-        } else {
-          Some(x - 1)
-        }
+        if x == 0 { None } else { Some(x - 1) }
       },
     );
 
@@ -801,7 +805,7 @@ impl TsFn {
     let context = SendPtr(self.context);
     let call_js_cb = self.call_js_cb;
 
-    self.sender.spawn(move |scope: &mut v8::HandleScope| {
+    self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
 
       // if is_closed then tsfn is freed, don't read from it.
@@ -867,32 +871,36 @@ fn napi_create_threadsafe_function(
   }
   check_arg!(env, result);
 
-  let func = if let Some(value) = *func {
-    let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
-      return napi_set_last_error(env, napi_function_expected);
+  let (func, resource, resource_name) = {
+    v8::callback_scope!(unsafe scope, env.context());
+    let func = if let Some(value) = *func {
+      let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
+        return napi_set_last_error(env, napi_function_expected);
+      };
+      Some(v8::Global::new(scope, func))
+    } else {
+      check_arg!(env, call_js_cb);
+      None
     };
-    Some(v8::Global::new(&mut env.scope(), func))
-  } else {
-    check_arg!(env, call_js_cb);
-    None
-  };
 
-  let resource = if let Some(v) = *async_resource {
-    let Some(resource) = v.to_object(&mut env.scope()) else {
-      return napi_set_last_error(env, napi_object_expected);
+    let resource = if let Some(v) = *async_resource {
+      let Some(resource) = v.to_object(scope) else {
+        return napi_set_last_error(env, napi_object_expected);
+      };
+      resource
+    } else {
+      v8::Object::new(scope)
     };
-    resource
-  } else {
-    v8::Object::new(&mut env.scope())
-  };
-  let resource = v8::Global::new(&mut env.scope(), resource);
+    let resource = v8::Global::new(scope, resource);
 
-  let Some(resource_name) =
-    async_resource_name.and_then(|v| v.to_string(&mut env.scope()))
-  else {
-    return napi_set_last_error(env, napi_string_expected);
+    let Some(resource_name) =
+      async_resource_name.and_then(|v| v.to_string(scope))
+    else {
+      return napi_set_last_error(env, napi_string_expected);
+    };
+    let resource_name = resource_name.to_rust_string_lossy(scope);
+    (func, resource, resource_name)
   };
-  let resource_name = resource_name.to_rust_string_lossy(&mut env.scope());
 
   let tsfn = Box::new(TsFn {
     env,

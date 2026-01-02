@@ -45,7 +45,7 @@ declare var FormData: {
 /** @category Fetch */
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
-  readonly body: ReadableStream<Uint8Array> | null;
+  readonly body: ReadableStream<Uint8Array<ArrayBuffer>> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
    * response yet.
    */
@@ -61,7 +61,7 @@ interface Body {
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `Uint8Array`.
    */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
@@ -417,6 +417,7 @@ declare function fetch(
  */
 interface EventSourceInit {
   withCredentials?: boolean;
+  headers?: HeadersInit;
 }
 
 /**

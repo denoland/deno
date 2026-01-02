@@ -3,11 +3,12 @@
 use serde_json::json;
 use test_util as util;
 use test_util::itest;
-use util::assert_contains;
-use util::assert_not_contains;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 #[test]
 fn fmt_test() {
@@ -214,7 +215,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
     .new_command()
     .current_dir(t)
     .env("NO_COLOR", "1")
-    .args("fmt")
+    .args("fmt .")
     .run();
 
   output.assert_exit_code(1);
@@ -247,8 +248,12 @@ itest!(fmt_stdin {
 
 itest!(fmt_stdin_markdown {
   args: "fmt --ext=md -",
-  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
-  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
+  input: Some(
+    "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"
+  ),
+  output_str: Some(
+    "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
+  ),
 });
 
 itest!(fmt_stdin_json {
@@ -416,4 +421,22 @@ fn opt_out_top_level_exclude_via_fmt_unexclude() {
   assert_contains!(output, "main.ts");
   assert_contains!(output, "excluded.ts");
   assert_not_contains!(output, "actually_excluded.ts");
+}
+
+#[test(flaky)]
+fn test_tty_non_workspace_directory() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("main.ts").write("const a = 1;\n");
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format the entire");
+    pty.write_raw("y\r\n");
+    pty.expect("Checked 1 file");
+  });
+
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format");
+    pty.write_raw("n\r\n");
+    pty.expect("Did not format non-workspace directory");
+  });
 }

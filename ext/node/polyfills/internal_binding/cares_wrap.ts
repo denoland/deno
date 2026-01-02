@@ -40,12 +40,17 @@ import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_node_getaddrinfo,
+  op_node_getnameinfo,
 } from "ext:core/ops";
 
 interface LookupAddress {
   address: string;
   family: number;
 }
+
+export const DNS_ORDER_VERBATIM = 0;
+export const DNS_ORDER_IPV4_FIRST = 1;
+export const DNS_ORDER_IPV6_FIRST = 2;
 
 export class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
@@ -75,7 +80,7 @@ export function getaddrinfo(
   hostname: string,
   family: number,
   _hints: number,
-  verbatim: boolean,
+  order: 0 | 1 | 2,
 ): number {
   let addresses: string[] = [];
 
@@ -99,9 +104,8 @@ export function getaddrinfo(
       }
     }
 
-    // TODO(cmorten): needs work
-    // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
-    if (!verbatim) {
+    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
+    if (order === DNS_ORDER_IPV4_FIRST) {
       addresses.sort((a: string, b: string): number => {
         if (isIPv4(a)) {
           return -1;
@@ -109,6 +113,15 @@ export function getaddrinfo(
           return 1;
         }
 
+        return 0;
+      });
+    } else if (order === DNS_ORDER_IPV6_FIRST) {
+      addresses.sort((a: string, b: string): number => {
+        if (isIPv6(a)) {
+          return -1;
+        } else if (isIPv6(b)) {
+          return 1;
+        }
         return 0;
       });
     }
@@ -122,6 +135,44 @@ export function getaddrinfo(
     req.oncomplete(error, addresses, netPermToken);
   })();
 
+  return 0;
+}
+
+export class GetNameInfoReqWrap extends AsyncWrap {
+  address!: string;
+  port!: number;
+
+  callback?: (
+    err: ErrnoException | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+  resolve!: (result: { hostname: string; service: string }) => void;
+  reject!: (err: ErrnoException | null) => void;
+  oncomplete!: (
+    err: Error | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+
+  constructor() {
+    super(providerType.GETNAMEINFOREQWRAP);
+  }
+}
+
+export function getnameinfo(
+  req: GetNameInfoReqWrap,
+  address: string,
+  port: number,
+): number {
+  (async () => {
+    try {
+      const [hostname, service] = await op_node_getnameinfo(address, port);
+      req.oncomplete(null, hostname, service);
+    } catch (err) {
+      req.oncomplete(err as Error);
+    }
+  })();
   return 0;
 }
 
@@ -168,23 +219,6 @@ export interface ChannelWrapQuery {
 
 function fqdnToHostname(fqdn: string): string {
   return fqdn.replace(/\.$/, "");
-}
-
-function compressIPv6(address: string): string {
-  const formatted = address.replace(/\b(?:0+:){2,}/, ":");
-  const finalAddress = formatted
-    .split(":")
-    .map((octet) => {
-      if (octet.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        // decimal
-        return Number(octet.replaceAll(".", "")).toString(16);
-      }
-
-      return octet.replace(/\b0+/g, "");
-    })
-    .join(":");
-
-  return finalAddress;
 }
 
 export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
@@ -281,7 +315,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }),
         this.#query(name, "AAAA").then(({ ret }) => {
           (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: compressIPv6(record) })
+            records.push({ type: "AAAA", address: record })
           );
         }),
         this.#query(name, "CAA").then(({ ret }) => {
@@ -394,11 +428,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       let recordsWithTtl;
       if (req.ttl) {
         recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
-          address: compressIPv6(val?.data as string),
+          address: val?.data as string,
           ttl: val?.ttl,
         }));
-      } else {
-        ret = (ret as string[]).map((record) => compressIPv6(record));
       }
 
       req.oncomplete(code, recordsWithTtl ?? ret);
@@ -576,3 +608,15 @@ export function strerror(code: number) {
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
+
+export default {
+  DNS_ORDER_VERBATIM,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  GetAddrInfoReqWrap,
+  getaddrinfo,
+  getnameinfo,
+  QueryReqWrap,
+  ChannelWrap,
+  strerror,
+};

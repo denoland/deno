@@ -1,42 +1,27 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use boxed_error::Boxed;
 use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::AuthTokens;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::BlobData;
 use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_cache_dir::file_fetcher::FetchNoFollowError;
 use deno_cache_dir::file_fetcher::File;
-use deno_cache_dir::file_fetcher::FileFetcherOptions;
-use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
-use deno_cache_dir::file_fetcher::TooManyRedirectsError;
-use deno_cache_dir::file_fetcher::UnsupportedSchemeError;
-use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_error::JsError;
-use deno_graph::source::LoaderChecksum;
-use deno_runtime::deno_permissions::CheckSpecifierKind;
-use deno_runtime::deno_permissions::PermissionCheckError;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
+use deno_resolver::loader::MemoryFiles;
 use deno_runtime::deno_web::BlobStore;
-use http::header;
 use http::HeaderMap;
 use http::StatusCode;
-use thiserror::Error;
 
 use crate::colors;
-use crate::http_util::get_response_body_with_progress;
 use crate::http_util::HttpClientProvider;
+use crate::http_util::get_response_body_with_progress;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -76,8 +61,52 @@ impl TextDecodedFile {
   }
 }
 
+pub type CliFileFetcher = deno_resolver::file_fetcher::PermissionedFileFetcher<
+  BlobStoreAdapter,
+  CliSys,
+  HttpClientAdapter,
+>;
+pub type CliDenoGraphLoader = deno_resolver::file_fetcher::DenoGraphLoader<
+  BlobStoreAdapter,
+  CliSys,
+  HttpClientAdapter,
+>;
+
+pub struct CreateCliFileFetcherOptions {
+  pub allow_remote: bool,
+  pub cache_setting: CacheSetting,
+  pub download_log_level: log::Level,
+  pub progress_bar: Option<ProgressBar>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_cli_file_fetcher(
+  blob_store: Arc<BlobStore>,
+  http_cache: GlobalOrLocalHttpCache<CliSys>,
+  http_client_provider: Arc<HttpClientProvider>,
+  memory_files: Arc<MemoryFiles>,
+  sys: CliSys,
+  options: CreateCliFileFetcherOptions,
+) -> CliFileFetcher {
+  CliFileFetcher::new(
+    BlobStoreAdapter(blob_store),
+    Arc::new(http_cache),
+    HttpClientAdapter {
+      http_client_provider: http_client_provider.clone(),
+      download_log_level: options.download_log_level,
+      progress_bar: options.progress_bar,
+    },
+    memory_files,
+    sys,
+    PermissionedFileFetcherOptions {
+      allow_remote: options.allow_remote,
+      cache_setting: options.cache_setting,
+    },
+  )
+}
+
 #[derive(Debug)]
-struct BlobStoreAdapter(Arc<BlobStore>);
+pub struct BlobStoreAdapter(Arc<BlobStore>);
 
 #[async_trait::async_trait(?Send)]
 impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
@@ -93,7 +122,7 @@ impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
 }
 
 #[derive(Debug)]
-struct HttpClientAdapter {
+pub struct HttpClientAdapter {
   http_client_provider: Arc<HttpClientProvider>,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -212,295 +241,16 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
   }
 }
 
-#[derive(Debug, Default)]
-struct MemoryFiles(Mutex<HashMap<ModuleSpecifier, File>>);
-
-impl MemoryFiles {
-  pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
-    self.0.lock().insert(specifier, file)
-  }
-
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-}
-
-impl deno_cache_dir::file_fetcher::MemoryFiles for MemoryFiles {
-  fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    self.0.lock().get(specifier).cloned()
-  }
-}
-
-#[derive(Debug, Boxed, JsError)]
-pub struct CliFetchNoFollowError(pub Box<CliFetchNoFollowErrorKind>);
-
-#[derive(Debug, Error, JsError)]
-pub enum CliFetchNoFollowErrorKind {
-  #[error(transparent)]
-  #[class(inherit)]
-  FetchNoFollow(#[from] FetchNoFollowError),
-  #[error(transparent)]
-  #[class(generic)]
-  PermissionCheck(#[from] PermissionCheckError),
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum FetchPermissionsOptionRef<'a> {
-  AllowAll,
-  Restricted(&'a PermissionsContainer, CheckSpecifierKind),
-}
-
-#[derive(Debug, Default)]
-pub struct FetchOptions<'a> {
-  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-  pub maybe_accept: Option<&'a str>,
-  pub maybe_cache_setting: Option<&'a CacheSetting>,
-}
-
-pub struct FetchNoFollowOptions<'a> {
-  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-  pub maybe_accept: Option<&'a str>,
-  pub maybe_cache_setting: Option<&'a CacheSetting>,
-  pub maybe_checksum: Option<&'a LoaderChecksum>,
-}
-
-type DenoCacheDirFileFetcher = deno_cache_dir::file_fetcher::FileFetcher<
-  BlobStoreAdapter,
-  CliSys,
-  HttpClientAdapter,
->;
-
-/// A structure for resolving, fetching and caching source files.
-#[derive(Debug)]
-pub struct CliFileFetcher {
-  file_fetcher: DenoCacheDirFileFetcher,
-  memory_files: Arc<MemoryFiles>,
-}
-
-impl CliFileFetcher {
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    http_cache: GlobalOrLocalHttpCache<CliSys>,
-    http_client_provider: Arc<HttpClientProvider>,
-    sys: CliSys,
-    blob_store: Arc<BlobStore>,
-    progress_bar: Option<ProgressBar>,
-    allow_remote: bool,
-    cache_setting: CacheSetting,
-    download_log_level: log::Level,
-  ) -> Self {
-    let memory_files = Arc::new(MemoryFiles::default());
-    let auth_tokens = AuthTokens::new_from_sys(&sys);
-    let file_fetcher = DenoCacheDirFileFetcher::new(
-      BlobStoreAdapter(blob_store),
-      sys,
-      Arc::new(http_cache),
-      HttpClientAdapter {
-        http_client_provider: http_client_provider.clone(),
-        download_log_level,
-        progress_bar,
-      },
-      memory_files.clone(),
-      FileFetcherOptions {
-        allow_remote,
-        cache_setting,
-        auth_tokens,
-      },
-    );
-    Self {
-      file_fetcher,
-      memory_files,
-    }
-  }
-
-  pub fn cache_setting(&self) -> &CacheSetting {
-    self.file_fetcher.cache_setting()
-  }
-
-  #[inline(always)]
-  pub async fn fetch_bypass_permissions(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<File, AnyError> {
-    self
-      .fetch_inner(specifier, None, FetchPermissionsOptionRef::AllowAll)
-      .await
-  }
-
-  #[inline(always)]
-  pub async fn fetch_bypass_permissions_with_maybe_auth(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-  ) -> Result<File, AnyError> {
-    self
-      .fetch_inner(specifier, maybe_auth, FetchPermissionsOptionRef::AllowAll)
-      .await
-  }
-
-  /// Fetch a source file and asynchronously return it.
-  #[inline(always)]
-  pub async fn fetch(
-    &self,
-    specifier: &ModuleSpecifier,
-    permissions: &PermissionsContainer,
-  ) -> Result<File, AnyError> {
-    self
-      .fetch_inner(
-        specifier,
-        None,
-        FetchPermissionsOptionRef::Restricted(
-          permissions,
-          CheckSpecifierKind::Static,
-        ),
-      )
-      .await
-  }
-
-  async fn fetch_inner(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-    permissions: FetchPermissionsOptionRef<'_>,
-  ) -> Result<File, AnyError> {
-    self
-      .fetch_with_options(
-        specifier,
-        permissions,
-        FetchOptions {
-          maybe_auth,
-          maybe_accept: None,
-          maybe_cache_setting: None,
-        },
-      )
-      .await
-  }
-
-  pub async fn fetch_with_options(
-    &self,
-    specifier: &ModuleSpecifier,
-    permissions: FetchPermissionsOptionRef<'_>,
-    options: FetchOptions<'_>,
-  ) -> Result<File, AnyError> {
-    self
-      .fetch_with_options_and_max_redirect(specifier, permissions, options, 10)
-      .await
-  }
-
-  async fn fetch_with_options_and_max_redirect(
-    &self,
-    specifier: &ModuleSpecifier,
-    permissions: FetchPermissionsOptionRef<'_>,
-    options: FetchOptions<'_>,
-    max_redirect: usize,
-  ) -> Result<File, AnyError> {
-    let mut specifier = Cow::Borrowed(specifier);
-    let mut maybe_auth = options.maybe_auth;
-    for _ in 0..=max_redirect {
-      match self
-        .fetch_no_follow(
-          &specifier,
-          permissions,
-          FetchNoFollowOptions {
-            maybe_auth: maybe_auth.clone(),
-            maybe_accept: options.maybe_accept,
-            maybe_cache_setting: options.maybe_cache_setting,
-            maybe_checksum: None,
-          },
-        )
-        .await?
-      {
-        FileOrRedirect::File(file) => {
-          return Ok(file);
-        }
-        FileOrRedirect::Redirect(redirect_specifier) => {
-          // If we were redirected to another origin, don't send the auth header anymore.
-          if redirect_specifier.origin() != specifier.origin() {
-            maybe_auth = None;
-          }
-          specifier = Cow::Owned(redirect_specifier);
-        }
-      }
-    }
-
-    Err(TooManyRedirectsError(specifier.into_owned()).into())
-  }
-
-  /// Fetches without following redirects.
-  pub async fn fetch_no_follow(
-    &self,
-    specifier: &ModuleSpecifier,
-    permissions: FetchPermissionsOptionRef<'_>,
-    options: FetchNoFollowOptions<'_>,
-  ) -> Result<FileOrRedirect, CliFetchNoFollowError> {
-    validate_scheme(specifier).map_err(|err| {
-      CliFetchNoFollowErrorKind::FetchNoFollow(err.into()).into_box()
-    })?;
-    match permissions {
-      FetchPermissionsOptionRef::AllowAll => {
-        // allow
-      }
-      FetchPermissionsOptionRef::Restricted(permissions, kind) => {
-        permissions.check_specifier(specifier, kind)?;
-      }
-    }
-    self
-      .file_fetcher
-      .fetch_no_follow(
-        specifier,
-        deno_cache_dir::file_fetcher::FetchNoFollowOptions {
-          maybe_auth: options.maybe_auth,
-          maybe_checksum: options
-            .maybe_checksum
-            .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
-          maybe_accept: options.maybe_accept,
-          maybe_cache_setting: options.maybe_cache_setting,
-        },
-      )
-      .await
-      .map_err(|err| CliFetchNoFollowErrorKind::FetchNoFollow(err).into_box())
-  }
-
-  /// A synchronous way to retrieve a source file, where if the file has already
-  /// been cached in memory it will be returned, otherwise for local files will
-  /// be read from disk.
-  pub fn get_cached_source_or_local(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<File>, AnyError> {
-    if specifier.scheme() == "file" {
-      Ok(self.file_fetcher.fetch_local(specifier)?)
-    } else {
-      Ok(self.file_fetcher.fetch_cached(specifier, 10)?)
-    }
-  }
-
-  /// Insert a temporary module for the file fetcher.
-  pub fn insert_memory_files(&self, file: File) -> Option<File> {
-    self.memory_files.insert(file.url.clone(), file)
-  }
-
-  pub fn clear_memory_files(&self) {
-    self.memory_files.clear();
-  }
-}
-
-fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
-  match deno_cache_dir::file_fetcher::is_valid_scheme(specifier.scheme()) {
-    true => Ok(()),
-    false => Err(UnsupportedSchemeError {
-      scheme: specifier.scheme().to_string(),
-      url: specifier.clone(),
-    }),
-  }
-}
-
 #[cfg(test)]
 mod tests {
-  use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
-  use deno_cache_dir::file_fetcher::HttpClient;
+  use std::collections::HashMap;
+
   use deno_cache_dir::HttpCache;
+  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_core::resolve_url;
+  use deno_resolver::file_fetcher::FetchErrorKind;
+  use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+  use deno_resolver::loader::MemoryFilesRc;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use test_util::TempDir;
@@ -536,19 +286,23 @@ mod tests {
     Arc<BlobStore>,
     Arc<GlobalHttpCache>,
   ) {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
     let cache = Arc::new(GlobalHttpCache::new(CliSys::default(), location));
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      blob_store.clone(),
       GlobalOrLocalHttpCache::Global(cache.clone()),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
-      blob_store.clone(),
-      None,
-      true,
-      cache_setting,
-      log::Level::Info,
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting,
+        download_log_level: log::Level::Info,
+        progress_bar: None,
+      },
     );
     (file_fetcher, temp_dir, blob_store, cache)
   }
@@ -566,7 +320,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _, _, http_cache) =
       setup_with_blob_store_and_cache(CacheSetting::ReloadAll, None);
-    let result: Result<File, AnyError> = file_fetcher
+    let result = file_fetcher
       .fetch_with_options_and_max_redirect(
         specifier,
         FetchPermissionsOptionRef::AllowAll,
@@ -638,10 +392,12 @@ mod tests {
     let file = File {
       source: Arc::from("some source code".as_bytes()),
       url: specifier.clone(),
+      mtime: None,
       maybe_headers: Some(HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),
       )])),
+      loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
     };
     file_fetcher.insert_memory_files(file.clone());
 
@@ -760,15 +516,18 @@ mod tests {
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("remote").to_path_buf();
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::ReloadAll,
-      log::Level::Info,
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::ReloadAll,
+        download_log_level: log::Level::Info,
+        progress_bar: None,
+      },
     );
     let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
     assert!(result.is_ok());
@@ -791,15 +550,18 @@ mod tests {
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_modified_01 = {
-      let file_fetcher = CliFileFetcher::new(
+      let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
-        Default::default(),
-        None,
-        true,
-        CacheSetting::Use,
-        log::Level::Info,
+        CreateCliFileFetcherOptions {
+          allow_remote: true,
+          cache_setting: CacheSetting::Use,
+          download_log_level: log::Level::Info,
+          progress_bar: None,
+        },
       );
 
       let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
@@ -813,15 +575,18 @@ mod tests {
     };
 
     let file_modified_02 = {
-      let file_fetcher = CliFileFetcher::new(
+      let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
-        Default::default(),
-        None,
-        true,
-        CacheSetting::Use,
-        log::Level::Info,
+        CreateCliFileFetcherOptions {
+          allow_remote: true,
+          cache_setting: CacheSetting::Use,
+          download_log_level: log::Level::Info,
+          progress_bar: None,
+        },
       );
       let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
       assert!(result.is_ok());
@@ -946,15 +711,18 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
 
     let metadata_file_modified_01 = {
-      let file_fetcher = CliFileFetcher::new(
+      let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
-        Default::default(),
-        None,
-        true,
-        CacheSetting::Use,
-        log::Level::Info,
+        CreateCliFileFetcherOptions {
+          allow_remote: true,
+          cache_setting: CacheSetting::Use,
+          download_log_level: log::Level::Info,
+          progress_bar: None,
+        },
       );
 
       let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
@@ -969,15 +737,18 @@ mod tests {
     };
 
     let metadata_file_modified_02 = {
-      let file_fetcher = CliFileFetcher::new(
+      let file_fetcher = create_cli_file_fetcher(
+        Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
-        Default::default(),
-        None,
-        true,
-        CacheSetting::Use,
-        log::Level::Info,
+        CreateCliFileFetcherOptions {
+          allow_remote: true,
+          cache_setting: CacheSetting::Use,
+          download_log_level: log::Level::Info,
+          progress_bar: None,
+        },
       );
       let result = file_fetcher
         .fetch_bypass_permissions(&redirected_specifier)
@@ -1023,10 +794,10 @@ mod tests {
       .await;
     assert!(result.is_err());
 
-    let result = file_fetcher.file_fetcher.fetch_cached(&specifier, 2);
+    let result = file_fetcher.fetch_cached_remote(&specifier, 2);
     assert!(result.is_ok());
 
-    let result = file_fetcher.file_fetcher.fetch_cached(&specifier, 1);
+    let result = file_fetcher.fetch_cached_remote(&specifier, 1);
     assert!(result.is_err());
   }
 
@@ -1076,15 +847,18 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
-    let file_fetcher = CliFileFetcher::new(
+    let file_fetcher = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
-      Default::default(),
-      None,
-      false,
-      CacheSetting::Use,
-      log::Level::Info,
+      CreateCliFileFetcherOptions {
+        allow_remote: false,
+        cache_setting: CacheSetting::Use,
+        download_log_level: log::Level::Info,
+        progress_bar: None,
+      },
     );
     let specifier =
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
@@ -1092,16 +866,25 @@ mod tests {
     let result = file_fetcher.fetch_bypass_permissions(&specifier).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    let err = err.downcast::<CliFetchNoFollowError>().unwrap().into_kind();
-    match err {
-      CliFetchNoFollowErrorKind::FetchNoFollow(err) => {
-        let err = err.into_kind();
-        match &err {
-          FetchNoFollowErrorKind::NoRemote { .. } => {
-            assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
-          }
-          _ => unreachable!(),
-        }
+    let err = match err.into_kind() {
+      FetchErrorKind::FetchNoFollow(err) => err,
+      FetchErrorKind::TooManyRedirects(_) => unreachable!(),
+    };
+    let err = match err.into_kind() {
+      deno_resolver::file_fetcher::FetchNoFollowErrorKind::FetchNoFollow(
+        err,
+      ) => err,
+      _ => unreachable!(),
+    };
+    let err = err.into_kind();
+    match &err {
+      deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NoRemote {
+        ..
+      } => {
+        assert_eq!(
+          err.to_string(),
+          "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified."
+        );
       }
       _ => unreachable!(),
     }
@@ -1112,43 +895,56 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
-    let file_fetcher_01 = CliFileFetcher::new(
+    let file_fetcher_01 = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
         .into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::Only,
-      log::Level::Info,
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::Only,
+        download_log_level: log::Level::Info,
+        progress_bar: None,
+      },
     );
-    let file_fetcher_02 = CliFileFetcher::new(
+    let file_fetcher_02 = create_cli_file_fetcher(
+      Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
-      Default::default(),
-      None,
-      true,
-      CacheSetting::Use,
-      log::Level::Info,
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::Use,
+        download_log_level: log::Level::Info,
+        progress_bar: None,
+      },
     );
     let specifier =
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01.fetch_bypass_permissions(&specifier).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    let err = err.downcast::<CliFetchNoFollowError>().unwrap().into_kind();
-    match err {
-      CliFetchNoFollowErrorKind::FetchNoFollow(err) => {
-        let err = err.into_kind();
-        match &err {
-          FetchNoFollowErrorKind::NotCached { .. } => {
-            assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
-          }
-          _ => unreachable!(),
-        }
+    let err = match result.unwrap_err().into_kind() {
+      FetchErrorKind::FetchNoFollow(err) => err,
+      FetchErrorKind::TooManyRedirects(_) => unreachable!(),
+    };
+    let err = match err.into_kind() {
+      deno_resolver::file_fetcher::FetchNoFollowErrorKind::FetchNoFollow(
+        err,
+      ) => err,
+      _ => unreachable!(),
+    };
+    let err = err.into_kind();
+    match &err {
+      deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NotCached {
+        ..
+      } => {
+        assert_eq!(
+          err.to_string(),
+          "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified."
+        );
       }
       _ => unreachable!(),
     }

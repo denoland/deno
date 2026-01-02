@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
-use crate::texture::GPUTextureViewDimension;
 use crate::Instance;
+use crate::error::GPUGenericError;
+use crate::texture::GPUTextureViewDimension;
 
 pub struct GPUBindGroupLayout {
   pub instance: Instance,
@@ -23,7 +24,9 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUBindGroupLayout {
   const NAME: &'static str = "GPUBindGroupLayout";
 }
 
-impl GarbageCollected for GPUBindGroupLayout {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUBindGroupLayout {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUBindGroupLayout"
   }
@@ -31,6 +34,12 @@ impl GarbageCollected for GPUBindGroupLayout {
 
 #[op2]
 impl GPUBindGroupLayout {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBindGroupLayout, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

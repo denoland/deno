@@ -1,11 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use deno_lib::util::checksum;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
 use lsp::Range;
 use tower_lsp::lsp_types as lsp;
 
@@ -24,13 +23,13 @@ pub struct TestDefinition {
   pub range: Option<Range>,
   pub is_dynamic: bool,
   pub parent_id: Option<String>,
-  pub step_ids: HashSet<String>,
+  pub step_ids: IndexSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestModule {
   pub specifier: ModuleSpecifier,
-  pub defs: HashMap<String, TestDefinition>,
+  pub defs: IndexMap<String, TestDefinition>,
 }
 
 impl TestModule {
@@ -56,7 +55,11 @@ impl TestModule {
       let parent = match self.defs.get(parent_id) {
         Some(d) => d,
         None => {
-          lsp_warn!("Internal Error: parent_id \"{}\" of test \"{}\" was not registered.", parent_id, &name);
+          lsp_warn!(
+            "Internal Error: parent_id \"{}\" of test \"{}\" was not registered.",
+            parent_id,
+            &name
+          );
           id_components.push("<unknown>".as_bytes());
           break;
         }
@@ -66,7 +69,7 @@ impl TestModule {
     }
     id_components.push(self.specifier.as_str().as_bytes());
     id_components.reverse();
-    let id = checksum::gen(&id_components);
+    let id = checksum::r#gen(&id_components);
     if self.defs.contains_key(&id) {
       return (id, false);
     }

@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUShaderModule {
   pub instance: Instance,
@@ -23,7 +24,10 @@ impl WebIdlInterfaceConverter for GPUShaderModule {
   const NAME: &'static str = "GPUShaderModule";
 }
 
-impl GarbageCollected for GPUShaderModule {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUShaderModule {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUShaderModule"
   }
@@ -31,6 +35,12 @@ impl GarbageCollected for GPUShaderModule {
 
 #[op2]
 impl GPUShaderModule {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUShaderModule, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

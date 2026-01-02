@@ -10,7 +10,11 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionError;
+use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_terminal::colors;
+
+use crate::graph_util::resolution_error_for_tsc_diagnostic;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -77,10 +81,10 @@ impl From<i64> for DiagnosticCategory {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
-  message_text: String,
-  category: DiagnosticCategory,
-  code: i64,
-  next: Option<Vec<DiagnosticMessageChain>>,
+  pub message_text: String,
+  pub category: DiagnosticCategory,
+  pub code: i64,
+  pub next: Option<Vec<DiagnosticMessageChain>>,
 }
 
 impl DiagnosticMessageChain {
@@ -186,6 +190,34 @@ impl Diagnostic {
     }
   }
 
+  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+    let error_ref = resolution_error_for_tsc_diagnostic(error)?;
+    if error_ref.is_module_not_found {
+      return Some(Self::from_missing_error(
+        error_ref.specifier,
+        Some(error_ref.range),
+        None,
+      ));
+    }
+    Some(Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: Some(Position::from_deno_graph(error_ref.range.range.start)),
+      end: Some(Position::from_deno_graph(error_ref.range.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(enhanced_resolution_error_message(error)),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: Some(error_ref.range.specifier.to_string()),
+      related_information: None,
+      reports_deprecated: None,
+      reports_unnecessary: None,
+      other: Default::default(),
+      missing_specifier: Some(error_ref.specifier.to_string()),
+    })
+  }
+
   /// If this diagnostic should be included when it comes from a remote module.
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
@@ -255,49 +287,48 @@ impl Diagnostic {
   ) -> fmt::Result {
     if let (Some(source_line), Some(start), Some(end)) =
       (&self.source_line, &self.start, &self.end)
+      && !source_line.is_empty()
+      && source_line.len() <= MAX_SOURCE_LINE_LENGTH
     {
-      if !source_line.is_empty() && source_line.len() <= MAX_SOURCE_LINE_LENGTH
-      {
-        write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
-        let length = if start.line == end.line {
-          end.character - start.character
+      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
+      let length = if start.line == end.line {
+        end.character - start.character
+      } else {
+        1
+      };
+      let mut s = String::new();
+      for i in 0..start.character {
+        s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
+          '\t'
         } else {
-          1
-        };
-        let mut s = String::new();
-        for i in 0..start.character {
-          s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
-            '\t'
-          } else {
-            ' '
-          });
-        }
-        // TypeScript always uses `~` when underlining, but v8 always uses `^`.
-        // We will use `^` to indicate a single point, or `~` when spanning
-        // multiple characters.
-        let ch = if length > 1 { '~' } else { '^' };
-        for _i in 0..length {
-          s.push(ch)
-        }
-        let underline = if self.is_error() {
-          colors::red(&s).to_string()
-        } else {
-          colors::cyan(&s).to_string()
-        };
-        write!(f, "\n{:indent$}{}", "", underline, indent = level)?;
+          ' '
+        });
       }
+      // TypeScript always uses `~` when underlining, but v8 always uses `^`.
+      // We will use `^` to indicate a single point, or `~` when spanning
+      // multiple characters.
+      let ch = if length > 1 { '~' } else { '^' };
+      for _i in 0..length {
+        s.push(ch)
+      }
+      let underline = if self.is_error() {
+        colors::red(&s).to_string()
+      } else {
+        colors::cyan(&s).to_string()
+      };
+      write!(f, "\n{:indent$}{}", "", underline, indent = level)?;
     }
 
     Ok(())
   }
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    if let Some(related_information) = self.related_information.as_ref() {
-      if !related_information.is_empty() {
-        write!(f, "\n\n")?;
-        for info in related_information {
-          info.fmt_stack(f, 4)?;
-        }
+    if let Some(related_information) = self.related_information.as_ref()
+      && !related_information.is_empty()
+    {
+      write!(f, "\n\n")?;
+      for info in related_information {
+        info.fmt_stack(f, 4)?;
       }
     }
 
@@ -326,6 +357,12 @@ impl fmt::Display for Diagnostic {
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
+
+impl From<Vec<Diagnostic>> for Diagnostics {
+  fn from(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+}
 
 impl Diagnostics {
   #[cfg(test)]
@@ -375,27 +412,23 @@ impl Diagnostics {
         .file_name
         .as_ref()
         .and_then(|n| ModuleSpecifier::parse(n).ok())
+        && let Ok(Some(module)) = graph.try_get_prefer_types(&specifier)
+        && let Some(fast_check_module) =
+          module.js().and_then(|m| m.fast_check_module())
       {
-        if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
-          if let Some(fast_check_module) =
-            module.js().and_then(|m| m.fast_check_module())
-          {
-            // todo(dsherret): use a short lived cache to prevent parsing
-            // source maps so often
-            if let Ok(source_map) =
-              SourceMap::from_slice(fast_check_module.source_map.as_bytes())
-            {
-              if let Some(start) = d.start.as_mut() {
-                let maybe_token = source_map
-                  .lookup_token(start.line as u32, start.character as u32);
-                if let Some(token) = maybe_token {
-                  d.original_source_start = Some(Position {
-                    line: token.get_src_line() as u64,
-                    character: token.get_src_col() as u64,
-                  });
-                }
-              }
-            }
+        // todo(dsherret): use a short lived cache to prevent parsing
+        // source maps so often
+        if let Ok(source_map) =
+          SourceMap::from_slice(fast_check_module.source_map.as_bytes())
+          && let Some(start) = d.start.as_mut()
+        {
+          let maybe_token =
+            source_map.lookup_token(start.line as u32, start.character as u32);
+          if let Some(token) = maybe_token {
+            d.original_source_start = Some(Position {
+              line: token.get_src_line() as u64,
+              character: token.get_src_col() as u64,
+            });
           }
         }
       }
@@ -618,7 +651,10 @@ mod tests {
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1");
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1"
+    );
   }
 
   #[test]
@@ -659,6 +695,9 @@ mod tests {
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10"
+    );
   }
 }

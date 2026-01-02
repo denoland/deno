@@ -1,0 +1,22 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_signals"
+version = "0.16.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Signals for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_error.workspace = true
+libc.workspace = true
+signal-hook.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+winapi = { workspace = true, features = ["consoleapi"] }

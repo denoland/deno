@@ -1513,11 +1513,37 @@ Deno.test(function consoleGroup() {
     assertEquals(
       out.toString(),
       `1
-    2
-    3
-        4
+  2
+  3
+    4
 5
 6
+`,
+    );
+  });
+});
+
+// console.group with console.dir test
+Deno.test(function consoleGroupDir() {
+  mockConsole((console, out) => {
+    console.dir("1");
+    console.group();
+    console.dir("2");
+    console.group();
+    console.dir("3");
+    console.groupEnd();
+    console.dir("4");
+    console.groupEnd();
+    console.dir("5");
+
+    // console.dir should respect group indentation
+    assertEquals(
+      out.toString(),
+      `1
+  2
+    3
+  4
+5
 `,
     );
   });
@@ -1542,9 +1568,9 @@ Deno.test(function consoleGroupWarn() {
     assertEquals(
       both.toString(),
       `1
-    2
-        3
-    4
+  2
+    3
+  4
 5
 6
 7
@@ -2177,7 +2203,7 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
+    `{ prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
@@ -2216,6 +2242,18 @@ Deno.test(function inspectProxy() {
       { showProxy: true },
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/30229
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      new Proxy({}, {
+        get() {
+          throw new Error("fail");
+        },
+      }),
+    )),
+    "{}",
   );
 });
 

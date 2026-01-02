@@ -55,6 +55,11 @@ pub struct CheckSpecifiersOptions<'a> {
   pub allow_unknown_media_types: bool,
 }
 
+pub struct CollectSpecifiersOptions {
+  /// Whether to include paths that are specified even if they're ignored.
+  pub include_ignored_specified: bool,
+}
+
 impl MainModuleGraphContainer {
   pub fn new(
     cli_options: Arc<CliOptions>,
@@ -90,6 +95,7 @@ impl MainModuleGraphContainer {
           permissions: self.root_permissions.clone(),
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;
@@ -102,8 +108,9 @@ impl MainModuleGraphContainer {
   pub async fn load_and_type_check_files(
     &self,
     files: &[String],
+    options: CollectSpecifiersOptions,
   ) -> Result<(), AnyError> {
-    let specifiers = self.collect_specifiers(files)?;
+    let specifiers = self.collect_specifiers(files, options)?;
 
     if specifiers.is_empty() {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
@@ -115,6 +122,7 @@ impl MainModuleGraphContainer {
   pub fn collect_specifiers(
     &self,
     files: &[String],
+    options: CollectSpecifiersOptions,
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     let excludes = self.cli_options.workspace().resolve_config_excludes()?;
     let include_patterns =
@@ -128,8 +136,14 @@ impl MainModuleGraphContainer {
       exclude: excludes,
     };
     collect_specifiers(
-      file_patterns,
-      self.cli_options.vendor_dir_path().map(ToOwned::to_owned),
+      crate::util::fs::CollectSpecifiersOptions {
+        file_patterns,
+        vendor_folder: self
+          .cli_options
+          .vendor_dir_path()
+          .map(ToOwned::to_owned),
+        include_ignored_specified: options.include_ignored_specified,
+      },
       |e| is_script_ext(e.path),
     )
   }

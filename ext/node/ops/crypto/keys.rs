@@ -4,11 +4,11 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
+use deno_core::GarbageCollected;
+use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
-use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
@@ -20,31 +20,31 @@ use pkcs8::EncodePrivateKey as _;
 use pkcs8::EncryptedPrivateKeyInfo;
 use pkcs8::PrivateKeyInfo;
 use pkcs8::SecretDocument;
-use rand::thread_rng;
 use rand::RngCore as _;
+use rand::thread_rng;
+use rsa::RsaPrivateKey;
+use rsa::RsaPublicKey;
 use rsa::pkcs1::DecodeRsaPrivateKey as _;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1::EncodeRsaPrivateKey as _;
 use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
-use rsa::RsaPrivateKey;
-use rsa::RsaPublicKey;
+use sec1::DecodeEcPrivateKey as _;
+use sec1::LineEnding;
 use sec1::der::Tag;
 use sec1::der::Writer as _;
 use sec1::pem::PemLabel as _;
-use sec1::DecodeEcPrivateKey as _;
-use sec1::LineEnding;
-use spki::der::asn1;
-use spki::der::asn1::OctetStringRef;
+use spki::DecodePublicKey as _;
+use spki::EncodePublicKey as _;
+use spki::SubjectPublicKeyInfoRef;
 use spki::der::AnyRef;
 use spki::der::Decode as _;
 use spki::der::Encode as _;
 use spki::der::PemWriter;
 use spki::der::Reader as _;
-use spki::DecodePublicKey as _;
-use spki::EncodePublicKey as _;
-use spki::SubjectPublicKeyInfoRef;
+use spki::der::asn1;
+use spki::der::asn1::OctetStringRef;
 use x509_parser::error::X509Error;
 use x509_parser::x509;
 
@@ -62,7 +62,10 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
-impl GarbageCollected for KeyObjectHandle {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for KeyObjectHandle {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"KeyObjectHandle"
   }
@@ -633,7 +636,7 @@ impl KeyObjectHandle {
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
-              ))
+              ));
             }
           }
         }
@@ -666,13 +669,13 @@ impl KeyObjectHandle {
         _ => {
           return Err(AsymmetricPrivateKeyError::UnsupportedKeyType(
             typ.to_string(),
-          ))
+          ));
         }
       },
       _ => {
         return Err(AsymmetricPrivateKeyError::UnsupportedKeyFormat(
           format.to_string(),
-        ))
+        ));
       }
     };
 
@@ -977,7 +980,7 @@ impl KeyObjectHandle {
               KeyObjectHandle::AsymmetricPrivate(private) => {
                 return Ok(KeyObjectHandle::AsymmetricPublic(
                   private.to_public_key(),
-                ))
+                ));
               }
               KeyObjectHandle::AsymmetricPublic(_)
               | KeyObjectHandle::Secret(_) => unreachable!(),
@@ -996,7 +999,7 @@ impl KeyObjectHandle {
           _ => {
             return Err(AsymmetricPublicKeyError::UnsupportedPemLabel(
               label.to_string(),
-            ))
+            ));
           }
         }
       }
@@ -1008,13 +1011,13 @@ impl KeyObjectHandle {
         _ => {
           return Err(AsymmetricPublicKeyError::UnsupportedKeyType(
             typ.to_string(),
-          ))
+          ));
         }
       },
       _ => {
         return Err(AsymmetricPublicKeyError::UnsupportedKeyType(
           format.to_string(),
-        ))
+        ));
       }
     };
 
@@ -1156,7 +1159,7 @@ fn parse_rsa_pss_params(
           ID_SHA512_224_OID => RsaPssHashAlgorithm::Sha512_224,
           ID_SHA512_256_OID => RsaPssHashAlgorithm::Sha512_256,
           _ => {
-            return Err(RsaPssParamsParseError::UnsupportedPssMaskGenAlgorithm)
+            return Err(RsaPssParamsParseError::UnsupportedPssMaskGenAlgorithm);
           }
         }
       }
@@ -1444,10 +1447,9 @@ fn rsa_private_to_jwk(key: &RsaPrivateKey) -> deno_core::serde_json::Value {
   });
 
   if !oth.is_empty() {
-    obj["oth"] = deno_core::serde_json::json!(oth
-      .iter()
-      .map(|o| o.to_bytes_be())
-      .collect::<Vec<_>>());
+    obj["oth"] = deno_core::serde_json::json!(
+      oth.iter().map(|o| o.to_bytes_be()).collect::<Vec<_>>()
+    );
   }
 
   obj
@@ -1920,7 +1922,10 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
-impl GarbageCollected for KeyObjectHandlePair {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for KeyObjectHandlePair {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"KeyObjectHandlePair"
   }
@@ -2115,7 +2120,7 @@ fn dsa_generate(
     _ => {
       return Err(JsErrorBox::type_error(
         "Invalid modulusLength+divisorLength combination",
-      ))
+      ));
     }
   };
   let components = Components::generate(&mut rng, key_size);
@@ -2167,7 +2172,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
       return Err(JsErrorBox::type_error(format!(
         "unsupported named curve: {}",
         named_curve
-      )))
+      )));
     }
   };
   let public_key = private_key.to_public_key();

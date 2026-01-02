@@ -11,20 +11,22 @@ const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
 if (Deno.args.some((a) => a === "--rc")) {
-  const cliVersion = semver.parse(cliCrate.version)!;
+  let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease[0] != "rc") {
-    cliVersion.increment("minor");
+  if (cliVersion.prerelease?.[0] != "rc") {
+    cliVersion = semver.increment(cliVersion, "minor");
   }
-  cliVersion.increment("pre", "rc");
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
 
   const version = cliVersion.toString();
 
   await cliCrate.setVersion(version);
   await denoRtCrate.setVersion(version);
-  await denoLibCrate.setVersion(version);
+  denoLibCrate.folderPath.join("version.txt").writeTextSync(version);
   // Force lockfile update
   await workspace.getCliCrate().cargoUpdate("--workspace");
+
+  await assertDenoBinaryVersion(version);
 
   Deno.exit(0);
 }
@@ -43,7 +45,7 @@ if (Deno.args.some((a) => a === "--patch")) {
 }
 
 await denoRtCrate.setVersion(cliCrate.version);
-await denoLibCrate.setVersion(cliCrate.version);
+denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
@@ -52,6 +54,7 @@ for (const crate of workspace.getCliDependencyCrates()) {
 
 // update the lock file
 await workspace.getCliCrate().cargoUpdate("--workspace");
+await assertDenoBinaryVersion(cliCrate.version);
 
 // try to update the Releases.md markdown text
 try {
@@ -69,9 +72,14 @@ try {
 async function updateReleasesMd() {
   const gitLog = await getGitLog();
   const releasesMdFile = workspace.getReleasesMdFile();
+  const cliVersion = semver.parse(cliCrate.version)!;
+  const bodyPreText = releaseHasBlogPost()
+    ? `Read more: http://deno.com/blog/v${cliVersion.major}.${cliVersion.minor}`
+    : undefined;
   releasesMdFile.updateWithGitLog({
     version: cliCrate.version,
     gitLog,
+    bodyPreText,
   });
 
   await workspace.runFormatter();
@@ -138,4 +146,22 @@ async function bumpCiCacheVersion() {
 
   // run the script
   await $`${generateScript}`;
+}
+
+async function assertDenoBinaryVersion(expectedVersion: string) {
+  $.logStep("Verifying Deno binary version.");
+  const text = (await $`cargo run -p deno -- -v`.text()).replace("deno ", "");
+  $.logLight("Version:", text);
+  if (text.trim() !== expectedVersion) {
+    $.logError("Error: Expected", expectedVersion, "but found", text);
+    Deno.exit(1);
+  }
+}
+
+function releaseHasBlogPost() {
+  const pastVersion = semver.parse(originalCliVersion)!;
+  const newVersion = semver.parse(cliCrate.version)!;
+
+  return pastVersion.major !== newVersion.major ||
+    pastVersion.minor !== newVersion.minor;
 }

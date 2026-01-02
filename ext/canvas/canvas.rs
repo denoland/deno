@@ -3,12 +3,13 @@ use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::webidl::UnrestrictedDouble;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::cppgc::Visitor;
+use deno_core::webidl::UnrestrictedDouble;
 use deno_error::JsErrorBox;
 use deno_image::image;
 use deno_image::image::ColorType;
@@ -22,7 +23,7 @@ pub struct BlobHandle(pub v8::Global<v8::Function>);
 pub type CreateCanvasContext = for<'s> fn(
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<Data>>,
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
@@ -34,7 +35,10 @@ pub struct OffscreenCanvas {
   active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
 
-impl GarbageCollected for OffscreenCanvas {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for OffscreenCanvas {
+  fn trace(&self, _visitor: &mut Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OffscreenCanvas"
   }
@@ -54,7 +58,7 @@ impl OffscreenCanvas {
   #[setter]
   fn width(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
@@ -86,7 +90,7 @@ impl OffscreenCanvas {
   #[setter]
   fn height(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
@@ -128,7 +132,7 @@ impl OffscreenCanvas {
   fn get_context<'s>(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl] context_id: String,
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
@@ -167,7 +171,7 @@ impl OffscreenCanvas {
   #[cppgc]
   fn transfer_to_image_bitmap(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<ImageBitmap, JsErrorBox> {
     if self.active_context.get().is_none() {
       return Err(JsErrorBox::new(
@@ -215,7 +219,7 @@ impl OffscreenCanvas {
   fn convert_to_blob<'s>(
     &self,
     state: Rc<RefCell<OpState>>,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl] options: ImageEncodeOptions,
   ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
     let state = state.borrow();
@@ -288,26 +292,26 @@ impl OffscreenCanvas {
 pub enum Context {
   #[allow(dead_code)]
   Bitmap(
-    deno_core::cppgc::Ptr<crate::bitmaprenderer::ImageBitmapRenderingContext>,
+    deno_core::cppgc::Ref<crate::bitmaprenderer::ImageBitmapRenderingContext>,
   ),
-  WebGPU(deno_core::cppgc::Ptr<deno_webgpu::canvas::GPUCanvasContext>),
+  WebGPU(deno_core::cppgc::Ref<deno_webgpu::canvas::GPUCanvasContext>),
 }
 
 pub fn get_context<'t>(
   id: &'t str,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   local: v8::Local<'t, v8::Value>,
 ) -> Context {
   match id {
     crate::bitmaprenderer::CONTEXT_ID => {
-      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_persistent_object::<
         crate::bitmaprenderer::ImageBitmapRenderingContext,
       >(scope, local)
       .unwrap();
       Context::Bitmap(ptr)
     }
     deno_webgpu::canvas::CONTEXT_ID => {
-      let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
+      let ptr = deno_core::cppgc::try_unwrap_cppgc_persistent_object::<
         deno_webgpu::canvas::GPUCanvasContext,
       >(scope, local)
       .unwrap();

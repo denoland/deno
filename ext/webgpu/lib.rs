@@ -6,14 +6,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
+
+use crate::error::GPUGenericError;
 
 mod adapter;
 mod bind_group;
@@ -104,7 +106,7 @@ deno_core::extension!(
 #[cppgc]
 pub fn op_create_gpu(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
   error_event_class: v8::Local<v8::Value>,
@@ -125,7 +127,10 @@ struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 
-impl GarbageCollected for GPU {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPU {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPU"
   }
@@ -133,6 +138,12 @@ impl GarbageCollected for GPU {
 
 #[op2]
 impl GPU {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPU, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[async_method]
   #[cppgc]
   async fn request_adapter(

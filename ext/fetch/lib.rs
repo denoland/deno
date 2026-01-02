@@ -26,15 +26,6 @@ use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
 use data_url::DataUrl;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::url;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -48,47 +39,60 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::url;
+use deno_core::url::Url;
+use deno_core::v8;
 use deno_error::JsErrorBox;
-use deno_fs::open_options_with_access_check;
-use deno_fs::CheckedPath;
 pub use deno_fs::FsError;
-use deno_fs::OpenOptions;
 use deno_path_util::PathToUrlError;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
-use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::SocketUse;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
+use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
-use http::header::HeaderName;
-use http::header::HeaderValue;
+use http::Extensions;
+use http::HeaderMap;
+use http::Method;
+use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
-use http::Extensions;
-use http::Method;
-use http::Uri;
-use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
+use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
+use hyper_util::client::legacy::Builder as HyperClientBuilder;
+use hyper_util::client::legacy::connect::Connection;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
-use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
+use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
-use tower::retry;
+use tower::BoxError;
+use tower::Service;
 use tower::ServiceExt;
+use tower::retry;
 use tower_http::decompression::Decompression;
 
 #[derive(Clone)]
@@ -141,13 +145,12 @@ impl Default for Options {
 }
 
 deno_core::extension!(deno_fetch,
-  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
-  parameters = [FP: FetchPermissions],
+  deps = [ deno_webidl, deno_web ],
   ops = [
-    op_fetch<FP>,
+    op_fetch,
     op_fetch_send,
     op_utf8_to_byte_string,
-    op_fetch_custom_client<FP>,
+    op_fetch_custom_client,
     op_fetch_promise_is_settled,
   ],
   esm = [
@@ -233,9 +236,9 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
-  #[class("NotCapable")]
-  #[error("requires {0} access")]
-  NotCapable(&'static str),
+  #[class(generic)]
+  #[error(transparent)]
+  PermissionCheck(PermissionCheckError),
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -244,7 +247,9 @@ impl From<deno_fs::FsError> for FetchError {
       deno_fs::FsError::Io(_)
       | deno_fs::FsError::FileBusy
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
-      deno_fs::FsError::NotCapable(err) => FetchError::NotCapable(err),
+      deno_fs::FsError::PermissionCheck(err) => {
+        FetchError::PermissionCheck(err)
+      }
     }
   }
 }
@@ -356,8 +361,8 @@ impl Stream for ResourceToBodyAdapter {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let this = self.get_mut();
-    if let Some(mut fut) = this.1.take() {
-      match fut.poll_unpin(cx) {
+    match this.1.take() {
+      Some(mut fut) => match fut.poll_unpin(cx) {
         Poll::Pending => {
           this.1 = Some(fut);
           Poll::Pending
@@ -370,9 +375,8 @@ impl Stream for ResourceToBodyAdapter {
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },
-      }
-    } else {
-      Poll::Ready(None)
+      },
+      _ => Poll::Ready(None),
     }
   }
 }
@@ -399,118 +403,12 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
-pub trait FetchPermissions {
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
-  fn check_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
-}
-
-impl FetchPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-
-  #[inline(always)]
-  fn check_read<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-    if self.allows_all() {
-      return Ok(deno_fs::CheckedPath::Unresolved(path));
-    }
-
-    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
-
-    let path = deno_permissions::PermissionsContainer::check_read_path(
-      self,
-      normalized_path,
-      Some(api_name),
-    )
-    .map_err(|_| FsError::NotCapable("read"))?;
-
-    let path = if needs_canonicalize {
-      let path = get_path.resolved(&path)?;
-
-      Cow::Owned(path)
-    } else {
-      path
-    };
-    self
-      .check_special_file(&path, api_name)
-      .map_err(FsError::NotCapable)?;
-
-    if needs_canonicalize {
-      Ok(CheckedPath::Resolved(path))
-    } else {
-      Ok(CheckedPath::Unresolved(path))
-    }
-  }
-
-  fn check_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-    if self.allows_all() {
-      return Ok(deno_fs::CheckedPath::Unresolved(path));
-    }
-
-    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
-    let path = deno_permissions::PermissionsContainer::check_write_path(
-      self,
-      normalized_path,
-      api_name,
-    )
-    .map_err(|_| FsError::NotCapable("write"))?;
-
-    let path = if needs_canonicalize {
-      let path = get_path.resolved(&path)?;
-
-      Cow::Owned(path)
-    } else {
-      path
-    };
-    self
-      .check_special_file(&path, api_name)
-      .map_err(FsError::NotCapable)?;
-
-    if needs_canonicalize {
-      Ok(CheckedPath::Resolved(path))
-    } else {
-      Ok(CheckedPath::Unresolved(path))
-    }
-  }
-}
-
 #[op2(stack_trace)]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::result_large_err)]
-pub fn op_fetch<FP>(
+pub fn op_fetch(
   state: &mut OpState,
   #[serde] method: ByteString,
   #[string] url: String,
@@ -519,10 +417,7 @@ pub fn op_fetch<FP>(
   has_body: bool,
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
-) -> Result<FetchReturn, FetchError>
-where
-  FP: FetchPermissions + 'static,
-{
+) -> Result<FetchReturn, FetchError> {
   let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)
@@ -555,7 +450,7 @@ where
       (request_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
-      let permissions = state.borrow_mut::<FP>();
+      let permissions = state.borrow_mut::<PermissionsContainer>();
       permissions.check_net_url(&url, "fetch()")?;
 
       let maybe_authority = extract_authority(&mut url);
@@ -698,8 +593,6 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -730,17 +623,15 @@ pub async fn op_fetch_send(
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
 
-      if let FetchError::ClientSend(err_src) = &err {
-        if let Some(client_err) = std::error::Error::source(&err_src.source) {
-          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
-            if let Some(err_src) = std::error::Error::source(err_src) {
-              return Ok(FetchResponse {
-                error: Some((err.to_string(), err_src.to_string())),
-                ..Default::default()
-              });
-            }
-          }
-        }
+      if let FetchError::ClientSend(err_src) = &err
+        && let Some(client_err) = std::error::Error::source(&err_src.source)
+        && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
+        && let Some(err_src) = std::error::Error::source(err_src)
+      {
+        return Ok(FetchResponse {
+          error: Some((err.to_string(), err_src.to_string())),
+          ..Default::default()
+        });
       }
 
       return Err(err);
@@ -756,15 +647,6 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
 
   let response_rid = state
     .borrow_mut()
@@ -778,8 +660,6 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
-    remote_addr_ip,
-    remote_addr_port,
     error: None,
   })
 }
@@ -793,7 +673,7 @@ pub struct FetchRequestResource {
 }
 
 impl Resource for FetchRequestResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchRequest".into()
   }
 }
@@ -801,7 +681,7 @@ impl Resource for FetchRequestResource {
 pub struct FetchCancelHandle(pub Rc<CancelHandle>);
 
 impl Resource for FetchCancelHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchCancelHandle".into()
   }
 
@@ -850,7 +730,7 @@ impl FetchResponseResource {
 }
 
 impl Resource for FetchResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchResponse".into()
   }
 
@@ -925,7 +805,7 @@ pub struct HttpClientResource {
 }
 
 impl Resource for HttpClientResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpClient".into()
   }
 }
@@ -956,63 +836,43 @@ fn default_true() -> bool {
   true
 }
 
-fn sync_permission_check<'a, P: FetchPermissions + 'static>(
-  permissions: &'a mut P,
-  api_name: &'static str,
-) -> impl deno_fs::AccessCheckFn + 'a {
-  move |path, _options, _resolve| {
-    let read_path = permissions.check_read(path.clone(), api_name, _resolve)?;
-    let write_path = permissions.check_write(path, api_name, _resolve)?;
-    match (&read_path, &write_path) {
-      (CheckedPath::Resolved(a), CheckedPath::Resolved(b))
-      | (CheckedPath::Unresolved(a), CheckedPath::Resolved(b))
-      | (CheckedPath::Resolved(a), CheckedPath::Unresolved(b))
-      | (CheckedPath::Unresolved(a), CheckedPath::Unresolved(b))
-        if a == b =>
-      {
-        Ok(write_path)
-      }
-      _ => Err(FsError::NotCapable("write")),
-    }
-  }
-}
-
 #[op2(stack_trace)]
 #[smi]
 #[allow(clippy::result_large_err)]
-pub fn op_fetch_custom_client<FP>(
+pub fn op_fetch_custom_client(
   state: &mut OpState,
-  #[serde] args: CreateHttpClientArgs,
+  #[serde] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
-) -> Result<ResourceId, FetchError>
-where
-  FP: FetchPermissions + 'static,
-{
-  if let Some(proxy) = &args.proxy {
-    let permissions = state.borrow_mut::<FP>();
+) -> Result<ResourceId, FetchError> {
+  if let Some(proxy) = &mut args.proxy {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
-      Proxy::Unix { path } => {
-        let path = Path::new(path);
-        let mut access_check = sync_permission_check::<PermissionsContainer>(
-          state.borrow_mut(),
-          "Deno.createHttpClient()",
-        );
-        let (resolved_path, _) = open_options_with_access_check(
-          OpenOptions {
-            read: true,
-            write: true,
-            ..Default::default()
-          },
-          path,
-          Some(&mut access_check),
-        )?;
+      Proxy::Tcp { hostname, port } => {
+        permissions
+          .check_net(&(hostname, Some(*port)), "Deno.createHttpClient()")?;
+      }
+      Proxy::Unix {
+        path: original_path,
+      } => {
+        let path = Path::new(original_path);
+        let resolved_path = permissions
+          .check_open(
+            Cow::Borrowed(path),
+            OpenAccessKind::ReadWriteNoFollow,
+            Some("Deno.createHttpClient()"),
+          )?
+          .into_path();
         if path != resolved_path {
-          return Err(FetchError::NotCapable("write"));
+          *original_path = resolved_path.to_string_lossy().into_owned();
         }
+      }
+      Proxy::Vsock { cid, port } => {
+        let permissions = state.borrow_mut::<PermissionsContainer>();
+        permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
       }
     }
   }
@@ -1107,13 +967,17 @@ pub enum HttpClientCreateError {
   InvalidAddress(String),
   #[error("invalid proxy url")]
   InvalidProxyUrl,
-  #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
+  #[error(
+    "Cannot create Http Client: either `http1` or `http2` needs to be set to true"
+  )]
   HttpVersionSelectionInvalid,
   #[class(inherit)]
   #[error(transparent)]
   RootCertStore(JsErrorBox),
   #[error("Unix proxy is not supported on Windows")]
   UnixProxyNotSupportedOnWindows,
+  #[error("Vsock proxy is not supported on this platform")]
+  VsockProxyNotSupported,
 }
 
 /// Create new instance of async Client. This client supports
@@ -1122,14 +986,17 @@ pub fn create_http_client(
   user_agent: &str,
   options: CreateHttpClientOptions,
 ) -> Result<Client, HttpClientCreateError> {
-  let mut tls_config = deno_tls::create_client_config(
-    options.root_cert_store,
-    options.ca_certs,
-    options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key.into(),
-    deno_tls::SocketUse::Http,
-  )
-  .map_err(HttpClientCreateError::Tls)?;
+  let mut tls_config =
+    deno_tls::create_client_config(deno_tls::TlsClientConfigOptions {
+      root_cert_store: options.root_cert_store,
+      ca_certs: options.ca_certs,
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: options.client_cert_chain_and_key.into(),
+      socket_use: deno_tls::SocketUse::Http,
+    })
+    .map_err(HttpClientCreateError::Tls)?;
 
   // Proxy TLS should not send ALPN
   tls_config.alpn_protocols.clear();
@@ -1179,6 +1046,13 @@ pub fn create_http_client(
         }
         intercept
       }
+      Proxy::Tcp {
+        hostname: host,
+        port,
+      } => {
+        let target = proxy::Target::new_tcp(host, port);
+        proxy::Intercept::all(target)
+      }
       #[cfg(not(windows))]
       Proxy::Unix { path } => {
         let target = proxy::Target::new_unix(PathBuf::from(path));
@@ -1188,13 +1062,30 @@ pub fn create_http_client(
       Proxy::Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      Proxy::Vsock { cid, port } => {
+        let target = proxy::Target::new_vsock(cid, port);
+        proxy::Intercept::all(target)
+      }
+      #[cfg(not(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      )))]
+      Proxy::Vsock { .. } => {
+        return Err(HttpClientCreateError::VsockProxyNotSupported);
+      }
     };
     proxies.prepend(intercept);
   }
   let proxies = Arc::new(proxies);
   let connector = proxy::ProxyConnector {
     http: http_connector,
-    proxies: proxies.clone(),
+    proxies,
     tls: tls_config,
     tls_proxy: proxy_tls_config,
     user_agent: Some(user_agent.clone()),
@@ -1217,17 +1108,17 @@ pub fn create_http_client(
     }
     (true, true) => {}
     (false, false) => {
-      return Err(HttpClientCreateError::HttpVersionSelectionInvalid)
+      return Err(HttpClientCreateError::HttpVersionSelectionInvalid);
     }
   }
 
-  let pooled_client = builder.build(connector);
+  let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
   let decompress = Decompression::new(retry_client).gzip(true).br(true);
 
   Ok(Client {
     inner: decompress,
-    proxies,
+    connector,
     user_agent,
   })
 }
@@ -1246,9 +1137,58 @@ pub struct Client {
       hyper_util::client::legacy::Client<Connector, ReqBody>,
     >,
   >,
-  // Used to check whether to include a proxy-authorization header
-  proxies: Arc<proxy::Proxies>,
+  connector: Connector,
   user_agent: HeaderValue,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ClientConnectError {
+  #[class(type)]
+  #[error("HTTP/1.1 not supported by this client")]
+  Http1NotSupported,
+  #[class(type)]
+  #[error("HTTP/2 not supported by this client")]
+  Http2NotSupported,
+  #[class(generic)]
+  #[error(transparent)]
+  Connector(BoxError),
+}
+
+impl Client {
+  pub async fn connect(
+    &self,
+    uri: Uri,
+    socket_use: SocketUse,
+  ) -> Result<
+    impl tokio::io::AsyncRead
+    + tokio::io::AsyncWrite
+    + Connection
+    + Unpin
+    + Send
+    + 'static,
+    ClientConnectError,
+  > {
+    let mut connector = match socket_use {
+      SocketUse::Http1Only => {
+        let Some(connector) = self.connector.clone().h1_only() else {
+          return Err(ClientConnectError::Http1NotSupported);
+        };
+        connector
+      }
+      SocketUse::Http2Only => {
+        let Some(connector) = self.connector.clone().h2_only() else {
+          return Err(ClientConnectError::Http2NotSupported);
+        };
+        connector
+      }
+      _ => self.connector.clone(),
+    };
+    let connection = connector
+      .call(uri)
+      .await
+      .map_err(ClientConnectError::Connector)?;
+    Ok(TokioIo::new(connection))
+  }
 }
 
 type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
@@ -1310,21 +1250,51 @@ impl std::error::Error for ClientSendError {
   }
 }
 
+pub trait CommonRequest {
+  fn uri(&self) -> &Uri;
+  fn headers_mut(&mut self) -> &mut HeaderMap;
+}
+
+impl CommonRequest for http::Request<ReqBody> {
+  fn uri(&self) -> &Uri {
+    self.uri()
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    self.headers_mut()
+  }
+}
+
+impl CommonRequest for http::request::Builder {
+  fn uri(&self) -> &Uri {
+    http::request::Builder::uri_ref(self).expect("uri not set")
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    http::request::Builder::headers_mut(self).expect("headers not set")
+  }
+}
+
 impl Client {
-  pub async fn send(
-    self,
-    mut req: http::Request<ReqBody>,
-  ) -> Result<http::Response<ResBody>, ClientSendError> {
+  /// Injects common headers like User-Agent and Proxy-Authorization.
+  pub fn inject_common_headers(&self, req: &mut impl CommonRequest) {
     req
       .headers_mut()
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
 
-    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
-
-    if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
+    if let Some(auth) = self.connector.proxies.http_forward_auth(req.uri()) {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
+  }
+
+  pub async fn send(
+    self,
+    mut req: http::Request<ReqBody>,
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
+    self.inject_common_headers(&mut req);
+
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
     let uri = req.uri().clone();
 
@@ -1375,29 +1345,29 @@ impl hyper::body::Body for ReqBody {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     match &mut *self {
-      ReqBody::Full(ref mut b) => {
+      ReqBody::Full(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Empty(ref mut b) => {
+      ReqBody::Empty(b) => {
         Pin::new(b).poll_frame(cx).map_err(|never| match never {})
       }
-      ReqBody::Streaming(ref mut b) => Pin::new(b).poll_frame(cx),
+      ReqBody::Streaming(b) => Pin::new(b).poll_frame(cx),
     }
   }
 
   fn is_end_stream(&self) -> bool {
     match self {
-      ReqBody::Full(ref b) => b.is_end_stream(),
-      ReqBody::Empty(ref b) => b.is_end_stream(),
-      ReqBody::Streaming(ref b) => b.is_end_stream(),
+      ReqBody::Full(b) => b.is_end_stream(),
+      ReqBody::Empty(b) => b.is_end_stream(),
+      ReqBody::Streaming(b) => b.is_end_stream(),
     }
   }
 
   fn size_hint(&self) -> hyper::body::SizeHint {
     match self {
-      ReqBody::Full(ref b) => b.size_hint(),
-      ReqBody::Empty(ref b) => b.size_hint(),
-      ReqBody::Streaming(ref b) => b.size_hint(),
+      ReqBody::Full(b) => b.size_hint(),
+      ReqBody::Empty(b) => b.size_hint(),
+      ReqBody::Streaming(b) => b.size_hint(),
     }
   }
 }

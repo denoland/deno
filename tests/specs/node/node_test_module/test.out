@@ -1,4 +1,3 @@
-[WILDCARD]
 running 69 tests from ./test.js
 sync pass todo ... ok ([WILDLINE])
 sync pass todo with message ... ok ([WILDLINE])
@@ -132,14 +131,9 @@ error: Error: thrown from async throw fail
     at [WILDCARD]
 
 async assertion fail => [WILDLINE]
-error: AssertionError: Values are not strictly equal:
+error: AssertionError: Expected values to be strictly equal:
 
-
-    [Diff] Actual / Expected
-
-
--   true
-+   false
+true !== false
 
     at [WILDCARD]
 

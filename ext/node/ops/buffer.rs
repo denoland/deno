@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 #[op2(fast)]
@@ -118,4 +119,124 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
     }
   }
   ascii_bytes
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare(
+  #[buffer] buf1: &[u8],
+  #[buffer] buf2: &[u8],
+) -> i32 {
+  buf1.cmp(buf2) as i32
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare_offset(
+  #[buffer] source: &[u8],
+  #[buffer] target: &[u8],
+  #[smi] source_start: usize,
+  #[smi] target_start: usize,
+  #[smi] source_end: usize,
+  #[smi] target_end: usize,
+) -> Result<i32, JsErrorBox> {
+  if source_start > source.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "sourceStart".to_string(),
+    )));
+  }
+  if target_start > target.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "targetStart".to_string(),
+    )));
+  }
+
+  if source_start > source_end {
+    panic!("source_start > source_end");
+  }
+  if target_start > target_end {
+    panic!("target_start > target_end");
+  }
+
+  Ok(
+    source[source_start..source_end].cmp(&target[target_start..target_end])
+      as i32,
+  )
+}
+
+#[op2]
+pub fn op_node_decode_utf8<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  buf: v8::Local<v8::ArrayBufferView>,
+  start: v8::Local<v8::Value>,
+  end: v8::Local<v8::Value>,
+) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+
+  let start =
+    parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
+  let mut end =
+    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
+
+  if end < start {
+    end = start;
+  }
+
+  if end > buf.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRange));
+  }
+
+  let buffer = &buf[start..end];
+
+  if buffer.len() <= 256 && buffer.is_ascii() {
+    v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  } else {
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum BufferError {
+  #[error(
+    "Cannot create a string longer than 0x{:x} characters",
+    v8::String::MAX_LENGTH
+  )]
+  #[class(generic)]
+  #[property("code" = "ERR_STRING_TOO_LONG")]
+  StringTooLong,
+  #[error("Invalid type")]
+  #[class(generic)]
+  InvalidType,
+  #[error("Index out of range")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRange,
+  #[error("The value of \"{0}\" is out of range.")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRangeNamed(String),
+}
+
+#[inline(always)]
+fn parse_array_index(
+  scope: &mut v8::PinScope<'_, '_>,
+  arg: v8::Local<v8::Value>,
+  default: usize,
+) -> Result<usize, BufferError> {
+  if arg.is_undefined() {
+    return Ok(default);
+  }
+
+  let Some(arg) = arg.integer_value(scope) else {
+    return Err(BufferError::InvalidType);
+  };
+  if arg < 0 {
+    return Err(BufferError::OutOfRange);
+  }
+  if arg > isize::MAX as i64 {
+    return Err(BufferError::OutOfRange);
+  }
+  Ok(arg as usize)
 }

@@ -1,10 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
@@ -14,17 +15,19 @@ use std::time::SystemTime;
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
 use deno_runtime::colors;
-use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::anyhow::Context;
+use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::error::AnyError;
 use indexmap::IndexSet;
-use serde::de;
-use serde::de::SeqAccess;
-use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use serde::de;
+use serde::de::SeqAccess;
+use serde::de::Visitor;
+
+use crate::util::text_encoding::is_valid_utf8;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {
@@ -257,6 +260,8 @@ pub struct VirtualFile {
   pub name: String,
   #[serde(rename = "o")]
   pub offset: OffsetWithLength,
+  #[serde(default, rename = "u", skip_serializing_if = "is_false")]
+  pub is_valid_utf8: bool,
   #[serde(rename = "m", skip_serializing_if = "Option::is_none")]
   pub transpiled_offset: Option<OffsetWithLength>,
   #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
@@ -265,6 +270,10 @@ pub struct VirtualFile {
   pub source_map_offset: Option<OffsetWithLength>,
   #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
   pub mtime: Option<u128>, // mtime in milliseconds
+}
+
+fn is_false(value: &bool) -> bool {
+  !value
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -276,7 +285,7 @@ impl VirtualSymlinkParts {
       path
         .components()
         .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect(),
     )
   }
@@ -350,7 +359,7 @@ impl VfsEntry {
     }
   }
 
-  pub fn as_ref(&self) -> VfsEntryRef {
+  pub fn as_ref(&self) -> VfsEntryRef<'_> {
     match self {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),
@@ -414,7 +423,7 @@ impl FilesData {
     if data.is_empty() {
       return OffsetWithLength { offset: 0, len: 0 };
     }
-    let checksum = crate::util::checksum::gen(&[&data]);
+    let checksum = crate::util::checksum::r#gen(&[&data]);
     match self.file_offsets.entry((checksum, data.len())) {
       Entry::Occupied(occupied_entry) => {
         let offset_and_len = *occupied_entry.get();
@@ -766,6 +775,7 @@ impl VfsBuilder {
     log::debug!("Adding file '{}'", path.display());
     let case_sensitivity = self.case_sensitivity;
 
+    let is_valid_utf8 = is_valid_utf8(&options.data);
     let offset_and_len = self.files.add_data(options.data);
     let transpiled_offset = options
       .maybe_transpiled
@@ -790,6 +800,7 @@ impl VfsBuilder {
       || {
         VfsEntry::File(VirtualFile {
           name: name.to_string(),
+          is_valid_utf8,
           offset: offset_and_len,
           transpiled_offset,
           cjs_export_analysis_offset,
@@ -853,7 +864,8 @@ impl VfsBuilder {
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
     let case_sensitivity = self.case_sensitivity;
-    let target = normalize_path(path.parent().unwrap().join(&target));
+    let target =
+      normalize_path(Cow::Owned(path.parent().unwrap().join(&target)));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     dir.entries.insert_or_modify(
@@ -876,7 +888,7 @@ impl VfsBuilder {
         format!("Reading symlink target '{}'", target.display())
       })?;
     if target_metadata.is_symlink() {
-      if !visited.insert(target.clone()) {
+      if !visited.insert(target.to_path_buf()) {
         // todo: probably don't error in this scenario
         bail!(
           "Circular symlink detected: {} -> {}",
@@ -890,9 +902,9 @@ impl VfsBuilder {
       }
       self.add_symlink_inner(&target, visited)
     } else if target_metadata.is_dir() {
-      Ok(SymlinkTarget::Dir(target))
+      Ok(SymlinkTarget::Dir(target.into_owned()))
     } else {
-      Ok(SymlinkTarget::File(target))
+      Ok(SymlinkTarget::File(target.into_owned()))
     }
   }
 

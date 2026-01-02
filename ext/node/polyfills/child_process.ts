@@ -54,6 +54,7 @@ const {
   ObjectAssign,
   PromiseWithResolvers,
   StringPrototypeSlice,
+  StringPrototypeStartsWith,
 } = primordials;
 
 const MAX_BUFFER = 1024 * 1024;
@@ -135,6 +136,13 @@ export function fork(
         execArgv.splice(index, rm);
       } else if (flag.startsWith("--no-warnings")) {
         execArgv[index] = "--quiet";
+      } else if (
+        StringPrototypeStartsWith(execArgv[index], "--experimental-")
+      ) {
+        // `--experimental-*` args are ignored, because most experimental Node features
+        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
+        execArgv.splice(index, 1);
+        index++;
       } else {
         index++;
       }
@@ -827,9 +835,12 @@ export function execFileSync(
 }
 
 function setupChildProcessIpcChannel() {
-  const fd = op_node_child_ipc_pipe();
+  const maybePipe = op_node_child_ipc_pipe();
+  if (!maybePipe) return;
+  const [fd, serialization] = maybePipe;
+  const serializationMode = serialization === 0 ? "json" : "advanced";
   if (typeof fd != "number" || fd < 0) return;
-  const control = setupChannel(process, fd);
+  const control = setupChannel(process, fd, serializationMode);
   process.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.refCounted();

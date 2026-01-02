@@ -4,7 +4,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_hkdf, op_node_hkdf_async } from "ext:core/ops";
+import {
+  op_node_get_hash_size,
+  op_node_hkdf,
+  op_node_hkdf_async,
+} from "ext:core/ops";
 
 import {
   validateFunction,
@@ -13,6 +17,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_CRYPTO_INVALID_DIGEST,
+  ERR_CRYPTO_INVALID_KEYLEN,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
@@ -33,6 +38,21 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
+import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
+import { Buffer } from "node:buffer";
+
+// Consume raw bytes for any ArrayBufferView/ArrayBuffer; strings via toBuf.
+function toRawBytes(x: unknown): Buffer {
+  if (isArrayBufferView(x)) {
+    const v = x as ArrayBufferView;
+    return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+  }
+  if (isAnyArrayBuffer(x)) {
+    return Buffer.from(x as ArrayBufferLike);
+  }
+  // For strings / other BinaryLike, keep existing semantics (UTF-8 etc.)
+  return Buffer.from(toBuf(x as unknown as string));
+}
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
@@ -40,8 +60,8 @@ const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateByteSource(salt, "salt");
   validateByteSource(info, "info");
 
-  salt = new Uint8Array(toBuf(salt));
-  info = new Uint8Array(toBuf(info));
+  salt = toRawBytes(toBuf(salt));
+  info = toRawBytes(toBuf(info));
 
   validateInteger(length, "length", 0, kMaxLength);
 
@@ -51,6 +71,13 @@ const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
       "must not contain more than 1024 bytes",
       info.byteLength,
     );
+  }
+
+  validateAlgorithm(hash);
+
+  const size = op_node_get_hash_size(hash);
+  if (typeof size === "number" && size * 255 < length) {
+    throw new ERR_CRYPTO_INVALID_KEYLEN();
   }
 
   return {
@@ -141,6 +168,17 @@ export function hkdfSync(
   }
 
   return okm.buffer;
+}
+
+let hashes: Set<string> | null = null;
+function validateAlgorithm(algorithm: string) {
+  if (hashes === null) {
+    hashes = new Set(getHashes());
+  }
+
+  if (!hashes.has(algorithm)) {
+    throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
+  }
 }
 
 export default {

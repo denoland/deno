@@ -2,6 +2,7 @@
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
+import { randomBytes } from "node:crypto";
 import {
   BrotliCompress,
   brotliCompress,
@@ -14,6 +15,8 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  deflateSync,
+  gunzip,
   gzip,
   gzipSync,
   unzipSync,
@@ -121,19 +124,19 @@ Deno.test(
 Deno.test(
   "zlib flush i32",
   function () {
-    const handle = createDeflate({
-      // @ts-expect-error: passing non-int flush value
-      flush: "",
-    });
-
-    handle.end();
-    handle.destroy();
+    assertThrows(() =>
+      createDeflate({
+        // @ts-expect-error: passing non-int flush value
+        flush: "",
+      }), TypeError);
   },
 );
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -155,7 +158,7 @@ Deno.test("Brotli quality 10 doesn't panic", () => {
     },
   });
   assertEquals(
-    new Uint8Array(e.buffer),
+    new Uint8Array(e.buffer, e.byteOffset, e.byteLength),
     new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
   );
 });
@@ -164,7 +167,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
@@ -240,6 +245,21 @@ Deno.test("crc32()", () => {
   assertThrows(() => crc32({}), TypeError);
 });
 
+Deno.test("crc32 doesn't overflow", () => {
+  let checksum = 0;
+  checksum = crc32(Buffer.from("H4sIAAAAAAAACg==", "base64"), checksum);
+  checksum = crc32("aaa", checksum);
+  assertEquals(checksum, 1466848669);
+});
+
+Deno.test("crc32 large input", () => {
+  let checkSum = 0xffffffff;
+  for (let i = 0; i < 2 ** 16; i++) {
+    checkSum = crc32("", checkSum);
+  }
+  assertEquals(checkSum, 0xffffffff);
+});
+
 Deno.test("BrotliCompress", async () => {
   const deffered = Promise.withResolvers<void>();
   // @ts-ignore: BrotliCompress is not typed
@@ -263,4 +283,43 @@ Deno.test("BrotliCompress", async () => {
 
   await deffered.promise;
   assertEquals(data, "hello");
+});
+
+Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
+  assertThrows(
+    () => {
+      deflateSync(randomBytes(1024), {
+        maxOutputLength: 1,
+      });
+    },
+    "Cannot create a Buffer larger than 1 bytes",
+  );
+});
+
+// https://github.com/denoland/deno/issues/30829
+Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
+  const data = Buffer.alloc(64 * 1024 * 1024);
+  const compressed = gzipSync(data);
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  gunzip(compressed, (err, result) => {
+    if (err) {
+      reject(err);
+      return;
+    }
+    if (!result) {
+      reject(new Error("expected gunzip to return a Buffer"));
+      return;
+    }
+    if (result.length !== data.length) {
+      reject(
+        new Error(`expected ${data.length} bytes, got ${result.length}`),
+      );
+      return;
+    }
+    resolve();
+  });
+
+  await promise;
 });

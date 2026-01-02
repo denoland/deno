@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
+use deno_core::OpState;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
-use deno_core::OpState;
-use deno_fetch::data_url::DataUrl;
 use deno_fetch::FetchError;
+use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use crate::web_worker::WorkerThreadType;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
@@ -91,12 +91,9 @@ pub fn op_worker_sync_fetch(
   loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, SyncFetchError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  assert_eq!(handle.worker_type, WebWorkerType::Classic);
+  assert_eq!(handle.worker_type, WorkerThreadType::Classic);
 
-  // it's not safe to share a client across tokio runtimes, so create a fresh one
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  let options = state.borrow::<deno_fetch::Options>().clone();
-  let client = deno_fetch::create_client_from_options(&options)
+  let client = deno_fetch::get_or_create_client_from_state(state)
     .map_err(FetchError::ClientCreate)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
@@ -189,7 +186,7 @@ pub fn op_worker_sync_fetch(
                   SyncFetchError::ClassicScriptSchemeUnsupportedInWorkers(
                     script_url.scheme().to_string(),
                   ),
-                )
+                );
               }
             };
 
@@ -200,7 +197,7 @@ pub fn op_worker_sync_fetch(
                 Some(mime_type) => {
                   return Err(SyncFetchError::InvalidMimeType(
                     mime_type.to_string(),
-                  ))
+                  ));
                 }
                 None => return Err(SyncFetchError::MissingMimeType),
               }

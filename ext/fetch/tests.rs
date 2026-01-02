@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::Arc;
 
 use bytes::Bytes;
 use fast_socks5::server::Config as Socks5Config;
@@ -12,8 +12,8 @@ use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-use super::create_http_client;
 use super::CreateHttpClientOptions;
+use super::create_http_client;
 use crate::dns;
 
 static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
@@ -40,10 +40,7 @@ fn test_userspace_resolver() {
     // use `localhost` to ensure dns step happens.
     let addr = format!("localhost:{}", src_addr.port());
 
-    let hickory = hickory_resolver::Resolver::tokio(
-      Default::default(),
-      Default::default(),
-    );
+    let hickory = hickory_resolver::Resolver::builder_tokio().unwrap().build();
 
     assert_eq!(thread_counter.load(SeqCst), 0);
     rust_test_client_with_resolver(
@@ -159,6 +156,8 @@ async fn run_test_client(
 }
 
 async fn create_https_server(allow_h2: bool) -> SocketAddr {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut tls_config = deno_tls::rustls::server::ServerConfig::builder()
     .with_no_client_auth()
     .with_single_cert(

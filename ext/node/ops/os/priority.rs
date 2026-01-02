@@ -15,13 +15,11 @@ pub enum PriorityError {
 
 #[cfg(unix)]
 mod impl_ {
+  use errno::Errno;
   use errno::errno;
   use errno::set_errno;
-  use errno::Errno;
-  use libc::id_t;
   use libc::PRIO_PROCESS;
-
-  const PRIORITY_HIGH: i32 = -14;
+  use libc::id_t;
 
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
   pub fn get_priority(pid: u32) -> Result<i32, super::PriorityError> {
@@ -31,7 +29,7 @@ mod impl_ {
       unsafe { libc::getpriority(PRIO_PROCESS, pid as id_t) },
       errno(),
     ) {
-      (-1, Errno(0)) => Ok(PRIORITY_HIGH),
+      (-1, Errno(0)) => Ok(-1),
       (-1, _) => Err(std::io::Error::last_os_error().into()),
       (priority, _) => Ok(priority),
     }
@@ -66,6 +64,7 @@ mod impl_ {
   use winapi::um::winbase::NORMAL_PRIORITY_CLASS;
   use winapi::um::winbase::REALTIME_PRIORITY_CLASS;
   use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+  use winapi::um::winnt::PROCESS_SET_INFORMATION;
 
   // Taken from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/include/uv.h#L1318-L1323
   const PRIORITY_LOW: i32 = 19;
@@ -113,7 +112,7 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as DWORD)
+        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as DWORD)
       };
       if handle == NULL {
         Err(std::io::Error::last_os_error().into())

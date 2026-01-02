@@ -1,15 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::ffi::CStr;
 use std::ffi::c_char;
 use std::ffi::c_void;
-use std::ffi::CStr;
 use std::ptr;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::OpState;
-
-use crate::FfiPermissions;
+use deno_permissions::PermissionsContainer;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -54,58 +53,46 @@ pub enum ReprError {
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_ptr_create<FP>(
+pub fn op_ffi_ptr_create(
   state: &mut OpState,
   #[bigint] ptr_number: usize,
-) -> Result<*mut c_void, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<*mut c_void, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   Ok(ptr_number as *mut c_void)
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_ptr_equals<FP>(
+pub fn op_ffi_ptr_equals(
   state: &mut OpState,
   a: *const c_void,
   b: *const c_void,
-) -> Result<bool, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<bool, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   Ok(a == b)
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_ptr_of<FP>(
+pub fn op_ffi_ptr_of(
   state: &mut OpState,
   #[anybuffer] buf: *const u8,
-) -> Result<*mut c_void, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<*mut c_void, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   Ok(buf as *mut c_void)
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_ptr_of_exact<FP>(
+pub fn op_ffi_ptr_of_exact(
   state: &mut OpState,
   buf: v8::Local<v8::ArrayBufferView>,
-) -> Result<*mut c_void, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<*mut c_void, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   let Some(buf) = buf.get_backing_store() else {
     return Ok(0 as _);
@@ -117,16 +104,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_ptr_offset<FP>(
+pub fn op_ffi_ptr_offset(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<*mut c_void, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<*mut c_void, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidOffset);
@@ -148,32 +132,26 @@ unsafe extern "C" fn noop_deleter_callback(
 
 #[op2(fast, stack_trace)]
 #[bigint]
-pub fn op_ffi_ptr_value<FP>(
+pub fn op_ffi_ptr_value(
   state: &mut OpState,
   ptr: *mut c_void,
-) -> Result<usize, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<usize, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   Ok(ptr as usize)
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_get_buf<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+pub fn op_ffi_get_buf<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
   #[number] len: usize,
-) -> Result<v8::Local<'scope, v8::ArrayBuffer>, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<v8::Local<'scope, v8::ArrayBuffer>, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidArrayBuffer);
@@ -194,18 +172,15 @@ where
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_buf_copy_into<FP>(
+pub fn op_ffi_buf_copy_into(
   state: &mut OpState,
   src: *mut c_void,
   #[number] offset: isize,
   #[anybuffer] dst: &mut [u8],
   #[number] len: usize,
-) -> Result<(), ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<(), ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if src.is_null() {
     Err(ReprError::InvalidArrayBuffer)
@@ -224,17 +199,14 @@ where
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_cstr_read<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+pub fn op_ffi_cstr_read<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<v8::Local<'scope, v8::String>, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<v8::Local<'scope, v8::String>, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidCString);
@@ -250,16 +222,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_bool<FP>(
+pub fn op_ffi_read_bool(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<bool, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<bool, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidBool);
@@ -270,16 +239,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_u8<FP>(
+pub fn op_ffi_read_u8(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<u32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<u32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU8);
@@ -292,16 +258,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_i8<FP>(
+pub fn op_ffi_read_i8(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<i32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<i32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI8);
@@ -314,16 +277,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_u16<FP>(
+pub fn op_ffi_read_u16(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<u32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<u32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU16);
@@ -336,16 +296,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_i16<FP>(
+pub fn op_ffi_read_i16(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<i32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<i32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI16);
@@ -358,16 +315,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_u32<FP>(
+pub fn op_ffi_read_u32(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<u32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<u32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU32);
@@ -378,16 +332,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_i32<FP>(
+pub fn op_ffi_read_i32(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<i32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<i32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI32);
@@ -399,18 +350,15 @@ where
 
 #[op2(fast, stack_trace)]
 #[bigint]
-pub fn op_ffi_read_u64<FP>(
+pub fn op_ffi_read_u64(
   state: &mut OpState,
   ptr: *mut c_void,
   // Note: The representation of 64-bit integers is function-wide. We cannot
   // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
-) -> Result<u64, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<u64, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidU64);
@@ -425,18 +373,15 @@ where
 
 #[op2(fast, stack_trace)]
 #[bigint]
-pub fn op_ffi_read_i64<FP>(
+pub fn op_ffi_read_i64(
   state: &mut OpState,
   ptr: *mut c_void,
   // Note: The representation of 64-bit integers is function-wide. We cannot
   // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
-) -> Result<i64, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<i64, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidI64);
@@ -450,16 +395,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_f32<FP>(
+pub fn op_ffi_read_f32(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<f32, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<f32, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF32);
@@ -470,16 +412,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_f64<FP>(
+pub fn op_ffi_read_f64(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<f64, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<f64, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidF64);
@@ -490,16 +429,13 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_ffi_read_ptr<FP>(
+pub fn op_ffi_read_ptr(
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
-) -> Result<*mut c_void, ReprError>
-where
-  FP: FfiPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial_no_path()?;
+) -> Result<*mut c_void, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
 
   if ptr.is_null() {
     return Err(ReprError::InvalidPointer);

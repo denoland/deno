@@ -4,27 +4,22 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
+use deno_permissions::PermissionsContainer;
 
 use crate::ExtNodeSys;
-use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-fn ensure_read_permission<'a, P>(
+fn ensure_read_permission<'a>(
   state: &mut OpState,
-  file_path: &'a Path,
-) -> Result<Cow<'a, Path>, JsErrorBox>
-where
-  P: NodePermissions + 'static,
-{
+  file_path: Cow<'a, Path>,
+) -> Result<Cow<'a, Path>, JsErrorBox> {
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<PermissionsContainer>();
   loader.ensure_read_permission(permissions, file_path)
 }
 
@@ -74,24 +69,21 @@ pub enum WorkerThreadsFilenameError {
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
 #[op2(stack_trace)]
 #[string]
-pub fn op_worker_threads_filename<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_worker_threads_filename<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
-  #[string] specifier: String,
-) -> Result<String, WorkerThreadsFilenameError> {
+  #[string] specifier: &str,
+) -> Result<Option<String>, WorkerThreadsFilenameError> {
   if specifier.starts_with("data:") {
-    return Ok(specifier);
+    return Ok(None); // use input
   }
   let url: Url = if specifier.starts_with("file:") {
-    Url::parse(&specifier)?
+    Url::parse(specifier)?
   } else {
-    let path = PathBuf::from(&specifier);
+    let path = Path::new(specifier);
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, &path)
+    let path = ensure_read_permission(state, Cow::Borrowed(path))
       .map_err(WorkerThreadsFilenameError::Permission)?;
     let sys = state.borrow::<TSys>();
     let canonicalized_path =
@@ -102,7 +94,7 @@ pub fn op_worker_threads_filename<
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, &url_path)
+  let url_path = ensure_read_permission(state, Cow::Owned(url_path))
     .map_err(WorkerThreadsFilenameError::Permission)?;
   let sys = state.borrow::<TSys>();
   if !sys.fs_exists_no_err(&url_path) {
@@ -110,5 +102,5 @@ pub fn op_worker_threads_filename<
       url_path.to_path_buf(),
     ));
   }
-  Ok(url.to_string())
+  Ok(Some(url.into()))
 }

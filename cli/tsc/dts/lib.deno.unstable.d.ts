@@ -2,12 +2,178 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference lib="deno.broadcast_channel" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
+
+  /**
+   * @category Bundler
+   * @experimental
+   */
+  export namespace bundle {
+    /**
+     * The target platform of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type Platform = "browser" | "deno";
+
+    /**
+     * The output format of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type Format = "esm" | "cjs" | "iife";
+
+    /**
+     * The source map type of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type SourceMapType = "linked" | "inline" | "external";
+
+    /**
+     * How to handle packages.
+     *
+     * - `bundle`: packages are inlined into the bundle.
+     * - `external`: packages are excluded from the bundle, and treated as external dependencies.
+     * @category Bundler
+     * @experimental
+     */
+    export type PackageHandling = "bundle" | "external";
+
+    /**
+     * Options for the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Options {
+      /**
+       * The entrypoints of the bundle.
+       */
+      entrypoints: string[];
+      /**
+       * Output file path.
+       */
+      outputPath?: string;
+      /**
+       * Output directory path.
+       */
+      outputDir?: string;
+      /**
+       * External modules to exclude from bundling.
+       */
+      external?: string[];
+      /**
+       * Bundle format.
+       */
+      format?: Format;
+      /**
+       * Whether to minify the output.
+       */
+      minify?: boolean;
+      /**
+       * Whether to enable code splitting.
+       */
+      codeSplitting?: boolean;
+      /**
+       * Whether to inline imports.
+       */
+      inlineImports?: boolean;
+      /**
+       * How to handle packages.
+       */
+      packages?: PackageHandling;
+      /**
+       * Source map configuration.
+       */
+      sourcemap?: SourceMapType;
+      /**
+       * Target platform.
+       */
+      platform?: Platform;
+
+      /**
+       * Whether to write the output to the filesystem.
+       *
+       * @default true if outputDir or outputPath is set, false otherwise
+       */
+      write?: boolean;
+    }
+
+    /**
+     * The location of a message.
+     * @category Bundler
+     * @experimental
+     */
+    export interface MessageLocation {
+      file: string;
+      namespace?: string;
+      line: number;
+      column: number;
+      length: number;
+      suggestion?: string;
+    }
+
+    /**
+     * A note about a message.
+     * @category Bundler
+     * @experimental
+     */
+    export interface MessageNote {
+      text: string;
+      location?: MessageLocation;
+    }
+
+    /**
+     * A message emitted from the bundler.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Message {
+      text: string;
+      location?: MessageLocation;
+      notes?: MessageNote[];
+    }
+
+    /**
+     * An output file in the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OutputFile {
+      path: string;
+      contents?: Uint8Array<ArrayBuffer>;
+      hash: string;
+      text(): string;
+    }
+
+    /**
+     * The result of bundling.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Result {
+      errors: Message[];
+      warnings: Message[];
+      success: boolean;
+      outputFiles?: OutputFile[];
+    }
+
+    export {}; // only export exports
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Bundle Typescript/Javascript code
+   * @category Bundle
+   * @experimental
+   */
+  export function bundle(
+    options: Deno.bundle.Options,
+  ): Promise<Deno.bundle.Result>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1261,95 +1427,6 @@ declare namespace Deno {
         buffers?: Uint8Array[];
       },
     ): Promise<void>;
-
-    export {}; // only export exports
-  }
-
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * APIs for working with the OpenTelemetry observability framework. Deno can
-   * export traces, metrics, and logs to OpenTelemetry compatible backends via
-   * the OTLP protocol.
-   *
-   * Deno automatically instruments the runtime with OpenTelemetry traces and
-   * metrics. This data is exported via OTLP to OpenTelemetry compatible
-   * backends. User logs from the `console` API are exported as OpenTelemetry
-   * logs via OTLP.
-   *
-   * User code can also create custom traces, metrics, and logs using the
-   * OpenTelemetry API. This is done using the official OpenTelemetry package
-   * for JavaScript:
-   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
-   * Deno integrates with this package to provide tracing, metrics, and trace
-   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
-   * and custom user code. Deno automatically registers the providers with the
-   * OpenTelemetry API, so users can start creating custom traces, metrics, and
-   * logs without any additional setup.
-   *
-   * @example Using OpenTelemetry API to create custom traces
-   * ```ts,ignore
-   * import { trace } from "npm:@opentelemetry/api@1";
-   *
-   * const tracer = trace.getTracer("example-tracer");
-   *
-   * async function doWork() {
-   *   return tracer.startActiveSpan("doWork", async (span) => {
-   *     span.setAttribute("key", "value");
-   *     await new Promise((resolve) => setTimeout(resolve, 1000));
-   *     span.end();
-   *   });
-   * }
-   *
-   * Deno.serve(async (req) => {
-   *   await doWork();
-   *   const resp = await fetch("https://example.com");
-   *   return resp;
-   * });
-   * ```
-   *
-   * @category Telemetry
-   * @experimental
-   */
-  export namespace telemetry {
-    /**
-     * A TracerProvider compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * TracerProvider interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const tracerProvider: any;
-
-    /**
-     * A ContextManager compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * ContextManager interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const contextManager: any;
-
-    /**
-     * A MeterProvider compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * MeterProvider interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const meterProvider: any;
 
     export {}; // only export exports
   }
@@ -4501,12 +4578,12 @@ interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
-   * have. By default it will have no permissions. Note that the permissions
+   * have. By default it will inherit permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    *
-   * - `"inherit"` will take the permissions of the thread the worker is created
-   *   in.
-   * - `"none"` will use the default behavior and have no permission
+   * - `"inherit"` will use the default behavior and take the permissions of the
+   *   thread the worker is created in
+   * - `"none"` will have no permissions
    * - A list of routes can be provided that are relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions
    *   only)
@@ -6353,35 +6430,72 @@ declare namespace Intl {
  * @category Platform
  * @experimental
  */
-interface ErrorConstructor {
-  /**
-   * Indicates whether the argument provided is a built-in Error instance or not.
-   */
-  isError(error: unknown): error is Error;
-}
-
-/**
- * @category Platform
- * @experimental
- */
-interface Atomics {
-  /**
-   * Signals to the CPU that it is running in a spin-wait loop.
-   * @param durationHint An integer that may be used to determine how many times
-   * the signal is sent.
-   */
-  pause(durationHint?: number): void;
-}
-
-/**
- * @category Platform
- * @experimental
- */
 interface RegExpConstructor {
   /**
    * Returns a new string in which characters that are potentially special in a
    * regular expression pattern are replaced with escape sequences.
    * @param string The string to escape.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/RegExp/escape)
    */
   escape(string: string): string;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+interface Uint8Array {
+  /**
+   * Converts this `Uint8Array` object to a base64 string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toBase64)
+   */
+  toBase64(options?: {
+    alphabet?: "base64" | "base64url";
+    omitPadding?: boolean;
+  }): string;
+  /**
+   * Populates this `Uint8Array` object with data from a base64 string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/setFromBase64)
+   */
+  setFromBase64(string: string, options?: {
+    alphabet?: "base64" | "base64url";
+    lastChunkHandling?: "loose" | "strict" | "stop-before-partial";
+  }): { read: number; written: number };
+  /**
+   * Converts this `Uint8Array` object to a hex string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toHex)
+   */
+  toHex(): string;
+  /**
+   * Populates this `Uint8Array` object with data from a hex string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/setFromHex)
+   */
+  setFromHex(string: string): { read: number; written: number };
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+interface Uint8ArrayConstructor {
+  /**
+   * Creates a new `Uint8Array` object from a base64 string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/fromBase64)
+   */
+  fromBase64(string: string, options?: {
+    alphabet?: "base64" | "base64url";
+    lastChunkHandling?: "loose" | "strict" | "stop-before-partial";
+  }): Uint8Array<ArrayBuffer>;
+  /**
+   * Creates a new `Uint8Array` object from a hex string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/fromHex)
+   */
+  fromHex(string: string): Uint8Array<ArrayBuffer>;
 }

@@ -8,10 +8,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
@@ -21,7 +21,6 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
 deno_core::extension!(deno_cron,
-  deps = [ deno_console ],
   parameters = [ C: CronHandler ],
   ops = [
     op_cron_create<C>,
@@ -41,7 +40,7 @@ struct CronResource<EH: CronHandle + 'static> {
 }
 
 impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cron".into()
   }
 
@@ -59,7 +58,9 @@ pub enum CronError {
   #[error("Cron name cannot exceed 64 characters: current length {0}")]
   NameExceeded(usize),
   #[class(type)]
-  #[error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed")]
+  #[error(
+    "Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed"
+  )]
   NameInvalid,
   #[class(type)]
   #[error("Cron with this name already exists")]

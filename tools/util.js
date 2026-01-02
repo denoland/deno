@@ -8,10 +8,10 @@ import {
   fromFileUrl,
   join,
   resolve,
+  SEPARATOR,
   toFileUrl,
 } from "@std/path";
-import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
-export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
+export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
@@ -51,7 +51,7 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
-function gitLsFiles(baseDir, patterns) {
+export function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
@@ -197,10 +197,7 @@ export async function downloadPrebuilt(toolName) {
   }
 
   const downloadDeferred = DOWNLOAD_TASKS[toolName] = Promise.withResolvers();
-  const spinner = wait({
-    text: "Downloading prebuilt tool: " + toolName,
-    interval: 1000,
-  }).start();
+  console.error("Downloading prebuilt tool:", toolName);
   const toolPath = getPrebuiltToolPath(toolName);
   const tempFile = `${toolPath}.temp`;
 
@@ -235,14 +232,14 @@ export async function downloadPrebuilt(toolName) {
     } else {
       await resp.body.pipeTo(file.writable);
     }
-    spinner.text = `Checking prebuilt tool: ${toolName}`;
+    console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
     if (!await verifyVersion(toolName, tempFile)) {
       throw new Error(
         "Didn't get the correct version of the tool after downloading.",
       );
     }
-    spinner.text = `Successfully downloaded: ${toolName}`;
+    console.error("Successfully downloaded:", toolName);
     try {
       // necessary on Windows it seems
       await Deno.remove(toolPath);
@@ -251,12 +248,10 @@ export async function downloadPrebuilt(toolName) {
     }
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
-    spinner.fail();
     downloadDeferred.reject(e);
     throw e;
   }
 
-  spinner.succeed();
   downloadDeferred.resolve(null);
 }
 

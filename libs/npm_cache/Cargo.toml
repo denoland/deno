@@ -1,0 +1,50 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_npm_cache"
+version = "0.44.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Helpers for downloading and caching npm dependencies for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+base64.workspace = true
+boxed_error.workspace = true
+deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_error = { workspace = true, features = ["serde", "serde_json"] }
+deno_npm.workspace = true
+deno_path_util.workspace = true
+deno_semver.workspace = true
+deno_unsync.workspace = true
+faster-hex.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+futures.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+percent-encoding.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+sys_traits.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
+deno_unsync = { workspace = true, features = ["tokio"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+flate2 = { workspace = true, features = ["rust_backend"] }
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["real"] }
+tempfile.workspace = true

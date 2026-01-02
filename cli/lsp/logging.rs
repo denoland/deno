@@ -72,9 +72,11 @@ pub fn init_log_file(enabled: bool) {
     LOG_FILE.buffer.lock().clear();
     return;
   };
-  thread::spawn(move || loop {
-    LOG_FILE.commit(&path);
-    thread::sleep(std::time::Duration::from_secs(1));
+  thread::spawn(move || {
+    loop {
+      LOG_FILE.commit(&path);
+      thread::sleep(std::time::Duration::from_secs(1));
+    }
   });
 }
 

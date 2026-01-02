@@ -2,18 +2,12 @@
 
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
+use deno_bench_util::bencher::benchmark_group;
 use deno_core::Extension;
 
 #[derive(Clone)]
 struct Permissions;
-
-impl deno_web::TimersPermission for Permissions {
-  fn allow_hrtime(&mut self) -> bool {
-    false
-  }
-}
 
 fn setup() -> Vec<Extension> {
   deno_core::extension!(
@@ -33,9 +27,7 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_url::deno_url::init(),
-    deno_console::deno_console::init(),
-    deno_web::deno_web::init::<Permissions>(Default::default(), None),
+    deno_web::deno_web::init(Default::default(), None, Default::default()),
     bench_setup::init(),
   ]
 }

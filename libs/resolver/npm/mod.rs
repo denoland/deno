@@ -1,0 +1,643 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::fmt::Debug;
+use std::path::Path;
+use std::path::PathBuf;
+
+use boxed_error::Boxed;
+use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
+use deno_semver::Version;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::IsBuiltInNodeModuleChecker;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionKind;
+use node_resolver::NodeResolverRc;
+use node_resolver::NpmPackageFolderResolver;
+use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::errors::NodeResolveError;
+use node_resolver::errors::NodeResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::PackageResolveErrorKind;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
+use node_resolver::errors::TypesNotFoundError;
+use thiserror::Error;
+use url::Url;
+
+pub use self::byonm::ByonmInNpmPackageChecker;
+pub use self::byonm::ByonmNpmResolver;
+pub use self::byonm::ByonmNpmResolverCreateOptions;
+pub use self::byonm::ByonmNpmResolverRc;
+pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
+pub use self::local::get_package_folder_id_folder_name;
+pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+use self::managed::ManagedInNpmPackageChecker;
+use self::managed::ManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::ManagedNpmResolver;
+use self::managed::ManagedNpmResolverCreateOptions;
+pub use self::managed::ManagedNpmResolverRc;
+use self::managed::create_managed_in_npm_pkg_checker;
+
+mod byonm;
+mod local;
+pub mod managed;
+
+#[derive(Debug)]
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+#[derive(Debug, Clone)]
+pub enum DenoInNpmPackageChecker {
+  Managed(ManagedInNpmPackageChecker),
+  Byonm(ByonmInNpmPackageChecker),
+}
+
+impl DenoInNpmPackageChecker {
+  pub fn new(options: CreateInNpmPkgCheckerOptions) -> Self {
+    match options {
+      CreateInNpmPkgCheckerOptions::Managed(options) => {
+        DenoInNpmPackageChecker::Managed(create_managed_in_npm_pkg_checker(
+          options,
+        ))
+      }
+      CreateInNpmPkgCheckerOptions::Byonm => {
+        DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker)
+      }
+    }
+  }
+}
+
+impl InNpmPackageChecker for DenoInNpmPackageChecker {
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    match self {
+      DenoInNpmPackageChecker::Managed(c) => c.in_npm_package(specifier),
+      DenoInNpmPackageChecker::Byonm(c) => c.in_npm_package(specifier),
+    }
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error(
+  "Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
+  specifier
+)]
+pub struct NodeModulesOutOfDateError {
+  pub specifier: String,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", package_json_path.display())]
+pub struct MissingPackageNodeModulesFolderError {
+  pub package_json_path: PathBuf,
+  // Don't bother displaying this error, so don't name it "source"
+  pub inner: PackageSubpathFromDenoModuleResolveError,
+}
+
+#[derive(Debug, Boxed, JsError)]
+pub struct ResolveIfForNpmPackageError(
+  pub Box<ResolveIfForNpmPackageErrorKind>,
+);
+
+#[derive(Debug, Error, JsError)]
+pub enum ResolveIfForNpmPackageErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  NodeResolve(#[from] NodeResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
+}
+
+#[derive(Debug, Error, JsError)]
+#[error("npm specifiers were requested; but --no-npm is specified")]
+#[class("generic")]
+pub struct NoNpmError;
+
+#[derive(Debug, JsError)]
+#[class(inherit)]
+pub struct ResolveNpmReqRefError {
+  pub npm_req_ref: NpmPackageReqReference,
+  #[inherit]
+  pub err: ResolveReqWithSubPathError,
+}
+
+impl std::error::Error for ResolveNpmReqRefError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.err.source()
+  }
+}
+
+impl std::fmt::Display for ResolveNpmReqRefError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.err, f)
+  }
+}
+
+#[derive(Debug, Boxed, JsError)]
+pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
+
+impl ResolveReqWithSubPathError {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
+    match self.as_kind() {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
+        err.inner.maybe_specifier()
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(err) => {
+        Some(Cow::Owned(UrlOrPath::Url(err.npm_specifier.clone())))
+      }
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(err) => {
+        err.maybe_specifier()
+      }
+    }
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+pub enum ResolveReqWithSubPathErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NoNpm(NoNpmError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgFolderFromDenoReq(
+    #[from] ContextedResolvePkgFolderFromDenoReqError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
+}
+
+impl ResolveReqWithSubPathErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_)
+      | ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
+        package_subpath_resolve_error,
+      ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
+    }
+  }
+}
+
+#[derive(Debug, JsError)]
+#[class(inherit)]
+pub struct ContextedResolvePkgFolderFromDenoReqError {
+  pub npm_specifier: Url,
+  #[inherit]
+  pub inner: ResolvePkgFolderFromDenoReqError,
+}
+
+impl std::error::Error for ContextedResolvePkgFolderFromDenoReqError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    self.inner.source()
+  }
+}
+
+impl std::fmt::Display for ContextedResolvePkgFolderFromDenoReqError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(&self.inner, f)
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+pub enum ResolvePkgFolderFromDenoReqError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Managed(managed::ManagedResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Byonm(byonm::ByonmResolvePkgFolderFromDenoReqError),
+}
+
+pub enum NpmResolverCreateOptions<TSys: NpmResolverSys> {
+  Managed(ManagedNpmResolverCreateOptions<TSys>),
+  Byonm(ByonmNpmResolverCreateOptions<TSys>),
+}
+
+#[sys_traits::auto_impl]
+pub trait NpmResolverSys:
+  managed::ManagedNpmResolverSys
+  + byonm::ByonmNpmResolverSys
+  + node_resolver::NodeResolverSys
+  + std::fmt::Debug
+  + MaybeSend
+  + MaybeSync
+  + Clone
+  + 'static
+{
+}
+
+#[derive(Debug, Clone)]
+pub enum NpmResolver<TSys: NpmResolverSys> {
+  /// The resolver when "bring your own node_modules" is enabled where Deno
+  /// does not setup the node_modules directories automatically, but instead
+  /// uses what already exists on the file system.
+  Byonm(ByonmNpmResolverRc<TSys>),
+  Managed(ManagedNpmResolverRc<TSys>),
+}
+
+impl<TSys: NpmResolverSys> NpmResolver<TSys> {
+  pub fn new<TCreateSys: NpmResolverSys>(
+    options: NpmResolverCreateOptions<TCreateSys>,
+  ) -> NpmResolver<TCreateSys> {
+    match options {
+      NpmResolverCreateOptions::Managed(options) => {
+        NpmResolver::Managed(new_rc(ManagedNpmResolver::<TCreateSys>::new::<
+          TCreateSys,
+        >(options)))
+      }
+      NpmResolverCreateOptions::Byonm(options) => {
+        NpmResolver::Byonm(new_rc(ByonmNpmResolver::new(options)))
+      }
+    }
+  }
+
+  pub fn is_byonm(&self) -> bool {
+    matches!(self, NpmResolver::Byonm(_))
+  }
+
+  pub fn is_managed(&self) -> bool {
+    matches!(self, NpmResolver::Managed(_))
+  }
+
+  pub fn as_managed(&self) -> Option<&ManagedNpmResolverRc<TSys>> {
+    match self {
+      NpmResolver::Managed(resolver) => Some(resolver),
+      NpmResolver::Byonm(_) => None,
+    }
+  }
+
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
+    match self {
+      NpmResolver::Byonm(resolver) => resolver.root_node_modules_path(),
+      NpmResolver::Managed(resolver) => resolver.root_node_modules_path(),
+    }
+  }
+
+  pub fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_pkg_folder_from_deno_module_req(req)
+        .map_err(ResolvePkgFolderFromDenoReqError::Managed),
+    }
+  }
+}
+
+impl<TSys: NpmResolverSys> NpmPackageFolderResolver for NpmResolver<TSys> {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &UrlOrPathRef,
+  ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => {
+        byonm_resolver.resolve_package_folder_from_package(specifier, referrer)
+      }
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_package_folder_from_package(specifier, referrer),
+    }
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+    }
+  }
+}
+
+pub struct NpmReqResolverOptions<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NpmResolverSys,
+> {
+  pub in_npm_pkg_checker: TInNpmPackageChecker,
+  pub node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  pub npm_resolver: NpmResolver<TSys>,
+  pub sys: TSys,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type NpmReqResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = deno_maybe_sync::MaybeArc<
+  NpmReqResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
+
+#[derive(Debug)]
+pub struct NpmReqResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NpmResolverSys,
+> {
+  sys: TSys,
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  npm_resolver: NpmResolver<TSys>,
+}
+
+impl<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NpmResolverSys,
+>
+  NpmReqResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
+{
+  pub fn new(
+    options: NpmReqResolverOptions<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  ) -> Self {
+    Self {
+      sys: options.sys,
+      in_npm_pkg_checker: options.in_npm_pkg_checker,
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
+    }
+  }
+
+  pub fn resolve_req_reference(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
+    self.resolve_req_with_sub_path(
+      req_ref.req(),
+      req_ref.sub_path(),
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )
+  }
+
+  pub fn resolve_req_with_sub_path(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, ResolveNpmReqRefError> {
+    self
+      .resolve_req_with_sub_path_inner(
+        req,
+        sub_path,
+        referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .map_err(|source| ResolveNpmReqRefError {
+        npm_req_ref: NpmPackageReqReference::new(PackageReqReference {
+          req: req.clone(),
+          sub_path: sub_path.map(|s| s.into()),
+        }),
+        err: source,
+      })
+  }
+
+  fn resolve_req_with_sub_path_inner(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)
+      .map_err(|inner| ContextedResolvePkgFolderFromDenoReqError {
+        npm_specifier: Url::parse(&format!(
+          "npm:{}{}",
+          req,
+          sub_path.map(|s| format!("/{}", s)).unwrap_or_default(),
+        ))
+        .unwrap(),
+        inner,
+      })?;
+    let resolution_result =
+      self.node_resolver.resolve_package_subpath_from_deno_module(
+        &package_folder,
+        sub_path,
+        Some(referrer),
+        resolution_mode,
+        resolution_kind,
+      );
+    match resolution_result {
+      Ok(url) => Ok(url),
+      Err(err) => {
+        if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
+          let package_json_path = package_folder.join("package.json");
+          if !self.sys.fs_exists_no_err(&package_json_path) {
+            return Err(
+              MissingPackageNodeModulesFolderError {
+                package_json_path,
+                inner: err,
+              }
+              .into(),
+            );
+          }
+        }
+        Err(err.into())
+      }
+    }
+  }
+
+  pub fn resolve_if_for_npm_pkg(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<Option<NodeResolution>, ResolveIfForNpmPackageError> {
+    let resolution_result = self.node_resolver.resolve(
+      specifier,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    );
+    match resolution_result {
+      Ok(res) => Ok(Some(res)),
+      Err(err) => {
+        let err = err.into_kind();
+        match err {
+          NodeResolveErrorKind::RelativeJoin(_)
+          | NodeResolveErrorKind::PackageImportsResolve(_)
+          | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
+          | NodeResolveErrorKind::DataUrlReferrer(_)
+          | NodeResolveErrorKind::PathToUrl(_)
+          | NodeResolveErrorKind::UrlToFilePath(_)
+          | NodeResolveErrorKind::TypesNotFound(_)
+          | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+          | NodeResolveErrorKind::FinalizeResolution(_) => Err(
+            ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
+          ),
+          NodeResolveErrorKind::PackageResolve(err) => {
+            let err = err.into_kind();
+            match err {
+              PackageResolveErrorKind::UrlToFilePath(err) => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(
+                  NodeResolveErrorKind::UrlToFilePath(err).into_box(),
+                )
+                .into_box(),
+              ),
+              PackageResolveErrorKind::PkgJsonLoad(_)
+              | PackageResolveErrorKind::InvalidModuleSpecifier(_)
+              | PackageResolveErrorKind::ExportsResolve(_)
+              | PackageResolveErrorKind::SubpathResolve(_) => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(
+                  NodeResolveErrorKind::PackageResolve(err.into()).into(),
+                )
+                .into_box(),
+              ),
+              PackageResolveErrorKind::PackageFolderResolve(err) => {
+                match err.as_kind() {
+                  PackageFolderResolveErrorKind::PathToUrl(err) => Err(
+                    ResolveIfForNpmPackageErrorKind::NodeResolve(
+                      NodeResolveErrorKind::PathToUrl(err.clone()).into_box(),
+                    )
+                    .into_box(),
+                  ),
+                  PackageFolderResolveErrorKind::Io(
+                    PackageFolderResolveIoError { package_name, .. },
+                  )
+                  | PackageFolderResolveErrorKind::PackageNotFound(
+                    PackageNotFoundError { package_name, .. },
+                  ) => {
+                    if self.in_npm_pkg_checker.in_npm_package(referrer) {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeResolve(
+                          NodeResolveErrorKind::PackageResolve(err.into())
+                            .into(),
+                        )
+                        .into_box(),
+                      );
+                    }
+                    if let NpmResolver::Byonm(byonm_npm_resolver) =
+                      &self.npm_resolver
+                      && byonm_npm_resolver
+                        .find_ancestor_package_json_with_dep(
+                          package_name,
+                          referrer,
+                        )
+                        .is_some()
+                    {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
+                          NodeModulesOutOfDateError {
+                            specifier: specifier.to_string(),
+                          },
+                        )
+                        .into_box(),
+                      );
+                    }
+                    Ok(None)
+                  }
+                  PackageFolderResolveErrorKind::ReferrerNotFound(_) => {
+                    if self.in_npm_pkg_checker.in_npm_package(referrer) {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeResolve(
+                          NodeResolveErrorKind::PackageResolve(err.into())
+                            .into(),
+                        )
+                        .into_box(),
+                      );
+                    }
+                    Ok(None)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

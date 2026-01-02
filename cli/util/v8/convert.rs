@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::v8;
 use deno_core::FromV8;
 use deno_core::ToV8;
+use deno_core::v8;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// A wrapper type for `Option<T>` that (de)serializes `None` as `null`
@@ -29,7 +29,7 @@ where
 
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     match self.0 {
       Some(value) => value.to_v8(scope),
@@ -45,7 +45,7 @@ where
   type Error = T::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Self, Self::Error> {
     if value.is_null() {

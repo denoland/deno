@@ -10,10 +10,10 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::futures::FutureExt;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
+use deno_core::futures::FutureExt;
 use deno_error::JsErrorBox;
 use flate2::write::GzEncoder;
 use hyper::body::Frame;
@@ -350,7 +350,7 @@ impl PollFrame for GZipResponseStream {
     let orig_state = *state;
     let frame = match *state {
       GZipState::EndOfStream => {
-        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream);
       }
       GZipState::Header => {
         *state = GZipState::Streaming;
@@ -367,13 +367,12 @@ impl PollFrame for GZipResponseStream {
           BufView::from(v),
         ));
       }
-      GZipState::Streaming => {
-        if let Some(partial) = this.partial.take() {
-          ResponseStreamResult::NonEmptyBuf(partial)
-        } else {
+      GZipState::Streaming => match this.partial.take() {
+        Some(partial) => ResponseStreamResult::NonEmptyBuf(partial),
+        _ => {
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
         }
-      }
+      },
       GZipState::Flushing => ResponseStreamResult::EndOfStream,
     };
 
@@ -391,7 +390,7 @@ impl PollFrame for GZipResponseStream {
     let res = match frame {
       // Short-circuit these and just return
       x @ (ResponseStreamResult::NoData | ResponseStreamResult::Error(..)) => {
-        return std::task::Poll::Ready(x)
+        return std::task::Poll::Ready(x);
       }
       ResponseStreamResult::EndOfStream => {
         *state = GZipState::Flushing;
@@ -492,11 +491,7 @@ fn max_compressed_size(input_size: usize) -> usize {
   let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
   let result = input_size + overhead;
 
-  if result < input_size {
-    0
-  } else {
-    result
-  }
+  if result < input_size { 0 } else { result }
 }
 
 impl PollFrame for BrotliResponseStream {

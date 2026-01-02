@@ -8,10 +8,14 @@
 
 import { core, internals } from "ext:core/mod.js";
 import {
-  op_node_ipc_read,
+  op_node_in_npm_package,
+  op_node_ipc_buffer_constructor,
+  op_node_ipc_read_advanced,
+  op_node_ipc_read_json,
   op_node_ipc_ref,
   op_node_ipc_unref,
-  op_node_ipc_write,
+  op_node_ipc_write_advanced,
+  op_node_ipc_write_json,
 } from "ext:core/ops";
 import {
   ArrayIsArray,
@@ -40,6 +44,7 @@ import {
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
+import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -47,6 +52,7 @@ import {
   isInt32,
   validateBoolean,
   validateObject,
+  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -57,11 +63,11 @@ import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
 import {
-  kDetached,
   kExtraStdio,
   kInputOption,
   kIpc,
   kNeedsNpmProcessState,
+  kSerialization,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -248,6 +254,8 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
     } = options || {};
+
+    const serialization = options?.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
@@ -255,10 +263,11 @@ export class ChildProcess extends EventEmitter {
       stderr = "pipe",
       ...extraStdio
     ] = normalizedStdio;
-    const [cmd, cmdArgs] = buildCommand(
+    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args || [],
       shell,
+      env,
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
@@ -285,11 +294,14 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        detached,
+        [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        [kDetached]: detached,
-        // deno-lint-ignore no-explicit-any
-        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
+        [kNeedsNpmProcessState]:
+          // deno-lint-ignore no-explicit-any
+          (options ?? {} as any)[kNeedsNpmProcessState] ||
+          includeNpmProcessState,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -383,7 +395,7 @@ export class ChildProcess extends EventEmitter {
 
       const pipeRid = internals.getIpcPipeRid(this.#process);
       if (typeof pipeRid == "number") {
-        setupChannel(this, pipeRid);
+        setupChannel(this, pipeRid, serialization);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
           maybeClose(this);
@@ -760,6 +772,12 @@ export function normalizeSpawnArguments(
     );
   }
 
+  validateOneOf(options.serialization, "options.serialization", [
+    undefined,
+    "json",
+    "advanced",
+  ]);
+
   if (options.shell) {
     const command = ArrayPrototypeJoin([file, ...args], " ");
     // Set the shell, switches, and commands.
@@ -846,6 +864,7 @@ export function normalizeSpawnArguments(
     file,
     windowsHide: !!options.windowsHide,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
+    serialization: options.serialization || "json",
   };
 }
 
@@ -881,10 +900,23 @@ function buildCommand(
   file: string,
   args: string[],
   shell: string | boolean,
-): [string, string[]] {
+  env: Record<string, string | number | boolean>,
+): [string, string[], boolean] {
+  let includeNpmProcessState = false;
   if (file === Deno.execPath()) {
+    let nodeOptions: string[];
     // The user is trying to spawn another Deno process as Node.js.
-    args = toDenoArgs(args);
+    [args, nodeOptions, includeNpmProcessState] = toDenoArgs(args);
+
+    // Update NODE_OPTIONS if it exists
+    if (nodeOptions.length > 0) {
+      const options = nodeOptions.join(" ");
+      if (env.NODE_OPTIONS) {
+        env.NODE_OPTIONS += " " + options;
+      } else {
+        env.NODE_OPTIONS = options;
+      }
+    }
   }
 
   if (shell) {
@@ -912,7 +944,8 @@ function buildCommand(
       args = ["-c", command];
     }
   }
-  return [file, args];
+
+  return [file, args, includeNpmProcessState];
 }
 
 function _createSpawnSyncError(
@@ -1030,7 +1063,13 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  [command, args] = buildCommand(command, args ?? [], shell);
+  let includeNpmProcessState = false;
+  [command, args, includeNpmProcessState] = buildCommand(
+    command,
+    args ?? [],
+    shell,
+    env,
+  );
   const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
@@ -1046,6 +1085,9 @@ export function spawnSync(
       gid,
       windowsRawArguments: windowsVerbatimArguments,
       [kInputOption]: input_,
+      // deno-lint-ignore no-explicit-any
+      [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
+        includeNpmProcessState,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1162,14 +1204,32 @@ const kDenoSubcommands = new Set([
   "vendor",
 ]);
 
-function toDenoArgs(args: string[]): string[] {
+/** Wraps the script for (Node.js) --eval / --print argument
+ * Note: Builtin modules are available as global variables */
+function wrapScriptForEval(sourceCode: string): string {
+  // Note: We need vm.runInThisContext call here to get the last evaluated
+  // value of the source with multiple statements. `deno eval -p` surrounds
+  // the source code like `console.log(${source})`, and it only allows a
+  // single expression.
+  return `
+    process.getBuiltinModule("module").builtinModules
+      .filter((m) => !/\\/|crypto|process/.test(m))
+      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
+    vm.runInThisContext(${JSON.stringify(sourceCode)})
+  `;
+}
+
+/** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
+function toDenoArgs(args: string[]): [string[], string[], boolean] {
   if (args.length === 0) {
-    return args;
+    return [args, args, false];
   }
 
   // Update this logic as more CLI arguments are mapped from Node to Deno.
   const denoArgs: string[] = [];
+  const nodeOptions: string[] = [];
   let useRunArgs = true;
+  let needsNpmProcessState = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -1181,8 +1241,12 @@ function toDenoArgs(args: string[]): string[] {
       // spawned as Deno, not Deno in Node compat mode. In this case, bail out
       // and return the original args.
       if (kDenoSubcommands.has(arg)) {
-        return args;
+        return [args, [], false];
       }
+
+      // if the user is launching a script in the node_modules or
+      // global cache, include the process state
+      needsNpmProcessState = op_node_in_npm_package(arg);
 
       // Copy of the rest of the arguments to the output.
       for (let j = i; j < args.length; j++) {
@@ -1220,6 +1284,16 @@ function toDenoArgs(args: string[]): string[] {
     if (flagInfo === undefined) {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
+        nodeOptions.push(arg);
+      } else if (arg === "--expose-internals") {
+        // internals are always exposed in Deno.
+      } else if (arg === "--permission") {
+        // ignore --permission flag
+      } else if (arg === "--pending-deprecation") {
+        nodeOptions.push(arg);
+      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
+        // `--experimental-*` args are ignored, because most experimental Node features
+        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);
@@ -1244,7 +1318,10 @@ function toDenoArgs(args: string[]): string[] {
 
     // Remap Node's eval flags to Deno.
     if (flag === "-e" || flag === "--eval") {
-      denoArgs.push("eval", flagValue);
+      denoArgs.push("eval", wrapScriptForEval(flagValue));
+      useRunArgs = false;
+    } else if (flag === "-p" || flag === "--print") {
+      denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
       useRunArgs = false;
     } else if (isLongWithValue) {
       denoArgs.push(arg);
@@ -1258,7 +1335,7 @@ function toDenoArgs(args: string[]): string[] {
     denoArgs.unshift("run", "-A");
   }
 
-  return denoArgs;
+  return [denoArgs, nodeOptions, needsNpmProcessState];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");
@@ -1271,20 +1348,22 @@ class Control extends EventEmitter {
   #refExplicitlySet = false;
   #connected = true;
   [kPendingMessages] = [];
-  constructor(channel: number) {
+  #serialization: "json" | "advanced";
+  constructor(channel: number, serialization: "json" | "advanced") {
     super();
     this.#channel = channel;
+    this.#serialization = serialization;
   }
 
   #ref() {
     if (this.#connected) {
-      op_node_ipc_ref(this.#channel);
+      op_node_ipc_ref(this.#channel, this.#serialization === "json");
     }
   }
 
   #unref() {
     if (this.#connected) {
-      op_node_ipc_unref(this.#channel);
+      op_node_ipc_unref(this.#channel, this.#serialization === "json");
     }
   }
 
@@ -1336,10 +1415,28 @@ function internalCmdName(msg: InternalMessage): string {
   return StringPrototypeSlice(msg.cmd, 5);
 }
 
-// deno-lint-ignore no-explicit-any
-export function setupChannel(target: any, ipc: number) {
-  const control = new Control(ipc);
+let hasSetBufferConstructor = false;
+
+export function setupChannel(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  ipc: number,
+  serialization: "json" | "advanced",
+) {
+  const control = new Control(ipc, serialization);
   target.channel = control;
+
+  if (!hasSetBufferConstructor) {
+    op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
+    hasSetBufferConstructor = true;
+  }
+
+  const writeFn = serialization === "json"
+    ? op_node_ipc_write_json
+    : op_node_ipc_write_advanced;
+  const readFn = serialization === "json"
+    ? op_node_ipc_read_json
+    : op_node_ipc_read_advanced;
 
   async function readLoop() {
     try {
@@ -1347,7 +1444,8 @@ export function setupChannel(target: any, ipc: number) {
         if (!target.connected || target.killed) {
           return;
         }
-        const prom = op_node_ipc_read(ipc);
+        // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
+        const prom = readFn(ipc);
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
@@ -1439,7 +1537,7 @@ export function setupChannel(target: any, ipc: number) {
     // this acts as a backpressure mechanism.
     const queueOk = [true];
     control.refCounted();
-    op_node_ipc_write(ipc, message, queueOk)
+    writeFn(ipc, message, queueOk)
       .then(() => {
         control.unrefCounted();
         if (callback) {

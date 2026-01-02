@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.3.3"
+version = "2.6.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -61,15 +61,13 @@ zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 
-[target.'cfg(unix)'.build-dependencies]
-glibc_version = "0.1.2"
-
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
+deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -86,23 +84,27 @@ deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.1.0", optional = true }
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["graph", "sync"] }
+deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
+deno_signals.workspace = true
 deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
 async-trait.workspace = true
+aws-lc-rs.workspace = true
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 bytes.workspace = true
+bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
@@ -120,6 +122,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
+esbuild_client = { version = "0.7.1", features = ["serde"] }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -128,14 +131,17 @@ fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
-import_map = { version = "=0.21.0", features = ["ext"] }
+import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
+jupyter-protocol = "0.8.0"
+jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
+keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
+lol_html = "2.6.0"
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
@@ -155,13 +161,14 @@ pretty_yaml.workspace = true
 quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-ring.workspace = true
 rustc-hash.workspace = true
+rustls.workspace = true
 rustyline.workspace = true
 rustyline-derive.workspace = true
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
+shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
@@ -178,6 +185,7 @@ tower-lsp.workspace = true
 tracing = { workspace = true, features = ["log"], optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"], optional = true }
+twox-hash.workspace = true
 typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
@@ -187,17 +195,20 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+# unsafe_use_unprotected_platform is a workaround for a segfault that may occur
+# when running multiple v8 tests on different threads
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

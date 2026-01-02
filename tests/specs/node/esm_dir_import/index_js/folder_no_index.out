@@ -1,0 +1,6 @@
+Download http://localhost:4260/@denotest%2fsub-folders
+Download http://localhost:4260/@denotest/sub-folders/1.0.0.tgz
+error: Could not resolve 'npm:@denotest/sub-folders/folder_no_index'
+
+Caused by:
+    [ERR_UNSUPPORTED_DIR_IMPORT] Directory import 'file:///[WILDLINE]/folder_no_index' is not supported resolving ES modules imported from 'file:///[WILDLINE]/folder_no_index.ts'

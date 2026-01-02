@@ -1,0 +1,73 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_resolver"
+version = "0.56.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Deno resolution algorithm"
+
+[lib]
+path = "lib.rs"
+
+[features]
+deno_ast = ["dep:deno_ast", "deno_graph/swc"]
+graph = ["deno_graph", "node_resolver/graph", "http", "deno_permissions"]
+sync = [
+  "dashmap",
+  "deno_maybe_sync/sync",
+  "deno_package_json/sync",
+  "node_resolver/sync",
+  "deno_config/sync",
+  "deno_cache_dir/sync",
+]
+
+[dependencies]
+anyhow.workspace = true
+async-once-cell.workspace = true
+async-trait.workspace = true
+base32.workspace = true
+boxed_error.workspace = true
+capacity_builder.workspace = true
+chrono.workspace = true
+dashmap = { workspace = true, optional = true }
+deno_ast = { workspace = true, features = ["cjs"], optional = true }
+deno_cache_dir.workspace = true
+deno_config.workspace = true
+deno_error.workspace = true
+deno_graph = { workspace = true, optional = true }
+deno_lockfile.workspace = true
+deno_maybe_sync.workspace = true
+deno_media_type.workspace = true
+deno_npm.workspace = true
+deno_package_json.workspace = true
+deno_path_util.workspace = true
+deno_permissions = { workspace = true, optional = true }
+deno_semver.workspace = true
+deno_terminal.workspace = true
+deno_unsync.workspace = true
+dissimilar.workspace = true
+futures.workspace = true
+http = { workspace = true, optional = true }
+import_map.workspace = true
+indexmap.workspace = true
+jsonc-parser.workspace = true
+log.workspace = true
+node_resolver.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+phf = { workspace = true, features = ["macros"] }
+serde.workspace = true
+serde_json.workspace = true
+sys_traits.workspace = true
+thiserror.workspace = true
+twox-hash.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+node_resolver.workspace = true
+sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
+test_util.workspace = true

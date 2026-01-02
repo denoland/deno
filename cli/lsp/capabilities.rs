@@ -20,8 +20,11 @@ fn code_action_capabilities(
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
     .map(|_| {
-      let mut code_action_kinds =
-        vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
+      let mut code_action_kinds = vec![
+        CodeActionKind::QUICKFIX,
+        CodeActionKind::REFACTOR,
+        CodeActionKind::SOURCE_ORGANIZE_IMPORTS,
+      ];
       code_action_kinds.extend(
         ALL_KNOWN_REFACTOR_ACTION_KINDS
           .iter()
@@ -37,8 +40,8 @@ fn code_action_capabilities(
     .unwrap_or(CodeActionProviderCapability::Simple(true))
 }
 
-pub fn semantic_tokens_registration_options(
-) -> SemanticTokensRegistrationOptions {
+pub fn semantic_tokens_registration_options()
+-> SemanticTokensRegistrationOptions {
   const LANGUAGES: [&str; 4] = [
     "javascript",
     "javascriptreact",
@@ -197,7 +200,12 @@ pub fn server_capabilities(
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
-    diagnostic_provider: None,
+    diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+      DiagnosticOptions {
+        inter_file_dependencies: true,
+        ..Default::default()
+      },
+    )),
     inline_value_provider: None,
     inline_completion_provider: None,
     notebook_document_sync: Some(OneOf::Left(NotebookDocumentSyncOptions {

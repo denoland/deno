@@ -1,11 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::ffi::c_void;
+use std::sync::LazyLock;
 
+use deno_core::OpState;
+use deno_core::op2;
+use deno_core::v8;
 use deno_core::v8::fast_api;
 
 use crate::NativeType;
 use crate::Symbol;
+use crate::dlfcn::FunctionData;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TurbocallError {
@@ -218,6 +223,16 @@ pub(crate) fn compile_trampoline(
 
     f.def_var(options_v, args[argx]);
 
+    static TRACE_TURBO: LazyLock<bool> = LazyLock::new(|| {
+      std::env::var("DENO_UNSTABLE_FFI_TRACE_TURBO").as_deref() == Ok("1")
+    });
+
+    if *TRACE_TURBO {
+      let options = f.use_var(options_v);
+      let trace_fn = f.ins().iconst(ISIZE, turbocall_trace as usize as i64);
+      f.ins().call_indirect(ab_sig, trace_fn, &[options]);
+    }
+
     let mut next = f.create_block();
 
     let mut vidx = 0;
@@ -396,10 +411,33 @@ extern "C" fn turbocall_ab_contents(
 unsafe extern "C" fn turbocall_raise(
   options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
 ) {
-  let mut scope = deno_core::v8::CallbackScope::new(&*options);
-  let exception = deno_core::error::to_v8_error(
-    &mut scope,
-    &crate::IRError::InvalidBufferType,
-  );
+  // SAFETY: This is called with valid FastApiCallbackOptions from within fast callback.
+  v8::callback_scope!(unsafe scope, unsafe { &*options });
+  let exception =
+    deno_core::error::to_v8_error(scope, &crate::IRError::InvalidBufferType);
   scope.throw_exception(exception);
+}
+
+pub struct TurbocallTarget(String);
+
+unsafe extern "C" fn turbocall_trace(
+  options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
+) {
+  // SAFETY: This is called with valid FastApiCallbackOptions from within fast callback.
+  v8::callback_scope!(unsafe let scope, unsafe { &*options });
+  let func_data = deno_core::cppgc::try_unwrap_cppgc_object::<FunctionData>(
+    scope,
+    // SAFETY: This is valid if the options are valid.
+    unsafe { (&*options).data },
+  )
+  .unwrap();
+  deno_core::JsRuntime::op_state_from(scope)
+    .borrow_mut()
+    .put(TurbocallTarget(func_data.symbol.name.clone()));
+}
+
+#[op2]
+#[string]
+pub fn op_ffi_get_turbocall_target(state: &mut OpState) -> Option<String> {
+  state.try_take::<TurbocallTarget>().map(|t| t.0)
 }

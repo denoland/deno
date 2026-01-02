@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
+use deno_core::op2;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
@@ -14,9 +15,22 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Hasher {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Hasher"
+  }
+}
+
+// Make prototype available for JavaScript
+#[op2]
+impl Hasher {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Hasher {
+    unreachable!()
   }
 }
 
@@ -72,6 +86,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
+      #[allow(dead_code)]
       _ => crate::ops::crypto::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
@@ -205,26 +220,26 @@ impl Hash {
   ) -> Result<Self, HashError> {
     match algorithm_name {
       "shake128" | "shake-128" => {
-        return Ok(Shake128(Default::default(), output_length))
+        return Ok(Shake128(Default::default(), output_length));
       }
       "shake256" | "shake-256" => {
-        return Ok(Shake256(Default::default(), output_length))
+        return Ok(Shake256(Default::default(), output_length));
       }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
       "sha512" => {
         let digest = ring_sha2::RingSha512::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
@@ -235,11 +250,10 @@ impl Hash {
       algorithm_name,
       fn <D>() {
         let digest: D = Digest::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
+        if let Some(length) = output_length
+          && length != digest.output_size() {
             return Err(HashError::OutputLengthMismatch);
           }
-        }
         FixedSize(Box::new(digest))
       },
       _ => {
@@ -278,10 +292,10 @@ impl Hash {
   ) -> Result<Self, HashError> {
     let hash = match self {
       FixedSize(context) => {
-        if let Some(length) = output_length {
-          if length != context.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != context.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         FixedSize(context.box_clone())
       }
@@ -350,5 +364,66 @@ impl Hash {
       "ssl3-md5",
       "ssl3-sha1",
     ]
+  }
+
+  pub fn get_size(algorithm_name: &str) -> Option<u8> {
+    match algorithm_name {
+      "RSA-MD4" => Some(16),
+      "RSA-MD5" => Some(16),
+      "RSA-RIPEMD160" => Some(20),
+      "RSA-SHA1" => Some(20),
+      "RSA-SHA1-2" => Some(20),
+      "RSA-SHA224" => Some(28),
+      "RSA-SHA256" => Some(32),
+      "RSA-SHA3-224" => Some(28),
+      "RSA-SHA3-256" => Some(32),
+      "RSA-SHA3-384" => Some(48),
+      "RSA-SHA3-512" => Some(64),
+      "RSA-SHA384" => Some(48),
+      "RSA-SHA512" => Some(64),
+      "RSA-SHA512/224" => Some(28),
+      "RSA-SHA512/256" => Some(32),
+      "RSA-SM3" => Some(32),
+      "blake2b512" => Some(64),
+      "blake2s256" => Some(32),
+      "id-rsassa-pkcs1-v1_5-with-sha3-224" => Some(28),
+      "id-rsassa-pkcs1-v1_5-with-sha3-256" => Some(32),
+      "id-rsassa-pkcs1-v1_5-with-sha3-384" => Some(48),
+      "id-rsassa-pkcs1-v1_5-with-sha3-512" => Some(64),
+      "md4" => Some(16),
+      "md4WithRSAEncryption" => Some(16),
+      "md5" => Some(16),
+      "md5-sha1" => Some(20),
+      "md5WithRSAEncryption" => Some(16),
+      "ripemd" => Some(20),
+      "ripemd160" => Some(20),
+      "ripemd160WithRSA" => Some(20),
+      "rmd160" => Some(20),
+      "sha1" => Some(20),
+      "sha1WithRSAEncryption" => Some(20),
+      "sha224" => Some(28),
+      "sha224WithRSAEncryption" => Some(28),
+      "sha256" => Some(32),
+      "sha256WithRSAEncryption" => Some(32),
+      "sha3-224" => Some(28),
+      "sha3-256" => Some(32),
+      "sha3-384" => Some(48),
+      "sha3-512" => Some(64),
+      "sha384" => Some(48),
+      "sha384WithRSAEncryption" => Some(48),
+      "sha512" => Some(64),
+      "sha512-224" => Some(28),
+      "sha512-224WithRSAEncryption" => Some(28),
+      "sha512-256" => Some(32),
+      "sha512-256WithRSAEncryption" => Some(32),
+      "sha512WithRSAEncryption" => Some(64),
+      "shake128" => None, // Variable length
+      "shake256" => None, // Variable length
+      "sm3" => Some(32),
+      "sm3WithRSAEncryption" => Some(32),
+      "ssl3-md5" => Some(16),
+      "ssl3-sha1" => Some(20),
+      _ => None,
+    }
   }
 }

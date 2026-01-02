@@ -48,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -59,6 +60,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -70,6 +81,9 @@
             "type": "boolean"
           },
           "canonicalizedTempDir": {
+            "type": "boolean"
+          },
+          "flaky": {
             "type": "boolean"
           },
           "symlinkedTempDir": {
@@ -84,6 +98,16 @@
               "type": "string"
             }
           },
+          "if": {
+            "type": "string",
+            "examples": [
+              "mac",
+              "linux",
+              "windows",
+              "unix",
+              "notMacIntel"
+            ]
+          },
           "repeat": {
             "type": "number"
           },
@@ -95,6 +119,16 @@
           },
           "ignore": {
             "type": "boolean"
+          },
+          "variants": {
+            "type": "object",
+            "patternProperties": {
+              ".*": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }, {
@@ -153,6 +187,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

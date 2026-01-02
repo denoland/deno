@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use bencher::Bencher;
-use deno_core::v8;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_core::v8;
 
 use crate::profiling::is_profiling;
 
@@ -52,7 +52,7 @@ pub fn bench_js_sync_with(
   opts: BenchOptions,
 ) {
   let mut runtime = create_js_runtime(setup);
-  let scope = &mut runtime.handle_scope();
+  deno_core::scope!(scope, runtime);
 
   // Increase JS iterations if profiling for nicer flamegraphs
   let inner_iters = if is_profiling() {

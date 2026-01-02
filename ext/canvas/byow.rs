@@ -12,22 +12,37 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::cppgc::SameObject;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::Local;
+use deno_core::v8::Value;
 use deno_error::JsErrorBox;
 use deno_webgpu::canvas::Data;
 
-use crate::canvas::get_context;
 use crate::canvas::Context;
 use crate::canvas::CreateCanvasContext;
+use crate::canvas::get_context;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd",
+  )))]
   #[class(type)]
-  #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
+  #[error("Unsupported platform")]
+  Unsupported,
+  #[class(type)]
+  #[error(
+    "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
+  )]
   WebGPUNotInitiated,
   #[class(type)]
   #[error("Invalid parameters")]
@@ -80,7 +95,10 @@ pub struct UnsafeWindowSurface {
   pub active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
 
-impl GarbageCollected for UnsafeWindowSurface {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for UnsafeWindowSurface {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"UnsafeWindowSurface"
   }
@@ -98,7 +116,7 @@ impl UnsafeWindowSurface {
     *width
   }
   #[setter]
-  fn width(&self, scope: &mut v8::HandleScope, value: u32) {
+  fn width(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
     let mut data = self.data.borrow_mut();
     let Data::Surface { width, .. } = &mut *data else {
       unreachable!();
@@ -125,7 +143,7 @@ impl UnsafeWindowSurface {
     *height
   }
   #[setter]
-  fn height(&self, scope: &mut v8::HandleScope, value: u32) {
+  fn height(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
     let mut data = self.data.borrow_mut();
     let Data::Surface { height, .. } = &mut *data else {
       unreachable!();
@@ -196,7 +214,7 @@ impl UnsafeWindowSurface {
   fn get_context<'s>(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl] context_id: String,
     #[webidl] options: v8::Local<'s, v8::Value>,
   ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
@@ -233,15 +251,17 @@ impl UnsafeWindowSurface {
   }
 
   #[nofast]
-  fn present(&self, scope: &mut v8::HandleScope) -> Result<(), JsErrorBox> {
-    if self.active_context.get().is_none() {
+  fn present(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> Result<(), JsErrorBox> {
+    let Some(active_context) = self.active_context.get() else {
       return Err(JsErrorBox::new(
         "DOMExceptionInvalidStateError",
         "UnsafeWindowSurface hasn't been initialized yet",
       ));
-    }
+    };
 
-    let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
     let context = get_context(&active_context.0, scope, active_context_local);
     match &context {
@@ -296,7 +316,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
   type Error = JsErrorBox;
 
   fn from_v8(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Self, Self::Error> {
     let obj = value
@@ -316,7 +336,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
       _ => {
         return Err(JsErrorBox::type_error(format!(
           "Invalid system kind '{s}'"
-        )))
+        )));
       }
     };
 
@@ -340,13 +360,17 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
     let val = obj
       .get(scope, key.into())
       .ok_or_else(|| JsErrorBox::type_error("missing field 'width'"))?;
-    let width = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+    let width = deno_core::convert::Number::<u32>::from_v8(scope, val)
+      .map_err(JsErrorBox::from_err)?
+      .0;
 
     let key = v8::String::new(scope, "height").unwrap();
     let val = obj
       .get(scope, key.into())
       .ok_or_else(|| JsErrorBox::type_error("missing field 'height'"))?;
-    let height = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+    let height = deno_core::convert::Number::<u32>::from_v8(scope, val)
+      .map_err(JsErrorBox::from_err)?
+      .0;
 
     Ok(Self {
       system,
@@ -459,6 +483,6 @@ fn raw_window(
   _system: UnsafeWindowSurfaceSystem,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, deno_error::JsErrorBox> {
-  Err(deno_error::JsErrorBox::type_error("Unsupported platform"))
+) -> Result<RawHandles, ByowError> {
+  Err(ByowError::Unsupported)
 }

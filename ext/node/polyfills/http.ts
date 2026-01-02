@@ -9,6 +9,7 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_node_http_response_reclaim_conn,
   op_tls_key_null,
   op_tls_key_static,
   op_tls_start,
@@ -28,6 +29,7 @@ import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
 import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
+  validateAbortSignal,
   validateBoolean,
   validateInteger,
   validateObject,
@@ -67,6 +69,7 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
+import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -81,7 +84,15 @@ import {
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
-import { UpgradedConn } from "ext:deno_net/01_net.js";
+import {
+  kDestroyed,
+  kEnded,
+  kEnding,
+  kErrored,
+  kState,
+} from "ext:deno_node/internal/streams/utils.js";
+import { TcpConn, UpgradedConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
@@ -521,7 +532,10 @@ class ClientRequest extends OutgoingMessage {
         } catch (err) {
           throw (this.socket.errored || err);
         }
-        if (this._encrypted) {
+        // For reused TLS sockets, the connection is already encrypted.
+        // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
+        const needsTlsUpgrade = this._encrypted && !this.socket.encrypted;
+        if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
@@ -537,8 +551,17 @@ class ClientRequest extends OutgoingMessage {
             caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
           }, keyPair);
+
+          // Simulates "secure" event on TLSSocket
+          // This makes yarn v1's https client working
+          this.socket.authorized = true;
+          // Mark the socket as encrypted for keepAlive reuse detection
+          this.socket.encrypted = true;
         }
 
+        // Stop reading and save handle for keepAlive restoration.
+        this.socket?._handle?.readStop();
+        this._socketHandle = this.socket?._handle;
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -546,7 +569,6 @@ class ClientRequest extends OutgoingMessage {
           headers,
           this._bodyWriteRid,
           baseConnRid,
-          this._encrypted,
         );
         this._flushBuffer();
 
@@ -645,25 +667,25 @@ class ClientRequest extends OutgoingMessage {
           if (this.method === "CONNECT") {
             throw new Error("not implemented CONNECT");
           }
-          const upgradeRid = await op_node_http_fetch_response_upgrade(
-            res.responseRid,
-          );
+          const { 0: upgradeRid, 1: info } =
+            await op_node_http_fetch_response_upgrade(
+              res.responseRid,
+            );
           const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
-              hostname: res.remoteAddrIp,
-              port: res.remoteAddrIp,
+              hostname: info[0],
+              port: info[1],
             },
-            // TODO(bartlomieju): figure out actual values
             {
               transport: "tcp",
-              hostname: "127.0.0.1",
-              port: 80,
+              hostname: info[2],
+              port: info[3],
             },
           );
           const socket = new Socket({
-            handle: new TCP(constants.SERVER, conn),
+            handle: new TCP(constants.SOCKET, conn),
           });
 
           this.upgradeOrConnect = true;
@@ -699,9 +721,13 @@ class ClientRequest extends OutgoingMessage {
         if (
           err.message.includes("connection closed before message completed")
         ) {
-          // Node.js seems ignoring this error
-        } else if (err.message.includes("The signal has been aborted")) {
-          // Remap this error
+          // Node.js seems ignoring these errors
+        } else if (
+          err.message.includes("The signal has been aborted") ||
+          err.message.includes("Bad resource ID") ||
+          err.message.includes("operation was canceled")
+        ) {
+          // Stale connection - emit ECONNRESET so clients retry.
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
@@ -772,12 +798,14 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
-        socket.once("error", (err) => {
+        const socketErrorListener = (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
           // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
           emitErrorEvent(this, err);
           socket.destroy(err);
-        });
+        };
+        this._socketErrorListener = socketErrorListener;
+        socket.once("error", socketErrorListener);
         if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
@@ -1033,7 +1061,12 @@ export class IncomingMessageForClient extends NodeReadable {
     this._dumped = false;
 
     this.on("close", () => {
-      this.socket.emit("close");
+      // Let the final data flush before closing the socket.
+      if (this.socket) {
+        this.socket.once("drain", () => {
+          this.socket.emit("close");
+        });
+      }
     });
   }
 
@@ -1133,13 +1166,94 @@ export class IncomingMessageForClient extends NodeReadable {
 
     const buf = new Uint8Array(16 * 1024);
 
-    core.read(this._bodyRid, buf).then((bytesRead) => {
+    core.read(this._bodyRid, buf).then(async (bytesRead) => {
       if (bytesRead === 0) {
+        // Return the socket to the agent pool BEFORE pushing null.
+        // This must happen before the stream ends, otherwise the socket
+        // may already be marked as destroyed.
+        await this.#tryReturnSocket();
         this.push(null);
       } else {
         this.push(Buffer.from(buf.subarray(0, bytesRead)));
       }
     });
+  }
+
+  // Try to return the socket to the agent pool for keepAlive reuse.
+  async #tryReturnSocket() {
+    const socket = this.socket;
+    if (!socket) {
+      return;
+    }
+
+    const req = this.req;
+    // Only pool the socket if keepAlive is enabled.
+    if (!req?.shouldKeepAlive) {
+      return;
+    }
+
+    const handle = req?._socketHandle || socket._handle;
+    if (!handle) {
+      return;
+    }
+
+    try {
+      const newRid = await op_node_http_response_reclaim_conn(this._bodyRid);
+      if (newRid == null) {
+        return;
+      }
+
+      const remoteAddr = {
+        hostname: socket.remoteAddress || "",
+        port: socket.remotePort || 0,
+      };
+      const localAddr = {
+        hostname: socket.localAddress || "",
+        port: socket.localPort || 0,
+      };
+
+      const isTls = socket.encrypted === true;
+      const conn = isTls
+        ? new TlsConn(newRid, remoteAddr, localAddr)
+        : new TcpConn(newRid, remoteAddr, localAddr);
+
+      handle[kStreamBaseField] = conn;
+      if (!socket._handle) {
+        socket._handle = handle;
+      }
+
+      // Reset socket state for reuse.
+      if (socket._readableState?.[kState] !== undefined) {
+        socket._readableState[kState] &= ~(kDestroyed | kErrored);
+      }
+      if (socket._writableState?.[kState] !== undefined) {
+        socket._writableState[kState] &=
+          ~(kEnding | kEnded | kDestroyed | kErrored);
+        socket._writableState.writable = true;
+      }
+      handle.destroyed = false;
+
+      // Agent's 'free' handler checks socket._httpMessage.shouldKeepAlive.
+      if (req && !socket._httpMessage) {
+        socket._httpMessage = req;
+      }
+
+      // Remove error listener to prevent accumulation on reused sockets.
+      if (req?._socketErrorListener) {
+        socket.removeListener("error", req._socketErrorListener);
+        req._socketErrorListener = null;
+      }
+
+      socket.emit("free");
+
+      // Clear references so old request/response don't destroy the pooled socket.
+      if (req) {
+        req.socket = null;
+      }
+      this.socket = null;
+    } catch (_e) {
+      // Socket reuse is best-effort.
+    }
   }
 
   // It's possible that the socket will be destroyed, and removed from
@@ -1580,6 +1694,49 @@ ServerResponse.prototype.setHeader = function (
   return this;
 };
 
+ServerResponse.prototype.setHeaders = function setHeaders(
+  this: ServerResponse,
+  headers: Headers | Map<string, string | string[]>,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("set");
+  }
+
+  if (
+    !headers ||
+    ArrayIsArray(headers) ||
+    typeof headers.keys !== "function" ||
+    typeof headers.get !== "function"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("headers", ["Headers", "Map"], headers);
+  }
+
+  // Headers object joins multiple cookies with a comma when using
+  // the getter to retrieve the value,
+  // unless iterating over the headers directly.
+  // We also cannot safely split by comma.
+  // To avoid setHeader overwriting the previous value we push
+  // set-cookie values in array and set them all at once.
+  const cookies = [];
+
+  for (const { 0: key, 1: value } of headers) {
+    if (key === "set-cookie") {
+      if (ArrayIsArray(value)) {
+        cookies.push(...value);
+      } else {
+        cookies.push(value);
+      }
+      continue;
+    }
+    this.setHeader(key, value);
+  }
+  if (cookies.length) {
+    this.setHeader("set-cookie", cookies);
+  }
+
+  return this;
+};
+
 ServerResponse.prototype.appendHeader = function (
   this: ServerResponse,
   name: string,
@@ -1641,10 +1798,12 @@ ServerResponse.prototype.writeHead = function (
   statusMessageOrHeaders?:
     | string
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
   maybeHeaders?:
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
 ) {
   this.statusCode = status;
 
@@ -1660,9 +1819,36 @@ ServerResponse.prototype.writeHead = function (
 
   if (headers !== null) {
     if (ArrayIsArray(headers)) {
-      headers = headers as Array<[string, string]>;
-      for (let i = 0; i < headers.length; i++) {
-        this.appendHeader(headers[i][0], headers[i][1]);
+      headers = headers as Array<[string, string]> | Array<string>;
+
+      // Headers should override previous headers but still
+      // allow explicit duplicates. To do so, we first remove any
+      // existing conflicts, then use appendHeader.
+
+      if (ArrayIsArray(headers[0])) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.appendHeader(k, headerTuple[1]);
+        }
+      } else {
+        headers = headers as Array<string>;
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          if (k) this.appendHeader(k, headers[i + 1]);
+        }
       }
     } else {
       headers = headers as Record<string, string>;
@@ -1910,6 +2096,26 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
   return new ServerImpl(opts, requestListener);
 }
 
+function _addAbortSignalOption(server: ServerImpl, options: ListenOptions) {
+  if (options?.signal === undefined) {
+    return;
+  }
+
+  validateAbortSignal(options.signal, "options.signal");
+  const { signal } = options;
+
+  const onAborted = () => {
+    server.close();
+  };
+
+  if (signal.aborted) {
+    nextTick(onAborted);
+  } else {
+    signal.addEventListener("abort", onAborted);
+    server.once("close", () => signal.removeEventListener("abort", onAborted));
+  }
+}
+
 export class ServerImpl extends EventEmitter {
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
@@ -1956,6 +2162,8 @@ export class ServerImpl extends EventEmitter {
       validatePort(options.port, "options.port");
       port = options.port | 0;
     }
+
+    _addAbortSignalOption(this, options);
 
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.
@@ -2131,10 +2339,10 @@ export class ServerImpl extends EventEmitter {
 
   address() {
     if (this.#addr === null) return null;
-    return {
-      port: this.#addr.port,
-      address: this.#addr.hostname,
-    };
+    const addr = this.#addr.hostname;
+    // Match Node.js: family is undefined for non-IP addresses (isIP returns 0)
+    const family = getIPFamily(addr);
+    return { port: this.#addr.port, address: addr, family };
   }
 }
 

@@ -1,16 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::cppgc::Ptr;
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 use indexmap::IndexMap;
 
+use crate::Instance;
 use crate::bind_group_layout::GPUBindGroupLayout;
+use crate::error::GPUGenericError;
 use crate::shader::GPUShaderModule;
 use crate::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
-use crate::Instance;
 
 pub struct GPUComputePipeline {
   pub instance: Instance,
@@ -30,7 +31,10 @@ impl WebIdlInterfaceConverter for GPUComputePipeline {
   const NAME: &'static str = "GPUComputePipeline";
 }
 
-impl GarbageCollected for GPUComputePipeline {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUComputePipeline {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUComputePipeline"
   }
@@ -38,6 +42,12 @@ impl GarbageCollected for GPUComputePipeline {
 
 #[op2]
 impl GPUComputePipeline {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUComputePipeline, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -79,7 +89,7 @@ pub(crate) struct GPUComputePipelineDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUProgrammableStage {
-  pub module: Ptr<GPUShaderModule>,
+  pub module: Ref<GPUShaderModule>,
   pub entry_point: Option<String>,
   #[webidl(default = Default::default())]
   pub constants: IndexMap<String, f64>,

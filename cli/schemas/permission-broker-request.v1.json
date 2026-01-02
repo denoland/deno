@@ -1,0 +1,46 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/permission-broker.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema for DENO_PERMISSION_BROKER_PATH",
+  "description": "The schema of a single line of the DENO_PERMISSION_BROKER_PATH request.",
+  "type": "object",
+  "$defs": {
+    "v": {
+      "type": "number",
+      "description": "The version of the schema this value is for.",
+      "examples": [
+        "1"
+      ]
+    },
+    "pid": {
+      "type": "number",
+      "description": "The process ID of the Deno process making the request."
+    },
+    "id": {
+      "type": "number",
+      "description": "The numeric ID of the request. The response must have a matching ID."
+    },
+    "datetime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The datetime the permission was accessed."
+    },
+    "permission": {
+      "type": "string",
+      "description": "The permission that is being checked.",
+      "examples": [
+        "run",
+        "sys",
+        "read"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "description": "The value of the permission that was accessed.",
+      "examples": [
+        "deno.com",
+        "/some/path"
+      ]
+    }
+  }
+}

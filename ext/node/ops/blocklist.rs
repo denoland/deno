@@ -7,8 +7,8 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
@@ -18,7 +18,10 @@ pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
-impl deno_core::GarbageCollected for BlockListResource {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BlockListResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BlockListResource"
   }

@@ -1,10 +1,10 @@
-Check file:///[WILDLINE]/package-b/mod.bench.ts
+Check [WILDCARD]mod.bench.ts
     CPU | [WILDLINE]
 Runtime | [WILDLINE]
 
 file:///[WILDLINE]/package-b/mod.bench.ts
 
-benchmark[WILDLINE]
----[WILDLINE]
-addOne[WILDLINE]
+| benchmark[WILDLINE]
+| ---[WILDLINE]
+| addOne[WILDLINE]
 

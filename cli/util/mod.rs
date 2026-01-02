@@ -2,7 +2,6 @@
 
 // Note: Only add code in this folder that has no application specific logic
 pub mod archive;
-pub mod collections;
 pub mod console;
 pub mod display;
 pub mod draw_thread;
@@ -16,4 +15,5 @@ pub mod sync;
 pub mod text_encoding;
 pub mod unix;
 pub mod v8;
+pub mod watch_env_tracker;
 pub mod windows;

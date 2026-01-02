@@ -2,25 +2,26 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::cppgc::Ptr;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
+use deno_image::op_create_image_bitmap::ImageBitmap;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::CompositeAlphaMode;
 use wgpu_types::Extent3d;
 use wgpu_types::SurfaceConfiguration;
 use wgpu_types::SurfaceStatus;
 
+use crate::Instance;
 use crate::device::GPUDevice;
 use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
-use crate::Instance;
 
 pub enum Data {
   Image(DynamicImage),
@@ -46,7 +47,10 @@ pub struct GPUCanvasContext {
   pub current_texture: RefCell<Option<v8::Global<v8::Object>>>,
 }
 
-impl GarbageCollected for GPUCanvasContext {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUCanvasContext {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
   }
@@ -116,7 +120,7 @@ impl GPUCanvasContext {
   #[global]
   fn get_current_texture(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<v8::Global<v8::Object>, JsErrorBox> {
     let configuration = self.configuration.borrow();
     let configuration = configuration.as_ref().ok_or_else(|| {
@@ -259,7 +263,7 @@ impl GPUCanvasContext {
 
   pub fn copy_image_contents_to_canvas_data(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), JsErrorBox> {
     let configuration = self.configuration.borrow();
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
@@ -324,7 +328,7 @@ impl GPUCanvasContext {
     Ok(())
   }
 
-  fn expire_current_texture(&self, scope: &mut v8::HandleScope) {
+  fn expire_current_texture(&self, scope: &mut v8::PinScope<'_, '_>) {
     if let Some(texture) = self.current_texture.borrow().as_ref() {
       let local = v8::Local::new(scope, texture).cast::<v8::Value>();
       let underlying_texture =
@@ -337,11 +341,11 @@ impl GPUCanvasContext {
     }
   }
 
-  fn replace_drawing_buffer(&self, scope: &mut v8::HandleScope) {
+  fn replace_drawing_buffer(&self, scope: &mut v8::PinScope<'_, '_>) {
     self.expire_current_texture(scope);
   }
 
-  pub fn resize(&self, scope: &mut v8::HandleScope) {
+  pub fn resize(&self, scope: &mut v8::PinScope<'_, '_>) {
     self.replace_drawing_buffer(scope);
     if let Some(configuration) = self.configuration.borrow().as_ref() {
       self.texture_descriptor.replace(Some(
@@ -364,7 +368,7 @@ impl GPUCanvasContext {
           let err = configuration.device.instance.surface_configure(
             *id,
             configuration.device.id,
-            &descriptor,
+            descriptor,
           );
 
           configuration.device.error_handler.push_error(err);
@@ -375,14 +379,14 @@ impl GPUCanvasContext {
 
   pub fn bitmap_read_hook(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), JsErrorBox> {
     self.copy_image_contents_to_canvas_data(scope)
   }
 
   pub fn post_transfer_to_image_bitmap_hook(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) {
     self.replace_drawing_buffer(scope);
   }
@@ -391,7 +395,7 @@ impl GPUCanvasContext {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub struct GPUCanvasConfiguration {
-  pub device: Ptr<GPUDevice>,
+  pub device: Ref<GPUDevice>,
   pub format: GPUTextureFormat,
   #[webidl(default = wgpu_types::TextureUsages::RENDER_ATTACHMENT.bits())]
   #[options(enforce_range = true)]
@@ -582,7 +586,7 @@ pub const CONTEXT_ID: &str = "webgpu";
 pub fn create<'s>(
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<Data>>,
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,

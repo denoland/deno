@@ -5,25 +5,25 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
 
+use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
-use deno_core::OpState;
-use deno_core::ResourceId;
+use deno_permissions::PermissionsContainer;
 use libffi::middle::Arg;
 use num_bigint::BigInt;
 use serde::Serialize;
 
+use crate::ForeignFunction;
 use crate::callback::PtrSymbol;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::ir::*;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallError {
@@ -54,17 +54,20 @@ unsafe fn ffi_call_rtype_struct(
   call_args: Vec<Arg>,
   out_buffer: *mut u8,
 ) {
-  libffi::raw::ffi_call(
-    cif.as_raw_ptr(),
-    Some(*fn_ptr.as_safe_fun()),
-    out_buffer as *mut c_void,
-    call_args.as_ptr() as *mut *mut c_void,
-  );
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    libffi::raw::ffi_call(
+      cif.as_raw_ptr(),
+      Some(*fn_ptr.as_safe_fun()),
+      out_buffer as *mut c_void,
+      call_args.as_ptr() as *mut *mut c_void,
+    );
+  }
 }
 
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   args: v8::FunctionCallbackArguments,
   symbol: &Symbol,
   out_buffer: Option<OutBuffer>,
@@ -297,21 +300,20 @@ fn ffi_call(
 
 #[op2(async, stack_trace)]
 #[serde]
-pub fn op_ffi_call_ptr_nonblocking<FP>(
-  scope: &mut v8::HandleScope,
+pub fn op_ffi_call_ptr_nonblocking(
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError>
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<>, CallError>
 where
-  FP: FfiPermissions + 'static,
 {
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_ffi_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -343,13 +345,14 @@ where
 #[op2(async)]
 #[serde]
 pub fn op_ffi_call_nonblocking(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] symbol: String,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<>, CallError>
+{
   let symbol = {
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
@@ -392,21 +395,18 @@ pub fn op_ffi_call_nonblocking(
 
 #[op2(reentrant, stack_trace)]
 #[serde]
-pub fn op_ffi_call_ptr<FP>(
-  scope: &mut v8::HandleScope,
+pub fn op_ffi_call_ptr(
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<FfiValue, CallError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<FfiValue, CallError> {
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_ffi_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

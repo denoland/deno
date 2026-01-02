@@ -32,7 +32,7 @@ export const unstableIds = {
 use crate::structs::UnstableFeatureDefinition;
 use crate::structs::UnstableFeatureKind;
 
-pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
+pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
   );
 
   let mut descriptions = data::FEATURE_DESCRIPTIONS.to_vec();
@@ -53,7 +53,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
     show_in_help: {},
     id: {},
     kind: {},
-    config_file_option: "{}",
   }},
 "#,
       feature.name,
@@ -61,11 +60,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
       feature.help_text,
       feature.show_in_help,
       id,
-      feature_kind,
-      match feature.config_option {
-        data::ConfigFileOption::SameAsFlagName => feature.name,
-        data::ConfigFileOption::Renamed(alias) => alias,
-      }
+      feature_kind
     );
 
     if matches!(feature.kind, structs::UnstableFeatureKind::Runtime) {

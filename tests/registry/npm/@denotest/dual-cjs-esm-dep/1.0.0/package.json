@@ -6,5 +6,11 @@
   "module": "./index.mjs",
   "dependencies": {
     "@denotest/dual-cjs-esm": "*"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    }
   }
 }

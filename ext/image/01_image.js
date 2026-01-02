@@ -10,7 +10,11 @@ const {
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
+  Uint8ClampedArray,
   PromiseReject,
   RangeError,
   ArrayPrototypeJoin,
@@ -240,7 +244,17 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       width = image[_width];
       height = image[_height];
       imageBitmapSource = 1;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+      let data = image[_data];
+      switch (TypedArrayPrototypeGetSymbolToStringTag(data)) {
+        case "Float16Array":
+          data = float16ToUnorm8(data);
+          break;
+      }
+      buf = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(data),
+        TypedArrayPrototypeGetByteOffset(data),
+        TypedArrayPrototypeGetLength(data),
+      );
     } else if (isImageBitmap) {
       width = image[_width];
       height = image[_height];

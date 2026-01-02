@@ -13,3 +13,7 @@ Download http://localhost:4260/json-schema-traverse/json-schema-traverse-1.0.0.t
 Download http://localhost:4260/require-from-string/require-from-string-2.0.2.tgz
 Download http://localhost:4260/punycode/punycode-2.1.1.tgz
 [UNORDERED_END]
+
+Dependencies:
++ npm:ajv 8.11.0
+

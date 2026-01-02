@@ -7,19 +7,8 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::op2;
 use deno_core::OpState;
-
-pub trait TimersPermission {
-  fn allow_hrtime(&mut self) -> bool;
-}
-
-impl TimersPermission for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn allow_hrtime(&mut self) -> bool {
-    true
-  }
-}
+use deno_core::op2;
 
 pub struct StartTime(Instant);
 
@@ -37,20 +26,9 @@ impl std::ops::Deref for StartTime {
   }
 }
 
-fn expose_time<TP>(state: &mut OpState, duration: Duration, out: &mut [u8])
-where
-  TP: TimersPermission + 'static,
-{
+fn expose_time(duration: Duration, out: &mut [u8]) {
   let seconds = duration.as_secs() as u32;
-  let mut subsec_nanos = duration.subsec_nanos();
-
-  // If the permission is not enabled
-  // Round the nano result on 2 milliseconds
-  // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.borrow_mut::<TP>().allow_hrtime() {
-    let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
-    subsec_nanos -= subsec_nanos % reduced_time_precision;
-  }
+  let subsec_nanos = duration.subsec_nanos();
 
   if out.len() >= 8 {
     out[0..4].copy_from_slice(&seconds.to_ne_bytes());
@@ -59,25 +37,19 @@ where
 }
 
 #[op2(fast)]
-pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
-where
-  TP: TimersPermission + 'static,
-{
+pub fn op_now(state: &mut OpState, #[buffer] buf: &mut [u8]) {
   let start_time = state.borrow::<StartTime>();
   let elapsed = start_time.elapsed();
-  expose_time::<TP>(state, elapsed, buf);
+  expose_time(elapsed, buf);
 }
 
 #[op2(fast)]
-pub fn op_time_origin<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
-where
-  TP: TimersPermission + 'static,
-{
+pub fn op_time_origin(state: &mut OpState, #[buffer] buf: &mut [u8]) {
   // https://w3c.github.io/hr-time/#dfn-estimated-monotonic-time-of-the-unix-epoch
   let wall_time = SystemTime::now();
   let monotonic_time = state.borrow::<StartTime>().elapsed();
   let epoch = wall_time.duration_since(UNIX_EPOCH).unwrap() - monotonic_time;
-  expose_time::<TP>(state, epoch, buf);
+  expose_time(epoch, buf);
 }
 
 #[allow(clippy::unused_async)]

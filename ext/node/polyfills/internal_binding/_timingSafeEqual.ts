@@ -4,7 +4,29 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+
+const {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} = core;
+
+function validateBuffer(
+  buf: unknown,
+  name: string,
+): asserts buf is ArrayBufferLike | ArrayBufferView {
+  if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      name,
+      ["Buffer", "ArrayBuffer", "TypedArray", "DataView"],
+      buf,
+    );
+  }
+}
 
 function toDataView(ab: ArrayBufferLike | ArrayBufferView): DataView {
   if (ArrayBuffer.isView(ab)) {
@@ -38,14 +60,16 @@ function stdTimingSafeEqual(
 }
 
 export const timingSafeEqual = (
-  a: Buffer | DataView | ArrayBuffer,
-  b: Buffer | DataView | ArrayBuffer,
+  buf1: Buffer | DataView | ArrayBuffer,
+  buf2: Buffer | DataView | ArrayBuffer,
 ): boolean => {
-  if (a instanceof Buffer) {
-    a = new DataView(a.buffer, a.byteOffset, a.byteLength);
+  validateBuffer(buf1, "buf1");
+  validateBuffer(buf2, "buf2");
+  if (buf1 instanceof Buffer) {
+    buf1 = new DataView(buf1.buffer, buf1.byteOffset, buf1.byteLength);
   }
-  if (b instanceof Buffer) {
-    b = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (buf2 instanceof Buffer) {
+    buf2 = new DataView(buf2.buffer, buf2.byteOffset, buf2.byteLength);
   }
-  return stdTimingSafeEqual(a, b);
+  return stdTimingSafeEqual(buf1, buf2);
 };

@@ -1,23 +1,22 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use deno_core::futures::Stream;
 use deno_core::OpState;
+use deno_core::futures::Stream;
 use deno_error::JsErrorBox;
-use deno_fetch::create_http_client;
 use deno_fetch::CreateHttpClientOptions;
-use deno_permissions::PermissionCheckError;
-use deno_tls::rustls::RootCertStore;
+use deno_fetch::create_http_client;
+use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
+use deno_tls::rustls::RootCertStore;
 use denokv_remote::MetadataEndpoint;
 use denokv_remote::Remote;
 use denokv_remote::RemoteResponse;
@@ -45,65 +44,32 @@ impl HttpOptions {
   }
 }
 
-pub trait RemoteDbHandlerPermissions {
-  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError>;
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_env(self, var)
-  }
-
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-}
-
-pub struct RemoteDbHandler<P: RemoteDbHandlerPermissions + 'static> {
+pub struct RemoteDbHandler {
   http_options: HttpOptions,
-  _p: std::marker::PhantomData<P>,
 }
 
-impl<P: RemoteDbHandlerPermissions> RemoteDbHandler<P> {
+impl RemoteDbHandler {
   pub fn new(http_options: HttpOptions) -> Self {
-    Self {
-      http_options,
-      _p: PhantomData,
-    }
+    Self { http_options }
   }
 }
 
-pub struct PermissionChecker<P: RemoteDbHandlerPermissions> {
+pub struct PermissionChecker {
   state: Rc<RefCell<OpState>>,
-  _permissions: PhantomData<P>,
 }
 
-impl<P: RemoteDbHandlerPermissions> Clone for PermissionChecker<P> {
+impl Clone for PermissionChecker {
   fn clone(&self) -> Self {
     Self {
       state: self.state.clone(),
-      _permissions: PhantomData,
     }
   }
 }
 
-impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
-  for PermissionChecker<P>
-{
+impl denokv_remote::RemotePermissions for PermissionChecker {
   fn check_net_url(&self, url: &Url) -> Result<(), JsErrorBox> {
     let mut state = self.state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_net_url(url, "Deno.openKv")
       .map_err(JsErrorBox::from_err)
@@ -162,10 +128,8 @@ impl RemoteResponse for FetchResponse {
 }
 
 #[async_trait(?Send)]
-impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
-  for RemoteDbHandler<P>
-{
-  type DB = Remote<PermissionChecker<P>, FetchClient>;
+impl DatabaseHandler for RemoteDbHandler {
+  type DB = Remote<PermissionChecker, FetchClient>;
 
   async fn open(
     &self,
@@ -187,7 +151,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
 
     {
       let mut state = state.borrow_mut();
-      let permissions = state.borrow_mut::<P>();
+      let permissions = state.borrow_mut::<PermissionsContainer>();
       permissions
         .check_env(ENV_VAR_NAME)
         .map_err(JsErrorBox::from_err)?;
@@ -236,7 +200,6 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
 
     let permissions = PermissionChecker {
       state: state.clone(),
-      _permissions: PhantomData,
     };
 
     let remote = Remote::new(fetch_client, permissions, metadata_endpoint);

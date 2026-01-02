@@ -8,15 +8,15 @@ use std::rc::Rc;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_net::raw::take_network_stream_listener_resource;
-use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
-use hyper::header::HOST;
+use deno_net::raw::take_network_stream_listener_resource;
+use deno_net::raw::take_network_stream_resource;
 use hyper::HeaderMap;
 use hyper::Uri;
+use hyper::header::HOST;
 
 // TODO(mmastrac): I don't like that we have to clone this, but it's one-time setup
 #[derive(Clone)]
@@ -165,17 +165,27 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => None,
-      #[cfg(unix)]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
+      NetworkStreamAddress::Tunnel(ref addr) => Some(addr.port() as _),
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
       #[cfg(unix)]
       NetworkStreamAddress::Unix(_) => Rc::from("unix"),
-      #[cfg(unix)]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       NetworkStreamAddress::Vsock(addr) => {
         Rc::from(format!("vsock:{}", addr.cid()))
       }
+      NetworkStreamAddress::Tunnel(ref addr) => Rc::from(addr.hostname()),
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -214,8 +224,13 @@ fn listener_properties(
     NetworkStreamAddress::Ip(ip) => Some(ip.port() as _),
     #[cfg(unix)]
     NetworkStreamAddress::Unix(_) => None,
-    #[cfg(unix)]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
+    NetworkStreamAddress::Tunnel(addr) => Some(addr.port() as _),
   };
   Ok(HttpListenProperties {
     scheme,
@@ -260,9 +275,20 @@ fn req_host_from_addr(
       percent_encoding::NON_ALPHANUMERIC,
     )
     .to_string(),
-    #[cfg(unix)]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     NetworkStreamAddress::Vsock(vsock) => {
       format!("{}:{}", vsock.cid(), vsock.port())
+    }
+    NetworkStreamAddress::Tunnel(addr) => {
+      if addr.port() == 443 {
+        addr.hostname()
+      } else {
+        format!("{}:{}", addr.hostname(), addr.port())
+      }
     }
   }
 }
@@ -270,10 +296,14 @@ fn req_host_from_addr(
 fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
   match stream_type {
     NetworkStreamType::Tcp => "http://",
-    NetworkStreamType::Tls => "https://",
+    NetworkStreamType::Tls | NetworkStreamType::Tunnel => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
-    #[cfg(unix)]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     NetworkStreamType::Vsock => "http+vsock://",
   }
 }
@@ -292,14 +322,18 @@ fn req_host<'a>(
           return Some(Cow::Borrowed(auth.host()));
         }
       }
-      NetworkStreamType::Tls => {
+      NetworkStreamType::Tls | NetworkStreamType::Tunnel => {
         if port == 443 {
           return Some(Cow::Borrowed(auth.host()));
         }
       }
       #[cfg(unix)]
       NetworkStreamType::Unix => {}
-      #[cfg(unix)]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       NetworkStreamType::Vsock => {}
     }
     return Some(Cow::Borrowed(auth.as_str()));

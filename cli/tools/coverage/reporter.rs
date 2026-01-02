@@ -13,8 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use super::util;
 use super::CoverageReport;
+use super::util;
 use crate::args::CoverageType;
 use crate::colors;
 
@@ -161,7 +161,7 @@ impl SummaryCoverageReporter {
     };
 
     println!(
-      " {file_name} | {branch_percent} | {line_percent} |",
+      "| {file_name} | {branch_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
       line_percent = line_percent,
@@ -192,17 +192,19 @@ impl CoverageReporter for SummaryCoverageReporter {
       .max("All files".len());
 
     let header =
-      format!("{node:node_max$}  | Branch % | Line % |", node = "File");
-    let separator = "-".repeat(header.len());
-    println!("{}", separator);
+      format!("| {node:node_max$} | Branch % | Line % |", node = "File");
+    let separator = format!(
+      "| {} | {} | {} |",
+      "-".repeat(node_max),
+      "-".repeat(8),
+      "-".repeat(6)
+    );
     println!("{}", header);
     println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
-    println!("{}", separator);
     self.print_coverage_line("All files", node_max, root_stats);
-    println!("{}", separator);
   }
 }
 
@@ -217,17 +219,17 @@ impl CoverageReporter for LcovCoverageReporter {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
     });
-    if let Some((report, _)) = file_reports.first() {
-      if let Some(ref output) = report.output {
-        if let Ok(path) = output.canonicalize() {
-          let url = Url::from_file_path(path).unwrap();
-          log::info!("Lcov coverage report has been generated at {}", url);
-        } else {
-          log::error!(
-            "Failed to resolve the output path of Lcov report: {}",
-            output.display()
-          );
-        }
+    if let Some((report, _)) = file_reports.first()
+      && let Some(ref output) = report.output
+    {
+      if let Ok(path) = output.canonicalize() {
+        let url = Url::from_file_path(path).unwrap();
+        log::info!("Lcov coverage report has been generated at {}", url);
+      } else {
+        log::error!(
+          "Failed to resolve the output path of Lcov report: {}",
+          output.display()
+        );
       }
     }
   }
@@ -390,11 +392,11 @@ impl DetailedCoverageReporter {
       const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
+      if let Some(last_line) = last_line
+        && last_line + 1 != line_index
+      {
+        let dash = colors::gray("-".repeat(WIDTH + 1));
+        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
       }
 
       println!(
@@ -505,7 +507,7 @@ impl HtmlCoverageReporter {
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
-      <html>
+      <html lang='en-US'>
         {head}
         <body>
           <div class='wrapper'>
@@ -524,13 +526,15 @@ impl HtmlCoverageReporter {
   /// Creates <head> tag for html report.
   pub fn create_html_head(&self, title: &str) -> String {
     let style_css = include_str!("style.css");
+    let script = include_str!("script.js");
     format!(
       "
       <head>
         <meta charset='utf-8'>
         <title>{title}</title>
         <style>{style_css}</style>
-        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <script>{script}</script>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
       </head>"
     )
   }
@@ -553,24 +557,33 @@ impl HtmlCoverageReporter {
     let (branch_total, branch_percent, _) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
 
+    let moon_svg = include_str!("moon.svg");
+    let sun_svg = include_str!("sun.svg");
+
     format!(
-      "
-      <div class='pad1'>
-        <h1>{breadcrumb_navigation}</h1>
-        <div class='clearfix'>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{branch_percent:.2}%</span>
-            <span class='quiet'>Branches</span>
-            <span class='fraction'>{branch_hit}/{branch_total}</span>
-          </div>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{line_percent:.2}%</span>
-            <span class='quiet'>Lines</span>
-            <span class='fraction'>{line_hit}/{line_total}</span>
+      r#"
+      <div class='pad1 flex-header'>
+        <div>
+          <h1>{breadcrumb_navigation}</h1>
+          <div class='clearfix'>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{branch_percent:.2}%</span>
+              <span class='quiet'>Branches</span>
+              <span class='fraction'>{branch_hit}/{branch_total}</span>
+            </div>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{line_percent:.2}%</span>
+              <span class='quiet'>Lines</span>
+              <span class='fraction'>{line_hit}/{line_total}</span>
+            </div>
           </div>
         </div>
+        <button id="theme-toggle" type="button" aria-label="Toggle dark mode" style="display: none;">
+          {moon_svg}
+          {sun_svg}
+        </button>
       </div>
-      <div class='status-line {line_class}'></div>"
+      <div class='status-line {line_class}'></div>"#
     )
   }
 
@@ -658,7 +671,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
+      .map(|i| format!("<a href='#L{i}' id='L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -667,12 +680,12 @@ impl HtmlCoverageReporter {
           report.found_lines.iter().find(|(line, _)| i == *line)
         {
           if *count == 0 {
-            "<span class='cline-any cline-no'>&nbsp</span>".to_string()
+            "<span class='cline-any cline-no'>&nbsp;</span>".to_string()
           } else {
             format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
-          "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
+          "<span class='cline-any cline-neutral'>&nbsp;</span>".to_string()
         }
       })
       .collect::<Vec<_>>()

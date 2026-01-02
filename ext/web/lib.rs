@@ -1,10 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
+
+mod broadcast_channel;
 mod compression;
+mod console;
 mod message_port;
 mod stream_resource;
 mod timers;
+mod url;
+mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -12,12 +17,12 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::ToJsBuffer;
 use deno_core::U16String;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
@@ -25,6 +30,10 @@ use encoding_rs::Encoding;
 pub use message_port::MessagePortError;
 pub use stream_resource::StreamResourceError;
 
+pub use crate::blob::Blob;
+pub use crate::blob::BlobPart;
+pub use crate::blob::BlobStore;
+pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
@@ -32,10 +41,10 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
-pub use crate::blob::Blob;
-pub use crate::blob::BlobPart;
-pub use crate::blob::BlobStore;
-pub use crate::blob::InMemoryBlobPart;
+pub use crate::broadcast_channel::InMemoryBroadcastChannel;
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
+pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
@@ -43,18 +52,13 @@ use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
-pub use crate::message_port::JsMessageData;
-pub use crate::message_port::MessagePort;
-pub use crate::message_port::Transferable;
+pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
-pub use crate::timers::StartTime;
-pub use crate::timers::TimersPermission;
 
 deno_core::extension!(deno_web,
-  deps = [ deno_webidl, deno_console, deno_url ],
-  parameters = [P: TimersPermission],
+  deps = [ deno_webidl ],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -80,8 +84,8 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
-    op_now<P>,
-    op_time_origin<P>,
+    op_now,
+    op_time_origin,
     op_defer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
@@ -91,6 +95,19 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    url::op_url_reparse,
+    url::op_url_parse,
+    url::op_url_get_serialization,
+    url::op_url_parse_with_base,
+    url::op_url_parse_search_params,
+    url::op_url_stringify_search_params,
+    urlpattern::op_urlpattern_parse,
+    urlpattern::op_urlpattern_process_match_input,
+    console::op_preview_entries,
+    broadcast_channel::op_broadcast_subscribe,
+    broadcast_channel::op_broadcast_unsubscribe,
+    broadcast_channel::op_broadcast_send,
+    broadcast_channel::op_broadcast_recv,
   ],
   esm = [
     "00_infra.js",
@@ -111,11 +128,16 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "00_url.js",
+    "01_urlpattern.js",
+    "01_console.js",
+    "01_broadcast_channel.js"
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -123,6 +145,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
+    state.put(options.bc);
   }
 );
 
@@ -208,7 +231,7 @@ fn op_encoding_normalize_label(
 
 #[op2]
 fn op_encoding_decode_utf8<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
@@ -353,7 +376,10 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {
+// SAFETY: we're sure `TextDecoderResource` can be GCed
+unsafe impl deno_core::GarbageCollected for TextDecoderResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TextDecoderResource"
   }
@@ -362,7 +388,7 @@ impl deno_core::GarbageCollected for TextDecoderResource {
 #[op2(fast(op_encoding_encode_into_fast))]
 #[allow(deprecated)]
 fn op_encoding_encode_into(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,
   #[buffer] buffer: &mut [u8],
   #[buffer] out_buf: &mut [u32],

@@ -1,4 +1,15 @@
 {
-  "args": "run --unstable-detect-cjs --check --quiet --allow-read=. main.ts",
-  "output": "main.out"
+  "steps": [
+    {
+      "args": "run --unstable-detect-cjs --check --quiet --allow-read=. main.ts",
+      "output": "main.out"
+    },
+    {
+      "args": "run --check --quiet --allow-read=. main.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "main.out"
+    }
+  ]
 }

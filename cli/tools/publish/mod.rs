@@ -9,23 +9,25 @@ use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_resolver::collections::FolderScopedMap;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
@@ -36,16 +38,18 @@ use tokio::process::Command;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
+use self::diagnostics::RelativePackageImportDiagnosticReferrer;
 use self::graph::GraphDiagnosticsCollector;
 use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::registry;
@@ -65,8 +69,8 @@ mod publish_order;
 mod tar;
 mod unfurl;
 
-use auth::get_auth_method;
 use auth::AuthMethod;
+use auth::get_auth_method;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -83,11 +87,17 @@ pub async fn publish(
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
+    match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
+        debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
           bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
+        if !deno_json.should_publish() {
+          bail!(
+            "Package 'publish' field is false in '{}'.",
+            deno_json.specifier
+          );
         }
         error_missing_exports_field(deno_json)?;
       }
@@ -102,7 +112,9 @@ pub async fn publish(
 
   if let Some(version) = &publish_flags.set_version {
     if publish_configs.len() > 1 {
-      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+      bail!(
+        "Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead."
+      );
     }
     if let Some(publish_config) = publish_configs.get_mut(0) {
       let mut config_file = publish_config.config_file.as_ref().clone();
@@ -112,19 +124,21 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
+    Some(cli_factory.node_resolver().await?.clone()),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
+  let parsed_source_cache = cli_factory.parsed_source_cache()?;
   let module_content_provider = Arc::new(ModuleContentProvider::new(
-    cli_factory.parsed_source_cache().clone(),
+    parsed_source_cache.clone(),
     specifier_unfurler,
     cli_factory.sys(),
-    cli_factory.tsconfig_resolver()?.clone(),
+    cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),
+    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
@@ -149,13 +163,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-  {
-    if let Some(dirty_text) =
+    && let Some(dirty_text) =
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
-    {
-      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
-      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
-    }
+  {
+    log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+    bail!(
+      "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
+    );
   }
 
   if publish_flags.dry_run {
@@ -287,10 +301,11 @@ impl PublishPreparer {
     let build_fast_check_graph = !allow_slow_types;
     let graph = self
       .module_graph_creator
-      .create_and_validate_publish_graph(
-        package_configs,
+      .create_publish_graph(CreatePublishGraphOptions {
+        packages: package_configs,
         build_fast_check_graph,
-      )
+        validate_graph: true,
+      })
       .await?;
 
     // todo(dsherret): move to lint rule
@@ -317,7 +332,9 @@ impl PublishPreparer {
         .await
         .is_some()
       {
-        bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
+        bail!(
+          "When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state."
+        );
       }
 
       for module in graph.modules() {
@@ -420,6 +437,7 @@ impl PublishPreparer {
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
+      let current_package_name = package.name.clone();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
@@ -431,9 +449,18 @@ impl PublishPreparer {
             file_patterns,
             force_include_paths: vec![config_path],
           })?;
+        let all_jsr_packages = FolderScopedMap::from_map(
+          cli_options
+            .workspace()
+            .jsr_packages()
+            .map(|pkg| (pkg.member_dir.dir_url().clone(), pkg))
+            .collect(),
+        );
         collect_excluded_module_diagnostics(
           &root_specifier,
           &graph,
+          &current_package_name,
+          &all_jsr_packages,
           &publish_paths,
           &diagnostics_collector,
         );
@@ -497,7 +524,7 @@ impl PublishPreparer {
         .file_name()
         .unwrap()
         .to_string_lossy()
-        .to_string(),
+        .into_owned(),
     }))
   }
 }
@@ -848,14 +875,14 @@ async fn perform_publish(
       futures.push(
         async move {
           let display_name = package.display_name();
-          publish_package(
+          Box::pin(publish_package(
             http_client,
             package,
             registry_api_url,
             registry_url,
             &authorization,
             provenance,
-          )
+          ))
           .await
           .with_context(|| format!("Failed to publish {}", display_name))?;
           Ok(package_name)
@@ -950,7 +977,7 @@ async fn publish_package(
           "Failed to publish @{}/{} at {}",
           package.scope, package.package, package.version
         )
-      })
+      });
     }
   };
 
@@ -1016,15 +1043,17 @@ async fn publish_package(
       },
     };
     let bundle =
-      provenance::generate_provenance(http_client, vec![subject]).await?;
+      Box::pin(provenance::generate_provenance(http_client, vec![subject]))
+        .await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    log::info!("{}",
+    log::info!(
+      "{}",
       colors::green(format!(
         "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
         tlog_entry.log_index
       ))
-     );
+    );
 
     // Submit bundle to JSR
     let provenance_url = format!(
@@ -1057,8 +1086,10 @@ async fn publish_package(
 }
 
 fn collect_excluded_module_diagnostics(
-  root: &ModuleSpecifier,
+  root_dir: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
+  current_package_name: &str,
+  all_jsr_packages: &FolderScopedMap<JsrPackageConfig>,
   publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
@@ -1076,12 +1107,69 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
     })
-    .filter(|s| s.as_str().starts_with(root.as_str()));
+    .filter(|s| s.as_str().starts_with(root_dir.as_str()));
+  let mut outside_specifiers = Vec::new();
+  let mut had_excluded_specifier = false;
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {
-      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
-        specifier: specifier.clone(),
-      });
+      let other_jsr_pkg = all_jsr_packages
+        .get_for_specifier(specifier)
+        .filter(|pkg| pkg.member_dir.dir_url().as_ref() != root_dir);
+      match other_jsr_pkg {
+        Some(other_jsr_pkg) => {
+          outside_specifiers.push((specifier, other_jsr_pkg));
+        }
+        None => {
+          had_excluded_specifier = true;
+          diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+            specifier: specifier.clone(),
+          })
+        }
+      }
+    }
+  }
+
+  if !had_excluded_specifier {
+    // ensure no path being published references another package
+    // via a relative import
+    for publish_path in publish_paths {
+      let Some(module) = graph.get(&publish_path.specifier) else {
+        continue;
+      };
+      for (specifier_text, dep) in module.dependencies() {
+        if !deno_path_util::is_relative_specifier(specifier_text) {
+          continue;
+        }
+        let resolutions = dep
+          .maybe_code
+          .ok()
+          .into_iter()
+          .chain(dep.maybe_type.ok().into_iter());
+        let mut maybe_res = resolutions.filter_map(|r| {
+          let pkg = all_jsr_packages.get_for_specifier(&r.specifier)?;
+          if pkg.member_dir.dir_url().as_ref() != root_dir {
+            Some((r, pkg))
+          } else {
+            None
+          }
+        });
+        if let Some((outside_res, package)) = maybe_res.next() {
+          diagnostics_collector.push(
+            PublishDiagnostic::RelativePackageImport {
+              // Wasm modules won't have a referrer
+              maybe_referrer: module.source().cloned().map(|source| {
+                RelativePackageImportDiagnosticReferrer {
+                  referrer: outside_res.range.clone(),
+                  text_info: SourceTextInfo::new(source),
+                }
+              }),
+              from_package_name: current_package_name.to_string(),
+              to_package_name: package.name.clone(),
+              specifier: outside_res.specifier.clone(),
+            },
+          );
+        }
+      }
     }
   }
 }

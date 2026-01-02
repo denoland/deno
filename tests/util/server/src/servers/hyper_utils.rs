@@ -17,6 +17,10 @@ use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+
+use crate::eprintln;
+use crate::println;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ServerKind {
@@ -43,10 +47,7 @@ where
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
-      #[allow(clippy::print_stdout)]
-      {
-        println!("ready: {}", options.addr);
-      }
+      println!("ready: {}", options.addr);
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -62,7 +63,6 @@ where
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
-    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", options.error_msg, e);
     }
@@ -75,7 +75,8 @@ pub async fn run_server_with_acceptor<A, F, S>(
   error_msg: &'static str,
   kind: ServerKind,
 ) where
-  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
+  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream<TcpStream>>>
+    + ?Sized,
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
@@ -94,7 +95,6 @@ pub async fn run_server_with_acceptor<A, F, S>(
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
-    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }
@@ -111,10 +111,7 @@ pub async fn run_server_with_remote_addr<F, S>(
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
-      #[allow(clippy::print_stdout)]
-      {
-        println!("ready: {}", options.addr);
-      }
+      println!("ready: {}", options.addr);
       loop {
         let (stream, addr) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -130,7 +127,6 @@ pub async fn run_server_with_remote_addr<F, S>(
 
   if let Err(e) = fut.await {
     let err_str = e.to_string();
-    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", options.error_msg, e);
     }
@@ -177,7 +173,6 @@ async fn hyper_serve_connection<I, F, S>(
 
   if let Err(e) = result {
     let err_str = e.to_string();
-    #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
       eprintln!("{}: {:?}", error_msg, e);
     }

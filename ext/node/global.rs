@@ -50,30 +50,20 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // The Deno and Node specific globals are stored in a struct in a context slot.
 //
 // These are the globals that are handled:
-// - Buffer (node only)
-// - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
-// - global (node only)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
-// - setImmediate (node only)
 // - setInterval (both, but different implementation)
 // - setTimeout (both, but different implementation)
 // - window (deno only)
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 12] = [
-  &str_to_utf16::<6>("Buffer"),
-  &str_to_utf16::<17>("WorkerGlobalScope"),
-  &str_to_utf16::<14>("clearImmediate"),
+const MANAGED_GLOBALS: [&[u16]; 6] = [
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
-  &str_to_utf16::<6>("global"),
   &str_to_utf16::<7>("process"),
-  &str_to_utf16::<4>("self"),
-  &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
   &str_to_utf16::<6>("window"),
@@ -121,7 +111,7 @@ impl GlobalsStorage {
 }
 
 pub fn global_template_middleware<'s>(
-  _scope: &mut v8::HandleScope<'s, ()>,
+  _scope: &mut v8::PinScope<'s, '_, ()>,
   template: v8::Local<'s, v8::ObjectTemplate>,
 ) -> v8::Local<'s, v8::ObjectTemplate> {
   let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
@@ -145,7 +135,7 @@ pub fn global_template_middleware<'s>(
 }
 
 pub fn global_object_middleware<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   global: v8::Local<'s, v8::Object>,
 ) {
   // ensure the global object is not Object.prototype
@@ -228,7 +218,7 @@ pub fn global_object_middleware<'s>(
 }
 
 fn is_managed_key(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   key: v8::Local<v8::Name>,
 ) -> bool {
   let Ok(str): Result<v8::Local<v8::String>, _> = key.try_into() else {
@@ -245,7 +235,7 @@ fn is_managed_key(
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
-fn current_mode(scope: &mut v8::HandleScope) -> Mode {
+fn current_mode(scope: &mut v8::PinScope<'_, '_>) -> Mode {
   let Some(host_defined_options) = scope.get_current_host_defined_options()
   else {
     return Mode::Deno;
@@ -258,15 +248,11 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   }
   let is_node = host_defined_options.get(scope, 0).is_true();
-  if is_node {
-    Mode::Node
-  } else {
-    Mode::Deno
-  }
+  if is_node { Mode::Node } else { Mode::Deno }
 }
 
 pub fn getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
@@ -280,7 +266,9 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -298,7 +286,7 @@ pub fn getter<'s>(
 }
 
 pub fn setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
@@ -313,7 +301,9 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -328,7 +318,7 @@ pub fn setter<'s>(
 }
 
 pub fn query<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Integer>,
@@ -340,7 +330,9 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -359,7 +351,7 @@ pub fn query<'s>(
 }
 
 pub fn deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
@@ -372,7 +364,9 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -393,7 +387,7 @@ pub fn deleter<'s>(
 }
 
 pub fn enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
@@ -401,7 +395,9 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -421,7 +417,7 @@ pub fn enumerator<'s>(
 }
 
 pub fn definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
@@ -435,7 +431,9 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -454,7 +452,7 @@ pub fn definer<'s>(
 }
 
 pub fn descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
@@ -465,11 +463,13 @@ pub fn descriptor<'s>(
 
   let mode = current_mode(scope);
 
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(scope, scope);
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>().unwrap();
+    let Some(storage) = context.get_slot::<GlobalsStorage>() else {
+      return v8::Intercepted::No;
+    };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

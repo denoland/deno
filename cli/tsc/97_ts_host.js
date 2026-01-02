@@ -134,10 +134,6 @@ export const SCRIPT_VERSION_CACHE = new Map();
 /** @type {Map<string, boolean>} */
 export const IS_NODE_SOURCE_FILE_CACHE = new Map();
 
-// Maps asset specifiers to the first scope that the asset was loaded into.
-/** @type {Map<string, string | null>} */
-export const ASSET_SCOPES = new Map();
-
 /** @type {number | null} */
 let projectVersionCache = null;
 export const PROJECT_VERSION_CACHE = {
@@ -157,11 +153,11 @@ export const LAST_REQUEST_METHOD = {
 };
 
 /** @type {string | null} */
-let lastRequestScope = null;
-export const LAST_REQUEST_SCOPE = {
-  get: () => lastRequestScope,
-  set: (scope) => {
-    lastRequestScope = scope;
+let lastRequestCompilerOptionsKey = null;
+export const LAST_REQUEST_COMPILER_OPTIONS_KEY = {
+  get: () => lastRequestCompilerOptionsKey,
+  set: (key) => {
+    lastRequestCompilerOptionsKey = key;
   },
 };
 
@@ -307,51 +303,12 @@ const CACHE_URL_PREFIX = "cache:///";
 
 /** Diagnostics that are intentionally ignored when compiling TypeScript in
  * Deno, as they provide misleading or incorrect information. */
-const IGNORED_DIAGNOSTICS = [
-  // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
-  // We specify the resolution mode to be CommonJS for some npm files and this
-  // diagnostic gets generated even though we're using custom module resolution.
-  1452,
-  // Module '...' cannot be imported using this construct. The specifier only resolves to an
-  // ES module, which cannot be imported with 'require'.
-  1471,
-  // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
-  // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
-  1479,
-  // TS1543: Importing a JSON file into an ECMAScript module requires a 'type: \"json\"' import
-  // attribute when 'module' is set to 'NodeNext'.
-  1543,
-  // TS2306: File '.../index.d.ts' is not a module.
-  // We get this for `x-typescript-types` declaration files which don't export
-  // anything. We prefer to treat these as modules with no exports.
-  2306,
-  // TS2688: Cannot find type definition file for '...'.
-  // We ignore because type definition files can end with '.ts'.
-  2688,
-  // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
-  // option to 'node', or to add aliases to the 'paths' option?
-  2792,
-  // TS2307: Cannot find module '{0}' or its corresponding type declarations.
-  2307,
-  // Relative import errors to add an extension
-  2834,
-  2835,
-  // TS5009: Cannot find the common subdirectory path for the input files.
-  5009,
-  // TS5055: Cannot write file
-  // 'http://localhost:4545/subdir/mt_application_x_javascript.j4.js'
-  // because it would overwrite input file.
-  5055,
-  // TypeScript is overly opinionated that only CommonJS modules kinds can
-  // support JSON imports.  Allegedly this was fixed in
-  // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
-  // so we will ignore complaints about this compiler setting.
-  5070,
-  // TS7016: Could not find a declaration file for module '...'. '...'
-  // implicitly has an 'any' type.  This is due to `allowJs` being off by
-  // default but importing of a JavaScript module.
-  7016,
-];
+const TSC_CONSTANTS = ops.op_tsc_constants();
+const IGNORED_DIAGNOSTICS = TSC_CONSTANTS.ignoredDiagnosticCodes;
+const TYPES_NODE_IGNORABLE_NAMES = new Set(
+  TSC_CONSTANTS.typesNodeIgnorableNames,
+);
+const NODE_ONLY_GLOBALS = new Set(TSC_CONSTANTS.nodeOnlyGlobals);
 
 // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
 /** Error thrown on cancellation. */
@@ -379,15 +336,13 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
+/** @type {{ byCompilerOptionsKey: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
-  // @ts-ignore Will be set later.
-  unscoped: null,
-  byScope: new Map(),
+  byCompilerOptionsKey: new Map(),
   byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
+/** @type {{ byCompilerOptionsKey: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -604,14 +559,25 @@ const hostImpl = {
     containingSourceFile,
     _reusedNames,
   ) {
-    const specifiers = moduleLiterals.map((literal) => [
-      ts.getModeForUsageLocation(
-        containingSourceFile,
-        literal,
-        compilerOptions,
-      ) === ts.ModuleKind.CommonJS,
-      literal.text,
-    ]);
+    const specifiers = moduleLiterals.map((literal) => {
+      const rawKind = getModuleLiteralImportKind(literal);
+      let lookupSpecifier = literal.text;
+      if (rawKind != null) {
+        if ((/** @type any */ (literal)).__originalText == null) {
+          (/** @type any */ (literal)).__originalText = literal.text;
+          literal.text = appendRawImportFragment(literal.text, rawKind);
+        }
+        lookupSpecifier = (/** @type any */ (literal)).__originalText;
+      }
+      return [
+        ts.getModeForUsageLocation(
+          containingSourceFile,
+          literal,
+          compilerOptions,
+        ) === ts.ModuleKind.CommonJS,
+        lookupSpecifier,
+      ];
+    });
     if (logDebug) {
       debug(`host.resolveModuleNames()`);
       debug(`  base: ${base}`);
@@ -624,17 +590,29 @@ const hostImpl = {
     );
     if (resolved) {
       /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
-      const result = resolved.map((item) => {
-        if (item && item[1]) {
-          const [resolvedFileName, extension] = item;
-          return {
-            resolvedModule: {
+      const result = resolved.map((item, i) => {
+        if (item) {
+          let [resolvedFileName, extension] = item;
+          // hack to get the specifier keyed differently until
+          // https://github.com/microsoft/TypeScript/issues/61941 is resolved
+          const rawKind = getModuleLiteralImportKind(moduleLiterals[i]);
+          if (rawKind != null) {
+            resolvedFileName = appendRawImportFragment(
               resolvedFileName,
-              extension,
-              // todo(dsherret): we should probably be setting this
-              isExternalLibraryImport: false,
-            },
-          };
+              rawKind,
+            );
+            extension = ts.Extension.Ts;
+          }
+          if (extension) {
+            return {
+              resolvedModule: {
+                resolvedFileName,
+                extension,
+                // todo(dsherret): we should probably be setting this
+                isExternalLibraryImport: false,
+              },
+            };
+          }
         }
         return {
           resolvedModule: undefined,
@@ -655,33 +633,44 @@ const hostImpl = {
     if (logDebug) {
       debug("host.getCompilationSettings()");
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? LANGUAGE_SERVICE_ENTRIES.byScope.get(lastRequestScope)
-        ?.compilerOptions
-      : null) ?? LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
+    if (lastRequestCompilerOptionsKey == null) {
+      throw new Error(`No compiler options key was set.`);
+    }
+    const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+      lastRequestCompilerOptionsKey,
+    )?.compilerOptions;
+    if (!compilerOptions) {
+      throw new Error(
+        `Couldn't find language service entry for key: ${lastRequestCompilerOptionsKey}`,
+      );
+    }
+    return compilerOptions;
   },
   getScriptFileNames() {
     if (logDebug) {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
+      const { byCompilerOptionsKey, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
-        unscoped,
-        byScope: new Map(Object.entries(byScope)),
+        byCompilerOptionsKey: new Map(Object.entries(byCompilerOptionsKey)),
         byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
     const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
     return (lastRequestNotebookUri
       ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
       : null) ??
-      (lastRequestScope
-        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+      (lastRequestCompilerOptionsKey
+        ? SCRIPT_NAMES_CACHE.byCompilerOptionsKey.get(
+          lastRequestCompilerOptionsKey,
+        )
         : null) ??
-      SCRIPT_NAMES_CACHE.unscoped;
+      [];
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -709,9 +698,6 @@ const hostImpl = {
         ts.ScriptTarget.ESNext,
       );
       if (sourceFile) {
-        if (!ASSET_SCOPES.has(specifier)) {
-          ASSET_SCOPES.set(specifier, LAST_REQUEST_SCOPE.get());
-        }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
@@ -826,89 +812,121 @@ export function filterMapDiagnostic(diagnostic) {
 
 // list of globals that should be kept in Node's globalThis
 ts.deno.setNodeOnlyGlobalNames(
-  new Set([
-    "__dirname",
-    "__filename",
-    '"buffer"',
-    "Buffer",
-    "BufferConstructor",
-    "BufferEncoding",
-    "clearImmediate",
-    "clearInterval",
-    "clearTimeout",
-    "console",
-    "Console",
-    "crypto",
-    "ErrorConstructor",
-    "gc",
-    "Global",
-    "localStorage",
-    "queueMicrotask",
-    "RequestInit",
-    "ResponseInit",
-    "sessionStorage",
-    "setImmediate",
-    "setInterval",
-    "setTimeout",
-  ]),
+  NODE_ONLY_GLOBALS,
 );
 // List of globals in @types/node that collide with Deno's types.
 // When the `@types/node` package attempts to assign to these types
 // if the type is already in the global symbol table, then assignment
 // will be a no-op, but if the global type does not exist then the package can
 // create the global.
-const setTypesNodeIgnorableNames = new Set([
-  "AbortController",
-  "AbortSignal",
-  "AsyncIteratorObject",
-  "atob",
-  "Blob",
-  "BroadcastChannel",
-  "btoa",
-  "ByteLengthQueuingStrategy",
-  "CompressionStream",
-  "CountQueuingStrategy",
-  "DecompressionStream",
-  "Disposable",
-  "DOMException",
-  "Event",
-  "EventSource",
-  "EventTarget",
-  "fetch",
-  "File",
-  "Float32Array",
-  "Float64Array",
-  "FormData",
-  "Headers",
-  "ImportMeta",
-  "MessageChannel",
-  "MessageEvent",
-  "MessagePort",
-  "performance",
-  "PerformanceEntry",
-  "PerformanceMark",
-  "PerformanceMeasure",
-  "ReadableByteStreamController",
-  "ReadableStream",
-  "ReadableStreamBYOBReader",
-  "ReadableStreamBYOBRequest",
-  "ReadableStreamDefaultController",
-  "ReadableStreamDefaultReader",
-  "ReadonlyArray",
-  "Request",
-  "Response",
-  "Storage",
-  "TextDecoder",
-  "TextDecoderStream",
-  "TextEncoder",
-  "TextEncoderStream",
-  "TransformStream",
-  "TransformStreamDefaultController",
-  "URL",
-  "URLSearchParams",
-  "WebSocket",
-  "WritableStream",
-  "WritableStreamDefaultController",
-  "WritableStreamDefaultWriter",
-]);
+const setTypesNodeIgnorableNames = TYPES_NODE_IGNORABLE_NAMES;
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
+
+/**
+ * @param {ts.StringLiteralLike} node
+ * @returns {"text" | "bytes" | undefined}
+ */
+function getModuleLiteralImportKind(node) {
+  const parent = node.parent;
+  if (!parent) {
+    return undefined;
+  }
+  if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) {
+    const elements = parent.attributes?.elements;
+    if (!elements) {
+      return undefined;
+    }
+    for (const element of elements) {
+      const value = getRawImportAttributeValue(element);
+      if (value) {
+        return value;
+      }
+    }
+    return undefined;
+  } else if (ts.isCallExpression(parent)) {
+    if (
+      parent.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+      parent.arguments.length <= 1 ||
+      parent.arguments[0].kind !== ts.SyntaxKind.StringLiteral ||
+      parent.arguments[1].kind !== ts.SyntaxKind.ObjectLiteralExpression
+    ) {
+      return undefined;
+    }
+    const ole = /** @type {ts.ObjectLiteralExpression} */ (parent.arguments[1]);
+    const withExpr = ole.properties.find((p) =>
+      ts.isPropertyAssignment(p) && isStrOrIdentWithText(p.name, "with")
+    );
+    if (!withExpr) {
+      return undefined;
+    }
+    const withInitializer =
+      (/** @type {ts.PropertyAssignment} */ (withExpr)).initializer;
+    if (!ts.isObjectLiteralExpression(withInitializer)) {
+      return undefined;
+    }
+    const typeProp = withInitializer.properties.find((p) =>
+      ts.isPropertyAssignment(p) && isStrOrIdentWithText(p.name, "type")
+    );
+    if (!typeProp) {
+      return undefined;
+    }
+    const typeInitializer =
+      (/** @type {ts.PropertyAssignment} */ (typeProp)).initializer;
+    return getRawTypeValue(typeInitializer);
+  } else {
+    return undefined;
+  }
+}
+
+/**
+ * @param {string} specifier
+ * @param {"bytes" | "text"} rawKind
+ */
+function appendRawImportFragment(specifier, rawKind) {
+  const fragmentIndex = specifier.indexOf("#");
+  if (fragmentIndex === -1) {
+    specifier += `#denoRawImport=${rawKind}.ts`;
+  } else if (
+    !specifier.substring(fragmentIndex).includes(
+      `denoRawImport=${rawKind}.ts`,
+    )
+  ) {
+    specifier += `&denoRawImport=${rawKind}.ts`;
+  }
+  return specifier;
+}
+
+/** @param {ts.ImportAttribute} node */
+function getRawImportAttributeValue(node) {
+  if (!isStrOrIdentWithText(node.name, "type")) {
+    return undefined;
+  }
+
+  return getRawTypeValue(node.value);
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {"bytes" | "text" | undefined}
+ */
+function getRawTypeValue(node) {
+  return ts.isStringLiteral(node) &&
+      (node.text === "bytes" || node.text === "text")
+    ? node.text
+    : undefined;
+}
+
+/**
+ * @param {ts.Node} node
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isStrOrIdentWithText(node, text) {
+  if (ts.isStringLiteral(node)) {
+    return node.text === text;
+  } else if (ts.isIdentifier(node)) {
+    return node.escapedText === text;
+  } else {
+    return false;
+  }
+}

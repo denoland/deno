@@ -2319,7 +2319,6 @@
         "Ed25519 Verification checks with small-order key of order - Test 0",
         "Ed25519 Verification checks with small-order key of order - Test 1",
         "Ed25519 Verification checks with small-order key of order - Test 2",
-        "Ed25519 Verification checks with small-order key of order - Test 11",
         "Ed25519 Verification checks with small-order key of order - Test 12",
         "Ed25519 Verification checks with small-order key of order - Test 13"
       ],
@@ -2327,7 +2326,6 @@
         "Ed25519 Verification checks with small-order key of order - Test 0",
         "Ed25519 Verification checks with small-order key of order - Test 1",
         "Ed25519 Verification checks with small-order key of order - Test 2",
-        "Ed25519 Verification checks with small-order key of order - Test 11",
         "Ed25519 Verification checks with small-order key of order - Test 12",
         "Ed25519 Verification checks with small-order key of order - Test 13"
       ],
@@ -2572,14 +2570,6 @@
     "idlharness.window.html?exclude=Node": [
       "Event interface: attribute srcElement",
       "Event interface: operation composedPath()",
-      "Event interface: constant NONE on interface object",
-      "Event interface: constant NONE on interface prototype object",
-      "Event interface: constant CAPTURING_PHASE on interface object",
-      "Event interface: constant CAPTURING_PHASE on interface prototype object",
-      "Event interface: constant AT_TARGET on interface object",
-      "Event interface: constant AT_TARGET on interface prototype object",
-      "Event interface: constant BUBBLING_PHASE on interface object",
-      "Event interface: constant BUBBLING_PHASE on interface prototype object",
       "Event interface: operation stopPropagation()",
       "Event interface: attribute cancelBubble",
       "Event interface: operation stopImmediatePropagation()",
@@ -3225,14 +3215,6 @@
     "idlharness.any.worker.html": [
       "Event interface: attribute srcElement",
       "Event interface: operation composedPath()",
-      "Event interface: constant NONE on interface object",
-      "Event interface: constant NONE on interface prototype object",
-      "Event interface: constant CAPTURING_PHASE on interface object",
-      "Event interface: constant CAPTURING_PHASE on interface prototype object",
-      "Event interface: constant AT_TARGET on interface object",
-      "Event interface: constant AT_TARGET on interface prototype object",
-      "Event interface: constant BUBBLING_PHASE on interface object",
-      "Event interface: constant BUBBLING_PHASE on interface prototype object",
       "Event interface: operation stopPropagation()",
       "Event interface: attribute cancelBubble",
       "Event interface: operation stopImmediatePropagation()",
@@ -5389,17 +5371,27 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false,
-      "readable-stream.html": false,
-      "reason.html": false,
+      "transfer-with-messageport.window.html": true,
+      "readable-stream.html": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()",
+        "transferring a non-serializable chunk should error both sides"
+      ],
+      "reason.html": [
+        "DOMException errors should be preserved"
+      ],
       "service-worker.https.html": false,
       "shared-worker.html": false,
       "transform-stream-members.any.html": true,
       "transform-stream-members.any.worker.html": true,
-      "transform-stream.html": false,
-      "window.html": false,
-      "worker.html": false,
-      "writable-stream.html": false
+      "transform-stream.html": true,
+      "window.html": [
+        "transfer to and from an iframe should work"
+      ],
+      "worker.html": true,
+      "writable-stream.html": [
+        "writing a unclonable object should error the stream"
+      ]
     }
   },
   "user-timing": {
@@ -5558,12 +5550,16 @@
         "valueOf.any.worker.html": true
       },
       "idlharness.any.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
       ],
       "idlharness.any.worker.html": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object",
         "Memory interface: operation toFixedLengthBuffer()",
         "Memory interface: operation toResizableBuffer()",
         "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
@@ -5619,13 +5615,9 @@
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "moduleSource.tentative.any.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ],
         "moduleSource.tentative.any.worker.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ]
       },
@@ -6158,9 +6150,9 @@
       "constructors.html": false,
       "default-iterator-object.html": true,
       "default-toJSON-cross-realm.html": false,
-      "global-immutable-prototype.any.worker.html": [
-        "Setting to a different prototype"
-      ],
+      "global-immutable-prototype.any.worker.html": {
+        "ignore": true
+      },
       "global-object-implicit-this-value-cross-realm.html": false,
       "has-instance.html": [
         "Manually-constructed prototype chains are correctly handled by instanceof",
@@ -9633,8 +9625,6 @@
         "request-constructor-init-body-override.any.html": true,
         "request-constructor-init-body-override.any.worker.html": true,
         "request-init-001.sub.html": [
-          "Check method init value of patch and associated getter",
-          "Check method init value of patCh and associated getter",
           "Check referrer init value of /relative/ressource and associated getter",
           "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
           "Check referrer init value of http://web-platform.test:8000/ and associated getter",
@@ -12253,8 +12243,7 @@
                 "import() must reject when there is a cross-origin module (without CORS)",
                 "import() must reject with a different error object for each import when there is a cross-origin module (without CORS)",
                 "import() must reject when there is a cross-origin module dependency (without CORS)",
-                "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)",
-                "import() fetch errors must be cached"
+                "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)"
               ],
               "dynamic-imports-script-error.html": false,
               "dynamic-imports.html": true,
@@ -13114,7 +13103,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone.any.worker.html": [
@@ -13142,7 +13130,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone-cross-realm-method.html": false
@@ -14573,6 +14560,7 @@
     "eventhandlers.any.worker.html?wpt_flags=h2": true,
     "eventhandlers.any.worker.html?wss": true,
     "idlharness.any.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -14591,6 +14579,7 @@
       "Stringification of new CloseEvent(\"close\")"
     ],
     "idlharness.any.worker.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -15023,9 +15012,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,

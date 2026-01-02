@@ -4,6 +4,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
+  op_fs_cwd,
   op_import_sync,
   op_napi_open,
   op_require_as_file_path,
@@ -28,7 +29,6 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
-  op_require_try_self_parent_path,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -64,8 +64,6 @@ const {
   StringPrototypeStartsWith,
   TypeError,
 } = primordials;
-
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 import _httpAgent from "node:_http_agent";
 import _httpCommon from "node:_http_common";
@@ -120,6 +118,7 @@ import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
+import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -166,7 +165,7 @@ import zlib from "node:zlib";
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
-// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfill.rs`
+// NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,
@@ -223,6 +222,7 @@ function setupBuiltinModules() {
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
+    "internal/http2/util": internalHttp2Util,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -306,8 +306,6 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 
 function stat(filename) {
-  // TODO: required only on windows
-  // filename = path.toNamespacedPath(filename);
   if (statCache !== null) {
     const result = statCache.get(filename);
     if (result !== undefined) {
@@ -819,12 +817,10 @@ Module._resolveFilename = function (
   }
 
   // Try module self resolution first
-  const parentPath = op_require_try_self_parent_path(
-    !!parent,
-    parent?.filename,
-    parent?.id,
-  );
-  const selfResolved = op_require_try_self(parentPath, request);
+  const parentPath = trySelfParentPath(parent);
+  const selfResolved = parentPath != null
+    ? op_require_try_self(parentPath, request)
+    : undefined;
   if (selfResolved) {
     const cacheKey = request + "\x00" +
       (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
@@ -842,20 +838,6 @@ Module._resolveFilename = function (
   if (filename) {
     return op_require_real_path(filename);
   }
-  const requireStack = [];
-  for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
-    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
-  }
-  let message = `Cannot find module '${request}'`;
-  if (requireStack.length > 0) {
-    message = message + "\nRequire stack:\n- " +
-      ArrayPrototypeJoin(requireStack, "\n- ");
-  }
-  // eslint-disable-next-line no-restricted-syntax
-  const err = new Error(message);
-  err.code = "MODULE_NOT_FOUND";
-  err.requireStack = requireStack;
-
   // fallback and attempt to resolve bare specifiers using
   // the global cache when not using --node-modules-dir
   if (
@@ -877,9 +859,44 @@ Module._resolveFilename = function (
     }
   }
 
-  // throw the original error
+  if (
+    typeof request === "string" &&
+    (StringPrototypeEndsWith(request, "$deno$eval.cjs") ||
+      StringPrototypeEndsWith(request, "$deno$eval.cts") ||
+      StringPrototypeEndsWith(request, "$deno$stdin.cjs") ||
+      StringPrototypeEndsWith(request, "$deno$stdin.cts"))
+  ) {
+    return request;
+  }
+
+  const requireStack = [];
+  for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
+    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
+  }
+  let message = `Cannot find module '${request}'`;
+  if (requireStack.length > 0) {
+    message = message + "\nRequire stack:\n- " +
+      ArrayPrototypeJoin(requireStack, "\n- ");
+  }
+  // eslint-disable-next-line no-restricted-syntax
+  const err = new Error(message);
+  err.code = "MODULE_NOT_FOUND";
+  err.requireStack = requireStack;
   throw err;
 };
+
+function trySelfParentPath(parent) {
+  if (parent == null) {
+    return undefined;
+  }
+  if (typeof parent.filename === "string") {
+    return parent.filename;
+  }
+  if (parent.id === "<repl>" || parent.id === "internal/preload") {
+    return op_fs_cwd();
+  }
+  return undefined;
+}
 
 /**
  * Internal CommonJS API to always require modules before requiring the actual
@@ -908,9 +925,7 @@ Module.prototype.load = function (filename) {
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
   this.filename = op_require_real_path(filename);
-  this.paths = Module._nodeModulePaths(
-    pathDirname(this.filename),
-  );
+  this.paths = Module._nodeModulePaths(pathDirname(this.filename));
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -946,8 +961,8 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout) { (function (exports, require, module, __filename, __dirname) {",
-  "\n}).call(this, exports, require, module, __filename, __dirname); })",
+  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
+  "\n})(); })",
 ];
 Module.wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
@@ -1025,18 +1040,6 @@ Module.prototype._compile = function (content, filename, format) {
     op_require_break_on_next_statement();
   }
 
-  const {
-    Buffer,
-    clearImmediate,
-    clearInterval,
-    clearTimeout,
-    global,
-    process,
-    setImmediate,
-    setInterval,
-    setTimeout,
-  } = nodeGlobals;
-
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -1044,15 +1047,6 @@ Module.prototype._compile = function (content, filename, format) {
     this,
     filename,
     dirname,
-    Buffer,
-    clearImmediate,
-    clearInterval,
-    clearTimeout,
-    global,
-    process,
-    setImmediate,
-    setInterval,
-    setTimeout,
   );
   if (requireDepth === 0) {
     statCache = null;
@@ -1133,13 +1127,13 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    nodeGlobals.Buffer,
+    buffer.Buffer.from,
     reportError,
   );
 };
 
 function createRequireFromPath(filename) {
-  const proxyPath = op_require_proxy_path(filename);
+  const proxyPath = op_require_proxy_path(filename) ?? filename;
   const mod = new Module(proxyPath);
   mod.filename = proxyPath;
   mod.paths = Module._nodeModulePaths(mod.path);
@@ -1202,7 +1196,7 @@ function createRequire(filenameOrUrl) {
       `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
     );
   }
-  const filename = op_require_as_file_path(fileUrlStr);
+  const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;
   return createRequireFromPath(filename);
 }
 

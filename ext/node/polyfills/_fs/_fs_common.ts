@@ -7,15 +7,6 @@ const {
   ReflectApply,
   Error,
 } = primordials;
-import {
-  O_APPEND,
-  O_CREAT,
-  O_EXCL,
-  O_RDONLY,
-  O_RDWR,
-  O_TRUNC,
-  O_WRONLY,
-} from "ext:deno_node/_fs/_fs_constants.ts";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
@@ -24,7 +15,7 @@ import {
   notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
-import { type Buffer } from "node:buffer";
+import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -42,13 +33,6 @@ export type BinaryOptionsArgument =
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
 
-export type ReadOptions = {
-  buffer: Buffer | ArrayBufferView;
-  offset: number;
-  length: number;
-  position: number | null;
-};
-
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
@@ -64,6 +48,21 @@ export function isFileOptions(
     (fileOptions as FileOptions).signal != undefined ||
     (fileOptions as WriteFileOptions).mode != undefined
   );
+}
+
+export function getValidatedEncoding(
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    | ((...args: unknown[]) => unknown)
+    | Encodings
+    | null,
+): Encodings | null {
+  const encoding = getEncoding(optOrCallback);
+  if (encoding) {
+    assertEncoding(encoding);
+  }
+  return encoding;
 }
 
 export function getEncoding(
@@ -124,124 +123,6 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
   throw new Error(`The value "${encoding}" is invalid for option "encoding"`);
 }
 
-export function getOpenOptions(
-  flag: string | number | undefined,
-): Deno.OpenOptions {
-  if (flag === undefined) {
-    return { create: true, append: true };
-  }
-
-  let openOptions: Deno.OpenOptions = {};
-
-  if (typeof flag === "string") {
-    switch (flag) {
-      case "a": {
-        // 'a': Open file for appending. The file is created if it does not exist.
-        openOptions = { create: true, append: true };
-        break;
-      }
-      case "ax":
-      case "xa": {
-        // 'ax', 'xa': Like 'a' but fails if the path exists.
-        openOptions = { createNew: true, write: true, append: true };
-        break;
-      }
-      case "a+": {
-        // 'a+': Open file for reading and appending. The file is created if it does not exist.
-        openOptions = { read: true, create: true, append: true };
-        break;
-      }
-      case "ax+":
-      case "xa+": {
-        // 'ax+', 'xa+': Like 'a+' but fails if the path exists.
-        openOptions = { read: true, createNew: true, append: true };
-        break;
-      }
-      case "r": {
-        // 'r': Open file for reading. An exception occurs if the file does not exist.
-        openOptions = { read: true };
-        break;
-      }
-      case "r+": {
-        // 'r+': Open file for reading and writing. An exception occurs if the file does not exist.
-        openOptions = { read: true, write: true };
-        break;
-      }
-      case "w": {
-        // 'w': Open file for writing. The file is created (if it does not exist) or truncated (if it exists).
-        openOptions = { create: true, write: true, truncate: true };
-        break;
-      }
-      case "wx":
-      case "xw": {
-        // 'wx', 'xw': Like 'w' but fails if the path exists.
-        openOptions = { createNew: true, write: true };
-        break;
-      }
-      case "w+": {
-        // 'w+': Open file for reading and writing. The file is created (if it does not exist) or truncated (if it exists).
-        openOptions = { create: true, write: true, truncate: true, read: true };
-        break;
-      }
-      case "wx+":
-      case "xw+": {
-        // 'wx+', 'xw+': Like 'w+' but fails if the path exists.
-        openOptions = { createNew: true, write: true, read: true };
-        break;
-      }
-      case "as":
-      case "sa": {
-        // 'as', 'sa': Open file for appending in synchronous mode. The file is created if it does not exist.
-        openOptions = { create: true, append: true };
-        break;
-      }
-      case "as+":
-      case "sa+": {
-        // 'as+', 'sa+': Open file for reading and appending in synchronous mode. The file is created if it does not exist.
-        openOptions = { create: true, read: true, append: true };
-        break;
-      }
-      case "rs+":
-      case "sr+": {
-        // 'rs+', 'sr+': Open file for reading and writing in synchronous mode. Instructs the operating system to bypass the local file system cache.
-        openOptions = { create: true, read: true, write: true };
-        break;
-      }
-      default: {
-        throw new Error(`Unrecognized file system flag: ${flag}`);
-      }
-    }
-  } else if (typeof flag === "number") {
-    if ((flag & O_APPEND) === O_APPEND) {
-      openOptions.append = true;
-    }
-    if ((flag & O_CREAT) === O_CREAT) {
-      openOptions.create = true;
-      openOptions.write = true;
-    }
-    if ((flag & O_EXCL) === O_EXCL) {
-      openOptions.createNew = true;
-      openOptions.read = true;
-      openOptions.write = true;
-    }
-    if ((flag & O_TRUNC) === O_TRUNC) {
-      openOptions.truncate = true;
-    }
-    if ((flag & O_RDONLY) === O_RDONLY) {
-      openOptions.read = true;
-    }
-    if ((flag & O_WRONLY) === O_WRONLY) {
-      openOptions.write = true;
-    }
-    if ((flag & O_RDWR) === O_RDWR) {
-      openOptions.read = true;
-      openOptions.write = true;
-    }
-  }
-
-  return openOptions;
-}
-
 export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";
 
 export function maybeCallback(cb: unknown) {
@@ -253,11 +134,11 @@ export function maybeCallback(cb: unknown) {
 // Ensure that callbacks run in the global context. Only use this function
 // for callbacks that are passed to the binding layer, callbacks that are
 // invoked from JS already run in the proper scope.
-export function makeCallback(
+export function makeCallback<T extends unknown[]>(
   this: unknown,
-  cb?: (err: Error | null, result?: unknown) => void,
+  cb?: (...args: T) => void,
 ) {
   validateFunction(cb, "cb");
 
-  return (...args: unknown[]) => ReflectApply(cb!, this, args);
+  return (...args: T) => ReflectApply(cb!, this, args);
 }

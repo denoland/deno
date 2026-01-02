@@ -864,3 +864,114 @@ Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
 
   await recvMessage.promise;
 });
+
+Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const worker = new workerThreads.Worker(
+    `
+    const assert = require("assert");
+    require("worker_threads").parentPort.on("message", ({ port }) => {
+      assert(port instanceof MessagePort);
+
+      port.postMessage("Hello from worker");
+    });
+    `,
+    { eval: true },
+  );
+
+  const channel = new workerThreads.MessageChannel();
+  worker.postMessage({ port: channel.port2 }, [channel.port2]);
+  channel.port1.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    channel.port1.close();
+    channel.port2.close();
+    worker.terminate();
+    recvMessage.resolve();
+  });
+
+  await recvMessage.promise;
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate emits 'exit' and stops receiving",
+  async fn() {
+    const recv: string[] = [];
+    const done = Promise.withResolvers<void>();
+
+    const worker = new (await import("node:worker_threads")).Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      // Periodically send messages to simulate ongoing work.
+      const id = setInterval(() => {
+        parentPort.postMessage("tick");
+      }, 10);
+
+      parentPort.on("message", (m) => {
+        if (m === "stop") {
+          clearInterval(id);
+          // Attempt to send one more message after stop;
+          // the main thread should not receive it after terminate().
+          parentPort.postMessage("last");
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    const first = await once(worker, "message");
+    recv.push(first[0]);
+
+    const exitP = new Promise<number>((resolve) =>
+      worker.once("exit", (code) => resolve(code))
+    );
+
+    worker.postMessage("stop");
+
+    const termRet = worker.terminate();
+    const code = await exitP;
+
+    if (typeof termRet.then === "function") {
+      const v = await termRet;
+      assertEquals(v, 0);
+    }
+    assertEquals(code, 0);
+
+    setTimeout(() => done.resolve(), 50);
+    await done.promise;
+
+    assertEquals(recv[0], "tick");
+    assertEquals(recv.length, 1);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] 'online' fires before first user message (pollMessages)",
+  async fn() {
+    const wt = await import("node:worker_threads");
+    let gotOnline = false;
+
+    const worker = new wt.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      // When the worker becomes ready, it will receive 'ping' and respond with 'pong'.
+      parentPort.on("message", (m) => {
+        if (m === "ping") parentPort.postMessage("pong");
+      });
+      `,
+      { eval: true },
+    );
+
+    worker.on("online", () => {
+      gotOnline = true;
+      worker.postMessage("ping");
+    });
+
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "pong");
+    assertEquals(gotOnline, true);
+
+    await worker.terminate();
+  },
+});

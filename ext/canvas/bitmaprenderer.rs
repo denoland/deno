@@ -2,14 +2,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::cppgc::Ptr;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::webidl::Nullable;
-use deno_core::webidl::WebIdlConverter;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::cppgc::Visitor;
+use deno_core::webidl::Nullable;
+use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
 use deno_image::image;
 use deno_image::image::DynamicImage;
@@ -24,7 +25,10 @@ pub struct ImageBitmapRenderingContext {
   alpha: bool,
 }
 
-impl GarbageCollected for ImageBitmapRenderingContext {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for ImageBitmapRenderingContext {
+  fn trace(&self, _visitor: &mut Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ImageBitmapRenderingContext"
   }
@@ -41,7 +45,7 @@ impl ImageBitmapRenderingContext {
   fn transfer_from_image_bitmap(
     &self,
     state: &mut OpState,
-    #[webidl] bitmap: Nullable<Ptr<ImageBitmap>>,
+    #[webidl] bitmap: Nullable<Ref<ImageBitmap>>,
   ) -> Result<(), JsErrorBox> {
     if let Some(bitmap) = bitmap.into_option() {
       if bitmap.detached.get().is_some() {
@@ -94,7 +98,7 @@ pub const CONTEXT_ID: &str = "bitmaprenderer";
 pub fn create<'s>(
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<Data>>,
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,

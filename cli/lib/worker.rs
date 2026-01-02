@@ -5,23 +5,29 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
+use deno_runtime::UNSTABLE_FEATURES;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
-use deno_runtime::deno_core::error::CoreError;
-use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
@@ -32,8 +38,10 @@ use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::inspector_server::MainInspectorSessionChannel;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -41,13 +49,8 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_runtime::UNSTABLE_FEATURES;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -313,7 +316,9 @@ pub enum ResolveNpmBinaryEntrypointError {
 pub enum ResolveNpmBinaryEntrypointFallbackError {
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  PackageSubpathResolve(
+    node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+  ),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
   ModuleNotFound(UrlOrPath),
@@ -323,14 +328,17 @@ pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
+  pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
+  // If the runtime should try to use `export default { fetch }`
+  pub auto_serve: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -339,11 +347,12 @@ pub struct LibMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
-  pub node_ipc: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub maybe_initial_cwd: Option<Url>,
 }
 
 #[derive(Default, Clone)]
@@ -360,7 +369,9 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -371,6 +382,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -422,7 +434,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         .resolve_storage_key(&args.main_module);
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -448,12 +460,15 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.compiled_wasm_module_store.clone(),
         ),
         maybe_inspector_server,
+        main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        bundle_provider: shared.bundle_provider.clone(),
       };
+      let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -474,10 +489,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
           is_standalone: shared.options.is_standalone,
+          auto_serve: shared.options.auto_serve,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
-          node_ipc_fd: None,
+          node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
@@ -494,13 +510,17 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           .clone(),
         seed: shared.options.seed,
         create_web_worker_cb,
-        format_js_error_fn: Some(Arc::new(format_js_error)),
+        format_js_error_fn: Some(Arc::new(move |a| {
+          format_js_error(a, maybe_initial_cwd.as_ref())
+        })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
+        enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
@@ -521,6 +541,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    maybe_coverage_dir: Option<PathBuf>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
@@ -533,6 +554,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -543,7 +565,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         deno_rt_native_addon_loader,
         feature_checker,
         fs,
+        maybe_coverage_dir,
         maybe_inspector_server,
+        main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -553,6 +577,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -563,10 +588,14 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
+    preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
+      preload_modules,
+      require_modules,
       permissions,
       vec![],
       Default::default(),
@@ -575,10 +604,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   }
 
   #[allow(clippy::result_large_err)]
+  #[allow(clippy::too_many_arguments)]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
+    preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -600,17 +632,18 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
+    let origin_storage_dir: Option<PathBuf> =
+      maybe_storage_key.as_ref().map(|key| {
+        shared
+          .options
+          .origin_data_folder_path
+          .as_ref()
+          .unwrap() // must be set if storage key resolver returns a value
+          .join(checksum::r#gen(&[key.as_bytes()]))
+      });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
     let services = WorkerServiceOptions {
@@ -634,7 +667,10 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
+
+    let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
@@ -653,10 +689,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         is_standalone: shared.options.is_standalone,
+        auto_serve: shared.options.auto_serve,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_fd: shared.options.node_ipc,
+        node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
@@ -672,16 +709,19 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
+      enable_raw_imports: shared.options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       unconfigured_runtime,
     };
@@ -690,8 +730,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
 
+    // Store the main inspector session sender for worker debugging
+    let inspector = worker.js_runtime.inspector();
+    let session_tx = inspector.get_session_sender();
+    shared.main_inspector_session_tx.set(session_tx);
+
     Ok(LibMainWorker {
       main_module,
+      preload_modules,
+      require_modules,
       worker,
     })
   }
@@ -707,7 +754,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(url_from_file_path(&path)?),
+      Ok(bin_value) => Ok(url_from_file_path(bin_value.path())?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
@@ -778,6 +825,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
 pub struct LibMainWorker {
   main_module: Url,
+  preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -795,37 +844,37 @@ impl LibMainWorker {
   }
 
   #[inline]
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    self.worker.create_inspector_session()
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
+    self.worker.create_inspector_session(cb)
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_process_exit_event()
   }
 
@@ -839,8 +888,27 @@ impl LibMainWorker {
     self.worker.evaluate_module(id).await
   }
 
+  pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
+    for preload_module_url in self.preload_modules.iter() {
+      let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    // Even though we load as ESM here, these files will be forced to be loaded as CJS
+    // because of checks in get_known_mode_with_is_script
+    for require_module_url in self.require_modules.iter() {
+      let id = self.worker.preload_side_module(require_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    Ok(())
+  }
+
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
+
+    // Run preload modules first if they were defined
+    self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;

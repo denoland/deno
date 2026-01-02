@@ -18,16 +18,21 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
+import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
-import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
+import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
 import { fchown, fchownSync } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstat, fstatPromise, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  lchmod,
+  lchmodPromise,
+  lchmodSync,
+} from "ext:deno_node/_fs/_fs_lchmod.ts";
 import {
   lchown,
   lchownPromise,
@@ -90,7 +95,7 @@ import {
   statfs,
   statfsPromise,
   statfsSync,
-} from "ext:deno_node/_fs/_fs_statfs.js";
+} from "ext:deno_node/_fs/_fs_statfs.ts";
 import {
   symlink,
   symlinkPromise,
@@ -118,7 +123,7 @@ import {
   watchPromise,
 } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
-import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
+import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
@@ -134,7 +139,11 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
-import { toUnixTimestamp as _toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  Dirent,
+  toUnixTimestamp as _toUnixTimestamp,
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 
 const {
   F_OK,
@@ -162,6 +171,7 @@ const promises = {
   constants,
   copyFile: copyFilePromise,
   cp: cpPromise,
+  glob: globPromise,
   open: openPromise,
   opendir: opendirPromise,
   rename: renamePromise,
@@ -179,7 +189,7 @@ const promises = {
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
-  // lchmod: promisify(lchmod),
+  lchmod: lchmodPromise,
   lchown: lchownPromise,
   chown: chownPromise,
   utimes: utimesPromise,
@@ -215,6 +225,8 @@ export default {
   exists,
   existsSync,
   F_OK,
+  fchmod,
+  fchmodSync,
   fchown,
   fchownSync,
   fdatasync,
@@ -227,6 +239,10 @@ export default {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
+  lchmod,
+  lchmodSync,
   lchown,
   lchownSync,
   link,
@@ -332,6 +348,8 @@ export {
   exists,
   existsSync,
   F_OK,
+  fchmod,
+  fchmodSync,
   fchown,
   fchownSync,
   fdatasync,
@@ -344,6 +362,10 @@ export {
   ftruncateSync,
   futimes,
   futimesSync,
+  glob,
+  globSync,
+  lchmod,
+  lchmodSync,
   link,
   linkSync,
   lstat,

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. All rights reserved. MIT license.
 
 import { decodeBase64 } from "@std/encoding/base64";
 import { assertEquals } from "@std/assert";
@@ -21,7 +21,8 @@ Deno.test("WebTransport", async () => {
   });
 
   (async () => {
-    for await (const conn of listener) {
+    for await (const incoming of listener) {
+      const conn = await incoming.accept();
       const wt = await Deno.upgradeWebTransport(conn);
 
       assertEquals(wt.url, `https://localhost:${server.addr.port}/path`);

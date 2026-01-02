@@ -58,13 +58,14 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 
 import { Stream } from "ext:deno_node/internal/streams/legacy.js";
-import Readable from "ext:deno_node/internal/streams/readable.js";
-import Writable from "ext:deno_node/internal/streams/writable.js";
-import Duplex from "ext:deno_node/internal/streams/duplex.js";
-import Transform from "ext:deno_node/internal/streams/transform.js";
-import PassThrough from "ext:deno_node/internal/streams/passthrough.js";
+import Readable from "node:_stream_readable";
+import Writable from "node:_stream_writable";
+import Duplex from "node:_stream_duplex";
+import Transform from "node:_stream_transform";
+import PassThrough from "node:_stream_passthrough";
 import duplexPair from "ext:deno_node/internal/streams/duplexpair.js";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
+import { ERR_ILLEGAL_CONSTRUCTOR } from "ext:deno_node/internal/errors.ts";
 
 Stream.isDestroyed = utils.isDestroyed;
 Stream.isDisturbed = utils.isDisturbed;
@@ -172,6 +173,7 @@ export {
   getDefaultHighWaterMark,
   PassThrough,
   pipeline,
+  promises,
   Readable,
   setDefaultHighWaterMark,
   Stream,

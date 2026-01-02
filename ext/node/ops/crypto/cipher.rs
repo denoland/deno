@@ -4,15 +4,16 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
 use aes::cipher::KeySizeUser;
 use aes::cipher::StreamCipher;
+use aes::cipher::block_padding::Pkcs7;
 use deno_core::Resource;
-use digest::generic_array::GenericArray;
+use deno_error::JsErrorClass;
 use digest::KeyInit;
+use digest::generic_array::GenericArray;
 
 type Tag = Option<Vec<u8>>;
 
@@ -24,8 +25,8 @@ enum Cipher {
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
   Aes192Ecb(Box<ecb::Encryptor<aes::Aes192>>),
   Aes256Ecb(Box<ecb::Encryptor<aes::Aes256>>),
-  Aes128Gcm(Box<Aes128Gcm>),
-  Aes256Gcm(Box<Aes256Gcm>),
+  Aes128Gcm(Box<Aes128Gcm>, Option<usize>),
+  Aes256Gcm(Box<Aes256Gcm>, Option<usize>),
   Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
@@ -38,8 +39,8 @@ enum Decipher {
   Aes128Ecb(Box<ecb::Decryptor<aes::Aes128>>),
   Aes192Ecb(Box<ecb::Decryptor<aes::Aes192>>),
   Aes256Ecb(Box<ecb::Decryptor<aes::Aes256>>),
-  Aes128Gcm(Box<Aes128Gcm>),
-  Aes256Gcm(Box<Aes256Gcm>),
+  Aes128Gcm(Box<Aes128Gcm>, Option<usize>),
+  Aes256Gcm(Box<Aes256Gcm>, Option<usize>),
   Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
@@ -73,9 +74,15 @@ impl CipherContext {
     algorithm: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, CipherContextError> {
     Ok(Self {
-      cipher: Rc::new(RefCell::new(Cipher::new(algorithm, key, iv)?)),
+      cipher: Rc::new(RefCell::new(Cipher::new(
+        algorithm,
+        key,
+        iv,
+        auth_tag_length,
+      )?)),
     })
   }
 
@@ -123,10 +130,25 @@ impl DecipherContext {
     algorithm: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, DecipherContextError> {
     Ok(Self {
-      decipher: Rc::new(RefCell::new(Decipher::new(algorithm, key, iv)?)),
+      decipher: Rc::new(RefCell::new(Decipher::new(
+        algorithm,
+        key,
+        iv,
+        auth_tag_length,
+      )?)),
     })
+  }
+
+  pub fn validate_auth_tag(
+    &self,
+    length: usize,
+  ) -> Result<(), DecipherContextError> {
+    self.decipher.borrow().validate_auth_tag(length)?;
+
+    Ok(())
   }
 
   pub fn set_aad(&self, aad: &[u8]) {
@@ -153,13 +175,13 @@ impl DecipherContext {
 }
 
 impl Resource for CipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoCipher".into()
   }
 }
 
 impl Resource for DecipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoDecipher".into()
   }
 }
@@ -176,11 +198,14 @@ pub enum CipherError {
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot pad the input data")]
+  #[error("bad decrypt")]
   CannotPadInputData,
   #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
+  #[class(type)]
+  #[error("Invalid authentication tag length: {0}")]
+  InvalidAuthTag(usize),
 }
 
 impl Cipher {
@@ -188,6 +213,7 @@ impl Cipher {
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, CipherError> {
     use Cipher::*;
     Ok(match algorithm_name {
@@ -202,20 +228,32 @@ impl Cipher {
           return Err(CipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
-        Aes128Gcm(Box::new(cipher))
+        Aes128Gcm(Box::new(cipher), auth_tag_length)
       }
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(CipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
-        Aes256Gcm(Box::new(cipher))
+        Aes256Gcm(Box::new(cipher), auth_tag_length)
       }
       "aes256" | "aes-256-cbc" => {
         if key.len() != 32 {
@@ -261,10 +299,10 @@ impl Cipher {
   fn set_aad(&mut self, aad: &[u8]) {
     use Cipher::*;
     match self {
-      Aes128Gcm(cipher) => {
+      Aes128Gcm(cipher, _) => {
         cipher.set_aad(aad);
       }
-      Aes256Gcm(cipher) => {
+      Aes256Gcm(cipher, _) => {
         cipher.set_aad(aad);
       }
       _ => {}
@@ -276,39 +314,39 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes128Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes192Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes256Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
-      Aes128Gcm(cipher) => {
+      Aes128Gcm(cipher, _) => {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
       }
-      Aes256Gcm(cipher) => {
+      Aes256Gcm(cipher, _) => {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
       }
       Aes256Cbc(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
@@ -387,8 +425,20 @@ impl Cipher {
         );
         Ok(None)
       }
-      (Aes128Gcm(cipher), _) => Ok(Some(cipher.finish().to_vec())),
-      (Aes256Gcm(cipher), _) => Ok(Some(cipher.finish().to_vec())),
+      (Aes128Gcm(cipher, auth_tag_length), _) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Ok(Some(tag))
+      }
+      (Aes256Gcm(cipher, auth_tag_length), _) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Ok(Some(tag))
+      }
       (Aes256Cbc(encryptor), true) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
@@ -409,14 +459,29 @@ impl Cipher {
   fn take_tag(self) -> Tag {
     use Cipher::*;
     match self {
-      Aes128Gcm(cipher) => Some(cipher.finish().to_vec()),
-      Aes256Gcm(cipher) => Some(cipher.finish().to_vec()),
+      Aes128Gcm(cipher, auth_tag_length) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Some(tag)
+      }
+      Aes256Gcm(cipher, auth_tag_length) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Some(tag)
+      }
       _ => None,
     }
   }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("library" = "Provider routines")]
+#[property("reason" = self.reason())]
+#[property("code" = self.code())]
 pub enum DecipherError {
   #[class(type)]
   #[error("IV length must be 12 bytes")]
@@ -424,14 +489,17 @@ pub enum DecipherError {
   #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
+  #[error("Invalid authentication tag length: {0}")]
+  InvalidAuthTag(usize),
   #[class(range)]
-  #[error("Wrong final block length")]
+  #[error("error:1C80006B:Provider routines::wrong final block length")]
   InvalidFinalBlockLength,
   #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
   #[class(type)]
-  #[error("Cannot unpad the input data")]
+  #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
   #[error("Failed to authenticate data")]
@@ -447,6 +515,35 @@ pub enum DecipherError {
   UnknownCipher(String),
 }
 
+impl DecipherError {
+  fn code(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidIvLength => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_IV_LENGTH".into())
+      }
+      Self::InvalidKeyLength => deno_error::PropertyValue::String(
+        "ERR_CRYPTO_INVALID_KEY_LENGTH".into(),
+      ),
+      Self::InvalidAuthTag(_) => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_AUTH_TAG".into())
+      }
+      Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
+        "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
+      ),
+      _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
+    }
+  }
+
+  fn reason(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidFinalBlockLength => {
+        deno_error::PropertyValue::String("wrong final block length".into())
+      }
+      _ => deno_error::PropertyValue::String(self.get_message()),
+    }
+  }
+}
+
 macro_rules! assert_block_len {
   ($input:expr, $len:expr) => {
     if $input != $len {
@@ -455,11 +552,16 @@ macro_rules! assert_block_len {
   };
 }
 
+fn is_valid_gcm_tag_length(tag_len: usize) -> bool {
+  tag_len == 4 || tag_len == 8 || (12..=16).contains(&tag_len)
+}
+
 impl Decipher {
   fn new(
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, DecipherError> {
     use Decipher::*;
     Ok(match algorithm_name {
@@ -474,20 +576,32 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
+
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
-        Aes128Gcm(Box::new(decipher))
+        Aes128Gcm(Box::new(decipher), auth_tag_length)
       }
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(DecipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
+
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
-        Aes256Gcm(Box::new(decipher))
+        Aes256Gcm(Box::new(decipher), auth_tag_length)
       }
       "aes256" | "aes-256-cbc" => {
         if key.len() != 32 {
@@ -527,18 +641,31 @@ impl Decipher {
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       _ => {
-        return Err(DecipherError::UnknownCipher(algorithm_name.to_string()))
+        return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
     })
+  }
+
+  fn validate_auth_tag(&self, length: usize) -> Result<(), DecipherError> {
+    match self {
+      Decipher::Aes128Gcm(_, Some(tag_len))
+      | Decipher::Aes256Gcm(_, Some(tag_len)) => {
+        if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      _ => {}
+    }
+    Ok(())
   }
 
   fn set_aad(&mut self, aad: &[u8]) {
     use Decipher::*;
     match self {
-      Aes128Gcm(decipher) => {
+      Aes128Gcm(decipher, _) => {
         decipher.set_aad(aad);
       }
-      Aes256Gcm(decipher) => {
+      Aes256Gcm(decipher, _) => {
         decipher.set_aad(aad);
       }
       _ => {}
@@ -550,39 +677,39 @@ impl Decipher {
     use Decipher::*;
     match self {
       Aes128Cbc(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes128Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes192Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes256Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
-      Aes128Gcm(decipher) => {
+      Aes128Gcm(decipher, _) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
       }
-      Aes256Gcm(decipher) => {
+      Aes256Gcm(decipher, _) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
       }
       Aes256Cbc(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
@@ -609,7 +736,16 @@ impl Decipher {
   ) -> Result<(), DecipherError> {
     use Decipher::*;
 
-    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+    if input.is_empty()
+      && !matches!(
+        self,
+        Aes128Ecb(..)
+          | Aes192Ecb(..)
+          | Aes256Ecb(..)
+          | Aes128Gcm(..)
+          | Aes256Gcm(..)
+      )
+    {
       return Ok(());
     }
 
@@ -670,26 +806,38 @@ impl Decipher {
         );
         Ok(())
       }
-      (Aes128Gcm(decipher), true) => {
+      (Aes128Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
         }
       }
-      (Aes128Gcm(_), false) => {
+      (Aes128Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes128GcmUnsupported)
       }
-      (Aes256Gcm(decipher), true) => {
+      (Aes256Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
         }
       }
-      (Aes256Gcm(_), false) => {
+      (Aes256Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes256GcmUnsupported)
       }
       (Aes256Cbc(decryptor), true) => {

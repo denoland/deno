@@ -12,5 +12,7 @@ export type OSType =
 
 export const osType: OSType = op_node_build_os();
 
+export const isAndroid = osType === "android";
 export const isWindows = osType === "windows";
 export const isLinux = osType === "linux" || osType === "android";
+export const isMacOS = osType === "darwin";

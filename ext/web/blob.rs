@@ -7,12 +7,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::op2;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -268,7 +268,7 @@ pub fn op_blob_create_object_url(
   let url = blob_store
     .insert_object_url(blob, maybe_location.map(|location| location.0.clone()));
 
-  Ok(url.to_string())
+  Ok(url.into())
 }
 
 #[op2(fast)]
@@ -308,20 +308,21 @@ pub fn op_blob_from_object_url(
   let blob_store = state
     .try_borrow::<Arc<BlobStore>>()
     .ok_or(BlobError::BlobURLsNotSupported)?;
-  if let Some(blob) = blob_store.get_object_url(url) {
-    let parts = blob
-      .parts
-      .iter()
-      .map(|part| ReturnBlobPart {
-        uuid: blob_store.insert_part(part.clone()),
-        size: part.size(),
-      })
-      .collect();
-    Ok(Some(ReturnBlob {
-      media_type: blob.media_type.clone(),
-      parts,
-    }))
-  } else {
-    Ok(None)
+  match blob_store.get_object_url(url) {
+    Some(blob) => {
+      let parts = blob
+        .parts
+        .iter()
+        .map(|part| ReturnBlobPart {
+          uuid: blob_store.insert_part(part.clone()),
+          size: part.size(),
+        })
+        .collect();
+      Ok(Some(ReturnBlob {
+        media_type: blob.media_type.clone(),
+        parts,
+      }))
+    }
+    _ => Ok(None),
   }
 }

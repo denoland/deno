@@ -1,24 +1,23 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::ffi::OsStr;
 use std::io::BufReader;
 use std::io::Cursor;
-use std::io::Read;
-use std::io::Seek;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 
+use base64::prelude::BASE64_STANDARD;
+use base64::prelude::Engine;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
+use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
-use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -26,11 +25,8 @@ use thiserror::Error;
 
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
-) -> String {
-  req_ref
-    .sub_path()
-    .map(|s| s.to_string())
-    .unwrap_or_else(|| req_ref.req().name.to_string())
+) -> &str {
+  req_ref.sub_path().unwrap_or_else(|| &req_ref.req().name)
 }
 
 pub fn has_trace_permissions_enabled() -> bool {
@@ -48,9 +44,18 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub enum CaData {
   /// The string is a file path
   File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
+  /// The string holds the actual certificate
   Bytes(Vec<u8>),
+}
+
+impl CaData {
+  pub fn parse(input: String) -> Option<Self> {
+    if let Some(x) = input.strip_prefix("base64:") {
+      Some(CaData::Bytes(BASE64_STANDARD.decode(x).ok()?))
+    } else {
+      Some(CaData::File(input))
+    }
+  }
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
@@ -120,8 +125,8 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_data =
-    maybe_ca_data.or_else(|| std::env::var("DENO_CERT").ok().map(CaData::File));
+  let ca_data = maybe_ca_data
+    .or_else(|| std::env::var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {
@@ -155,80 +160,39 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
-pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
-  LazyLock::new(|| {
-    /// Allows for passing either a file descriptor or file path.
-    enum FdOrPath {
-      Fd(usize),
-      Path(PathBuf),
-    }
+pub fn npm_process_state(
+  sys: &impl NpmProcessStateFromEnvVarSys,
+) -> Option<&'static NpmProcessState> {
+  static NPM_PROCESS_STATE: std::sync::OnceLock<Option<NpmProcessState>> =
+    std::sync::OnceLock::new();
 
-    impl FdOrPath {
-      pub fn parse(value: &OsStr) -> Option<Self> {
-        if value.is_empty() {
-          return None;
-        }
+  NPM_PROCESS_STATE
+    .get_or_init(|| {
+      use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+      let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
 
-        match value.to_string_lossy().parse::<usize>() {
-          Ok(value) => Some(FdOrPath::Fd(value)),
-          Err(_) => Some(FdOrPath::Path(PathBuf::from(value))),
-        }
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)
+      };
+      if fd_or_path.is_empty() {
+        return None;
       }
-
-      pub fn open(&self) -> Option<std::fs::File> {
-        use deno_runtime::deno_io::FromRawIoHandle;
-        match self {
-          // SAFETY: Assume valid file descriptor
-          FdOrPath::Fd(fd) => unsafe {
-            Some(std::fs::File::from_raw_io_handle(*fd as _))
-          },
-          FdOrPath::Path(path) => {
-            // todo(dsherret): use sys_traits here
-            #[allow(clippy::disallowed_methods)]
-            std::fs::OpenOptions::new().read(true).open(path).ok()
-          }
-        }
-      }
-    }
-
-    use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-    let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
-    std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
-    let fd_or_path = FdOrPath::parse(&fd_or_path)?;
-    let mut file = fd_or_path.open()?;
-    let mut buf = Vec::new();
-    // seek to beginning. after the file is written the position will be inherited by this subprocess,
-    // and also this file might have been read before
-    file.seek(std::io::SeekFrom::Start(0)).unwrap();
-    file
-      .read_to_end(&mut buf)
-      .inspect_err(|e| {
-        log::error!(
-          "failed to read npm process state from {}: {}",
-          match fd_or_path {
-            FdOrPath::Fd(fd) => format!("fd {}", fd),
-            FdOrPath::Path(path) => path.display().to_string(),
-          },
-          e
-        );
-      })
-      .ok()?;
-    let state: NpmProcessState = serde_json::from_slice(&buf)
-      .inspect_err(|e| {
-        log::error!(
-          "failed to deserialize npm process state: {e} {}",
-          String::from_utf8_lossy(&buf)
-        )
-      })
-      .ok()?;
-    Some(state)
-  });
+      NpmProcessState::from_env_var(sys, fd_or_path)
+        .inspect_err(|e| {
+          log::error!("failed to resolve npm process state: {}", e);
+        })
+        .ok()
+    })
+    .as_ref()
+}
 
 pub fn resolve_npm_resolution_snapshot(
+  sys: &impl NpmProcessStateFromEnvVarSys,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, PackageIdNotFoundError>
 {
   if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
-    NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    npm_process_state(sys).map(|s| &s.kind)
   {
     // TODO(bartlomieju): remove this clone
     Ok(Some(snapshot.clone().into_valid()?))
@@ -244,8 +208,10 @@ pub struct UnstableConfig {
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
+  pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
+  pub tsgo: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
@@ -269,9 +235,20 @@ impl UnstableConfig {
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
+    maybe_set(&mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
+    maybe_set(&mut self.raw_imports, UNSTABLE_ENV_VAR_NAMES.raw_imports);
     maybe_set(
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
+  }
+
+  pub fn enable_node_compat(&mut self) {
+    self.bare_node_builtins = true;
+    self.sloppy_imports = true;
+    self.detect_cjs = true;
+    if !self.features.iter().any(|f| f == "node-globals") {
+      self.features.push("node-globals".to_string());
+    }
   }
 }

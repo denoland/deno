@@ -14,7 +14,7 @@ pub fn otel_runtime_config() -> OtelRuntimeConfig {
 }
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
-const TYPESCRIPT: &str = "5.8.3";
+const TYPESCRIPT: &str = "5.9.2";
 pub const DENO_VERSION: &str = env!("DENO_VERSION");
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
@@ -23,6 +23,11 @@ const IS_RC: bool = option_env!("DENO_RC").is_some();
 
 pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
   std::sync::LazyLock::new(|| {
+    #[cfg(not(all(
+      debug_assertions,
+      target_os = "macos",
+      target_arch = "x86_64"
+    )))]
     let release_channel = libsui::find_section("denover")
       .ok()
       .flatten()
@@ -37,6 +42,15 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
           ReleaseChannel::Stable
         }
       });
+
+    #[cfg(all(debug_assertions, target_os = "macos", target_arch = "x86_64"))]
+    let release_channel = if IS_CANARY {
+      ReleaseChannel::Canary
+    } else if IS_RC {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Stable
+    };
 
     DenoVersionInfo {
       deno: if release_channel == ReleaseChannel::Canary {

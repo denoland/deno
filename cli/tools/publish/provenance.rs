@@ -3,9 +3,12 @@
 use std::collections::HashMap;
 use std::env;
 
+use aws_lc_rs::rand::SystemRandom;
+use aws_lc_rs::signature::EcdsaKeyPair;
+use aws_lc_rs::signature::KeyPair;
+use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
-use base64::Engine as _;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -15,15 +18,12 @@ use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
-use ring::rand::SystemRandom;
-use ring::signature::EcdsaKeyPair;
-use ring::signature::KeyPair;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use spki::der::EncodePem;
 use spki::der::asn1;
 use spki::der::pem::LineEnding;
-use spki::der::EncodePem;
 
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
@@ -326,7 +326,7 @@ pub async fn attest(
   let pae = pre_auth_encoding(type_, data);
 
   let signer = FulcioSigner::new(http_client)?;
-  let (signature, key_material) = signer.sign(&pae).await?;
+  let (signature, key_material) = Box::pin(signer.sign(&pae)).await?;
 
   let content = SignatureBundle {
     case: "dsseSignature",
@@ -371,8 +371,8 @@ static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
     .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
 });
 
-static ALGORITHM: &ring::signature::EcdsaSigningAlgorithm =
-  &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
+static ALGORITHM: &aws_lc_rs::signature::EcdsaSigningAlgorithm =
+  &aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
 
 struct KeyMaterial {
   pub _case: &'static str,
@@ -437,7 +437,7 @@ impl<'a> FulcioSigner<'a> {
     let rng = SystemRandom::new();
     let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
     let ephemeral_signer =
-      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)?;
+      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref())?;
 
     Ok(Self {
       ephemeral_signer,
@@ -449,7 +449,7 @@ impl<'a> FulcioSigner<'a> {
   pub async fn sign(
     self,
     data: &[u8],
-  ) -> Result<(ring::signature::Signature, KeyMaterial), AnyError> {
+  ) -> Result<(aws_lc_rs::signature::Signature, KeyMaterial), AnyError> {
     // Request token from GitHub Actions for audience "sigstore"
     let token = self.gha_request_token("sigstore").await?;
     // Extract the subject from the token
@@ -471,9 +471,8 @@ impl<'a> FulcioSigner<'a> {
     let pem = spki.to_pem(LineEnding::LF)?;
 
     // Create signing certificate
-    let certificates = self
-      .create_signing_certificate(&token, pem, challenge)
-      .await?;
+    let certificates =
+      Box::pin(self.create_signing_certificate(&token, pem, challenge)).await?;
 
     let signature = self.ephemeral_signer.sign(&self.rng, data)?;
 
@@ -490,7 +489,7 @@ impl<'a> FulcioSigner<'a> {
     &self,
     token: &str,
     public_key: String,
-    challenge: ring::signature::Signature,
+    challenge: aws_lc_rs::signature::Signature,
   ) -> Result<Vec<String>, AnyError> {
     let url = format!("{}/api/v2/signingCert", *DEFAULT_FULCIO_URL);
     let request_body = CreateSigningCertificateRequest {
@@ -717,21 +716,24 @@ mod tests {
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      env::set_var("CI", "true");
-      env::set_var("GITHUB_ACTIONS", "true");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
-      env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
-      env::set_var("GITHUB_SERVER_URL", "https://github.com");
-      env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
-      env::set_var("GITHUB_SHA", "lol");
-      env::set_var("GITHUB_RUN_ID", "1");
-      env::set_var("GITHUB_RUN_ATTEMPT", "1");
-      env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
-      env::set_var(
-        "GITHUB_WORKFLOW_REF",
-        "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
-      );
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        env::set_var("CI", "true");
+        env::set_var("GITHUB_ACTIONS", "true");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
+        env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
+        env::set_var("GITHUB_SERVER_URL", "https://github.com");
+        env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
+        env::set_var("GITHUB_SHA", "lol");
+        env::set_var("GITHUB_RUN_ID", "1");
+        env::set_var("GITHUB_RUN_ATTEMPT", "1");
+        env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+        env::set_var(
+          "GITHUB_WORKFLOW_REF",
+          "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
+        )
+      }
     }
 
     let subject = Subject {

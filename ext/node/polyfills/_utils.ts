@@ -5,7 +5,6 @@ const {
   Error,
   PromisePrototypeThen,
   ArrayPrototypePop,
-  StringPrototypeToLowerCase,
   NumberIsInteger,
   ObjectGetOwnPropertyNames,
   ReflectGetOwnPropertyDescriptor,
@@ -18,6 +17,7 @@ import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
+import { validateNumber } from "./internal/validators.mjs";
 
 export type BinaryEncodings = "binary";
 
@@ -29,6 +29,7 @@ export type TextEncodings =
   | "ucs2"
   | "ucs-2"
   | "base64"
+  | "base64url"
   | "latin1"
   | "hex";
 
@@ -94,78 +95,6 @@ export function spliceOne(list: string[], index: number) {
   ArrayPrototypePop(list);
 }
 
-// Taken from: https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L125
-// Return undefined if there is no match.
-// Move the "slow cases" to a separate function to make sure this function gets
-// inlined properly. That prioritizes the common case.
-export function normalizeEncoding(
-  enc: string | null,
-): TextEncodings | undefined {
-  if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
-  return slowCases(enc);
-}
-
-// https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L130
-function slowCases(enc: string): TextEncodings | undefined {
-  switch (enc.length) {
-    case 4:
-      if (enc === "UTF8") return "utf8";
-      if (enc === "ucs2" || enc === "UCS2") return "utf16le";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "utf8") return "utf8";
-      if (enc === "ucs2") return "utf16le";
-      break;
-    case 3:
-      if (
-        enc === "hex" || enc === "HEX" ||
-        StringPrototypeToLowerCase(enc) === "hex"
-      ) {
-        return "hex";
-      }
-      break;
-    case 5:
-      if (enc === "ascii") return "ascii";
-      if (enc === "ucs-2") return "utf16le";
-      if (enc === "UTF-8") return "utf8";
-      if (enc === "ASCII") return "ascii";
-      if (enc === "UCS-2") return "utf16le";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "utf-8") return "utf8";
-      if (enc === "ascii") return "ascii";
-      if (enc === "ucs-2") return "utf16le";
-      break;
-    case 6:
-      if (enc === "base64") return "base64";
-      if (enc === "latin1" || enc === "binary") return "latin1";
-      if (enc === "BASE64") return "base64";
-      if (enc === "LATIN1" || enc === "BINARY") return "latin1";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "base64") return "base64";
-      if (enc === "latin1" || enc === "binary") return "latin1";
-      break;
-    case 7:
-      if (
-        enc === "utf16le" ||
-        enc === "UTF16LE" ||
-        StringPrototypeToLowerCase(enc) === "utf16le"
-      ) {
-        return "utf16le";
-      }
-      break;
-    case 8:
-      if (
-        enc === "utf-16le" ||
-        enc === "UTF-16LE" ||
-        StringPrototypeToLowerCase(enc) === "utf-16le"
-      ) {
-        return "utf16le";
-      }
-      break;
-    default:
-      if (enc === "") return "utf8";
-  }
-}
-
 export function validateIntegerRange(
   value: number,
   name: string,
@@ -219,11 +148,21 @@ export function makeMethodsEnumerable(klass: { new (): unknown }) {
  * @param code error code number
  */
 export function getSystemErrorName(code: number): string | undefined {
-  if (typeof code !== "number") {
-    throw new codes.ERR_INVALID_ARG_TYPE("err", "number", code);
-  }
+  validateNumber(code, "err");
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
   }
   return errorMap.get(code)?.[0];
+}
+
+/**
+ * Returns a system error message from an error code number.
+ * @param code error code number
+ */
+export function getSystemErrorMessage(code: number): string | undefined {
+  validateNumber(code, "err");
+  if (code >= 0 || !NumberIsSafeInteger(code)) {
+    throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
+  }
+  return errorMap.get(code)?.[1];
 }

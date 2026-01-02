@@ -1,25 +1,36 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // deno-lint-ignore-file no-console
 
+// This script runs all Node.js test cases without modification
+// It saves the test results in `tests/node_compat/report.json` when
+// filtering is not specified.
+// The saved results are uploaded to cloud storage bucket `dl.deno.land`
+// daily, and can be viewed at the web page:
+// https://node-test-viewer.deno.dev/
+
 import { deadline } from "@std/async/deadline";
 import { expandGlob } from "@std/fs/expand-glob";
 import { toFileUrl } from "@std/path/to-file-url";
-import { basename } from "@std/path/basename";
 import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
 import {
+  configFile,
   parseFlags,
   RUN_ARGS,
   TEST_ARGS,
   usesNodeTestModule,
 } from "./common.ts";
+import { generateTestSerialId } from "./test.ts";
 
-// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
-const TIMEOUT = 2000;
+const testSuitePath = new URL(import.meta.resolve("./runner/suite/"));
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
+// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
+const TIMEOUT = IS_CI
+  ? Deno.build.os === "darwin" && Deno.build.arch === "x86_64" ? 20_000 : 10_000
+  : 5000;
 
 // The metadata of the test report
 export type TestReportMetadata = {
@@ -31,6 +42,7 @@ export type TestReportMetadata = {
   runId: string | null;
   total: number;
   pass: number;
+  ignore: number;
 };
 
 // The test report format, which is stored in JSON file
@@ -50,6 +62,7 @@ const NODE_IGNORED_TEST_DIRS = [
   "fixtures",
   "fuzzers",
   "js-native-api",
+  "known_issues",
   "node-api",
   "overlapped-checker",
   "report",
@@ -61,150 +74,23 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
-// Category names are usually one word, but there are some exceptions.
-// This list contains the exceptions.
-const multiWordsCategoryNames = [
-  "async-hooks",
-  "async-local-storage",
-  "async-wrap",
-  "child-process",
-  "cpu-prof",
-  "double-tls",
-  "diagnostics-channel",
-  "force-repl",
-  "listen-fd",
-  "memory-usage",
-  "next-tick",
-  "outgoing-message",
-  "shadow-realm",
-  "single-executable",
-  "string-decoder",
-];
+const runnerOs = Deno.build.os;
+const ignoredTests = Object.entries(configFile.tests)
+  .flatMap((
+    [testName, config],
+  ) => {
+    if (config[runnerOs as keyof typeof config] !== false) return [];
+    return [{ testName, reason: config.reason }];
+  });
 
-const categoryMap = {
-  cjs: "module",
-  cwd: "process",
-  diagnostic: "diagnostics-channel",
-  "double-tls": "net",
-  event: "events",
-  eventsource: "events",
-  eventtarget: "events",
-  esm: "module",
-  file: "fs",
-  filehandle: "fs",
-  "force-repl": "repl",
-  inspect: "util",
-  "listen-fd": "net",
-  "next-tick": "process",
-  "outgoing-message": "http",
-  promises: "promise",
-  readable: "stream",
-  require: "module",
-  socket: "net",
-  stdin: "stdio",
-  stdout: "stdio",
-  stream2: "stream",
-  stream3: "stream",
-  tcp: "net",
-  ttywrap: "tty",
-  webstream: "webstreams",
-} as Record<string, string>;
-
-// These name could appear as category name, but they are actually not.
-// If the category name is one of these, it should be categorized as "others".
-const otherCategories = [
-  "common",
-  "compile",
-  "corepack",
-  "disable",
-  "env",
-  "error",
-  "errors",
-  "eslint",
-  "eval",
-  "exception",
-  "handle",
-  "heap",
-  "heapdump",
-  "heapsnapshot",
-  "internal",
-  "memory",
-  "no",
-  "queue",
-  "release",
-  "set",
-  "source",
-  "startup",
-  "sync",
-  "trace",
-  "tick",
-  "unhandled",
-  "uv",
-  "warn",
-  "windows",
-  "wrap",
-];
-
-/**
- * The test files in these dirs seem categorized in the form
- * test-[category-name]-test-case.js
- */
-const categorizedTestGroups = [
-  "es-module",
-  "parallel",
-  "pummel",
-  "sequential",
-  "internet",
-];
+const NODE_IGNORED_TEST_CASES_TO_REASON = new Map<string, string | undefined>(
+  ignoredTests.map(({ testName, reason }) => [testName, reason]),
+);
 
 /** The group is the directory name of the test file.
  * e.g. parallel, internet, pummel, sequential, pseudo-tty, etc */
 function getGroupRelUrl(str: string) {
   return str.split("/")[0];
-}
-
-/** Gets the category name from the test path
- * e.g.
- * - parallel/test-async-hooks-destroyed-context.js -> async-hooks
- * - sequential/test-child-process-exec-stderr.js -> child-process
- * - internet/test-http-keep-alive.js -> http
- * - pseudo-tty/test-stdin.js -> tty
- * - module-hooks/test-require.js -> module
- */
-function getCategoryFromPath(str: string) {
-  const group = getGroupRelUrl(str);
-  if (group === "pseudo-tty") {
-    return "tty";
-  } else if (group === "module-hooks") {
-    return "module";
-  } else if (categorizedTestGroups.includes(group)) {
-    const name = basename(str).replace(/\.js/, "");
-    let category = name.split("-")[1];
-    for (const multiWord of multiWordsCategoryNames) {
-      if (name.startsWith("test-" + multiWord)) {
-        category = multiWord;
-      }
-    }
-    category = categoryMap[category] ?? category;
-    if (otherCategories.includes(category)) {
-      return "others";
-    }
-    return category;
-  } else {
-    return "others";
-  }
-}
-
-/** Collect the items that are not categorized into the "others" category. */
-function collectNonCategorizedItems(categories: Record<string, string[]>) {
-  const others = [] as string[];
-  for (const [category, items] of Object.entries(categories)) {
-    if (items.length === 1) {
-      delete categories[category];
-      others.push(...items);
-    }
-  }
-  (categories["others"] ??= []).push(...others);
 }
 
 function truncateTestOutput(output: string): string {
@@ -218,20 +104,52 @@ function truncateTestOutput(output: string): string {
 enum NodeTestFileResult {
   PASS = "pass",
   FAIL = "fail",
-  SKIP = "skip",
+  SKIP = "skip", // skipped because of filtering (for debugging locally)
+  IGNORED = "ignored", // ignored because the test case does not need to pass in Deno
 }
 
-interface NodeTestFileReport {
-  result: NodeTestFileResult;
+interface NonIgnoredTestFileReport {
+  result:
+    | NodeTestFileResult.PASS
+    | NodeTestFileResult.FAIL
+    | NodeTestFileResult.SKIP; // Currently skipped tests will not be written to the report
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
 }
 
+interface IgnoredTestFileReport {
+  result: NodeTestFileResult.IGNORED;
+  reason: string | undefined;
+  error?: undefined;
+}
+
+type NodeTestFileReport = (NonIgnoredTestFileReport | IgnoredTestFileReport) & {
+  usesNodeTest: boolean; // whether the test uses `node:test` module
+};
+
 type TestReports = Record<string, NodeTestFileReport>;
 
-export type SingleResult = [
+type BaseSingleResultInfo = {
+  usesNodeTest?: 1; // Uses this form to minimize the size of the report.json
+};
+
+type IgnoredSingleResultInfo = BaseSingleResultInfo & {
+  ignoreReason: string | undefined;
+};
+
+type NonIgnoredSingleResult = [
   pass: boolean,
-  error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
+  error: ErrorExit | ErrorTimeout | ErrorUnexpected | undefined,
+  info: BaseSingleResultInfo,
 ];
+
+type IgnoredSingleResult = [
+  pass: "IGNORE",
+  error: undefined,
+  info: IgnoredSingleResultInfo,
+];
+
+export type SingleResult = NonIgnoredSingleResult | IgnoredSingleResult;
+
 type ErrorExit = {
   code: number;
   stderr: string;
@@ -243,8 +161,9 @@ type ErrorUnexpected = {
   message: string;
 };
 
-function getV8Flags(source: string): string[] {
+function getFlags(source: string): [string[], string[]] {
   const v8Flags = [] as string[];
+  const nodeOptions = [] as string[];
   const flags = parseFlags(source);
   flags.forEach((flag) => {
     switch (flag) {
@@ -254,28 +173,53 @@ function getV8Flags(source: string): string[] {
       case "--expose-gc":
         v8Flags.push("--expose-gc");
         break;
+      case "--no-warnings":
+        nodeOptions.push("--no-warnings");
+        break;
+      case "--pending-deprecation":
+        nodeOptions.push("--pending-deprecation");
+        break;
+      case "--allow-natives-syntax":
+        v8Flags.push("--allow-natives-syntax");
+        break;
       default:
         break;
     }
   });
-  return v8Flags;
+  return [v8Flags, nodeOptions];
 }
 
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
- * @param testPath Relative path to the test file
+ * @param testPath Relative path from test/ dir of Node.js (e.g. "parallel/test-assert.js").
  */
-async function runSingle(
+export async function runSingle(
   testPath: string,
-  retry = 0,
+  {
+    flaky = !!Deno.env.get("CI"),
+    retry = 0,
+  }: {
+    flaky?: boolean;
+    retry?: number;
+  },
 ): Promise<NodeTestFileReport> {
+  const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
-  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
+  const testPath_ = "test/" + testPath;
+  let usesNodeTest = false;
   try {
-    const source = await Deno.readTextFile(testPath_);
-    const usesNodeTest = usesNodeTestModule(source);
-    const v8Flags = getV8Flags(source);
+    const testFileUrl = new URL(testPath_, testSuitePath);
+    const source = await Deno.readTextFile(testFileUrl);
+    usesNodeTest = usesNodeTestModule(source);
+    if (NODE_IGNORED_TEST_CASES_TO_REASON.has(testPath)) {
+      return {
+        result: NodeTestFileResult.IGNORED,
+        usesNodeTest,
+        reason: NODE_IGNORED_TEST_CASES_TO_REASON.get(testPath),
+      };
+    }
+    const [v8Flags, nodeOptions] = getFlags(source);
     cmd = new Deno.Command(Deno.execPath(), {
       args: [
         ...(usesNodeTest ? TEST_ARGS : RUN_ARGS),
@@ -285,14 +229,17 @@ async function runSingle(
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
         NODE_SKIP_FLAG_CHECK: "1",
+        NODE_OPTIONS: nodeOptions.join(" "),
         NO_COLOR: "1",
+        TEST_SERIAL_ID: String(testSerialId),
       },
       stdout: "piped",
       stderr: "piped",
+      cwd: testSuitePath,
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
-      return { result: NodeTestFileResult.PASS };
+      return { result: NodeTestFileResult.PASS, usesNodeTest };
     } else {
       const output = usesNodeTest ? result.stdout : result.stderr;
       const outputText = new TextDecoder().decode(output);
@@ -303,6 +250,7 @@ async function runSingle(
           code: result.code,
           stderr,
         },
+        usesNodeTest,
       };
     }
   } catch (e) {
@@ -312,14 +260,22 @@ async function runSingle(
       } catch {
         // ignore
       }
-      return { result: NodeTestFileResult.FAIL, error: { timeout: TIMEOUT } };
+      return {
+        result: NodeTestFileResult.FAIL,
+        error: { timeout: TIMEOUT },
+        usesNodeTest,
+      };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
-      return runSingle(testPath, retry + 1);
+      return runSingle(testPath, { flaky, retry: retry + 1 });
+    } else if (flaky && retry < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * retry));
+      return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {
         result: NodeTestFileResult.FAIL,
         error: { message: (e as Error).message },
+        usesNodeTest,
       };
     }
   }
@@ -334,9 +290,17 @@ function transformReportsIntoResults(
     if (value.result === NodeTestFileResult.SKIP) {
       throw new Error("Can't transform 'SKIP' result into `SingleResult`");
     }
-    let result: SingleResult = [true];
+    const info = {} as BaseSingleResultInfo;
+    if (value.usesNodeTest) {
+      info.usesNodeTest = 1;
+    }
+    let result: SingleResult = [true, undefined, info];
     if (value.result === NodeTestFileResult.FAIL) {
-      result = [false, value.error];
+      result = [false, value.error, info];
+    } else if (value.result === NodeTestFileResult.IGNORED) {
+      // @ts-expect-error info is now `IgnoredSingleResultInfo`
+      info.ignoreReason = value.reason;
+      result = ["IGNORE", undefined, info as IgnoredSingleResultInfo];
     }
     results[key] = result;
   }
@@ -348,6 +312,7 @@ async function writeTestReport(
   reports: TestReports,
   total: number,
   pass: number,
+  ignore: number,
 ) {
   // First transform the results - before we added `NodeTestFileReport` we used `SingleResult`.
   // For now we opt to keep that format, as migrating existing results is cumbersome.
@@ -365,6 +330,7 @@ async function writeTestReport(
         runId: Deno.env.get("GITHUB_RUN_ID") ?? null,
         total,
         pass,
+        ignore,
         results,
       } satisfies TestReport,
     ),
@@ -382,7 +348,6 @@ async function main() {
 
   const start = Date.now();
   const tests = [] as string[];
-  const categories = {} as Record<string, string[]>;
   for await (
     const test of expandGlob(
       "tests/node_compat/runner/suite/**/test-*{.mjs,.cjs.,.js,.ts}",
@@ -392,23 +357,21 @@ async function main() {
     const relUrl = toFileUrl(test.path).href.replace(testDirUrl, "");
     if (NODE_IGNORED_TEST_DIRS.every((dir) => !relUrl.startsWith(dir))) {
       tests.push(relUrl);
-      (categories[getCategoryFromPath(relUrl)] ??= []).push(relUrl);
     }
   }
-  collectNonCategorizedItems(categories);
-  const categoryList = Object.entries(categories)
-    .sort(([c0], [c1]) => c0.localeCompare(c1));
   const reports = {} as TestReports;
   let i = 0;
 
   async function run(testPath: string) {
     const num = String(++i).padStart(4, " ");
-    const result = await runSingle(testPath);
+    const result = await runSingle(testPath, {});
     reports[testPath] = result;
     if (result.result === NodeTestFileResult.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);
     } else if (result.result === NodeTestFileResult.FAIL) {
       console.log(`${num} %cFAIL`, "color: red", testPath);
+    } else if (result.result === NodeTestFileResult.IGNORED) {
+      console.log(`${num} %cIGNORED`, "color: gray", testPath);
     } else {
       // Don't print message for "skip" for now, as it's too noisy
       // console.log(`${num} %cSKIP`, "color: yellow", testPath);
@@ -420,21 +383,20 @@ async function main() {
     (test) => getGroupRelUrl(test) === "sequential",
   );
 
-  console.log;
   if (filterTerm) {
     sequential = sequential.filter((term) => {
       if (term.includes(filterTerm)) {
         return true;
       }
 
-      reports[term] = { result: NodeTestFileResult.SKIP };
+      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
       return false;
     });
     parallel = parallel.filter((term) => {
       if (term.includes(filterTerm)) {
         return true;
       }
-      reports[term] = { result: NodeTestFileResult.SKIP };
+      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
       return false;
     });
     console.log(
@@ -449,76 +411,68 @@ async function main() {
   }
   // Runs parallel tests
   for await (
-    const _ of pooledMap(navigator.hardwareConcurrency, parallel, run)
+    const _ of pooledMap(
+      Math.max(1, navigator.hardwareConcurrency - 1),
+      parallel,
+      run,
+    )
   ) {
     // pass
   }
 
-  // Reporting to stdout
-  console.log(`Result by categories (${categoryList.length}):`);
-  for (const [category, tests] of categoryList) {
-    if (
-      tests.every((test) => reports[test].result === NodeTestFileResult.SKIP)
-    ) {
-      continue;
-    }
-    const s = tests.filter((test) =>
-      reports[test].result === NodeTestFileResult.PASS
-    ).length;
-    const all = filterTerm
-      ? tests.map((testPath) => reports[testPath].result).filter((result) =>
-        result !== NodeTestFileResult.SKIP
-      ).length
-      : tests.length;
-    console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
-    for (const testPath of tests) {
-      switch (reports[testPath].result) {
-        case NodeTestFileResult.PASS: {
-          console.log(`    %cPASS`, "color: green", testPath);
-          break;
-        }
-        case NodeTestFileResult.FAIL: {
-          // deno-lint-ignore no-explicit-any
-          let elements: any[] = [];
-          const error = reports[testPath].error!;
-          if (error.code) {
-            elements = ["exit code:", error.code, "\n   ", error.stderr];
-          } else if (error.timeout) {
-            elements = ["timeout out after", error.timeout, "seconds"];
-          } else {
-            elements = ["errored with:", error.message];
-          }
-          console.log(`    %cFAIL`, "color: red", testPath);
-          console.log("   ", ...elements);
-          break;
-        }
-        case NodeTestFileResult.SKIP: {
-          // Don't print message for "skip" for now, as it's too noisy
-          // console.log(`    %cSKIP`, "color: yellow", testPath);
-          break;
-        }
-        default:
-          console.warn(
-            `Unknown result (${reports[testPath].result}) for ${testPath}`,
-          );
+  for (const [testPath, fileResult] of Object.entries(reports)) {
+    switch (fileResult.result) {
+      case NodeTestFileResult.PASS: {
+        console.log(`    %cPASS`, "color: green", testPath);
+        break;
       }
+      case NodeTestFileResult.FAIL: {
+        let elements: string[] = [];
+        const error = fileResult.error!;
+        if ("code" in error) {
+          elements = [`exit code: ${error.code}\n   `, error.stderr];
+        } else if ("timeout" in error) {
+          elements = [`timeout out after ${error.timeout} seconds`];
+        } else {
+          elements = ["errored with:", error.message];
+        }
+        console.log(`    %cFAIL`, "color: red", testPath);
+        console.log("   ", ...elements);
+        break;
+      }
+      case NodeTestFileResult.SKIP: {
+        // Don't print message for "skip" for now, as it's too noisy
+        // console.log(`    %cSKIP`, "color: yellow", testPath);
+        break;
+      }
+      case NodeTestFileResult.IGNORED: {
+        console.log(`    %cIGNORED`, "color: gray", testPath);
+        break;
+      }
+      default:
+        console.warn(
+          // @ts-expect-error unknown result type
+          `Unknown result (${fileResult.result}) for ${testPath}`,
+        );
     }
   }
 
   // Summary
-  let total;
   const pass =
     tests.filter((test) => reports[test].result === NodeTestFileResult.PASS)
       .length;
+  const fail =
+    tests.filter((test) => reports[test].result === NodeTestFileResult.FAIL)
+      .length;
+  const ignore =
+    tests.filter((test) => reports[test].result === NodeTestFileResult.IGNORED)
+      .length;
+  const total = pass + fail;
   if (filterTerm) {
-    total = tests.map((testPath) =>
-      reports[testPath].result
-    ).filter((result) => result !== NodeTestFileResult.SKIP).length;
     console.log(
       `Filtered tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
     );
   } else {
-    total = tests.length;
     console.log(
       `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
     );
@@ -528,7 +482,7 @@ async function main() {
   // Store the results in a JSON file
 
   if (!filterTerm) {
-    await writeTestReport(reports, total, pass);
+    await writeTestReport(reports, total, pass, ignore);
   }
 
   Deno.exit(0);

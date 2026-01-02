@@ -1,11 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // vendored from std/assert/mod.ts
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
-  DatePrototype,
-  ArrayPrototypeJoin,
-  ArrayPrototypeMap,
   DatePrototypeGetTime,
   Error,
   NumberIsNaN,
@@ -13,15 +10,13 @@ const {
   ObjectIs,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeToString,
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
-  SafeRegExp,
   String,
-  StringPrototypeReplace,
-  StringPrototypeSplit,
   SymbolIterator,
   TypeError,
   WeakMapPrototype,
@@ -30,39 +25,11 @@ const {
   WeakRefPrototypeDeref,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_url/00_url.js";
-import { red } from "ext:deno_node/_util/std_fmt_colors.ts";
-import {
-  buildMessage,
-  diff,
-  diffstr,
-} from "ext:deno_node/_util/std_testing_diff.ts";
-
-const FORMAT_PATTERN = new SafeRegExp(/(?=["\\])/g);
-
-/** Converts the input into a string. Objects, Sets and Maps are sorted so as to
- * make tests less flaky */
-export function format(v: unknown): string {
-  // deno-lint-ignore no-explicit-any
-  const { Deno } = globalThis as any;
-  return typeof Deno?.inspect === "function"
-    ? Deno.inspect(v, {
-      depth: Infinity,
-      sorted: true,
-      trailingComma: true,
-      compact: false,
-      iterableLimit: Infinity,
-      // getters should be true in assertEquals.
-      getters: true,
-    })
-    : `"${StringPrototypeReplace(String(v), FORMAT_PATTERN, "\\")}"`;
-}
-
-const CAN_NOT_DISPLAY = "[Cannot display]";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 
 export class AssertionError extends Error {
   override name = "AssertionError";
-  constructor(message: string) {
+  constructor(message?: string) {
     super(message);
   }
 }
@@ -89,10 +56,10 @@ export function equal(c: unknown, d: unknown): boolean {
     ) {
       return String(a) === String(b);
     }
-    if (
-      ObjectPrototypeIsPrototypeOf(DatePrototype, a) &&
-      ObjectPrototypeIsPrototypeOf(DatePrototype, b)
-    ) {
+    if (core.isDate(a) || core.isDate(b)) {
+      if (!core.isDate(a) || !core.isDate(b)) {
+        return false;
+      }
       const aTime = DatePrototypeGetTime(a);
       const bTime = DatePrototypeGetTime(b);
       // Check for NaN equality manually since NaN is not
@@ -110,6 +77,9 @@ export function equal(c: unknown, d: unknown): boolean {
     }
     if (a && typeof a === "object" && b && typeof b === "object") {
       if (a && b && !constructorsEqual(a, b)) {
+        return false;
+      }
+      if (ObjectPrototypeToString(a) !== ObjectPrototypeToString(b)) {
         return false;
       }
       if (
@@ -198,9 +168,14 @@ export function equal(c: unknown, d: unknown): boolean {
 }
 
 function constructorsEqual(a: object, b: object) {
-  return a.constructor === b.constructor ||
-    a.constructor === Object && !b.constructor ||
-    !a.constructor && b.constructor === Object;
+  // Treat {} and Object.create(null) as not equal
+  if (
+    (a.constructor === Object && !b.constructor) ||
+    (!a.constructor && b.constructor === Object)
+  ) {
+    return false;
+  }
+  return a.constructor === b.constructor;
 }
 
 /** Make an assertion, error will be thrown if `expr` does not have truthy value. */
@@ -216,30 +191,7 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string) {
   if (equal(actual, expected)) {
     return;
   }
-  let message = "";
-  const actualString = format(actual);
-  const expectedString = format(expected);
-  try {
-    const stringDiff = (typeof actual === "string") &&
-      (typeof expected === "string");
-    const diffResult = stringDiff
-      ? diffstr(actual as string, expected as string)
-      : diff(
-        StringPrototypeSplit(actualString, "\n"),
-        StringPrototypeSplit(expectedString, "\n"),
-      );
-    const diffMsg = ArrayPrototypeJoin(
-      buildMessage(diffResult, { stringDiff }),
-      "\n",
-    );
-    message = `Values are not equal:\n${diffMsg}`;
-  } catch {
-    message = `\n${red(red(CAN_NOT_DISPLAY))} + \n\n`;
-  }
-  if (msg) {
-    message = msg;
-  }
-  throw new AssertionError(message);
+  throw new AssertionError(msg);
 }
 
 /** Make an assertion that `actual` and `expected` are not equal, deeply.
@@ -247,21 +199,6 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string) {
 export function assertNotEquals<T>(actual: T, expected: T, msg?: string) {
   if (!equal(actual, expected)) {
     return;
-  }
-  let actualString: string;
-  let expectedString: string;
-  try {
-    actualString = String(actual);
-  } catch {
-    actualString = "[Cannot display]";
-  }
-  try {
-    expectedString = String(expected);
-  } catch {
-    expectedString = "[Cannot display]";
-  }
-  if (!msg) {
-    msg = `actual: ${actualString} expected not to be: ${expectedString}`;
   }
   throw new AssertionError(msg);
 }
@@ -276,49 +213,7 @@ export function assertStrictEquals<T>(
   if (ObjectIs(actual, expected)) {
     return;
   }
-
-  let message: string;
-
-  if (msg) {
-    message = msg;
-  } else {
-    const actualString = format(actual);
-    const expectedString = format(expected);
-
-    if (actualString === expectedString) {
-      const withOffset = ArrayPrototypeJoin(
-        ArrayPrototypeMap(
-          StringPrototypeSplit(actualString, "\n"),
-          (l: string) => `    ${l}`,
-        ),
-        "\n",
-      );
-      message =
-        `Values have the same structure but are not reference-equal:\n\n${
-          red(withOffset)
-        }\n`;
-    } else {
-      try {
-        const stringDiff = (typeof actual === "string") &&
-          (typeof expected === "string");
-        const diffResult = stringDiff
-          ? diffstr(actual as string, expected as string)
-          : diff(
-            StringPrototypeSplit(actualString, "\n"),
-            StringPrototypeSplit(expectedString, "\n"),
-          );
-        const diffMsg = ArrayPrototypeJoin(
-          buildMessage(diffResult, { stringDiff }),
-          "\n",
-        );
-        message = `Values are not strictly equal:\n${diffMsg}`;
-      } catch {
-        message = `\n${CAN_NOT_DISPLAY} + \n\n`;
-      }
-    }
-  }
-
-  throw new AssertionError(message);
+  throw new AssertionError(msg);
 }
 
 /** Make an assertion that `actual` and `expected` are not strictly equal.
@@ -331,10 +226,7 @@ export function assertNotStrictEquals<T>(
   if (!ObjectIs(actual, expected)) {
     return;
   }
-
-  throw new AssertionError(
-    msg ?? `Expected "actual" to be strictly unequal to: ${format(actual)}\n`,
-  );
+  throw new AssertionError(msg);
 }
 
 /** Make an assertion that `actual` match RegExp `expected`. If not
@@ -345,9 +237,6 @@ export function assertMatch(
   msg?: string,
 ) {
   if (!RegExpPrototypeTest(expected, actual)) {
-    if (!msg) {
-      msg = `actual: "${actual}" expected to match: "${expected}"`;
-    }
     throw new AssertionError(msg);
   }
 }
@@ -360,9 +249,6 @@ export function assertNotMatch(
   msg?: string,
 ) {
   if (RegExpPrototypeTest(expected, actual)) {
-    if (!msg) {
-      msg = `actual: "${actual}" expected to not match: "${expected}"`;
-    }
     throw new AssertionError(msg);
   }
 }

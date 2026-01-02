@@ -15,7 +15,7 @@ Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
-      resolveWorker("worker_types.ts"),
+      resolveWorker("test_worker.js"),
       { type: "module" },
     );
     assert(w);
@@ -301,7 +301,7 @@ Deno.test({
     worker.postMessage("boom");
     worker.postMessage("ping");
     assertEquals(await promise, {
-      messageHandlersCalled: 4,
+      messageHandlersCalled: 3,
       errorHandlersCalled: 4,
     });
     worker.terminate();
@@ -486,6 +486,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
             "unresolved-exec",
           ],
           write: [new URL("foo", workerUrl), "bar"],
+          import: ["foo", "bar:8000"],
         },
       },
     },
@@ -506,6 +507,12 @@ Deno.test("Worker limit children permissions granularly", async function () {
     ffiFoo: "granted",
     ffiBar: "granted",
     ffiAbsent: "prompt",
+    importGlobal: "prompt",
+    importFoo: "granted",
+    importFoo8000: "granted",
+    importBar: "prompt",
+    importBar8000: "granted",
+    importAbsent: "prompt",
     readGlobal: "prompt",
     readFoo: "granted",
     readBar: "granted",
@@ -548,6 +555,12 @@ Deno.test("Nested worker limit children permissions", async function () {
     ffiFoo: "prompt",
     ffiBar: "prompt",
     ffiAbsent: "prompt",
+    importGlobal: "prompt",
+    importFoo: "prompt",
+    importFoo8000: "prompt",
+    importBar: "prompt",
+    importBar8000: "prompt",
+    importAbsent: "prompt",
     readGlobal: "prompt",
     readFoo: "prompt",
     readBar: "prompt",
@@ -620,6 +633,7 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
     env: "prompt",
     net: "prompt",
     ffi: "prompt",
+    import: "prompt",
     read: "prompt",
     run: "prompt",
     write: "prompt",
@@ -644,6 +658,7 @@ Deno.test("Worker permissions are not inherited with single specified permission
     env: "prompt",
     net: "granted",
     ffi: "prompt",
+    import: "prompt",
     read: "prompt",
     run: "prompt",
     write: "prompt",

@@ -10,15 +10,13 @@ use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
 use denokv_proto::WatchStream;
 
-use crate::remote::RemoteDbHandlerPermissions;
-use crate::sqlite::SqliteDbHandler;
-use crate::sqlite::SqliteDbHandlerPermissions;
 use crate::AtomicWrite;
 use crate::Database;
 use crate::DatabaseHandler;
 use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::SnapshotReadOptions;
+use crate::sqlite::SqliteDbHandler;
 
 pub struct MultiBackendDbHandler {
   backends: Vec<(&'static [&'static str], Box<dyn DynamicDbHandler>)>,
@@ -31,9 +29,7 @@ impl MultiBackendDbHandler {
     Self { backends }
   }
 
-  pub fn remote_or_sqlite<
-    P: SqliteDbHandlerPermissions + RemoteDbHandlerPermissions + 'static,
-  >(
+  pub fn remote_or_sqlite(
     default_storage_dir: Option<std::path::PathBuf>,
     versionstamp_rng_seed: Option<u64>,
     http_options: crate::remote::HttpOptions,
@@ -41,11 +37,11 @@ impl MultiBackendDbHandler {
     Self::new(vec![
       (
         &["https://", "http://"],
-        Box::new(crate::remote::RemoteDbHandler::<P>::new(http_options)),
+        Box::new(crate::remote::RemoteDbHandler::new(http_options)),
       ),
       (
         &[""],
-        Box::new(SqliteDbHandler::<P>::new(
+        Box::new(SqliteDbHandler::new(
           default_storage_dir,
           versionstamp_rng_seed,
         )),
@@ -61,8 +57,21 @@ impl DatabaseHandler for MultiBackendDbHandler {
   async fn open(
     &self,
     state: Rc<RefCell<OpState>>,
-    path: Option<String>,
+    mut path: Option<String>,
   ) -> Result<Self::DB, JsErrorBox> {
+    if path.is_none()
+      && let Ok(x) = std::env::var("DENO_KV_DEFAULT_PATH")
+      && !x.is_empty()
+    {
+      path = Some(x);
+    }
+
+    if let Some(path) = &mut path
+      && let Ok(prefix) = std::env::var("DENO_KV_PATH_PREFIX")
+    {
+      *path = format!("{}{}", prefix, path);
+    }
+
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {

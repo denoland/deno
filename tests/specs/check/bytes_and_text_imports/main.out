@@ -1,0 +1,49 @@
+Check [WILDCARD]main.ts
+TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
+invalid = helloBytes;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
+invalid = dataBytes;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
+invalid = dynamicHelloBytes;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
+invalid = dynamicDataBytes;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = helloText;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = hello();
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = dataText;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = dynamicHelloText;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = dynamicDataText;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+Found 9 errors.
+
+error: Type checking failed.
