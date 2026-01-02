@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { Buffer } from "node:buffer";
 import { randomFill, randomFillSync } from "node:crypto";
 import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";

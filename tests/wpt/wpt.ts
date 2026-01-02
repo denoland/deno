@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -RWNE --allow-run --lock=tools/deno.lock.json --config=tests/config/deno.json --unsafely-ignore-certificate-errors
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 

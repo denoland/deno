@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-process-global
 import { primordials } from "ext:core/mod.js";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";

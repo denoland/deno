@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";

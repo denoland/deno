@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";

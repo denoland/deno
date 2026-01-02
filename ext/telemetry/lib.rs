@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
 #![expect(unexpected_cfgs)]

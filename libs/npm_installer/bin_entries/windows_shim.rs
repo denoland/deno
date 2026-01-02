@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Windows shim generation ported from https://github.com/npm/cmd-shim
 // Original code licensed under the ISC License:

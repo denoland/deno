@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-run
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This file is used to transform Node.js internal streams code to
 // Deno polyfills.
@@ -478,7 +478,7 @@ const transform = (file: FileInfo, j: JSCodeshift) => {
   }
 
   const prelude =
-    "// deno-lint-ignore-file\n// Copyright 2018-2025 the Deno authors. MIT license.\n\n";
+    "// deno-lint-ignore-file\n// Copyright 2018-2026 the Deno authors. MIT license.\n\n";
   return prelude + root.toSource({ quote: "single" });
 };
 

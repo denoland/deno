@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Regression test for https://github.com/denoland/deno/issues/30860
 // This test ensures that Deno.openKv works with paths containing "./" prefix

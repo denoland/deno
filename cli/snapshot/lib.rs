@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[cfg(not(feature = "disable"))]
 pub static CLI_SNAPSHOT: Option<&[u8]> = Some(include_bytes!(concat!(

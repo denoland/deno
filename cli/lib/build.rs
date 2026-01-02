@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 fn main() {
   // todo(dsherret): remove this after Deno 242.0 is published and then

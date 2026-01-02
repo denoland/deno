@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
@@ -11,7 +11,7 @@ fn main() {
   let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
   let mut js_list = String::from(
-    "// Copyright 2018-2025 the Deno authors. MIT license.
+    "// Copyright 2018-2026 the Deno authors. MIT license.
 
 /**
  * Don't modify this file manually.
@@ -24,7 +24,7 @@ export const unstableIds = {
   );
 
   let mut rs_list = String::from(
-    "// Copyright 2018-2025 the Deno authors. MIT license.
+    "// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// Don't modify this file manually.
 ///

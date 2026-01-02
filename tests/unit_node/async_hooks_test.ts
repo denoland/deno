@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
 import process from "node:process";
 import { setImmediate } from "node:timers";

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";

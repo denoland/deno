@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // https://github.com/denoland/deno/issues/11342
 // Test for a panic that happens when the main thread's event loop finishes

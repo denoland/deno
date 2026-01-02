@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import os from "node:os";
 import {
