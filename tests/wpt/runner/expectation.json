@@ -7453,8 +7453,6 @@
       "<area>: Setting <mailto:me@example.net>.pathname = '/foo' Opaque paths cannot be set"
     ],
     "url-setters.any.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -7480,8 +7478,6 @@
     "url-setters.any.html?include=javascript": true,
     "url-setters.any.html?include=mailto": true,
     "url-setters.any.worker.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -11714,11 +11710,11 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\t=block",
-          "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\n=block",
           "Fetch: /images/gre\\ten-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\n=block",
+          "Fetch: /images/gre\\ren-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<",
           "Fetch: /images/green-1x1.png?<\\r=block"
         ],
         "dangling-markup-mitigation.tentative.https.html": false,
