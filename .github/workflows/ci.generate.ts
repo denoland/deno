@@ -723,6 +723,21 @@ const ci = {
           ].join("\n"),
         },
         {
+          name: "Upload PR artifact (macos)",
+          if: [
+            `matrix.os == 'macos' &&`,
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno'",
+          ].join("\n"),
+          uses: "actions/upload-artifact@v4",
+          with: {
+            name:
+              "denort-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+            path: "target/release/denort",
+          },
+        },
+        {
           // Run a minimal check to ensure that binary is not corrupted, regardless
           // of our build mode
           name: "Check deno binary",
@@ -754,22 +769,6 @@ const ci = {
           ].join("\n"),
           env: {
             NO_COLOR: 1,
-          },
-        },
-        {
-          name: "Upload PR artifact (linux)",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
-          ].join("\n"),
-          uses: "actions/upload-artifact@v4",
-          with: {
-            name:
-              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/release/deno",
           },
         },
         {
