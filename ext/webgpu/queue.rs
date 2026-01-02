@@ -1,5 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
+
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
@@ -23,6 +27,7 @@ pub struct GPUQueue {
   pub label: String,
 
   pub id: wgpu_core::id::QueueId,
+  pub device: wgpu_core::id::DeviceId,
 }
 
 impl Drop for GPUQueue {
@@ -59,23 +64,15 @@ impl GPUQueue {
   }
 
   #[required(1)]
+  #[undefined]
   fn submit(
     &self,
     #[webidl] command_buffers: Vec<Ref<GPUCommandBuffer>>,
   ) -> Result<(), JsErrorBox> {
     let ids = command_buffers
       .into_iter()
-      .enumerate()
-      .map(|(i, cb)| {
-        if cb.consumed.set(()).is_err() {
-          Err(JsErrorBox::type_error(format!(
-            "The command buffer at position {i} has already been submitted."
-          )))
-        } else {
-          Ok(cb.id)
-        }
-      })
-      .collect::<Result<Vec<_>, _>>()?;
+      .map(|cb| cb.id)
+      .collect::<Vec<_>>();
 
     let err = self.instance.queue_submit(self.id, &ids).err();
 
@@ -86,20 +83,52 @@ impl GPUQueue {
     Ok(())
   }
 
+  // In the successful case, the promise should resolve to undefined, but
+  // `#[undefined]` does not seem to work here.
+  // https://github.com/denoland/deno/issues/29603
   #[async_method]
-  async fn on_submitted_work_done(&self) {
+  async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
     let (sender, receiver) = oneshot::channel::<()>();
+
     let callback = Box::new(move || {
-      // the promise may be dropped, so `send` may fail.
-      let _ = sender.send(());
+      sender.send(()).unwrap();
     });
+
     self
       .instance
       .queue_on_submitted_work_done(self.id, callback);
-    receiver.await.unwrap();
+
+    let done = Rc::new(RefCell::new(false));
+    let done_ = done.clone();
+    let device_poll_fut = async move {
+      while !*done.borrow() {
+        {
+          self
+            .instance
+            .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
+            .unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+      }
+      Ok::<(), JsErrorBox>(())
+    };
+
+    let receiver_fut = async move {
+      receiver
+        .await
+        .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+      let mut done = done_.borrow_mut();
+      *done = true;
+      Ok::<(), JsErrorBox>(())
+    };
+
+    tokio::try_join!(device_poll_fut, receiver_fut)?;
+
+    Ok(())
   }
 
   #[required(3)]
+  #[undefined]
   fn write_buffer(
     &self,
     #[webidl] buffer: Ref<GPUBuffer>,
@@ -124,6 +153,7 @@ impl GPUQueue {
   }
 
   #[required(4)]
+  #[undefined]
   fn write_texture(
     &self,
     #[webidl] destination: GPUTexelCopyTextureInfo,
@@ -131,7 +161,7 @@ impl GPUQueue {
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {
-    let destination = wgpu_core::command::TexelCopyTextureInfo {
+    let destination = wgpu_types::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),

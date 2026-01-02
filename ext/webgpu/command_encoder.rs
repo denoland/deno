@@ -2,13 +2,21 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::num::NonZero;
+#[cfg(target_vendor = "apple")]
+use std::sync::OnceLock;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::webidl::IntOptions;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
 use deno_error::JsErrorBox;
 use wgpu_core::command::PassChannel;
+use wgpu_types::BufferAddress;
 use wgpu_types::TexelCopyBufferInfo;
 
 use crate::Instance;
@@ -27,6 +35,11 @@ pub struct GPUCommandEncoder {
 
   pub id: wgpu_core::id::CommandEncoderId,
   pub label: String,
+
+  // Weak reference to the JS object so we can attach a finalizer.
+  // See `GPUDevice::create_command_encoder`.
+  #[cfg(target_vendor = "apple")]
+  pub(crate) weak: OnceLock<v8::Weak<v8::Object>>,
 }
 
 impl Drop for GPUCommandEncoder {
@@ -76,8 +89,11 @@ impl GPUCommandEncoder {
         .map(|attachment| {
           attachment.into_option().map(|attachment| {
             wgpu_core::command::RenderPassColorAttachment {
-              view: attachment.view.id,
-              resolve_target: attachment.resolve_target.map(|target| target.id),
+              view: attachment.view.to_view_id(),
+              depth_slice: attachment.depth_slice,
+              resolve_target: attachment
+                .resolve_target
+                .map(|target| target.to_view_id()),
               load_op: attachment
                 .load_op
                 .with_default_value(attachment.clear_value.map(Into::into)),
@@ -88,26 +104,39 @@ impl GPUCommandEncoder {
         .collect::<Vec<_>>(),
     );
 
-    let depth_stencil_attachment =
-      descriptor.depth_stencil_attachment.map(|attachment| {
-        if attachment.depth_load_op.as_ref().is_some_and(|op| matches!(op, GPULoadOp::Clear)) && attachment.depth_clear_value.is_none() {
-          return Err(JsErrorBox::type_error(r#"'depthClearValue' must be specified when 'depthLoadOp' is "clear""#));
-        }
+    let depth_stencil_attachment = descriptor
+            .depth_stencil_attachment
+            .map(|attachment| {
+                if attachment
+                    .depth_load_op
+                    .as_ref()
+                    .is_some_and(|op| matches!(op, GPULoadOp::Clear))
+                    && attachment.depth_clear_value.is_none()
+                {
+                    return Err(JsErrorBox::type_error(
+                        r#"'depthClearValue' must be specified when 'depthLoadOp' is "clear""#,
+                    ));
+                }
 
-        Ok(wgpu_core::command::RenderPassDepthStencilAttachment {
-          view: attachment.view.id,
-          depth: PassChannel {
-            load_op: attachment.depth_load_op.map(|load_op| load_op.with_value(attachment.depth_clear_value)),
-            store_op: attachment.depth_store_op.map(Into::into),
-            read_only: attachment.depth_read_only,
-          },
-          stencil: PassChannel {
-            load_op: attachment.stencil_load_op.map(|load_op| load_op.with_value(Some(attachment.stencil_clear_value))),
-            store_op: attachment.stencil_store_op.map(Into::into),
-            read_only: attachment.stencil_read_only,
-          },
-        })
-      }).transpose()?;
+                Ok(wgpu_core::command::RenderPassDepthStencilAttachment {
+                    view: attachment.view.to_view_id(),
+                    depth: PassChannel {
+                        load_op: attachment
+                            .depth_load_op
+                            .map(|load_op| load_op.with_value(attachment.depth_clear_value)),
+                        store_op: attachment.depth_store_op.map(Into::into),
+                        read_only: attachment.depth_read_only,
+                    },
+                    stencil: PassChannel {
+                        load_op: attachment.stencil_load_op.map(|load_op| {
+                            load_op.with_value(Some(attachment.stencil_clear_value))
+                        }),
+                        store_op: attachment.stencil_store_op.map(Into::into),
+                        read_only: attachment.stencil_read_only,
+                    },
+                })
+            })
+            .transpose()?;
 
     let timestamp_writes =
       descriptor.timestamp_writes.map(|timestamp_writes| {
@@ -127,11 +156,12 @@ impl GPUCommandEncoder {
       occlusion_query_set: descriptor
         .occlusion_query_set
         .map(|query_set| query_set.id),
+      multiview_mask: NonZero::new(descriptor.multiview_mask),
     };
 
     let (render_pass, err) = self
       .instance
-      .command_encoder_create_render_pass(self.id, &wgpu_descriptor);
+      .command_encoder_begin_render_pass(self.id, &wgpu_descriptor);
 
     self.error_handler.push_error(err);
 
@@ -160,12 +190,12 @@ impl GPUCommandEncoder {
 
     let wgpu_descriptor = wgpu_core::command::ComputePassDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
-      timestamp_writes: timestamp_writes.as_ref(),
+      timestamp_writes,
     };
 
     let (compute_pass, err) = self
       .instance
-      .command_encoder_create_compute_pass(self.id, &wgpu_descriptor);
+      .command_encoder_begin_compute_pass(self.id, &wgpu_descriptor);
 
     self.error_handler.push_error(err);
 
@@ -177,15 +207,79 @@ impl GPUCommandEncoder {
     }
   }
 
-  #[required(5)]
-  fn copy_buffer_to_buffer(
+  #[required(2)]
+  #[undefined]
+  fn copy_buffer_to_buffer<'a>(
     &self,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] source: Ref<GPUBuffer>,
-    #[webidl(options(enforce_range = true))] source_offset: u64,
-    #[webidl] destination: Ref<GPUBuffer>,
-    #[webidl(options(enforce_range = true))] destination_offset: u64,
-    #[webidl(options(enforce_range = true))] size: u64,
-  ) {
+    arg2: v8::Local<'a, v8::Value>,
+    arg3: v8::Local<'a, v8::Value>,
+    arg4: v8::Local<'a, v8::Value>,
+    arg5: v8::Local<'a, v8::Value>,
+  ) -> Result<(), WebIdlError> {
+    let prefix = "Failed to execute 'GPUCommandEncoder.copyBufferToBuffer'";
+    let int_options = IntOptions {
+      clamp: false,
+      enforce_range: true,
+    };
+
+    let source_offset: BufferAddress;
+    let destination: Ref<GPUBuffer>;
+    let destination_offset: BufferAddress;
+    let size: Option<BufferAddress>;
+    // Note that the last argument to either overload of `copy_buffer_to_buffer`
+    // is optional, so `arg5.is_undefined()` would not work here.
+    if arg4.is_undefined() {
+      // 3-argument overload
+      source_offset = 0;
+      destination = Ref::<GPUBuffer>::convert(
+        scope,
+        arg2,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("destination")).into(),
+        &(),
+      )?;
+      destination_offset = 0;
+      size = <Option<u64>>::convert(
+        scope,
+        arg3,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("size")).into(),
+        &int_options,
+      )?;
+    } else {
+      // 5-argument overload
+      source_offset = u64::convert(
+        scope,
+        arg2,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("sourceOffset")).into(),
+        &int_options,
+      )?;
+      destination = Ref::<GPUBuffer>::convert(
+        scope,
+        arg3,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("destination")).into(),
+        &(),
+      )?;
+      destination_offset = u64::convert(
+        scope,
+        arg4,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("destinationOffset")).into(),
+        &int_options,
+      )?;
+      size = <Option<u64>>::convert(
+        scope,
+        arg5,
+        Cow::Borrowed(prefix),
+        (|| Cow::Borrowed("size")).into(),
+        &int_options,
+      )?;
+    }
+
     let err = self
       .instance
       .command_encoder_copy_buffer_to_buffer(
@@ -199,9 +293,12 @@ impl GPUCommandEncoder {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   #[required(3)]
+  #[undefined]
   fn copy_buffer_to_texture(
     &self,
     #[webidl] source: GPUTexelCopyBufferInfo,
@@ -237,6 +334,7 @@ impl GPUCommandEncoder {
   }
 
   #[required(3)]
+  #[undefined]
   fn copy_texture_to_buffer(
     &self,
     #[webidl] source: GPUTexelCopyTextureInfo,
@@ -272,6 +370,7 @@ impl GPUCommandEncoder {
   }
 
   #[required(3)]
+  #[undefined]
   fn copy_texture_to_texture(
     &self,
     #[webidl] source: GPUTexelCopyTextureInfo,
@@ -305,6 +404,7 @@ impl GPUCommandEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn clear_buffer(
     &self,
     #[webidl] buffer: Ref<GPUBuffer>,
@@ -319,6 +419,7 @@ impl GPUCommandEncoder {
   }
 
   #[required(5)]
+  #[undefined]
   fn resolve_query_set(
     &self,
     #[webidl] query_set: Ref<super::query_set::GPUQuerySet>,
@@ -351,17 +452,19 @@ impl GPUCommandEncoder {
       label: crate::transform_label(descriptor.label.clone()),
     };
 
-    let (id, err) = self
-      .instance
-      .command_encoder_finish(self.id, &wgpu_descriptor);
+    let (id, opt_label_and_err) =
+      self
+        .instance
+        .command_encoder_finish(self.id, &wgpu_descriptor, None);
 
-    self.error_handler.push_error(err);
+    self
+      .error_handler
+      .push_error(opt_label_and_err.map(|(_label, err)| err));
 
     GPUCommandBuffer {
       instance: self.instance.clone(),
       id,
       label: descriptor.label,
-      consumed: Default::default(),
     }
   }
 

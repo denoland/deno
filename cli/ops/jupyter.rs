@@ -258,10 +258,16 @@ pub fn op_jupyter_get_buffer(
     },
   )?;
 
-  buffer.instance.device_poll(
-    buffer.device,
-    wgpu_types::Maintain::WaitForSubmissionIndex(index),
-  )?;
+  buffer
+    .instance
+    .device_poll(
+      buffer.device,
+      wgpu_types::PollType::Wait {
+        submission_index: Some(index),
+        timeout: None,
+      },
+    )
+    .unwrap();
 
   let (slice_pointer, range_size) = buffer
     .instance

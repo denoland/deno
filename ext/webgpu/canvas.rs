@@ -150,6 +150,7 @@ impl GPUCanvasContext {
             id,
             device_id: device.id,
             queue_id: device.queue,
+            default_view_id: Default::default(),
             label: texture_descriptor.label.as_ref().unwrap().to_string(),
             size: texture_descriptor.size,
             mip_level_count: texture_descriptor.mip_level_count,
@@ -173,7 +174,7 @@ impl GPUCanvasContext {
 
           match output.status {
             SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
-              let id = output.texture_id.unwrap();
+              let id = output.texture.unwrap();
 
               GPUTexture {
                 instance: configuration.device.instance.clone(),
@@ -181,6 +182,7 @@ impl GPUCanvasContext {
                 id,
                 device_id: configuration.device.id,
                 queue_id: configuration.device.queue,
+                default_view_id: Default::default(),
                 label: "".to_string(),
                 size: wgpu_types::Extent3d {
                   width: surface.width,
@@ -522,8 +524,9 @@ pub fn copy_texture_to_vec(
   let (command_buffer, maybe_err) = instance.command_encoder_finish(
     command_encoder,
     &wgpu_types::CommandBufferDescriptor { label: None },
+    None,
   );
-  if let Some(maybe_err) = maybe_err {
+  if let Some((_, maybe_err)) = maybe_err {
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
 
@@ -545,8 +548,14 @@ pub fn copy_texture_to_vec(
     .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
 
   instance
-    .device_poll(device, wgpu_types::Maintain::WaitForSubmissionIndex(index))
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+    .device_poll(
+      device,
+      wgpu_types::PollType::Wait {
+        submission_index: Some(index),
+        timeout: None,
+      },
+    )
+    .unwrap();
 
   let (slice_pointer, range_size) = instance
     .buffer_get_mapped_range(buffer, 0, None)
