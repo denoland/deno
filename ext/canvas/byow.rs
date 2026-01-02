@@ -15,11 +15,8 @@ use std::rc::Rc;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::Local;
-use deno_core::v8::Value;
 use deno_error::JsErrorBox;
 use deno_webgpu::canvas::Data;
 

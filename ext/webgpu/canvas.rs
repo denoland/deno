@@ -337,7 +337,7 @@ impl GPUCanvasContext {
         deno_core::cppgc::try_unwrap_cppgc_object::<GPUTexture>(scope, local)
           .unwrap();
 
-      let _ = underlying_texture
+      underlying_texture
         .instance
         .texture_destroy(underlying_texture.id);
     }

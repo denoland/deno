@@ -26,6 +26,8 @@ import {
   ImageDataPrototype,
 } from "ext:deno_web/16_image_data.js";
 
+const ImageBitmapPrototype = ImageBitmap.prototype;
+
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
   [

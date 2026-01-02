@@ -189,8 +189,7 @@ impl OffscreenCanvas {
     }
 
     let data = self.data.replace_with(|image| {
-      let data = self.data.borrow();
-      let Data::Image(image) = &*data else {
+      let Data::Image(image) = image else {
         unreachable!();
       };
 
