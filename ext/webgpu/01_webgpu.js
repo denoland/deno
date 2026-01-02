@@ -44,7 +44,6 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  ReflectGet,
   Symbol,
   SymbolFor,
 } = primordials;
