@@ -182,7 +182,7 @@ class URLPattern {
         input = { __proto__: null };
       }
       options = webidl.converters.URLPatternOptions(
-        maybeOptions,
+        baseURLOrOptions,
         prefix,
         "Argument 2",
       );
