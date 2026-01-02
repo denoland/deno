@@ -83,13 +83,8 @@ impl GPUAdapter {
   fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
-      let limits = self.instance.adapter_limits(self.id);
 
-      GPUAdapterInfo {
-        info,
-        subgroup_min_size: limits.min_subgroup_size,
-        subgroup_max_size: limits.max_subgroup_size,
-      }
+      GPUAdapterInfo { info }
     })
   }
 
@@ -119,7 +114,7 @@ impl GPUAdapter {
 
   #[async_method(fake)]
   #[global]
-  fn request_device<'s>(
+  fn request_device(
     &self,
     state: &mut OpState,
     scope: &mut v8::PinScope<'_, '_>,
@@ -442,8 +437,6 @@ impl GPUSupportedFeatures {
 
 pub struct GPUAdapterInfo {
   pub info: wgpu_types::AdapterInfo,
-  pub subgroup_min_size: u32,
-  pub subgroup_max_size: u32,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -489,12 +482,12 @@ impl GPUAdapterInfo {
 
   #[getter]
   fn subgroup_min_size(&self) -> u32 {
-    self.subgroup_min_size
+    self.info.subgroup_min_size
   }
 
   #[getter]
   fn subgroup_max_size(&self) -> u32 {
-    self.subgroup_max_size
+    self.info.subgroup_max_size
   }
 
   #[getter]

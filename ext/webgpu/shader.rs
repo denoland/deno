@@ -181,6 +181,7 @@ impl GPUCompilationMessage {
 pub struct GPUCompilationInfo {
   messages: v8::Global<v8::Object>,
 }
+
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUCompilationInfo {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}

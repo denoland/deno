@@ -259,7 +259,7 @@ pub fn op_jupyter_create_png_from_texture(
     &wgpu_types::CommandBufferDescriptor { label: None },
     None,
   );
-  if let Some(maybe_err) = maybe_err {
+  if let Some((_, maybe_err)) = maybe_err {
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
 

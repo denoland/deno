@@ -44,6 +44,7 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  ReflectGet,
   Symbol,
   SymbolFor,
 } = primordials;
@@ -56,7 +57,7 @@ import {
   setEventTargetData,
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 const _message = Symbol("[[message]]");

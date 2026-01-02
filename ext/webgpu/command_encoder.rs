@@ -2,6 +2,9 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::num::NonZero;
+#[cfg(target_vendor = "apple")]
+use std::sync::OnceLock;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -32,6 +35,11 @@ pub struct GPUCommandEncoder {
 
   pub id: wgpu_core::id::CommandEncoderId,
   pub label: String,
+
+  // Weak reference to the JS object so we can attach a finalizer.
+  // See `GPUDevice::create_command_encoder`.
+  #[cfg(target_vendor = "apple")]
+  pub(crate) weak: OnceLock<v8::Weak<v8::Object>>,
 }
 
 impl Drop for GPUCommandEncoder {
@@ -148,6 +156,7 @@ impl GPUCommandEncoder {
       occlusion_query_set: descriptor
         .occlusion_query_set
         .map(|query_set| query_set.id),
+      multiview_mask: NonZero::new(descriptor.multiview_mask),
     };
 
     let (render_pass, err) = self
@@ -443,12 +452,14 @@ impl GPUCommandEncoder {
       label: crate::transform_label(descriptor.label.clone()),
     };
 
-    let (id, err) =
+    let (id, opt_label_and_err) =
       self
         .instance
         .command_encoder_finish(self.id, &wgpu_descriptor, None);
 
-    self.error_handler.push_error(err);
+    self
+      .error_handler
+      .push_error(opt_label_and_err.map(|(_label, err)| err));
 
     GPUCommandBuffer {
       instance: self.instance.clone(),

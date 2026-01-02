@@ -10,7 +10,6 @@ use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Local;
-use deno_core::v8::PinScope;
 use deno_core::v8::Value;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::IntOptions;
@@ -462,6 +461,9 @@ pub(crate) struct GPURenderPassDescriptor {
   /*#[webidl(default = 50000000)]
   #[options(enforce_range = true)]
   pub max_draw_count: u64,*/
+  #[webidl(default = 0)]
+  #[options(enforce_range = true)]
+  pub multiview_mask: u32,
 }
 
 #[derive(WebIDL)]
@@ -564,7 +566,7 @@ impl<'a> WebIdlConverter<'a> for GPUTextureOrView {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut PinScope<'a, '_>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: Local<'a, Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
