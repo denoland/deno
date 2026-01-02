@@ -14,16 +14,14 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 0,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "bare-node-builtins",
   },
   UnstableFeatureDefinition {
     name: "broadcast-channel",
     flag_name: "unstable-broadcast-channel",
     help_text: "Enable unstable `BroadcastChannel` API",
-    show_in_help: true,
+    show_in_help: false,
     id: 1,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "broadcast-channel",
   },
   UnstableFeatureDefinition {
     name: "bundle",
@@ -32,7 +30,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 2,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "bundle",
   },
   UnstableFeatureDefinition {
     name: "byonm",
@@ -41,7 +38,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 3,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "byonm",
   },
   UnstableFeatureDefinition {
     name: "cron",
@@ -50,7 +46,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 4,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "cron",
   },
   UnstableFeatureDefinition {
     name: "detect-cjs",
@@ -59,7 +54,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 5,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "detect-cjs",
   },
   UnstableFeatureDefinition {
     name: "ffi",
@@ -68,7 +62,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 6,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "ffi",
   },
   UnstableFeatureDefinition {
     name: "fs",
@@ -77,7 +70,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 7,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "fs",
   },
   UnstableFeatureDefinition {
     name: "http",
@@ -86,7 +78,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 8,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "http",
   },
   UnstableFeatureDefinition {
     name: "kv",
@@ -95,7 +86,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 9,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "kv",
   },
   UnstableFeatureDefinition {
     name: "lazy-dynamic-imports",
@@ -104,7 +94,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 10,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "lazy-dynamic-imports",
   },
   UnstableFeatureDefinition {
     name: "lockfile-v5",
@@ -113,7 +102,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 11,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "lockfile-v5",
   },
   UnstableFeatureDefinition {
     name: "net",
@@ -122,7 +110,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 12,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "net",
   },
   UnstableFeatureDefinition {
     name: "no-legacy-abort",
@@ -131,7 +118,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 13,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "no-legacy-abort",
   },
   UnstableFeatureDefinition {
     name: "node-globals",
@@ -140,7 +126,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 14,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "node-globals",
   },
   UnstableFeatureDefinition {
     name: "npm-lazy-caching",
@@ -149,7 +134,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 15,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "npm-lazy-caching",
   },
   UnstableFeatureDefinition {
     name: "otel",
@@ -158,7 +142,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 16,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "otel",
   },
   UnstableFeatureDefinition {
     name: "process",
@@ -167,7 +150,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 17,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "process",
   },
   UnstableFeatureDefinition {
     name: "raw-imports",
@@ -176,7 +158,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 18,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "raw-imports",
   },
   UnstableFeatureDefinition {
     name: "sloppy-imports",
@@ -185,7 +166,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 19,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "sloppy-imports",
   },
   UnstableFeatureDefinition {
     name: "subdomain-wildcards",
@@ -194,7 +174,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 20,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "subdomain-wildcards",
   },
   UnstableFeatureDefinition {
     name: "temporal",
@@ -203,7 +182,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 21,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "temporal",
   },
   UnstableFeatureDefinition {
     name: "tsgo",
@@ -212,7 +190,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 22,
     kind: UnstableFeatureKind::Cli,
-    config_file_option: "tsgo",
   },
   UnstableFeatureDefinition {
     name: "unsafe-proto",
@@ -221,7 +198,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 23,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "unsafe-proto",
   },
   UnstableFeatureDefinition {
     name: "vsock",
@@ -230,7 +206,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: false,
     id: 24,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "vsock",
   },
   UnstableFeatureDefinition {
     name: "webgpu",
@@ -239,7 +214,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 25,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "webgpu",
   },
   UnstableFeatureDefinition {
     name: "worker-options",
@@ -248,7 +222,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     show_in_help: true,
     id: 26,
     kind: UnstableFeatureKind::Runtime,
-    config_file_option: "worker-options",
   },
 ];
 pub struct UnstableEnvVarNames {

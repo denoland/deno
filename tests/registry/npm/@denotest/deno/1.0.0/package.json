@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/deno",
+  "version": "1.0.0",
+  "bin": {
+    "deno": "./bin/deno"
+  },
+  "scripts": {
+    "postinstall": "node setup.js"
+  }
+}

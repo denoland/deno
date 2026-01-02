@@ -46,6 +46,7 @@ pub enum MessagePortError {
 
 pub enum Transferable {
   Resource(String, Box<dyn TransferredResource>),
+  MultiResource(String, Vec<Box<dyn TransferredResource>>),
   ArrayBuffer(u32),
 }
 
@@ -180,6 +181,7 @@ pub fn op_message_port_create_entangled(
 pub enum JsTransferable {
   ArrayBuffer(u32),
   Resource(String, ResourceId),
+  MultiResource(String, Vec<ResourceId>),
 }
 
 pub fn deserialize_js_transferables(
@@ -196,6 +198,18 @@ pub fn deserialize_js_transferables(
           .map_err(|_| MessagePortError::InvalidTransfer)?;
         let tx = resource.transfer().map_err(MessagePortError::Generic)?;
         transferables.push(Transferable::Resource(name, tx));
+      }
+      JsTransferable::MultiResource(name, rids) => {
+        let mut txs = Vec::with_capacity(rids.len());
+        for rid in rids {
+          let resource = state
+            .resource_table
+            .take_any(rid)
+            .map_err(|_| MessagePortError::InvalidTransfer)?;
+          let tx = resource.transfer().map_err(MessagePortError::Generic)?;
+          txs.push(tx);
+        }
+        transferables.push(Transferable::MultiResource(name, txs));
       }
       JsTransferable::ArrayBuffer(id) => {
         transferables.push(Transferable::ArrayBuffer(id));
@@ -216,6 +230,13 @@ pub fn serialize_transferables(
         let rx = tx.receive();
         let rid = state.resource_table.add_rc_dyn(rx);
         js_transferables.push(JsTransferable::Resource(name, rid));
+      }
+      Transferable::MultiResource(name, txs) => {
+        let rids = txs
+          .into_iter()
+          .map(|tx| state.resource_table.add_rc_dyn(tx.receive()))
+          .collect();
+        js_transferables.push(JsTransferable::MultiResource(name, rids));
       }
       Transferable::ArrayBuffer(id) => {
         js_transferables.push(JsTransferable::ArrayBuffer(id));

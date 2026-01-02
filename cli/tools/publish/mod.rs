@@ -87,11 +87,17 @@ pub async fn publish(
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
+    match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
+        debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
           bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
+        if !deno_json.should_publish() {
+          bail!(
+            "Package 'publish' field is false in '{}'.",
+            deno_json.specifier
+          );
         }
         error_missing_exports_field(deno_json)?;
       }
@@ -869,14 +875,14 @@ async fn perform_publish(
       futures.push(
         async move {
           let display_name = package.display_name();
-          publish_package(
+          Box::pin(publish_package(
             http_client,
             package,
             registry_api_url,
             registry_url,
             &authorization,
             provenance,
-          )
+          ))
           .await
           .with_context(|| format!("Failed to publish {}", display_name))?;
           Ok(package_name)
@@ -1037,7 +1043,8 @@ async fn publish_package(
       },
     };
     let bundle =
-      provenance::generate_provenance(http_client, vec![subject]).await?;
+      Box::pin(provenance::generate_provenance(http_client, vec![subject]))
+        .await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!(

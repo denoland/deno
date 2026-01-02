@@ -227,6 +227,12 @@ pub struct JsxImportSourceConfig {
   pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
 }
 
+impl JsxImportSourceConfig {
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
+  }
+}
+
 #[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
@@ -315,10 +321,10 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSources": true,
       "isolatedModules": true,
       "lib": match (lib, source_kind) {
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable", "node"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -1544,7 +1550,7 @@ pub type CompilerOptionsResolverRc =
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
     FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,

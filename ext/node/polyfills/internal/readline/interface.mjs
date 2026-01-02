@@ -24,6 +24,8 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
+import { op_get_env_no_permission_check } from "ext:core/ops";
+
 import {
   ERR_INVALID_ARG_VALUE,
   ERR_USE_AFTER_CLOSE,
@@ -402,7 +404,7 @@ export class Interface extends InterfaceConstructor {
    */
   prompt(preserveCursor) {
     if (this.paused) this.resume();
-    if (this.terminal && process.env.TERM !== "dumb") {
+    if (this.terminal && op_get_env_no_permission_check("TERM") !== "dumb") {
       if (!preserveCursor) this.cursor = 0;
       this[kRefreshLine]();
     } else {

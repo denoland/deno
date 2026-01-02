@@ -544,7 +544,19 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
@@ -1096,6 +1108,51 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.binding('uv').getErrorMessage",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMessage);
+    assert(typeof uv.getErrorMessage === "function");
+    assertEquals(uv.getErrorMessage(-1), "operation not permitted");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMap);
+    assert(typeof uv.getErrorMap === "function");
+    const errorMap = uv.getErrorMap();
+    assert(errorMap instanceof Map);
+    // errorMap maps error code (number) to [name, message]
+    assertEquals(errorMap.get(-1), ["EPERM", "operation not permitted"]);
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getCodeMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getCodeMap);
+    assert(typeof uv.getCodeMap === "function");
+    const codeMap = uv.getCodeMap();
+    assert(codeMap instanceof Map);
+    // codeMap maps error name (string) to error code (number)
+    assertEquals(codeMap.get("EPERM"), -1);
+  },
+});
+
+Deno.test({
   name: "process.report",
   fn() {
     // The process.report is marked as possibly undefined in node 18 typings
@@ -1204,6 +1261,14 @@ Deno.test({
     process.setSourceMapsEnabled(false); // noop
     // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
     process.setSourceMapsEnabled(true); // noop
+  },
+});
+
+Deno.test({
+  name: "process.sourceMapsEnabled",
+  fn() {
+    // @ts-ignore: not available in the types yet.
+    assertEquals(process.sourceMapsEnabled, true);
   },
 });
 

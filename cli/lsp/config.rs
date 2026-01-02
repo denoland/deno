@@ -265,18 +265,13 @@ impl Default for InlayHintsParamNamesOptions {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum InlayHintsParamNamesEnabled {
+  #[default]
   None,
   Literals,
   All,
-}
-
-impl Default for InlayHintsParamNamesEnabled {
-  fn default() -> Self {
-    Self::None
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -379,47 +374,38 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ImportModuleSpecifier {
   NonRelative,
   ProjectRelative,
   Relative,
+  #[default]
   Shortest,
 }
 
-impl Default for ImportModuleSpecifier {
-  fn default() -> Self {
-    Self::Shortest
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum JsxAttributeCompletionStyle {
+  #[default]
   Auto,
   Braces,
   None,
 }
 
-impl Default for JsxAttributeCompletionStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuoteStyle {
+  #[default]
   Auto,
   Double,
   Single,
-}
-
-impl Default for QuoteStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
 }
 
 impl From<&FmtOptionsConfig> for QuoteStyle {
@@ -481,18 +467,15 @@ pub struct UpdateImportsOnFileMoveOptions {
   pub enabled: UpdateImportsOnFileMoveEnabled,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
+  #[default]
   Prompt,
   Never,
-}
-
-impl Default for UpdateImportsOnFileMoveEnabled {
-  fn default() -> Self {
-    Self::Prompt
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1053,6 +1036,8 @@ impl Config {
       | MediaType::Dcts
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
@@ -1220,6 +1205,14 @@ impl Config {
     (|| {
       let experimental = self.client_capabilities.experimental.as_ref()?;
       experimental.get("testingApi")?.as_bool()
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn client_provided_organize_imports_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("clientProvidedOrganizeImports")?.as_bool()
     })()
     .unwrap_or(false)
   }
@@ -1391,7 +1384,7 @@ impl ConfigData {
       Some(Arc::new(specifier))
     })();
 
-    if let Some(deno_json) = member_dir.maybe_deno_json() {
+    if let Some(deno_json) = member_dir.member_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1403,7 +1396,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = member_dir.maybe_pkg_json() {
+    if let Some(pkg_json) = member_dir.member_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1467,8 +1460,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
+        require_modules: vec![],
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1586,17 +1579,17 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
+    let is_config_import_map = member_dir
+      .member_deno_json()
+      .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      .or_else(|| {
+        member_dir
+          .workspace
+          .root_deno_json()
+          .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      })
+      .unwrap_or(false);
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         None
       } else {
@@ -1609,16 +1602,6 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         import_map_from_settings = None;
       }
@@ -1685,11 +1668,11 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.member_dir.maybe_deno_json()
+    self.member_dir.member_or_root_deno_json()
   }
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
-    self.member_dir.maybe_pkg_json()
+    self.member_dir.member_or_root_pkg_json()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {

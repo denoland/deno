@@ -14,12 +14,12 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_permissions::PermissionsContainer;
 use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 
-use crate::FfiPermissions;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
@@ -143,20 +143,18 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
 }
 
 #[op2(stack_trace)]
-pub fn op_ffi_load<'scope, FP>(
+pub fn op_ffi_load<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   #[serde] symbols: HashMap<String, ForeignSymbol>,
-) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<v8::Local<'scope, v8::Value>, DlfcnError> {
   let (path, denort_helper) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     (
-      permissions.check_partial_with_path(Cow::Borrowed(Path::new(path)))?,
+      permissions
+        .check_ffi_partial_with_path(Cow::Borrowed(Path::new(path)))?,
       state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
     )
   };

@@ -1,0 +1,19 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "test_macro"
+version = "0.2.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+
+[lib]
+proc-macro = true
+path = "lib.rs"
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
