@@ -64,7 +64,9 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.376.0" }
+# deno_core = { version = "0.376.0" }
+# deno_core = { path = "../deno_core/core/" }
+deno_core = { git = "https://github.com/fraidev/deno_core.git", branch = "fix/dynamic-import-pending-tla" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.188.0"
