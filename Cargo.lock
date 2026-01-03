@@ -1849,19 +1849,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_canvas"
-version = "0.94.0"
-dependencies = [
- "bytemuck",
- "deno_core",
- "deno_error",
- "image",
- "lcms2",
- "num-traits",
- "thiserror 2.0.12",
-]
-
-[[package]]
 name = "deno_config"
 version = "0.75.0"
 dependencies = [
@@ -2222,6 +2209,19 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tokio-vsock",
+]
+
+[[package]]
+name = "deno_image"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "deno_core",
+ "deno_error",
+ "image",
+ "lcms2",
+ "num-traits",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -2805,7 +2805,6 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache",
- "deno_canvas",
  "deno_core",
  "deno_cron",
  "deno_crypto",
@@ -2815,6 +2814,7 @@ dependencies = [
  "deno_ffi",
  "deno_fs",
  "deno_http",
+ "deno_image",
  "deno_io",
  "deno_kv",
  "deno_napi",
