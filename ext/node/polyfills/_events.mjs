@@ -72,7 +72,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import { getListeners } from "ext:deno_web/02_event.js";
+import { getAllListeners, getListeners } from "ext:deno_web/02_event.js";
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 
@@ -971,14 +971,11 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
 
 const kEventsGetter = {
   get() {
-    const data = this[eventTargetData];
-    if (!data) {
-      return new SafeMap();
-    }
+    const listeners = getAllListeners(this);
     return new SafeMap(
       ArrayPrototypeMap(
         ArrayPrototypeFilter(
-          ObjectEntries(data.listeners),
+          ObjectEntries(listeners),
           ([_, listeners]) => listeners.length > 0,
         ),
         ([key, listeners]) => [key, new SafeSet(listeners)],

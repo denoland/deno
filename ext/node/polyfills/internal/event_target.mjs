@@ -378,6 +378,13 @@ class CustomEvent extends Event {
     if (arguments.length === 0) {
       throw new ERR_MISSING_ARGS("type");
     }
+    if (options !== undefined && typeof options !== "object") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options",
+        "object",
+        options,
+      );
+    }
     super(type, options);
     this[kDetail] = options?.detail ?? null;
     this[SymbolToStringTag] = "CustomEvent";

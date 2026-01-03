@@ -1957,6 +1957,34 @@ pub fn op_event_wrap_event_target<'a>(
 }
 
 #[op2]
+pub fn op_event_get_all_target_listeners<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  event_target: v8::Local<'a, v8::Value>,
+) -> v8::Local<'a, v8::Object> {
+  let Some(event_target) =
+    cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, event_target)
+  else {
+    return v8::Object::new(scope);
+  };
+
+  let obj = v8::Object::new(scope);
+  let listeners = event_target.listeners.borrow();
+  for (key, listeners) in listeners.iter() {
+    let key = v8::String::new(scope, key).unwrap();
+    let value = {
+      let elements: Vec<v8::Local<'a, v8::Value>> = listeners
+        .iter()
+        .map(|listener| v8::Local::new(scope, listener.callback.clone()).into())
+        .collect();
+      v8::Array::new_with_elements(scope, elements.as_slice())
+    };
+    obj.create_data_property(scope, key.into(), value.into());
+  }
+
+  obj
+}
+
+#[op2]
 pub fn op_event_get_target_listeners<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   event_target: v8::Local<'a, v8::Value>,
@@ -1999,7 +2027,7 @@ pub fn op_event_get_target_listener_count<'a>(
 
 pub struct AbortSignal {
   reason: RefCell<Option<v8::Global<v8::Value>>>,
-  algorithms: RefCell<HashSet<v8::Global<v8::Function>>>,
+  algorithms: Rc<RefCell<HashSet<v8::Global<v8::Function>>>>,
   dependent: Cell<bool>,
   source_signals: RefCell<Vec<v8::Weak<v8::Value>>>,
   dependent_signals: RefCell<Vec<v8::Weak<v8::Value>>>,
@@ -2019,7 +2047,7 @@ impl AbortSignal {
   fn new() -> AbortSignal {
     AbortSignal {
       reason: RefCell::new(None),
-      algorithms: RefCell::new(HashSet::new()),
+      algorithms: Rc::new(RefCell::new(HashSet::new())),
       dependent: Cell::new(false),
       source_signals: RefCell::new(Vec::new()),
       dependent_signals: RefCell::new(Vec::new()),
@@ -2034,24 +2062,41 @@ impl AbortSignal {
     prefix: Cow<'static, str>,
     context: ContextFn<'_>,
   ) -> Result<AbortSignal, EventError> {
+    let mut signals = Vec::new();
+    for signal_value in signal_values {
+      let Some(signal) = cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
+        scope,
+        signal_value,
+      ) else {
+        return Err(EventError::WebIDL(WebIdlError::new(
+          prefix,
+          context,
+          WebIdlErrorKind::ConvertToConverterType("AbortSignal"),
+        )));
+      };
+      signals.push((signal, signal_value));
+    }
+
+    // 1.
     let result_signal = AbortSignal::new();
+
+    // 2.
+    for (signal, _) in signals.iter() {
+      if let Some(reason) = signal.reason.borrow().as_ref() {
+        result_signal.reason.replace(Some(reason.clone()));
+        return Ok(result_signal);
+      }
+    }
+
+    // 3.
     result_signal.dependent.set(true);
 
+    // 4.
     {
       let result_signal_weak =
         v8::Weak::new(scope, result_signal_object.cast::<v8::Value>());
       let mut result_source_signal = result_signal.source_signals.borrow_mut();
-      for signal_value in signal_values {
-        let Some(signal) = cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
-          scope,
-          signal_value,
-        ) else {
-          return Err(EventError::WebIDL(WebIdlError::new(
-            prefix,
-            context,
-            WebIdlErrorKind::ConvertToConverterType("AbortSignal"),
-          )));
-        };
+      for (signal, signal_value) in signals.iter() {
         if !signal.dependent.get() {
           let signal_weak = v8::Weak::new(scope, signal_value);
           result_source_signal.push(signal_weak);
@@ -2079,6 +2124,7 @@ impl AbortSignal {
       }
     }
 
+    // 5.
     Ok(result_signal)
   }
 
@@ -2168,14 +2214,10 @@ impl AbortSignal {
     state: &Rc<RefCell<OpState>>,
     signal_object: v8::Local<'a, v8::Object>,
   ) {
-    {
-      let algorithms = self.algorithms.borrow();
-      for algorithm in algorithms.iter() {
-        let func = v8::Local::new(scope, algorithm);
-        func.call(scope, signal_object.into(), &[]);
-      }
+    for algorithm in self.algorithms.borrow().clone().iter() {
+      let func = v8::Local::new(scope, algorithm);
+      func.call(scope, signal_object.into(), &[]);
     }
-
     self.algorithms.borrow_mut().clear();
 
     let target = cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(

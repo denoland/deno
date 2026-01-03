@@ -28,6 +28,7 @@ import {
   MessageEvent,
   op_event_create_empty_event_target,
   op_event_dispatch,
+  op_event_get_all_target_listeners,
   op_event_get_target_listener_count,
   op_event_get_target_listeners,
   op_event_report_error,
@@ -195,6 +196,15 @@ function setEventTargetData(target) {
  */
 function dispatch(target, event, targetOverride) {
   op_event_dispatch(target, event, targetOverride);
+}
+
+/**
+ * @param {EventTarget} target
+ * @param {string} type
+ * @return {{ [key in string]: EventListenerOrEventListenerObject[] }}
+ */
+function getAllListeners(target) {
+  return op_event_get_all_target_listeners(target);
 }
 
 /**
@@ -534,6 +544,7 @@ export {
   Event,
   EventTarget,
   EventTargetPrototype,
+  getAllListeners,
   getListenerCount,
   getListeners,
   MessageEvent,
