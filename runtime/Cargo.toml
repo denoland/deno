@@ -41,7 +41,7 @@ path = "lib.rs"
 deno_ast = { workspace = true, optional = true }
 deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
-deno_canvas.workspace = true
+deno_image.workspace = true
 deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true

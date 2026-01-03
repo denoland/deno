@@ -10,13 +10,13 @@ members = [
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
-  "ext/canvas",
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
   "ext/ffi",
   "ext/fs",
   "ext/http",
+  "ext/image",
   "ext/io",
   "ext/kv",
   "ext/napi",
@@ -91,7 +91,7 @@ denokv_sqlite = { default-features = false, version = "0.13.0" }
 # exts
 deno_bundle_runtime = { version = "0.12.0", path = "./ext/bundle" }
 deno_cache = { version = "0.158.0", path = "./ext/cache" }
-deno_canvas = { version = "0.94.0", path = "./ext/canvas" }
+deno_image = { version = "0.1.0", path = "./ext/image" }
 deno_cron = { version = "0.105.0", path = "./ext/cron" }
 deno_crypto = { version = "0.239.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.249.0", path = "./ext/fetch" }
