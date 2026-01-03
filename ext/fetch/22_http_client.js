@@ -76,7 +76,8 @@ function createHttpClient(options) {
         }
         case "tcp":
         case "unix":
-        case "vsock": {
+        case "vsock":
+        case "tunnel": {
           break;
         }
         default: {
