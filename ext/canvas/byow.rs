@@ -18,7 +18,8 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
-use deno_webgpu::canvas::Data;
+use deno_webgpu::canvas::ContextData;
+use deno_webgpu::canvas::SurfaceData;
 
 use crate::canvas::Context;
 use crate::canvas::CreateCanvasContext;
@@ -87,7 +88,7 @@ pub enum ByowError {
 }
 
 pub struct UnsafeWindowSurface {
-  pub data: Rc<RefCell<Data>>,
+  pub data: Rc<RefCell<SurfaceData>>,
 
   pub active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
@@ -106,20 +107,12 @@ impl UnsafeWindowSurface {
   #[getter]
   fn width(&self) -> u32 {
     let data = self.data.borrow();
-    let Data::Surface { width, .. } = &*data else {
-      unreachable!();
-    };
-
-    *width
+    data.width
   }
   #[setter]
   fn width(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
     let mut data = self.data.borrow_mut();
-    let Data::Surface { width, .. } = &mut *data else {
-      unreachable!();
-    };
-
-    *width = value;
+    data.width = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -133,20 +126,12 @@ impl UnsafeWindowSurface {
   #[getter]
   fn height(&self) -> u32 {
     let data = self.data.borrow();
-    let Data::Surface { height, .. } = &*data else {
-      unreachable!();
-    };
-
-    *height
+    data.height
   }
   #[setter]
   fn height(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
     let mut data = self.data.borrow_mut();
-    let Data::Surface { height, .. } = &mut *data else {
-      unreachable!();
-    };
-
-    *height = value;
+    data.height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -198,7 +183,7 @@ impl UnsafeWindowSurface {
     };
 
     Ok(UnsafeWindowSurface {
-      data: Rc::new(RefCell::new(Data::Surface {
+      data: Rc::new(RefCell::new(SurfaceData {
         width: options.width,
         height: options.height,
         id,
@@ -236,7 +221,7 @@ impl UnsafeWindowSurface {
       let context = create_context(
         Some(instance),
         this,
-        self.data.clone(),
+        ContextData::Surface(self.data.clone()),
         scope,
         options,
         "Failed to execute 'getContext' on 'OffscreenCanvas'",
@@ -271,15 +256,12 @@ impl UnsafeWindowSurface {
     match &context {
       Context::Bitmap(context) => {
         let data = self.data.borrow();
-        let Data::Surface { id, .. } = &*data else {
-          unreachable!();
-        };
 
         let super::bitmaprenderer::SurfaceBitmap { instance, .. } =
           context.surface_only.as_ref().unwrap();
 
         instance
-          .surface_present(*id)
+          .surface_present(data.id)
           .map_err(|e| JsErrorBox::generic(e.to_string()))?;
       }
       Context::WebGPU(context) => {
@@ -289,14 +271,11 @@ impl UnsafeWindowSurface {
         })?;
 
         let data = self.data.borrow();
-        let Data::Surface { id, .. } = &*data else {
-          unreachable!();
-        };
 
         configuration
           .device
           .instance
-          .surface_present(*id)
+          .surface_present(data.id)
           .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
         // next `get_current_texture` call would get a new texture

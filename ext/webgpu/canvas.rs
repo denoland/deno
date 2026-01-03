@@ -22,13 +22,15 @@ use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 
-pub enum Data {
-  Canvas(DynamicImage),
-  Surface {
-    width: u32,
-    height: u32,
-    id: wgpu_core::id::SurfaceId,
-  },
+pub enum ContextData {
+  Canvas(Rc<RefCell<DynamicImage>>),
+  Surface(Rc<RefCell<SurfaceData>>),
+}
+
+pub struct SurfaceData {
+  pub width: u32,
+  pub height: u32,
+  pub id: wgpu_core::id::SurfaceId,
 }
 
 pub enum Descriptor {
@@ -38,7 +40,7 @@ pub enum Descriptor {
 
 pub struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<Data>>,
+  data: ContextData,
 
   pub texture_descriptor: RefCell<Option<Descriptor>>,
   pub configuration: RefCell<Option<GPUCanvasConfiguration>>,
@@ -88,13 +90,12 @@ impl GPUCanvasContext {
     match &descriptor {
       Descriptor::Texture(_) => {}
       Descriptor::Surface(surface) => {
-        let data = self.data.borrow();
-        let Data::Surface { id, .. } = &*data else {
+        let ContextData::Surface(surface_data) = &self.data else {
           unreachable!()
         };
 
         let err = configuration.device.instance.surface_configure(
-          *id,
+          surface_data.borrow().id,
           configuration.device.id,
           surface,
         );
@@ -164,15 +165,14 @@ impl GPUCanvasContext {
           }
         }
         Descriptor::Surface(surface) => {
-          let data = self.data.borrow();
-          let Data::Surface { id, .. } = &*data else {
+          let ContextData::Surface(surface_data) = &self.data else {
             unreachable!()
           };
 
           let output = configuration
             .device
             .instance
-            .surface_get_current_texture(*id, None)
+            .surface_get_current_texture(surface_data.borrow().id, None)
             .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
           match output.status {
@@ -228,9 +228,9 @@ impl GPUCanvasContext {
       .map(Into::into)
       .collect();
 
-    match &*self.data.borrow() {
-      Data::Canvas(image) => {
-        let (width, height) = image.dimensions();
+    match &self.data {
+      ContextData::Canvas(image) => {
+        let (width, height) = image.borrow().dimensions();
 
         Ok(Descriptor::Texture(TextureDescriptor {
           label: Some("GPUCanvasContext".into()),
@@ -247,7 +247,9 @@ impl GPUCanvasContext {
           view_formats,
         }))
       }
-      Data::Surface { width, height, .. } => {
+      ContextData::Surface(surface_data) => {
+        let SurfaceData { width, height, .. } = &*surface_data.borrow();
+
         Ok(Descriptor::Surface(SurfaceConfiguration {
           usage,
           format: configuration.format.clone().into(),
@@ -270,17 +272,17 @@ impl GPUCanvasContext {
     &self,
     scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), JsErrorBox> {
+    let ContextData::Canvas(image) = &self.data else {
+      unreachable!()
+    };
+
     let configuration = self.configuration.borrow();
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
     else {
-      self.data.replace_with(|data| {
-        let Data::Canvas(image) = data else {
-          unreachable!()
-        };
-
+      image.replace_with(|image| {
         let (width, height) = image.dimensions();
         let image = deno_image::image::RgbaImage::new(width, height);
-        Data::Canvas(DynamicImage::from(image))
+        DynamicImage::from(image)
       });
 
       return Ok(());
@@ -321,15 +323,11 @@ impl GPUCanvasContext {
         size,
       )?;
 
-      self.data.replace_with(|image| {
-        let Data::Canvas(image) = image else {
-          unreachable!()
-        };
-
+      image.replace_with(|image| {
         let (width, height) = image.dimensions();
         let image =
           deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
-        Data::Canvas(DynamicImage::from(image))
+        DynamicImage::from(image)
       });
     }
 
@@ -362,9 +360,9 @@ impl GPUCanvasContext {
           .unwrap(),
       ));
 
-      match &*self.data.borrow() {
-        Data::Canvas(_) => {}
-        Data::Surface { id, .. } => {
+      match &self.data {
+        ContextData::Canvas(_) => {}
+        ContextData::Surface(surface_data) => {
           let texture_descriptor = self.texture_descriptor.borrow();
 
           let Descriptor::Surface(descriptor) =
@@ -374,7 +372,7 @@ impl GPUCanvasContext {
           };
 
           let err = configuration.device.instance.surface_configure(
-            *id,
+            surface_data.borrow().id,
             configuration.device.id,
             descriptor,
           );
@@ -619,7 +617,7 @@ pub const CONTEXT_ID: &str = "webgpu";
 pub fn create<'s>(
   _instance: Option<Instance>,
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<Data>>,
+  data: ContextData,
   scope: &mut v8::PinScope<'s, '_>,
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,

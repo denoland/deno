@@ -1,7 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
@@ -15,7 +12,7 @@ use deno_image::image;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
 use deno_image::op_create_image_bitmap::ImageBitmap;
-use deno_webgpu::canvas::Data;
+use deno_webgpu::canvas::ContextData;
 use deno_webgpu::error::GPUError;
 use deno_webgpu::wgpu_core;
 use deno_webgpu::wgpu_types;
@@ -47,7 +44,7 @@ impl Drop for SurfaceBitmap {
 
 pub struct ImageBitmapRenderingContext {
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<Data>>,
+  data: ContextData,
 
   pub surface_only: Option<SurfaceBitmap>,
 
@@ -94,12 +91,12 @@ impl ImageBitmapRenderingContext {
           .data
           .replace(DynamicImage::new(0, 0, image::ColorType::Rgba8));
 
-      let mut data = self.data.borrow_mut();
-      match &mut *data {
-        Data::Canvas(image) => {
-          *image = new_data;
+      match &self.data {
+        ContextData::Canvas(image) => {
+          *image.borrow_mut() = new_data;
         }
-        Data::Surface { id, .. } => {
+        ContextData::Surface(surface_data) => {
+          let surface = surface_data.borrow().id;
           let SurfaceBitmap {
             instance,
             device,
@@ -188,7 +185,7 @@ impl ImageBitmapRenderingContext {
           maybe_err_to_err(err)?;
 
           let surface_output = instance
-            .surface_get_current_texture(*id, None)
+            .surface_get_current_texture(surface, None)
             .map_err(|e| JsErrorBox::from_err(GPUError::from(e)))?;
           let Some(frame) = surface_output.texture else {
             return Ok(());
@@ -287,14 +284,15 @@ impl ImageBitmapRenderingContext {
         }
       }
     } else {
-      let mut data = self.data.borrow_mut();
-      match &mut *data {
-        Data::Canvas(image) => {
-          let (width, height) = image.dimensions();
-
-          *image = DynamicImage::new(width, height, image::ColorType::Rgba8);
+      match &self.data {
+        ContextData::Canvas(image) => {
+          image.replace_with(|image| {
+            let (width, height) = image.dimensions();
+            DynamicImage::new(width, height, image::ColorType::Rgba8)
+          });
         }
-        Data::Surface { id, .. } => {
+        ContextData::Surface(surface_data) => {
+          let surface = surface_data.borrow().id;
           let SurfaceBitmap {
             instance,
             device,
@@ -303,7 +301,7 @@ impl ImageBitmapRenderingContext {
           } = self.surface_only.as_ref().unwrap();
 
           let surface_output = instance
-            .surface_get_current_texture(*id, None)
+            .surface_get_current_texture(surface, None)
             .map_err(|e| JsErrorBox::from_err(GPUError::from(e)))?;
           let Some(frame) = surface_output.texture else {
             return Ok(());
@@ -422,7 +420,7 @@ pub const CONTEXT_ID: &str = "bitmaprenderer";
 pub fn create<'s>(
   instance: Option<deno_webgpu::Instance>,
   canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<Data>>,
+  data: ContextData,
   scope: &mut v8::PinScope<'s, '_>,
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
@@ -437,284 +435,277 @@ pub fn create<'s>(
   )
   .map_err(JsErrorBox::from_err)?;
 
-  let surface_only = {
-    if let Data::Surface { id, width, height } = &*data.borrow() {
-      let instance = instance.unwrap();
-      let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
-        |_| wgpu_types::Backends::all(),
-        |s| wgpu_types::Backends::from_comma_list(&s),
-      );
-      let adapter = instance
-        .request_adapter(
-          &wgpu_core::instance::RequestAdapterOptions {
-            power_preference: Default::default(),
-            force_fallback_adapter: false,
-            compatible_surface: Some(*id),
-          },
-          backends,
-          None,
-        )
-        .unwrap();
+  let surface_only = if let ContextData::Surface(surface_data) = &data {
+    let deno_webgpu::canvas::SurfaceData { id, width, height } =
+      &*surface_data.borrow();
+    let instance = instance.unwrap();
+    let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
+      |_| wgpu_types::Backends::all(),
+      |s| wgpu_types::Backends::from_comma_list(&s),
+    );
+    let adapter = instance
+      .request_adapter(
+        &wgpu_core::instance::RequestAdapterOptions {
+          power_preference: Default::default(),
+          force_fallback_adapter: false,
+          compatible_surface: Some(*id),
+        },
+        backends,
+        None,
+      )
+      .unwrap();
 
-      let (device, queue) = instance
-        .adapter_request_device(
-          adapter,
-          &wgpu_core::device::DeviceDescriptor {
-            label: None,
-            required_features: Default::default(),
-            required_limits: Default::default(),
-            experimental_features: Default::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-          },
-          None,
-          None,
-        )
-        .unwrap();
-
-      let caps = instance.surface_get_capabilities(*id, adapter).unwrap();
-      let format = caps.formats[0];
-
-      let config = wgpu_types::SurfaceConfiguration {
-        usage: wgpu_types::TextureUsages::RENDER_ATTACHMENT,
-        format,
-        width: *width,
-        height: *height,
-        present_mode: wgpu_types::PresentMode::Fifo,
-        desired_maximum_frame_latency: 0,
-        alpha_mode: wgpu_types::CompositeAlphaMode::Opaque,
-        view_formats: vec![],
-      };
-      let err = instance.surface_configure(*id, device, &config);
-      maybe_err_to_err(err)?;
-
-      let (sampler, err) = instance.device_create_sampler(
-        device,
-        &wgpu_core::resource::SamplerDescriptor {
+    let (device, queue) = instance
+      .adapter_request_device(
+        adapter,
+        &wgpu_core::device::DeviceDescriptor {
           label: None,
-          address_modes: [
-            wgpu_types::AddressMode::ClampToEdge,
-            wgpu_types::AddressMode::ClampToEdge,
-            wgpu_types::AddressMode::ClampToEdge,
-          ],
-          mag_filter: wgpu_types::FilterMode::Linear,
-          min_filter: wgpu_types::FilterMode::Nearest,
-          mipmap_filter: wgpu_types::MipmapFilterMode::Nearest,
-          lod_min_clamp: 0.0,
-          lod_max_clamp: 0.0,
-          compare: None,
-          anisotropy_clamp: 0,
-          border_color: None,
+          required_features: Default::default(),
+          required_limits: Default::default(),
+          experimental_features: Default::default(),
+          memory_hints: Default::default(),
+          trace: Default::default(),
         },
         None,
-      );
-      maybe_err_to_err(err)?;
+        None,
+      )
+      .unwrap();
 
-      let (bind_group_layout, err) = instance.device_create_bind_group_layout(
-        device,
-        &wgpu_core::binding_model::BindGroupLayoutDescriptor {
-          label: None,
-          entries: vec![
-            wgpu_types::BindGroupLayoutEntry {
-              binding: 0,
-              visibility: wgpu_types::ShaderStages::FRAGMENT,
-              ty: wgpu_types::BindingType::Texture {
-                multisampled: false,
-                view_dimension: wgpu_types::TextureViewDimension::D2,
-                sample_type: wgpu_types::TextureSampleType::Float {
-                  filterable: true,
-                },
+    let caps = instance.surface_get_capabilities(*id, adapter).unwrap();
+    let format = caps.formats[0];
+
+    let config = wgpu_types::SurfaceConfiguration {
+      usage: wgpu_types::TextureUsages::RENDER_ATTACHMENT,
+      format,
+      width: *width,
+      height: *height,
+      present_mode: wgpu_types::PresentMode::Fifo,
+      desired_maximum_frame_latency: 0,
+      alpha_mode: wgpu_types::CompositeAlphaMode::Opaque,
+      view_formats: vec![],
+    };
+    let err = instance.surface_configure(*id, device, &config);
+    maybe_err_to_err(err)?;
+
+    let (sampler, err) = instance.device_create_sampler(
+      device,
+      &wgpu_core::resource::SamplerDescriptor {
+        label: None,
+        address_modes: [
+          wgpu_types::AddressMode::ClampToEdge,
+          wgpu_types::AddressMode::ClampToEdge,
+          wgpu_types::AddressMode::ClampToEdge,
+        ],
+        mag_filter: wgpu_types::FilterMode::Linear,
+        min_filter: wgpu_types::FilterMode::Nearest,
+        mipmap_filter: wgpu_types::MipmapFilterMode::Nearest,
+        lod_min_clamp: 0.0,
+        lod_max_clamp: 0.0,
+        compare: None,
+        anisotropy_clamp: 0,
+        border_color: None,
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
+
+    let (bind_group_layout, err) = instance.device_create_bind_group_layout(
+      device,
+      &wgpu_core::binding_model::BindGroupLayoutDescriptor {
+        label: None,
+        entries: vec![
+          wgpu_types::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu_types::ShaderStages::FRAGMENT,
+            ty: wgpu_types::BindingType::Texture {
+              multisampled: false,
+              view_dimension: wgpu_types::TextureViewDimension::D2,
+              sample_type: wgpu_types::TextureSampleType::Float {
+                filterable: true,
               },
-              count: None,
             },
-            wgpu_types::BindGroupLayoutEntry {
-              binding: 1,
-              visibility: wgpu_types::ShaderStages::FRAGMENT,
-              ty: wgpu_types::BindingType::Sampler(
-                wgpu_types::SamplerBindingType::Filtering,
-              ),
-              count: None,
-            },
-          ]
+            count: None,
+          },
+          wgpu_types::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu_types::ShaderStages::FRAGMENT,
+            ty: wgpu_types::BindingType::Sampler(
+              wgpu_types::SamplerBindingType::Filtering,
+            ),
+            count: None,
+          },
+        ]
+        .into(),
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
+
+    let (shader, err) = instance.device_create_shader_module(
+      device,
+      &wgpu_core::pipeline::ShaderModuleDescriptor {
+        label: None,
+        runtime_checks: Default::default(),
+      },
+      wgpu_core::pipeline::ShaderModuleSource::Wgsl(SHADER.into()),
+      None,
+    );
+    maybe_err_to_err(err)?;
+
+    let (render_pipeline_layout, err) = instance.device_create_pipeline_layout(
+      device,
+      &wgpu_core::binding_model::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: vec![bind_group_layout].into(),
+        immediate_size: 0,
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
+
+    let (render_pipeline, err) = instance.device_create_render_pipeline(
+      device,
+      &wgpu_core::pipeline::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(render_pipeline_layout),
+        vertex: wgpu_core::pipeline::VertexState {
+          stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
+            module: shader,
+            entry_point: Some("vs_main".into()),
+            constants: Default::default(),
+            zero_initialize_workgroup_memory: false,
+          },
+          buffers: vec![wgpu_core::pipeline::VertexBufferLayout {
+            array_stride: size_of::<Vertex>() as _,
+            step_mode: wgpu_types::VertexStepMode::Vertex,
+            attributes: vec![
+              wgpu_types::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu_types::VertexFormat::Float32x3,
+              },
+              wgpu_types::VertexAttribute {
+                offset: size_of::<[f32; 3]>() as _,
+                shader_location: 1,
+                format: wgpu_types::VertexFormat::Float32x2,
+              },
+            ]
+            .into(),
+          }]
           .into(),
         },
-        None,
-      );
-      maybe_err_to_err(err)?;
-
-      let (shader, err) = instance.device_create_shader_module(
-        device,
-        &wgpu_core::pipeline::ShaderModuleDescriptor {
-          label: None,
-          runtime_checks: Default::default(),
+        fragment: Some(wgpu_core::pipeline::FragmentState {
+          stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
+            module: shader,
+            entry_point: Some("fs_main".into()),
+            constants: Default::default(),
+            zero_initialize_workgroup_memory: false,
+          },
+          targets: vec![Some(wgpu_types::ColorTargetState {
+            format: config.format,
+            blend: Some(wgpu_types::BlendState::REPLACE),
+            write_mask: wgpu_types::ColorWrites::ALL,
+          })]
+          .into(),
+        }),
+        multiview_mask: None,
+        primitive: wgpu_types::PrimitiveState {
+          topology: wgpu_types::PrimitiveTopology::TriangleList,
+          strip_index_format: None,
+          front_face: wgpu_types::FrontFace::Ccw,
+          cull_mode: Some(wgpu_types::Face::Back),
+          polygon_mode: wgpu_types::PolygonMode::Fill,
+          unclipped_depth: false,
+          conservative: false,
         },
-        wgpu_core::pipeline::ShaderModuleSource::Wgsl(SHADER.into()),
-        None,
-      );
-      maybe_err_to_err(err)?;
-
-      let (render_pipeline_layout, err) = instance
-        .device_create_pipeline_layout(
-          device,
-          &wgpu_core::binding_model::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: vec![bind_group_layout].into(),
-            immediate_size: 0,
-          },
-          None,
-        );
-      maybe_err_to_err(err)?;
-
-      let (render_pipeline, err) = instance.device_create_render_pipeline(
-        device,
-        &wgpu_core::pipeline::RenderPipelineDescriptor {
-          label: None,
-          layout: Some(render_pipeline_layout),
-          vertex: wgpu_core::pipeline::VertexState {
-            stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-              module: shader,
-              entry_point: Some("vs_main".into()),
-              constants: Default::default(),
-              zero_initialize_workgroup_memory: false,
-            },
-            buffers: vec![wgpu_core::pipeline::VertexBufferLayout {
-              array_stride: size_of::<Vertex>() as _,
-              step_mode: wgpu_types::VertexStepMode::Vertex,
-              attributes: vec![
-                wgpu_types::VertexAttribute {
-                  offset: 0,
-                  shader_location: 0,
-                  format: wgpu_types::VertexFormat::Float32x3,
-                },
-                wgpu_types::VertexAttribute {
-                  offset: size_of::<[f32; 3]>() as _,
-                  shader_location: 1,
-                  format: wgpu_types::VertexFormat::Float32x2,
-                },
-              ]
-              .into(),
-            }]
-            .into(),
-          },
-          fragment: Some(wgpu_core::pipeline::FragmentState {
-            stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-              module: shader,
-              entry_point: Some("fs_main".into()),
-              constants: Default::default(),
-              zero_initialize_workgroup_memory: false,
-            },
-            targets: vec![Some(wgpu_types::ColorTargetState {
-              format: config.format,
-              blend: Some(wgpu_types::BlendState::REPLACE),
-              write_mask: wgpu_types::ColorWrites::ALL,
-            })]
-            .into(),
-          }),
-          multiview_mask: None,
-          primitive: wgpu_types::PrimitiveState {
-            topology: wgpu_types::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu_types::FrontFace::Ccw,
-            cull_mode: Some(wgpu_types::Face::Back),
-            polygon_mode: wgpu_types::PolygonMode::Fill,
-            unclipped_depth: false,
-            conservative: false,
-          },
-          depth_stencil: None,
-          multisample: wgpu_types::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-          },
-          cache: None,
+        depth_stencil: None,
+        multisample: wgpu_types::MultisampleState {
+          count: 1,
+          mask: !0,
+          alpha_to_coverage_enabled: false,
         },
-        None,
-      );
-      maybe_err_to_err(err)?;
+        cache: None,
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
 
-      let vertex_buffer_data = bytemuck::cast_slice(VERTICES);
-      let (vertex_buffer, err) = instance.device_create_buffer(
-        device,
-        &wgpu_core::resource::BufferDescriptor {
-          label: None,
-          usage: wgpu_types::BufferUsages::VERTEX
-            | wgpu_types::BufferUsages::COPY_DST,
-          size: {
-            let unpadded_size =
-              vertex_buffer_data.len() as wgpu_types::BufferAddress;
-            let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
-            let padded_size = ((unpadded_size + align_mask) & !align_mask)
-              .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
-            padded_size
-          },
-          mapped_at_creation: true,
+    let vertex_buffer_data = bytemuck::cast_slice(VERTICES);
+    let (vertex_buffer, err) = instance.device_create_buffer(
+      device,
+      &wgpu_core::resource::BufferDescriptor {
+        label: None,
+        usage: wgpu_types::BufferUsages::VERTEX
+          | wgpu_types::BufferUsages::COPY_DST,
+        size: {
+          let unpadded_size =
+            vertex_buffer_data.len() as wgpu_types::BufferAddress;
+          let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
+          let padded_size = ((unpadded_size + align_mask) & !align_mask)
+            .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
+          padded_size
         },
-        None,
-      );
-      maybe_err_to_err(err)?;
+        mapped_at_creation: true,
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
 
-      let (range_ptr, len) = instance
-        .buffer_get_mapped_range(
-          vertex_buffer,
-          0,
-          Some(size_of_val(VERTICES) as _),
-        )
-        .unwrap();
-      unsafe {
-        let slice =
-          std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
-        slice.copy_from_slice(vertex_buffer_data);
-      }
-      instance.buffer_unmap(vertex_buffer).unwrap();
-
-      let index_buffer_data = bytemuck::cast_slice(INDICES);
-      let (index_buffer, err) = instance.device_create_buffer(
-        device,
-        &wgpu_core::resource::BufferDescriptor {
-          label: None,
-          usage: wgpu_types::BufferUsages::INDEX
-            | wgpu_types::BufferUsages::COPY_DST,
-          size: {
-            let unpadded_size =
-              index_buffer_data.len() as wgpu_types::BufferAddress;
-            let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
-            let padded_size = ((unpadded_size + align_mask) & !align_mask)
-              .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
-            padded_size
-          },
-          mapped_at_creation: true,
-        },
-        None,
-      );
-      maybe_err_to_err(err)?;
-
-      let (range_ptr, len) = instance
-        .buffer_get_mapped_range(
-          index_buffer,
-          0,
-          Some(size_of_val(INDICES) as _),
-        )
-        .unwrap();
-      unsafe {
-        let slice =
-          std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
-        slice.copy_from_slice(index_buffer_data);
-      }
-      instance.buffer_unmap(index_buffer).unwrap();
-
-      Some(SurfaceBitmap {
-        instance,
-        device,
-        queue,
-        render_pipeline,
+    let (range_ptr, len) = instance
+      .buffer_get_mapped_range(
         vertex_buffer,
-        index_buffer,
-        bind_group_layout,
-        sampler,
-      })
-    } else {
-      None
+        0,
+        Some(size_of_val(VERTICES) as _),
+      )
+      .unwrap();
+    unsafe {
+      let slice = std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
+      slice.copy_from_slice(vertex_buffer_data);
     }
+    instance.buffer_unmap(vertex_buffer).unwrap();
+
+    let index_buffer_data = bytemuck::cast_slice(INDICES);
+    let (index_buffer, err) = instance.device_create_buffer(
+      device,
+      &wgpu_core::resource::BufferDescriptor {
+        label: None,
+        usage: wgpu_types::BufferUsages::INDEX
+          | wgpu_types::BufferUsages::COPY_DST,
+        size: {
+          let unpadded_size =
+            index_buffer_data.len() as wgpu_types::BufferAddress;
+          let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
+          let padded_size = ((unpadded_size + align_mask) & !align_mask)
+            .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
+          padded_size
+        },
+        mapped_at_creation: true,
+      },
+      None,
+    );
+    maybe_err_to_err(err)?;
+
+    let (range_ptr, len) = instance
+      .buffer_get_mapped_range(index_buffer, 0, Some(size_of_val(INDICES) as _))
+      .unwrap();
+    unsafe {
+      let slice = std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
+      slice.copy_from_slice(index_buffer_data);
+    }
+    instance.buffer_unmap(index_buffer).unwrap();
+
+    Some(SurfaceBitmap {
+      instance,
+      device,
+      queue,
+      render_pipeline,
+      vertex_buffer,
+      index_buffer,
+      bind_group_layout,
+      sampler,
+    })
+  } else {
+    None
   };
 
   let obj = deno_core::cppgc::make_cppgc_object(
