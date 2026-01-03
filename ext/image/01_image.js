@@ -286,8 +286,8 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         TypedArrayPrototypeGetLength(data),
       );
     } else if (isImageBitmap) {
-      width = image[_width];
-      height = image[_height];
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 2;
       buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]()));
     }
