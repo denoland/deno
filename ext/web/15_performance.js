@@ -418,6 +418,24 @@ class Performance extends EventTarget {
     }
   }
 
+  clearResourceTimings() {
+    webidl.assertBranded(this, PerformancePrototype);
+    performanceEntries = ArrayPrototypeFilter(
+      performanceEntries,
+      (entry) => entry.entryType !== "resource",
+    );
+  }
+
+  setResourceTimingBufferSize(_maxSize) {
+    webidl.assertBranded(this, PerformancePrototype);
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to execute 'setResourceTimingBufferSize' on 'Performance'",
+    );
+    // This is a noop in Deno as we don't have resource timing entries
+  }
+
   getEntries() {
     webidl.assertBranded(this, PerformancePrototype);
     return filterByNameType();

@@ -72,6 +72,29 @@ Deno.test(function clearMeasures() {
   performance.clearMarks();
 });
 
+Deno.test(function clearResourceTimings() {
+  // clearResourceTimings should exist and not throw
+  // Since Deno doesn't currently track resource timings, this is effectively a no-op
+  performance.clearResourceTimings();
+  // After clearing, there should be no resource entries
+  assertEquals(performance.getEntriesByType("resource").length, 0);
+});
+
+Deno.test(function setResourceTimingBufferSize() {
+  // setResourceTimingBufferSize should exist and not throw
+  // Since Deno doesn't currently track resource timings, this is effectively a no-op
+  performance.setResourceTimingBufferSize(100);
+  performance.setResourceTimingBufferSize(0);
+  // Verify it requires an argument
+  assertThrows(
+    () => {
+      // @ts-expect-error: testing missing argument
+      performance.setResourceTimingBufferSize();
+    },
+    TypeError,
+  );
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
