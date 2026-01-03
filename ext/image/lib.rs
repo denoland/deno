@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod image_ops;
 mod bitmap;
+mod image_ops;
 pub use image;
 use image::ColorType;
 
