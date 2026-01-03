@@ -531,6 +531,7 @@ impl WebWorker {
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
+      deno_image::deno_image::init(),
       deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),

@@ -1,15 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_create_image_bitmap } from "ext:core/ops";
+import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
   ObjectPrototypeIsPrototypeOf,
-  Symbol,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteOffset,
@@ -27,6 +25,8 @@ import {
   _width,
   ImageDataPrototype,
 } from "ext:deno_web/16_image_data.js";
+
+const ImageBitmapPrototype = ImageBitmap.prototype;
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
@@ -105,67 +105,6 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
   ],
 );
 
-const _bitmapData = Symbol("[[bitmapData]]");
-const _detached = Symbol("[[detached]]");
-class ImageBitmap {
-  [_width];
-  [_height];
-  [_bitmapData];
-  [_detached];
-
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  get width() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    if (this[_detached]) {
-      return 0;
-    }
-
-    return this[_width];
-  }
-
-  get height() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    if (this[_detached]) {
-      return 0;
-    }
-
-    return this[_height];
-  }
-
-  close() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    this[_detached] = true;
-    this[_bitmapData] = null;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ImageBitmapPrototype, this),
-        keys: [
-          "width",
-          "height",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-const ImageBitmapPrototype = ImageBitmap.prototype;
-
-function float16ToUnorm8(data) {
-  const length = TypedArrayPrototypeGetLength(data);
-  const result = new Uint8ClampedArray(length);
-  for (let i = 0; i < length; i++) {
-    result[i] = data[i] * 255;
-  }
-  return result;
-}
-
 function createImageBitmap(
   image,
   sxOrOptions = undefined,
@@ -228,8 +167,6 @@ function createImageBitmap(
       ),
     );
   }
-
-  const imageBitmap = webidl.createBranded(ImageBitmap);
 
   // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
@@ -363,7 +300,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       resizeQuality = 3;
     }
 
-    const processedImage = op_create_image_bitmap(
+    return op_create_image_bitmap(
       buf,
       width,
       height,
@@ -380,17 +317,13 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       imageBitmapSource,
       mimeType,
     );
-    imageBitmap[_bitmapData] = processedImage[0];
-    imageBitmap[_width] = processedImage[1];
-    imageBitmap[_height] = processedImage[2];
-    return imageBitmap;
   })();
 }
 
 function getBitmapData(imageBitmap) {
-  return imageBitmap[_bitmapData];
+  return imageBitmap[SymbolFor("Deno_bitmapData")];
 }
 
 internals.getBitmapData = getBitmapData;
 
-export { _bitmapData, _detached, createImageBitmap, ImageBitmap };
+export { createImageBitmap, ImageBitmap };

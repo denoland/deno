@@ -21,12 +21,12 @@ mod adapter;
 mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
-mod byow;
+pub mod canvas;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
 mod compute_pipeline;
-mod device;
+pub mod device;
 pub mod error;
 mod pipeline_layout;
 mod query_set;
@@ -36,7 +36,6 @@ mod render_pass;
 mod render_pipeline;
 mod sampler;
 mod shader;
-mod surface;
 pub mod texture;
 mod webidl;
 
@@ -100,10 +99,9 @@ deno_core::extension!(
     texture::GPUTexture,
     texture::GPUTextureView,
     texture::GPUExternalTexture,
-    byow::UnsafeWindowSurface,
-    surface::GPUCanvasContext,
+    canvas::GPUCanvasContext,
   ],
-  esm = ["00_init.js", "02_surface.js"],
+  esm = ["00_init.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
 );
 

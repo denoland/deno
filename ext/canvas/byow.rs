@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::ffi::c_void;
 #[cfg(any(
@@ -9,18 +10,20 @@ use std::ffi::c_void;
   target_os = "openbsd"
 ))]
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::Local;
-use deno_core::v8::Value;
 use deno_error::JsErrorBox;
+use deno_webgpu::canvas::ContextData;
+use deno_webgpu::canvas::SurfaceData;
 
-use crate::surface::GPUCanvasContext;
+use crate::canvas::Context;
+use crate::canvas::CreateCanvasContext;
+use crate::canvas::get_context;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
@@ -44,7 +47,7 @@ pub enum ByowError {
   InvalidParameters,
   #[class(generic)]
   #[error(transparent)]
-  CreateSurface(wgpu_core::instance::CreateSurfaceError),
+  CreateSurface(deno_webgpu::wgpu_core::instance::CreateSurfaceError),
   #[cfg(target_os = "windows")]
   #[class(type)]
   #[error("Invalid system on Windows")]
@@ -84,18 +87,15 @@ pub enum ByowError {
   NSViewDisplay,
 }
 
-// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
 pub struct UnsafeWindowSurface {
-  pub id: wgpu_core::id::SurfaceId,
-  pub width: RefCell<u32>,
-  pub height: RefCell<u32>,
+  pub data: Rc<RefCell<SurfaceData>>,
 
-  pub context: SameObject<GPUCanvasContext>,
+  pub active_context: OnceCell<(String, v8::Global<v8::Value>)>,
 }
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for UnsafeWindowSurface {
-  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"UnsafeWindowSurface"
@@ -104,6 +104,44 @@ unsafe impl GarbageCollected for UnsafeWindowSurface {
 
 #[op2]
 impl UnsafeWindowSurface {
+  #[getter]
+  fn width(&self) -> u32 {
+    let data = self.data.borrow();
+    data.width
+  }
+  #[setter]
+  fn width(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
+    let mut data = self.data.borrow_mut();
+    data.width = value;
+
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context = v8::Local::new(scope, active_context);
+      match get_context(id, scope, active_context) {
+        Context::Bitmap(context) => context.resize(scope),
+        Context::WebGPU(context) => context.resize(scope),
+      }
+    }
+  }
+
+  #[getter]
+  fn height(&self) -> u32 {
+    let data = self.data.borrow();
+    data.height
+  }
+  #[setter]
+  fn height(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
+    let mut data = self.data.borrow_mut();
+    data.height = value;
+
+    if let Some((id, active_context)) = self.active_context.get() {
+      let active_context = v8::Local::new(scope, active_context);
+      match get_context(id, scope, active_context) {
+        Context::Bitmap(context) => context.resize(scope),
+        Context::WebGPU(context) => context.resize(scope),
+      }
+    }
+  }
+
   #[constructor]
   #[cppgc]
   fn new(
@@ -111,7 +149,7 @@ impl UnsafeWindowSurface {
     #[from_v8] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
     let instance = state
-      .try_borrow::<super::Instance>()
+      .try_borrow::<deno_webgpu::Instance>()
       .ok_or(ByowError::WebGPUNotInitiated)?;
 
     // Security note:
@@ -145,27 +183,60 @@ impl UnsafeWindowSurface {
     };
 
     Ok(UnsafeWindowSurface {
-      id,
-      width: RefCell::new(options.width),
-      height: RefCell::new(options.height),
-      context: SameObject::new(),
+      data: Rc::new(RefCell::new(SurfaceData {
+        width: options.width,
+        height: options.height,
+        id,
+      })),
+      active_context: Default::default(),
     })
   }
 
   #[global]
-  fn get_context(
+  fn get_context<'s>(
     &self,
+    state: &mut OpState,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::PinScope<'_, '_>,
-  ) -> v8::Global<v8::Object> {
-    self.context.get(scope, |_| GPUCanvasContext {
-      surface_id: self.id,
-      width: self.width.clone(),
-      height: self.height.clone(),
-      config: RefCell::new(None),
-      texture: RefCell::new(v8::TracedReference::empty()),
-      canvas: this,
-    })
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] context_id: String,
+    #[webidl] options: v8::Local<'s, v8::Value>,
+  ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
+    if self.active_context.get().is_none() {
+      let create_context: CreateCanvasContext = match context_id.as_str() {
+        super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
+        deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
+        _ => {
+          return Err(JsErrorBox::new(
+            "DOMExceptionNotSupportedError",
+            format!("Context '{context_id}' not implemented"),
+          ));
+        }
+      };
+
+      let instance = state
+        .try_borrow::<deno_webgpu::Instance>()
+        .expect("accessed in constructor")
+        .clone();
+
+      let context = create_context(
+        Some(instance),
+        this,
+        ContextData::Surface(self.data.clone()),
+        scope,
+        options,
+        "Failed to execute 'getContext' on 'OffscreenCanvas'",
+        "Argument 2",
+      )?;
+      let _ = self.active_context.set((context_id.clone(), context));
+    }
+
+    let (name, context) = self.active_context.get().unwrap();
+
+    if &context_id == name {
+      Ok(Some(context.clone()))
+    } else {
+      Ok(None)
+    }
   }
 
   #[nofast]
@@ -173,25 +244,50 @@ impl UnsafeWindowSurface {
     &self,
     scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), JsErrorBox> {
-    let Some(context) = self.context.try_unwrap(scope) else {
-      return Err(JsErrorBox::type_error("getContext was never called"));
+    let Some(active_context) = self.active_context.get() else {
+      return Err(JsErrorBox::new(
+        "DOMExceptionInvalidStateError",
+        "UnsafeWindowSurface hasn't been initialized yet",
+      ));
     };
 
-    context.present(scope).map_err(JsErrorBox::from_err)
-  }
+    let active_context_local = v8::Local::new(scope, &active_context.1);
+    let context = get_context(&active_context.0, scope, active_context_local);
+    match &context {
+      Context::Bitmap(context) => {
+        let data = self.data.borrow();
 
-  #[fast]
-  fn resize(&self, width: u32, height: u32, scope: &mut v8::PinScope<'_, '_>) {
-    self.width.replace(width);
-    self.height.replace(height);
+        let super::bitmaprenderer::SurfaceBitmap { instance, .. } =
+          context.surface_only.as_ref().unwrap();
 
-    let Some(context) = self.context.try_unwrap(scope) else {
-      return;
-    };
+        instance
+          .surface_present(data.id)
+          .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+      }
+      Context::WebGPU(context) => {
+        let configuration = context.configuration.borrow();
+        let configuration = configuration.as_ref().ok_or_else(|| {
+          JsErrorBox::type_error("GPUCanvasContext has not been configured")
+        })?;
 
-    context.resize_configure(width, height);
+        let data = self.data.borrow();
+
+        configuration
+          .device
+          .instance
+          .surface_present(data.id)
+          .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+
+        // next `get_current_texture` call would get a new texture
+        *context.current_texture.borrow_mut() = None;
+      }
+    }
+
+    Ok(())
   }
 }
+
+impl UnsafeWindowSurface {}
 
 struct UnsafeWindowSurfaceOptions {
   system: UnsafeWindowSurfaceSystem,
@@ -214,7 +310,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
 
   fn from_v8(
     scope: &mut v8::PinScope<'a, '_>,
-    value: Local<'a, Value>,
+    value: v8::Local<'a, v8::Value>,
   ) -> Result<Self, Self::Error> {
     let obj = value
       .try_cast::<v8::Object>()
