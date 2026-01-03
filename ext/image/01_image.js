@@ -289,7 +289,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       width = image[_width];
       height = image[_height];
       imageBitmapSource = 2;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]));
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]()));
     }
 
     // If those options are not provided, assign 0 to mean undefined(None).
