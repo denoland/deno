@@ -583,6 +583,21 @@ jobs:
       - name: Ensure no git changes
         if: '!(matrix.skip) && (matrix.job == ''test'' && github.event_name == ''pull_request'')'
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Combine test results
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/'))
+        run: deno run -RWN ./tools/combine_test_results.js
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/'))
+        with:
+          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          path: target/test_results.json
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -637,7 +652,7 @@ jobs:
       - name: Run benchmarks
         if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
-      - name: Post Benchmarks
+      - name: Post benchmarks
         if: |-
           !(matrix.skip) && (matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&

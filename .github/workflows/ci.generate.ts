@@ -983,6 +983,29 @@ const ci = {
           ].join("\n"),
         },
         {
+          name: "Combine test results",
+          if: [
+            "always() &&",
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: "deno run -RWN ./tools/combine_test_results.js",
+        },
+        {
+          name: "Upload test results",
+          uses: "actions/upload-artifact@v4",
+          if: [
+            "always() &&",
+            "matrix.job == 'test' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          with: {
+            name:
+              "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+            path: "target/test_results.json",
+          },
+        },
+        {
           name: "Configure hosts file for WPT",
           if: "matrix.wpt",
           run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
@@ -1058,7 +1081,7 @@ const ci = {
           run: "cargo bench --locked",
         },
         {
-          name: "Post Benchmarks",
+          name: "Post benchmarks",
           if: [
             "matrix.job == 'bench' &&",
             "github.repository == 'denoland/deno' &&",

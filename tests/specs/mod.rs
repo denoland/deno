@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Context;
 use file_test_runner::NO_CAPTURE;
@@ -24,6 +25,7 @@ use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
@@ -263,18 +265,23 @@ pub fn main() {
 
   let _http_guard = test_util::http_server();
   let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
       parallelism: parallelism.max_parallelism(),
-      reporter: test_util::test_runner::get_test_reporter(),
+      reporter: test_util::test_runner::get_test_reporter(
+        "specs",
+        flaky_test_tracker.clone(),
+      ),
     },
-    move |test| run_test(test, &parallelism),
+    move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
 }
 
 fn run_test(
   test: &CollectedTest<serde_json::Value>,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: &Parallelism,
 ) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
@@ -296,6 +303,7 @@ fn run_test(
           &metadata,
           &cwd,
           diagnostic_logger.clone(),
+          flaky_test_tracker,
           parallelism,
         );
         if result.is_failed() {
@@ -309,6 +317,7 @@ fn run_test(
         &metadata,
         &cwd,
         diagnostic_logger.clone(),
+        flaky_test_tracker,
         parallelism,
       )
     }
@@ -334,6 +343,7 @@ fn run_test_inner(
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: &Parallelism,
 ) -> TestResult {
   let run_fn = || {
@@ -350,7 +360,13 @@ fn run_test_inner(
           TestResult::Passed { duration: None }
         }))
       };
-      let result = run_maybe_flaky_test(&test.name, step.flaky, None, run_func);
+      let result = run_maybe_flaky_test(
+        &test.name,
+        step.flaky,
+        flaky_test_tracker,
+        None,
+        run_func,
+      );
       if result.is_failed() {
         return result;
       }
@@ -360,6 +376,7 @@ fn run_test_inner(
   run_maybe_flaky_test(
     &test.name,
     metadata.flaky || *IS_CI,
+    flaky_test_tracker,
     Some(parallelism),
     run_fn,
   )
