@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
@@ -34,7 +37,10 @@ import {
   CreateWriteStreamOptions,
 } from "node:fs/promises";
 import assert from "node:assert";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_STATE,
+} from "ext:deno_node/internal/errors.ts";
 
 const {
   Error,
@@ -56,6 +62,7 @@ const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
 const kRef = Symbol("kRef");
 const kUnref = Symbol("kUnref");
+const kLocked = Symbol("kLocked");
 
 interface WriteResult {
   bytesWritten: number;
@@ -73,6 +80,7 @@ export class FileHandle extends EventEmitter {
   [kClosePromise]?: Promise<void> | null;
   [kCloseResolve]?: () => void;
   [kCloseReject]?: (err: Error) => void;
+  [kLocked]: boolean;
 
   constructor(rid: number) {
     super();
@@ -80,6 +88,7 @@ export class FileHandle extends EventEmitter {
 
     this[kRefs] = 1;
     this[kClosePromise] = null;
+    this[kLocked] = false;
   }
 
   get fd() {
@@ -263,6 +272,87 @@ export class FileHandle extends EventEmitter {
       input: this.createReadStream({ ...options, autoClose: false }),
       crlfDelay: Infinity,
     });
+  }
+
+  readableWebStream(
+    options?: { autoClose?: boolean },
+  ): ReadableStream<Uint8Array> {
+    if (this.fd === -1) {
+      throw new ERR_INVALID_STATE("The FileHandle is closed");
+    }
+    if (this[kClosePromise]) {
+      throw new ERR_INVALID_STATE("The FileHandle is closing");
+    }
+    if (this[kLocked]) {
+      throw new ERR_INVALID_STATE("The FileHandle is locked");
+    }
+    this[kLocked] = true;
+
+    const autoClose = options?.autoClose ?? false;
+    let done = false;
+    let streamController: ReadableByteStreamController | null = null;
+
+    const ondone = async () => {
+      if (done) return;
+      done = true;
+      this[kUnref]();
+      if (autoClose) {
+        await this.close().catch(() => {});
+      }
+    };
+
+    const readable = new ReadableStream({
+      type: "bytes",
+      autoAllocateChunkSize: 16384,
+
+      start: (controller) => {
+        streamController = controller;
+      },
+
+      pull: async (controller) => {
+        try {
+          const view = controller.byobRequest!.view! as Uint8Array;
+          const { bytesRead } = await this.read(
+            view,
+            0,
+            view.byteLength,
+            null,
+          );
+
+          if (bytesRead === 0) {
+            controller.close();
+            controller.byobRequest!.respond(0);
+            await ondone();
+            return;
+          }
+
+          controller.byobRequest!.respond(bytesRead);
+        } catch (err) {
+          controller.error(err);
+          await ondone();
+        }
+      },
+
+      cancel: async () => {
+        await ondone();
+      },
+    });
+
+    this[kRef]();
+
+    // When FileHandle is closed, error the stream (works even when locked)
+    this.once("close", () => {
+      if (!done && streamController) {
+        try {
+          streamController.error(new Error("FileHandle was closed"));
+        } catch {
+          // Stream may already be closed/errored
+        }
+        void ondone();
+      }
+    });
+
+    return readable;
   }
 
   [SymbolAsyncDispose]() {
