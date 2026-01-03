@@ -93,7 +93,10 @@ const {
 } = primordials;
 
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamForRid,
   ReadableStreamPrototype,
@@ -762,7 +765,7 @@ async function readFile(path, options) {
     options.signal.throwIfAborted();
     cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
-    options.signal[abortSignal.add](abortHandler);
+    addSignalAlgorithm(options.signal, abortHandler);
   }
 
   try {
@@ -773,7 +776,7 @@ async function readFile(path, options) {
     return read;
   } finally {
     if (options?.signal) {
-      options.signal[abortSignal.remove](abortHandler);
+      removeSignalAlgorithm(options.signal, abortHandler);
 
       // always throw the abort error when aborted
       options.signal.throwIfAborted();
@@ -792,7 +795,7 @@ async function readTextFile(path, options) {
     options.signal.throwIfAborted();
     cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
-    options.signal[abortSignal.add](abortHandler);
+    addSignalAlgorithm(options.signal, abortHandler);
   }
 
   try {
@@ -803,7 +806,7 @@ async function readTextFile(path, options) {
     return read;
   } finally {
     if (options?.signal) {
-      options.signal[abortSignal.remove](abortHandler);
+      removeSignalAlgorithm(options.signal, abortHandler);
 
       // always throw the abort error when aborted
       options.signal.throwIfAborted();
@@ -838,7 +841,7 @@ async function writeFile(
     options.signal.throwIfAborted();
     cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
-    options.signal[abortSignal.add](abortHandler);
+    addSignalAlgorithm(options.signal, abortHandler);
   }
   try {
     if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
@@ -866,7 +869,7 @@ async function writeFile(
     }
   } finally {
     if (options.signal) {
-      options.signal[abortSignal.remove](abortHandler);
+      removeSignalAlgorithm(options.signal, abortHandler);
 
       // always throw the abort error when aborted
       options.signal.throwIfAborted();
