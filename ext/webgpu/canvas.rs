@@ -10,7 +10,6 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
-use deno_image::op_create_image_bitmap::ImageBitmap;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::CompositeAlphaMode;
 use wgpu_types::Extent3d;
@@ -49,7 +48,11 @@ pub struct GPUCanvasContext {
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUCanvasContext {
-  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    if let Some(config) = &*self.configuration.borrow() {
+      config.device.trace(visitor);
+    }
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
@@ -184,7 +187,7 @@ impl GPUCanvasContext {
                 queue_id: configuration.device.queue,
                 default_view_id: Default::default(),
                 label: "".to_string(),
-                size: wgpu_types::Extent3d {
+                size: Extent3d {
                   width: surface.width,
                   height: surface.height,
                   depth_or_array_layers: 1,
@@ -404,13 +407,37 @@ pub struct GPUCanvasConfiguration {
   pub usage: u32,
   #[webidl(default = vec![])]
   pub view_formats: Vec<GPUTextureFormat>,
-  // TODO: PredefinedColorSpace colorSpace = "srgb";
-  // TODO: GPUCanvasToneMapping toneMapping = {};
+  pub tone_mapping: GPUCanvasToneMapping,
+  #[webidl(default = PredefinedColorSpace::Srgb)]
+  pub color_space: PredefinedColorSpace,
   #[webidl(default = GPUCanvasAlphaMode::Opaque)]
   pub alpha_mode: GPUCanvasAlphaMode,
 
   // Extended from spec
   pub present_mode: Option<GPUPresentMode>,
+}
+
+#[derive(WebIDL, Clone)]
+#[webidl(dictionary)]
+pub struct GPUCanvasToneMapping {
+  #[webidl(default = GPUCanvasToneMappingMode::Standard)]
+  pub mode: GPUCanvasToneMappingMode,
+}
+
+#[derive(WebIDL, Clone)]
+#[webidl(enum)]
+pub enum GPUCanvasToneMappingMode {
+  Standard,
+  Extended,
+}
+
+#[derive(WebIDL, Clone)]
+#[webidl(enum)]
+pub enum PredefinedColorSpace {
+  Srgb,
+  SrgbLinear,
+  DisplayP3,
+  DisplayP3Linear,
 }
 
 #[derive(WebIDL, Clone)]
@@ -433,17 +460,11 @@ impl From<GPUCanvasAlphaMode> for CompositeAlphaMode {
 #[derive(WebIDL, Clone)]
 #[webidl(enum)]
 pub enum GPUPresentMode {
-  #[webidl(rename = "autoVsync")]
   AutoVsync,
-  #[webidl(rename = "autoNoVsync")]
   AutoNoVsync,
-  #[webidl(rename = "fifo")]
   Fifo,
-  #[webidl(rename = "fifoRelaxed")]
   FifoRelaxed,
-  #[webidl(rename = "immediate")]
   Immediate,
-  #[webidl(rename = "mailbox")]
   Mailbox,
 }
 

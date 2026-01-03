@@ -17,6 +17,7 @@ use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
 use deno_image::op_create_image_bitmap::ImageBitmap;
 use deno_webgpu::canvas::Data;
+use deno_webgpu::device::GPUDevice;
 
 pub struct ImageBitmapRenderingContext {
   canvas: v8::Global<v8::Object>,
@@ -71,7 +72,10 @@ impl ImageBitmapRenderingContext {
         Data::Image(image) => {
           *image = new_data;
         }
-        Data::Surface { .. } => {
+        Data::Surface { id, .. } => {
+          let device: Ref<GPUDevice> = ();
+
+          // TODO: draw to the surface
           todo!()
         }
       }
@@ -84,6 +88,11 @@ impl ImageBitmapRenderingContext {
           *image = DynamicImage::new(width, height, image::ColorType::Rgba8);
         }
         Data::Surface { .. } => {
+
+          let device: Ref<GPUDevice> = ();
+
+          // TODO: draw to the surface
+
           todo!()
         }
       }

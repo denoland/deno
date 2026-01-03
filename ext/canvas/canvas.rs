@@ -236,25 +236,28 @@ impl OffscreenCanvas {
 
     let mut out = vec![];
 
-    match options.r#type.as_str() {
-      "image/png" => {
-        let encoder = image::codecs::png::PngEncoder::new(&mut out);
-        data.write_with_encoder(encoder).unwrap();
-      }
+    let mime_type = match options.r#type.as_str() {
       "image/jpeg" => {
         let encoder = image::codecs::jpeg::JpegEncoder::new(&mut out);
         data.write_with_encoder(encoder).unwrap();
+        "image/jpeg"
       }
       "image/bmp" => {
         let encoder = image::codecs::bmp::BmpEncoder::new(&mut out);
         data.write_with_encoder(encoder).unwrap();
+        "image/bmp"
       }
       "image/x-icon" => {
         let encoder = image::codecs::ico::IcoEncoder::new(&mut out);
         data.write_with_encoder(encoder).unwrap();
+        "image/x-icon"
       }
-      _ => todo!(),
-    }
+      "image/png" | _ => {
+        let encoder = image::codecs::png::PngEncoder::new(&mut out);
+        data.write_with_encoder(encoder).unwrap();
+        "image/png"
+      }
+    };
 
     let blob_constructor = state.borrow::<BlobHandle>();
     let blob_constructor = v8::Local::new(scope, &blob_constructor.0);
@@ -267,7 +270,7 @@ impl OffscreenCanvas {
     let data = v8::Array::new_with_elements(scope, &[data.into()]);
 
     let key = v8::String::new(scope, "type").unwrap();
-    let value = v8::String::new(scope, options.r#type.as_str()).unwrap();
+    let value = v8::String::new(scope, mime_type).unwrap();
 
     let null = v8::null(scope);
 
