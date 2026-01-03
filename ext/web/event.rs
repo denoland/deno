@@ -387,21 +387,20 @@ impl Event {
       let mut scope = scope.init();
 
       let callback = v8::Local::new(&scope, listener.callback.clone());
-      let key = v8::String::new(&scope, "handleEvent").unwrap();
-      if let Some(handle_event) = callback.get(&scope, key.into())
-        && let Ok(handle_event) =
-          v8::Local::<v8::Function>::try_from(handle_event)
-      {
-        let recv = v8::Local::new(&scope, &target_object);
-        handle_event.call(&scope, recv.into(), &[event_object.into()]);
-      } else {
-        match v8::Local::<v8::Function>::try_from(callback) {
-          Ok(callback) => {
-            let recv = v8::Local::new(&scope, &target_object);
-            callback.call(&scope, recv.into(), &[event_object.into()]);
-          }
-          // 11.1.
-          Err(error) => {
+      match v8::Local::<v8::Function>::try_from(callback) {
+        Ok(callback) => {
+          let recv = v8::Local::new(&scope, &target_object);
+          callback.call(&scope, recv.into(), &[event_object.into()]);
+        }
+        Err(error) => {
+          let key = v8::String::new(&scope, "handleEvent").unwrap();
+          if let Some(handle_event) = callback.get(&scope, key.into())
+            && let Ok(handle_event) =
+              v8::Local::<v8::Function>::try_from(handle_event)
+          {
+            handle_event.call(&scope, callback.into(), &[event_object.into()]);
+          } else {
+            // 11.1.
             let message = v8::String::new(&scope, &error.to_string()).unwrap();
             let exception = v8::Exception::type_error(&scope, message);
             report_exception(&mut scope, state, exception);
@@ -2214,7 +2213,9 @@ impl AbortSignal {
     state: &Rc<RefCell<OpState>>,
     signal_object: v8::Local<'a, v8::Object>,
   ) {
-    for algorithm in self.algorithms.borrow().clone().iter() {
+    #[allow(clippy::mutable_key_type)]
+    let algorithms = self.algorithms.borrow().clone();
+    for algorithm in algorithms.iter() {
       let func = v8::Local::new(scope, algorithm);
       func.call(scope, signal_object.into(), &[]);
     }
