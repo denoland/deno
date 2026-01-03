@@ -14,7 +14,6 @@ use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -23,6 +22,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
 use deno_core::error::ResourceError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
@@ -31,7 +32,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
@@ -60,8 +60,7 @@ use hyper_util::rt::TokioIo;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct NodeHttpResponse {
   pub status: u16,
   pub status_text: String,
@@ -75,8 +74,7 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8, Debug)]
 struct InformationalResponse {
   status: u16,
   status_text: String,
@@ -156,17 +154,16 @@ pub enum ConnError {
   Hyper(#[from] hyper::Error),
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
 #[allow(clippy::await_holding_refcell_ref)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
-  #[serde] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
   #[string] request_path: Option<String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {
@@ -334,8 +331,7 @@ pub async fn op_node_http_request_with_conn(
   })
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_information(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -355,8 +351,7 @@ pub async fn op_node_http_await_information(
   rx.next().await
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -415,7 +410,7 @@ pub async fn op_node_http_await_response(
 /// This enables keepAlive connection reuse for the Node.js HTTP Agent.
 /// Returns the new resource ID for the socket, or None if the connection
 /// cannot be reused (e.g., connection error or already retrieved).
-#[op2(async)]
+#[op2]
 #[smi]
 pub async fn op_node_http_response_reclaim_conn(
   state: Rc<RefCell<OpState>>,
@@ -476,8 +471,7 @@ pub async fn op_node_http_response_reclaim_conn(
   Ok(Some(rid))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

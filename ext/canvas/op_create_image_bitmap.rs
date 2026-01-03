@@ -4,7 +4,7 @@ use std::io::BufReader;
 use std::io::Cursor;
 
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 // use image::codecs::webp::WebPDecoder;
 use image::DynamicImage;
@@ -222,8 +222,8 @@ fn decode_bitmap_data(
 /// related issue in whatwg
 /// https://github.com/whatwg/html/issues/10578
 ///
-/// reference in wpt  
-/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18  
+/// reference in wpt
+/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18
 /// https://wpt.live/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html
 fn apply_color_space_conversion(
   image: DynamicImage,
@@ -369,7 +369,6 @@ fn parse_args(
 }
 
 #[op2]
-#[serde]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,
@@ -387,7 +386,7 @@ pub(super) fn op_create_image_bitmap(
   resize_quality: u8,
   image_bitmap_source: u8,
   mime_type: u8,
-) -> Result<(ToJsBuffer, u32, u32), CanvasError> {
+) -> Result<(Uint8Array, u32, u32), CanvasError> {
   let ParsedArgs {
     resize_width,
     resize_height,

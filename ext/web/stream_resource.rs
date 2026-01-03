@@ -538,7 +538,7 @@ fn drop_sender(sender: *const c_void) {
   }
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_readable_stream_resource_write_buf(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -589,7 +589,7 @@ pub fn op_readable_stream_resource_close(sender: *const c_void) {
   drop_sender(sender);
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_readable_stream_resource_await_close(
   state: &mut OpState,
   #[smi] rid: ResourceId,

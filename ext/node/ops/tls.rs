@@ -19,6 +19,7 @@ use base64::Engine;
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -40,14 +41,12 @@ use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
-use serde::Deserialize;
 use webpki_root_certs;
 
 use super::crypto::x509::Certificate;
 use super::crypto::x509::CertificateObject;
 
 #[op2]
-#[serde]
 pub fn op_get_root_certificates() -> Vec<String> {
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
@@ -401,8 +400,7 @@ impl Resource for JSDuplexResource {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct StartJSTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
@@ -481,7 +479,7 @@ impl Resource for JSStreamTlsResource {
 #[op2]
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: StartJSTlsArgs,
+  #[scoped] args: StartJSTlsArgs,
   #[buffer] output: &mut [u32],
 ) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
@@ -561,7 +559,7 @@ pub fn op_node_tls_start(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_node_tls_handshake(
   state: Rc<RefCell<OpState>>,

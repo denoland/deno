@@ -86,7 +86,6 @@ impl GPUQueue {
   // In the successful case, the promise should resolve to undefined, but
   // `#[undefined]` does not seem to work here.
   // https://github.com/denoland/deno/issues/29603
-  #[async_method]
   async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
     let (sender, receiver) = oneshot::channel::<()>();
 
