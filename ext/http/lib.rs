@@ -1121,7 +1121,7 @@ async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
   #[smi] status: u16,
-  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[serde] data: Option<StringOrBuffer>,
 ) -> Result<(), HttpError> {
   let stream = state

@@ -531,7 +531,7 @@ pub fn op_http_set_response_headers(
 #[op2]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
-  #[v8_slow] trailers: Vec<(ByteString, ByteString)>,
+  #[scoped] trailers: Vec<(ByteString, ByteString)>,
 ) {
   let http =
     // SAFETY: op is called with external.

@@ -182,7 +182,7 @@ impl From<FsOpenOptions> for OpenOptions {
 pub fn op_fs_open_sync(
   state: &mut OpState,
   #[string] path: &str,
-  #[v8_slow] options: Option<FsOpenOptions>,
+  #[scoped] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),
@@ -210,7 +210,7 @@ pub fn op_fs_open_sync(
 pub async fn op_fs_open_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[v8_slow] options: Option<FsOpenOptions>,
+  #[scoped] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),

@@ -479,7 +479,7 @@ impl Resource for JSStreamTlsResource {
 #[op2]
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] args: StartJSTlsArgs,
+  #[scoped] args: StartJSTlsArgs,
   #[buffer] output: &mut [u32],
 ) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);

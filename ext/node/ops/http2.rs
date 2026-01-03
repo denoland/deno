@@ -262,7 +262,7 @@ pub async fn op_http2_send_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[smi] status: u16,
-  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
@@ -317,7 +317,7 @@ pub async fn op_http2_client_request(
   // TODO(bartlomieju): maybe use a vector with fixed layout to save sending
   // 4 strings of keys?
   #[serde] mut pseudo_headers: HashMap<String, String>,
-  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), Http2Error> {
   let resource = state
     .borrow()
@@ -404,7 +404,7 @@ pub async fn op_http2_client_reset_stream(
 pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-  #[v8_slow] trailers: Vec<(ByteString, ByteString)>,
+  #[scoped] trailers: Vec<(ByteString, ByteString)>,
 ) -> Result<(), Http2Error> {
   let resource = state
     .borrow()

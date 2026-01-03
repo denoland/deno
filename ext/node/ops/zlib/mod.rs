@@ -365,7 +365,7 @@ impl Zlib {
     #[smi] mem_level: i32,
     #[smi] strategy: i32,
     #[buffer] write_result: &mut [u32],
-    #[v8_slow] callback: v8::Global<v8::Function>,
+    #[scoped] callback: v8::Global<v8::Function>,
     #[buffer] dictionary: Option<&[u8]>,
   ) -> Result<i32, ZlibError> {
     let mut zlib = self.inner.borrow_mut();
@@ -598,7 +598,7 @@ impl BrotliEncoder {
     &self,
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
-    #[v8_slow] callback: v8::Global<v8::Function>,
+    #[scoped] callback: v8::Global<v8::Function>,
   ) {
     let inst = {
       let mut state = BrotliEncoderStateStruct::new(StandardAlloc::default());
@@ -773,7 +773,7 @@ impl BrotliDecoder {
     &self,
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
-    #[v8_slow] callback: v8::Global<v8::Function>,
+    #[scoped] callback: v8::Global<v8::Function>,
   ) {
     // SAFETY: creates new brotli decoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {

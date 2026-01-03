@@ -160,10 +160,10 @@ pub enum ConnError {
 #[allow(clippy::await_holding_refcell_ref)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
   #[string] request_path: Option<String>,
-  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {

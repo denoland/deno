@@ -296,7 +296,7 @@ pub fn op_require_is_deno_dir_package<
 #[op2]
 pub fn op_require_resolve_lookup_paths(
   #[string] request: &str,
-  #[v8_slow] maybe_parent_paths: Option<Vec<String>>,
+  #[scoped] maybe_parent_paths: Option<Vec<String>>,
   #[string] parent_filename: &str,
 ) -> Option<Vec<String>> {
   if !request.starts_with('.')
@@ -402,7 +402,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
 
 #[op2]
 #[string]
-pub fn op_require_path_resolve(#[v8_slow] parts: Vec<String>) -> String {
+pub fn op_require_path_resolve(#[scoped] parts: Vec<String>) -> String {
   path_resolve(parts.iter().map(|s| s.as_str()))
     .to_string_lossy()
     .into_owned()

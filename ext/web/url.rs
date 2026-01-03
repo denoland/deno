@@ -213,7 +213,7 @@ pub fn op_url_parse_search_params(
 #[op2]
 #[string]
 pub fn op_url_stringify_search_params(
-  #[v8_slow] args: Vec<(String, String)>,
+  #[scoped] args: Vec<(String, String)>,
 ) -> String {
   form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

@@ -311,7 +311,7 @@ pub fn op_tls_cert_resolver_resolve_error(
 #[op2(stack_trace)]
 pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] args: StartTlsArgs,
+  #[scoped] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let rid = args.rid;
@@ -401,8 +401,8 @@ pub fn op_tls_start(
 #[op2(stack_trace)]
 pub async fn op_net_connect_tls(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] addr: IpAddr,
-  #[v8_slow] args: ConnectTlsArgs,
+  #[scoped] addr: IpAddr,
+  #[scoped] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
@@ -509,8 +509,8 @@ pub struct ListenTlsArgs {
 #[op2(stack_trace)]
 pub fn op_net_listen_tls(
   state: &mut OpState,
-  #[v8_slow] addr: IpAddr,
-  #[v8_slow] args: ListenTlsArgs,
+  #[scoped] addr: IpAddr,
+  #[scoped] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), NetError> {
   if args.reuse_port {

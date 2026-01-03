@@ -408,9 +408,9 @@ impl Drop for ResourceToBodyAdapter {
 #[allow(clippy::result_large_err)]
 pub fn op_fetch(
   state: &mut OpState,
-  #[v8_slow] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
-  #[v8_slow] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   has_body: bool,
   data: Option<Uint8Array>,
@@ -835,7 +835,7 @@ pub struct CreateHttpClientArgs {
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client(
   state: &mut OpState,
-  #[v8_slow] mut args: CreateHttpClientArgs,
+  #[scoped] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError> {
   if let Some(proxy) = &mut args.proxy {

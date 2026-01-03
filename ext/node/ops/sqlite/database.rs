@@ -583,7 +583,7 @@ impl DatabaseSync {
   fn new(
     state: &mut OpState,
     #[string] location: String,
-    #[v8_slow] options: DatabaseSyncOptions,
+    #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
       let db = open_db(state, &location, &options)?;
@@ -1163,7 +1163,7 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[v8_slow] options: OptionUndefined<SessionOptions>,
+    #[scoped] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
     let db = self.conn.borrow();

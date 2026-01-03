@@ -1657,7 +1657,7 @@ pub struct RsaJwkKey {
 #[op2]
 #[cppgc]
 pub fn op_node_create_rsa_jwk(
-  #[v8_slow] jwk: RsaJwkKey,
+  #[scoped] jwk: RsaJwkKey,
   is_public: bool,
 ) -> Result<KeyObjectHandle, RsaJwkError> {
   KeyObjectHandle::new_rsa_jwk(jwk, is_public)

@@ -184,7 +184,7 @@ fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
 
 #[op2]
 fn op_base64_atob(
-  #[v8_slow] mut s: ByteString,
+  #[scoped] mut s: ByteString,
 ) -> Result<ByteString, WebError> {
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
@@ -209,7 +209,7 @@ fn op_base64_encode(#[buffer] s: &[u8]) -> String {
 
 #[op2]
 #[string]
-fn op_base64_btoa(#[v8_slow] s: ByteString) -> String {
+fn op_base64_btoa(#[scoped] s: ByteString) -> String {
   forgiving_base64_encode(s.as_ref())
 }
 

@@ -401,7 +401,7 @@ pub async fn op_ws_create(
   #[string] url: String,
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
-  #[v8_slow] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[scoped] headers: Option<Vec<(ByteString, ByteString)>>,
   #[smi] client_rid: Option<u32>,
 ) -> Result<CreateResponse, WebsocketError> {
   let (client, allow_host) = {

@@ -108,7 +108,7 @@ impl UnsafeWindowSurface {
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[v8_slow] options: UnsafeWindowSurfaceOptions,
+    #[scoped] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
     let instance = state
       .try_borrow::<super::Instance>()

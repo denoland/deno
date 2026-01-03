@@ -230,7 +230,7 @@ unsafe impl GarbageCollected for EndpointResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_create(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] addr: Addr,
+  #[scoped] addr: Addr,
   can_listen: bool,
 ) -> Result<EndpointResource, QuicError> {
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
@@ -317,8 +317,8 @@ unsafe impl GarbageCollected for ListenerResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_listen(
   #[cppgc] endpoint: &EndpointResource,
-  #[v8_slow] args: ListenArgs,
-  #[v8_slow] transport_config: TransportConfig,
+  #[scoped] args: ListenArgs,
+  #[scoped] transport_config: TransportConfig,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<ListenerResource, QuicError> {
   if !endpoint.can_listen {
@@ -461,7 +461,7 @@ fn quic_incoming_accept(
 #[cppgc]
 pub(crate) async fn op_quic_incoming_accept(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[v8_slow] transport_config: Option<TransportConfig>,
+  #[scoped] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   let conn = connecting.await?;
@@ -472,7 +472,7 @@ pub(crate) async fn op_quic_incoming_accept(
 #[cppgc]
 pub(crate) fn op_quic_incoming_accept_0rtt(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[v8_slow] transport_config: Option<TransportConfig>,
+  #[scoped] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   match connecting.into_0rtt() {
@@ -541,8 +541,8 @@ struct CertificateHash {
 pub(crate) fn op_quic_endpoint_connect(
   state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
-  #[v8_slow] args: ConnectArgs,
-  #[v8_slow] transport_config: TransportConfig,
+  #[scoped] args: ConnectArgs,
+  #[scoped] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<ConnectingResource, QuicError> {
   state

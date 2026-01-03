@@ -59,7 +59,7 @@ fn op_libs() -> Vec<String> {
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
-  #[v8_slow] specifiers: Vec<(bool, String)>,
+  #[scoped] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }

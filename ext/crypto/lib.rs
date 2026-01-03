@@ -295,7 +295,7 @@ pub struct SignArg {
 
 #[op2]
 pub async fn op_crypto_sign_key(
-  #[v8_slow] args: SignArg,
+  #[scoped] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -429,7 +429,7 @@ pub struct VerifyArg {
 
 #[op2]
 pub async fn op_crypto_verify_key(
-  #[v8_slow] args: VerifyArg,
+  #[scoped] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -592,7 +592,7 @@ pub struct DeriveKeyArg {
 
 #[op2]
 pub async fn op_crypto_derive_bits(
-  #[v8_slow] args: DeriveKeyArg,
+  #[scoped] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {

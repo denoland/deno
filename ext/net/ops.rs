@@ -252,7 +252,7 @@ pub async fn op_net_recv_udp(
 pub async fn op_net_send_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[v8_slow] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, NetError> {
   {
@@ -476,7 +476,7 @@ pub fn op_net_get_ips_from_perm_token(
 #[op2(stack_trace)]
 pub async fn op_net_connect_tcp(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
@@ -562,7 +562,7 @@ impl Resource for UdpSocketResource {
 #[op2(stack_trace)]
 pub fn op_net_listen_tcp(
   state: &mut OpState,
-  #[v8_slow] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
@@ -656,7 +656,7 @@ fn net_listen_udp(
 #[op2(stack_trace)]
 pub fn op_net_listen_udp(
   state: &mut OpState,
-  #[v8_slow] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -667,7 +667,7 @@ pub fn op_net_listen_udp(
 #[op2(stack_trace)]
 pub fn op_node_unstable_net_listen_udp(
   state: &mut OpState,
-  #[v8_slow] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -937,7 +937,7 @@ pub struct NameServer {
 #[op2(stack_trace)]
 pub async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
-  #[v8_slow] args: ResolveAddrArgs,
+  #[scoped] args: ResolveAddrArgs,
 ) -> Result<Vec<DnsRecordWithTtl>, NetError> {
   let ResolveAddrArgs {
     query,

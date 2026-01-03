@@ -1169,7 +1169,7 @@ mod deprecated {
   #[op2(stack_trace)]
   pub fn op_run(
     state: &mut OpState,
-    #[v8_slow] run_args: RunArgs,
+    #[scoped] run_args: RunArgs,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
