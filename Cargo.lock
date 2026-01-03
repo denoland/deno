@@ -1852,6 +1852,7 @@ dependencies = [
 name = "deno_canvas"
 version = "0.94.0"
 dependencies = [
+ "bytemuck",
  "deno_core",
  "deno_error",
  "deno_image",

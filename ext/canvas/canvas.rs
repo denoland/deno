@@ -20,14 +20,16 @@ use deno_webgpu::canvas::Data;
 
 pub struct BlobHandle(pub v8::Global<v8::Function>);
 
-pub type CreateCanvasContext = for<'s> fn(
-  canvas: v8::Global<v8::Object>,
-  data: Rc<RefCell<Data>>,
-  scope: &mut v8::PinScope<'s, '_>,
-  options: v8::Local<'s, v8::Value>,
-  prefix: &'static str,
-  context: &'static str,
-) -> v8::Global<v8::Value>;
+pub type CreateCanvasContext =
+  for<'s> fn(
+    instance: Option<deno_webgpu::Instance>,
+    canvas: v8::Global<v8::Object>,
+    data: Rc<RefCell<Data>>,
+    scope: &mut v8::PinScope<'s, '_>,
+    options: v8::Local<'s, v8::Value>,
+    prefix: &'static str,
+    context: &'static str,
+  ) -> Result<v8::Global<v8::Value>, JsErrorBox>;
 
 pub struct OffscreenCanvas {
   data: Rc<RefCell<Data>>,
@@ -49,7 +51,7 @@ impl OffscreenCanvas {
   #[getter]
   fn width(&self) -> u32 {
     let data = self.data.borrow();
-    let Data::Image(data) = &*data else {
+    let Data::Canvas(data) = &*data else {
       unreachable!();
     };
 
@@ -63,10 +65,10 @@ impl OffscreenCanvas {
   ) {
     {
       self.data.replace_with(|data| {
-        let Data::Image(data) = &data else {
+        let Data::Canvas(data) = &data else {
           unreachable!();
         };
-        Data::Image(data.crop_imm(0, 0, value as _, data.height()))
+        Data::Canvas(data.crop_imm(0, 0, value as _, data.height()))
       });
     }
     if let Some((id, active_context)) = self.active_context.get() {
@@ -81,7 +83,7 @@ impl OffscreenCanvas {
   #[getter]
   fn height(&self) -> u32 {
     let data = self.data.borrow();
-    let Data::Image(data) = &*data else {
+    let Data::Canvas(data) = &*data else {
       unreachable!();
     };
 
@@ -95,11 +97,11 @@ impl OffscreenCanvas {
   ) {
     {
       self.data.replace_with(|data| {
-        let Data::Image(data) = &data else {
+        let Data::Canvas(data) = &data else {
           unreachable!();
         };
 
-        Data::Image(data.crop_imm(0, 0, data.width(), value as _))
+        Data::Canvas(data.crop_imm(0, 0, data.width(), value as _))
       });
     }
     if let Some((id, active_context)) = self.active_context.get() {
@@ -119,7 +121,7 @@ impl OffscreenCanvas {
     #[webidl(options(enforce_range = true))] height: u64,
   ) -> OffscreenCanvas {
     OffscreenCanvas {
-      data: Rc::new(RefCell::new(Data::Image(DynamicImage::new(
+      data: Rc::new(RefCell::new(Data::Canvas(DynamicImage::new(
         width as _,
         height as _,
         ColorType::Rgba8,
@@ -149,13 +151,14 @@ impl OffscreenCanvas {
       };
 
       let context = create_context(
+        None,
         this,
         self.data.clone(),
         scope,
         options,
         "Failed to execute 'getContext' on 'OffscreenCanvas'",
         "Argument 2",
-      );
+      )?;
       let _ = self.active_context.set((context_id.clone(), context));
     }
 
@@ -189,12 +192,12 @@ impl OffscreenCanvas {
     }
 
     let data = self.data.replace_with(|image| {
-      let Data::Image(image) = image else {
+      let Data::Canvas(image) = image else {
         unreachable!();
       };
 
       let (width, height) = image.dimensions();
-      Data::Image(DynamicImage::new(width, height, ColorType::Rgba8))
+      Data::Canvas(DynamicImage::new(width, height, ColorType::Rgba8))
     });
 
     match &context {
@@ -204,7 +207,7 @@ impl OffscreenCanvas {
       }
     }
 
-    let Data::Image(data) = data else {
+    let Data::Canvas(data) = data else {
       unreachable!();
     };
 
@@ -230,7 +233,7 @@ impl OffscreenCanvas {
     }
 
     let data = self.data.borrow();
-    let Data::Image(data) = &*data else {
+    let Data::Canvas(data) = &*data else {
       unreachable!();
     };
 

@@ -23,7 +23,7 @@ use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 
 pub enum Data {
-  Image(DynamicImage),
+  Canvas(DynamicImage),
   Surface {
     width: u32,
     height: u32,
@@ -229,7 +229,7 @@ impl GPUCanvasContext {
       .collect();
 
     match &*self.data.borrow() {
-      Data::Image(image) => {
+      Data::Canvas(image) => {
         let (width, height) = image.dimensions();
 
         Ok(Descriptor::Texture(TextureDescriptor {
@@ -274,13 +274,13 @@ impl GPUCanvasContext {
     let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
     else {
       self.data.replace_with(|data| {
-        let Data::Image(image) = data else {
+        let Data::Canvas(image) = data else {
           unreachable!()
         };
 
         let (width, height) = image.dimensions();
         let image = deno_image::image::RgbaImage::new(width, height);
-        Data::Image(DynamicImage::from(image))
+        Data::Canvas(DynamicImage::from(image))
       });
 
       return Ok(());
@@ -308,6 +308,9 @@ impl GPUCanvasContext {
           },
           None,
         );
+      if let Some(err) = err {
+        return Err(JsErrorBox::from_err(GPUError::from(err)));
+      }
 
       let data = copy_texture_to_vec(
         &device.instance,
@@ -319,14 +322,14 @@ impl GPUCanvasContext {
       )?;
 
       self.data.replace_with(|image| {
-        let Data::Image(image) = image else {
+        let Data::Canvas(image) = image else {
           unreachable!()
         };
 
         let (width, height) = image.dimensions();
         let image =
           deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
-        Data::Image(DynamicImage::from(image))
+        Data::Canvas(DynamicImage::from(image))
       });
     }
 
@@ -360,7 +363,7 @@ impl GPUCanvasContext {
       ));
 
       match &*self.data.borrow() {
-        Data::Image(_) => {}
+        Data::Canvas(_) => {}
         Data::Surface { id, .. } => {
           let texture_descriptor = self.texture_descriptor.borrow();
 
@@ -614,13 +617,14 @@ pub fn copy_texture_to_vec(
 pub const CONTEXT_ID: &str = "webgpu";
 
 pub fn create<'s>(
+  _instance: Option<Instance>,
   canvas: v8::Global<v8::Object>,
   data: Rc<RefCell<Data>>,
   scope: &mut v8::PinScope<'s, '_>,
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,
-) -> v8::Global<v8::Value> {
+) -> Result<v8::Global<v8::Value>, JsErrorBox> {
   let obj = deno_core::cppgc::make_cppgc_object(
     scope,
     GPUCanvasContext {
@@ -632,5 +636,5 @@ pub fn create<'s>(
     },
   );
 
-  v8::Global::new(scope, obj.cast())
+  Ok(v8::Global::new(scope, obj.cast()))
 }

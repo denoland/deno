@@ -11,7 +11,7 @@ use std::ffi::c_void;
 ))]
 use std::ptr::NonNull;
 use std::rc::Rc;
-use deno_core::cppgc::Ref;
+
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -19,7 +19,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_webgpu::canvas::Data;
-use deno_webgpu::device::GPUDevice;
+
 use crate::canvas::Context;
 use crate::canvas::CreateCanvasContext;
 use crate::canvas::get_context;
@@ -124,7 +124,7 @@ impl UnsafeWindowSurface {
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
-        Context::Bitmap(_) => {}
+        Context::Bitmap(context) => context.resize(scope),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -151,7 +151,7 @@ impl UnsafeWindowSurface {
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
-        Context::Bitmap(_) => {}
+        Context::Bitmap(context) => context.resize(scope),
         Context::WebGPU(context) => context.resize(scope),
       }
     }
@@ -210,6 +210,7 @@ impl UnsafeWindowSurface {
   #[global]
   fn get_context<'s>(
     &self,
+    state: &mut OpState,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] context_id: String,
@@ -227,14 +228,20 @@ impl UnsafeWindowSurface {
         }
       };
 
+      let instance = state
+        .try_borrow::<deno_webgpu::Instance>()
+        .expect("accessed in constructor")
+        .clone();
+
       let context = create_context(
+        Some(instance),
         this,
         self.data.clone(),
         scope,
         options,
         "Failed to execute 'getContext' on 'OffscreenCanvas'",
         "Argument 2",
-      );
+      )?;
       let _ = self.active_context.set((context_id.clone(), context));
     }
 
@@ -250,7 +257,6 @@ impl UnsafeWindowSurface {
   #[nofast]
   fn present(
     &self,
-    state: &mut OpState,
     scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), JsErrorBox> {
     let Some(active_context) = self.active_context.get() else {
@@ -269,9 +275,12 @@ impl UnsafeWindowSurface {
           unreachable!();
         };
 
-        let device: Ref<GPUDevice> = ();
+        let super::bitmaprenderer::SurfaceBitmap { instance, .. } =
+          context.surface_only.as_ref().unwrap();
 
-        device.instance.surface_present(*id).map_err(|e| JsErrorBox::generic(e.to_string()))?;
+        instance
+          .surface_present(*id)
+          .map_err(|e| JsErrorBox::generic(e.to_string()))?;
       }
       Context::WebGPU(context) => {
         let configuration = context.configuration.borrow();
