@@ -350,7 +350,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
 
 const _bitmapData = SymbolFor("Deno_bitmapData");
 function getBitmapData(imageBitmap) {
-  return imageBitmap[_bitmapData];
+  return imageBitmap[_bitmapData]();
 }
 
 internals.getBitmapData = getBitmapData;
