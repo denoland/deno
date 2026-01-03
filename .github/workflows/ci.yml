@@ -173,8 +173,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '88-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '88-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -379,7 +379,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '88-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -583,6 +583,21 @@ jobs:
       - name: Ensure no git changes
         if: '!(matrix.skip) && (matrix.job == ''test'' && github.event_name == ''pull_request'')'
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Combine test results
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/'))
+        run: deno run -RWN ./tools/combine_test_results.js
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/'))
+        with:
+          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          path: target/test_results.json
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -637,7 +652,7 @@ jobs:
       - name: Run benchmarks
         if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
-      - name: Post Benchmarks
+      - name: Post benchmarks
         if: |-
           !(matrix.skip) && (matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
@@ -744,7 +759,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '88-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
@@ -795,8 +810,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '88-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '88-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2
@@ -813,7 +828,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '88-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: test_format.js
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
@@ -833,7 +848,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '88-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:

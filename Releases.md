@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.3 / 2025.12.20
+
+- fix(check): improve node types handling
+- Revert "fix(ext/node): stub out Module.register and Module.registerHooks"
+  (#31684)
+
+### 2.6.2 / 2025.12.19
+
+- feat(unstable): add sandbox subcommand (#31568)
+- fix(audit): fix deserde for transitive npm audit actions (#31671)
+- fix(check): handle workspace members having different jsx import sources and
+  importing each other (#31654)
+- fix(check): regression with tsgo and node globals (#31621)
+- fix(cli): deno tunnel when token storage isn't working or without deno.json
+  (#31584)
+- fix(compile): ensure temp dir exists during x64 codesign (#31672)
+- fix(ext/node): `sqlite:backup` compatibility (#31610)
+- fix(ext/node): add error handling functions and tests for UV bindings (#31639)
+- fix(ext/node): avoid env permission for TERM in console and readline (#31638)
+- fix(ext/node): fix hot loop in `setImmediate` with a pending timer (#31643)
+- fix(ext/node): stub out Module.register and Module.registerHooks (#31666)
+- fix(ext/node): support named pipe listen, connect and open (#31624)
+- fix(ext/telemetry): otel baggage propagation (#31620)
+- fix(fetch): fix SOCKS5 proxy URL validation logic (#31604)
+- fix(flags): implement a better sandbox subcommand (#31657)
+- fix(inspector): worker debugging support via CDP (#31527)
+- fix(x): cache on demand when running, resolve packages with only one binary,
+  don't fail on node-gyp if not present (#31619)
+- fix(x): fix shim script when use custom alias name, re-enable alias tests
+  (#31653)
+- fix: panic on dropped inspector session (#31658)
+- fix: update glob implementation to match with latest node (#31627)
+
 ### 2.6.1 / 2025.12.15
 
 - feat(unstable): deploy config allow app to be optional (#31567)

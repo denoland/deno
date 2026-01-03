@@ -117,6 +117,9 @@ impl GPUBuffer {
     *self.map_state.borrow()
   }
 
+  // In the successful case, the promise should resolve to undefined, but
+  // `#[undefined]` does not seem to work here.
+  // https://github.com/denoland/deno/issues/29603
   async fn map_async(
     &self,
     #[webidl(options(enforce_range = true))] mode: u32,
@@ -176,7 +179,7 @@ impl GPUBuffer {
         {
           self
             .instance
-            .device_poll(self.device, wgpu_types::Maintain::wait())
+            .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
             .unwrap();
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -252,6 +255,7 @@ impl GPUBuffer {
   }
 
   #[nofast]
+  #[undefined]
   fn unmap(&self, scope: &mut v8::PinScope<'_, '_>) -> Result<(), BufferError> {
     for ab in self.mapped_js_buffers.replace(vec![]) {
       let ab = ab.open(scope);
@@ -269,10 +273,8 @@ impl GPUBuffer {
   }
 
   #[fast]
-  fn destroy(&self) -> Result<(), JsErrorBox> {
-    self
-      .instance
-      .buffer_destroy(self.id)
-      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  #[undefined]
+  fn destroy(&self) {
+    self.instance.buffer_destroy(self.id);
   }
 }

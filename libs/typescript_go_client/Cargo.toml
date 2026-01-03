@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_typescript_go_client_rust"
-version = "0.5.0"
+version = "0.7.0"
 edition = "2024"
 license = "MIT"
 description = "Rust library to communicate with TSGO binary over IPC"

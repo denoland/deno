@@ -891,6 +891,14 @@ impl TestCommandBuilder {
         tsgo_prebuilt_path().to_string(),
       );
     }
+    if !envs.contains_key("PATH") {
+      let path = std::env::var_os("PATH").unwrap_or_default();
+      let path = std::env::split_paths(&path);
+      let additional = deno_exe_path().parent().to_path_buf();
+      let path =
+        std::env::join_paths(std::iter::once(additional).chain(path)).unwrap();
+      envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
+    }
     for key in &self.envs_remove {
       envs.remove(key);
     }

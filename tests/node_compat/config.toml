@@ -86,7 +86,7 @@
 "parallel/test-buffer-constructor-node-modules-paths.js" = {}
 "parallel/test-buffer-constructor-node-modules.js" = {}
 "parallel/test-buffer-constructor-outside-node-modules.js" = {}
-"parallel/test-buffer-copy.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31637" }
+"parallel/test-buffer-copy.js" = {}
 "parallel/test-buffer-equals.js" = {}
 "parallel/test-buffer-failed-alloc-typed-arrays.js" = {}
 "parallel/test-buffer-fakes.js" = {}
@@ -544,8 +544,10 @@
 "parallel/test-http-chunked-smuggling.js" = {}
 "parallel/test-http-chunked.js" = {}
 "parallel/test-http-client-abort-event.js" = {}
+"parallel/test-http-client-abort-keep-alive-destroy-res.js" = {}
 "parallel/test-http-client-abort-no-agent.js" = {}
 "parallel/test-http-client-abort-response-event.js" = {}
+"parallel/test-http-client-abort-unix-socket.js" = {}
 "parallel/test-http-client-abort2.js" = {}
 "parallel/test-http-client-abort3.js" = {}
 "parallel/test-http-client-agent-abort-close-event.js" = {}
@@ -808,6 +810,7 @@
 "parallel/test-net-persistent-keepalive.js" = {}
 "parallel/test-net-persistent-nodelay.js" = {}
 "parallel/test-net-persistent-ref-unref.js" = {}
+"parallel/test-net-pipe-connect-errors.js" = {}
 "parallel/test-net-pipe-with-long-path.js" = {}
 "parallel/test-net-reconnect.js" = {}
 "parallel/test-net-remote-address-port.js" = {}

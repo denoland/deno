@@ -687,7 +687,7 @@ impl WebWorker {
 
       // Send worker proxy to the main runtime
       if main_session_tx.unbounded_send(main_proxy).is_err() {
-        log::warn!("Failed to send inspector session proxy to main runtime");
+        log::debug!("Failed to send inspector session proxy to main runtime");
       }
 
       // Send worker proxy to the worker runtime
@@ -697,7 +697,7 @@ impl WebWorker {
         .unbounded_send(worker_proxy)
         .is_err()
       {
-        log::warn!("Failed to send inspector session proxy to worker runtime");
+        log::debug!("Failed to send inspector session proxy to worker runtime");
       }
     }
 
