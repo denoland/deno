@@ -533,7 +533,7 @@ impl DepManager {
     args: DepManagerArgs,
   ) -> Result<Self, AnyError> {
     let mut deps = Vec::with_capacity(256);
-    if let Some(deno_json) = workspace_dir.maybe_deno_json() {
+    if let Some(deno_json) = workspace_dir.member_deno_json() {
       if deno_json.specifier.scheme() != "file" {
         bail!("remote deno.json files are not supported");
       }
@@ -542,7 +542,7 @@ impl DepManager {
         add_deps_from_deno_json(deno_json, dep_filter, &mut deps);
       }
     }
-    if let Some(package_json) = workspace_dir.maybe_pkg_json() {
+    if let Some(package_json) = workspace_dir.member_pkg_json() {
       add_deps_from_package_json(package_json, dep_filter, &mut deps);
     }
 

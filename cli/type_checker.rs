@@ -303,7 +303,7 @@ impl TypeChecker {
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
           referrer: dir
-            .maybe_deno_json()
+            .member_or_root_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
         }
