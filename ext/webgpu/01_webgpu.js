@@ -16,10 +16,13 @@ import {
   GPUBuffer,
   GPUCommandBuffer,
   GPUCommandEncoder,
+  GPUCompilationInfo,
+  GPUCompilationMessage,
   GPUComputePassEncoder,
   GPUComputePipeline,
   GPUDevice,
   GPUDeviceLostInfo,
+  GPUExternalTexture,
   GPUPipelineLayout,
   GPUQuerySet,
   GPUQueue,
@@ -577,6 +580,51 @@ ObjectDefineProperty(GPUShaderModulePrototype, privateCustomInspect, {
   },
 });
 
+ObjectDefineProperty(GPUCompilationInfo, privateCustomInspect, {
+  __proto__: null,
+  value(inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUCompilationInfoPrototype,
+          this,
+        ),
+        keys: [
+          "messages",
+        ],
+      }),
+      inspectOptions,
+    );
+  },
+});
+const GPUCompilationInfoPrototype = GPUCompilationInfo.prototype;
+
+ObjectDefineProperty(GPUCompilationMessage, privateCustomInspect, {
+  __proto__: null,
+  value(inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUCompilationMessagePrototype,
+          this,
+        ),
+        keys: [
+          "message",
+          "type",
+          "line_num",
+          "line_pos",
+          "offset",
+          "length",
+        ],
+      }),
+      inspectOptions,
+    );
+  },
+});
+const GPUCompilationMessagePrototype = GPUCompilationMessage.prototype;
+
 class GPUShaderStage {
   constructor() {
     webidl.illegalConstructor();
@@ -860,11 +908,14 @@ export {
   GPUColorWrite,
   GPUCommandBuffer,
   GPUCommandEncoder,
+  GPUCompilationInfo,
+  GPUCompilationMessage,
   GPUComputePassEncoder,
   GPUComputePipeline,
   GPUDevice,
   GPUDeviceLostInfo,
   GPUError,
+  GPUExternalTexture,
   GPUInternalError,
   GPUMapMode,
   GPUOutOfMemoryError,

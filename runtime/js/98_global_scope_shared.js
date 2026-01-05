@@ -45,7 +45,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 

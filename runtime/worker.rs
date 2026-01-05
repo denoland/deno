@@ -1047,7 +1047,7 @@ fn common_extensions<
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
+    deno_image::deno_image::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
