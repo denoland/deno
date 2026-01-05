@@ -508,6 +508,7 @@
     "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
     "ext:deno_image/01_image.js": "../ext/image/01_image.js",
     "ext:deno_canvas/01_canvas.js": "../ext/canvas/01_canvas.js",
+    "ext:deno_canvas/02_surface.js": "../ext/canvas/02_surface.js",
     "ext:deno_web/01_console.js": "../ext/console/01_console.js",
     "ext:deno_cron/01_cron.ts": "../ext/cron/01_cron.ts",
     "ext:deno_crypto/00_crypto.js": "../ext/crypto/00_crypto.js",

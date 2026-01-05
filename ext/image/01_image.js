@@ -4,9 +4,11 @@ import { internals, primordials } from "ext:core/mod.js";
 import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
@@ -25,8 +27,6 @@ import {
   _width,
   ImageDataPrototype,
 } from "ext:deno_web/16_image_data.js";
-
-const ImageBitmapPrototype = ImageBitmap.prototype;
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
@@ -104,6 +104,34 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
     },
   ],
 );
+
+const ImageBitmapPrototype = ImageBitmap.prototype;
+const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
+ObjectDefineProperty(ImageBitmapPrototype, privateCustomInspect, {
+  __proto__: null,
+  value(inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ImageBitmapPrototype, this),
+        keys: [
+          "width",
+          "height",
+        ],
+      }),
+      inspectOptions,
+    );
+  },
+});
+
+function float16ToUnorm8(data) {
+  const length = TypedArrayPrototypeGetLength(data);
+  const result = new Uint8ClampedArray(length);
+  for (let i = 0; i < length; i++) {
+    result[i] = data[i] * 255;
+  }
+  return result;
+}
 
 function createImageBitmap(
   image,
@@ -258,10 +286,10 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         TypedArrayPrototypeGetLength(data),
       );
     } else if (isImageBitmap) {
-      width = image[_width];
-      height = image[_height];
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 2;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]));
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]()));
     }
 
     // If those options are not provided, assign 0 to mean undefined(None).
@@ -320,8 +348,9 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
   })();
 }
 
+const _bitmapData = SymbolFor("Deno_bitmapData");
 function getBitmapData(imageBitmap) {
-  return imageBitmap[SymbolFor("Deno_bitmapData")];
+  return imageBitmap[_bitmapData]();
 }
 
 internals.getBitmapData = getBitmapData;

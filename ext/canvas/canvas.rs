@@ -11,11 +11,11 @@ use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_error::JsErrorBox;
+use deno_image::bitmap::ImageBitmap;
 use deno_image::image;
 use deno_image::image::ColorType;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
-use deno_image::op_create_image_bitmap::ImageBitmap;
 use deno_webgpu::canvas::ContextData;
 
 pub struct BlobHandle(pub v8::Global<v8::Function>);

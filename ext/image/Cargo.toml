@@ -8,7 +8,7 @@ edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
-description = "Image APIs implementation for Deno"
+description = "Image handling implementation for Deno"
 
 [lib]
 path = "lib.rs"

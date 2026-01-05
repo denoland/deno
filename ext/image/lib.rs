@@ -1,10 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+pub mod bitmap;
 mod image_ops;
-pub mod op_create_image_bitmap;
 pub use image;
 use image::ColorType;
-use op_create_image_bitmap::op_create_image_bitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ImageError {
@@ -45,7 +44,7 @@ impl ImageError {
 deno_core::extension!(
   deno_image,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_create_image_bitmap],
-  objects = [op_create_image_bitmap::ImageBitmap],
+  ops = [bitmap::op_create_image_bitmap],
+  objects = [bitmap::ImageBitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
