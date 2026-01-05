@@ -8,10 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 2.6.4 / 2026.01.05
 
-- feat(node/http): enable keepAlive connection reuse for HTTP Agent (#31709)
 - fix(compile): make compile work with `--unstable-npm-lazy-caching` (#31704)
-- fix(ext/node): handle errors in sqlite session filter callback and ad…
-  (#31756)
+- fix(ext/node): enable keepAlive connection reuse for HTTP Agent (#31709)
+- fix(ext/node): handle errors in sqlite session filter callback (#31756)
 - fix(ext/node): support TypedArray and DataView targets in Buffer.copy()
   (#31734)
 - fix(ext/node): support for inspector.url() (#31705)
