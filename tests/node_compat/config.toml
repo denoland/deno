@@ -987,7 +987,7 @@
 "parallel/test-sqlite-database-sync-dispose.js" = {}
 "parallel/test-sqlite-database-sync.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31634" }
 "parallel/test-sqlite-named-parameters.js" = {}
-"parallel/test-sqlite-session.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31635" }
+"parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-statement-sync-columns.js" = {}
 "parallel/test-sqlite-timeout.js" = {}
 "parallel/test-sqlite-transactions.js" = {}
