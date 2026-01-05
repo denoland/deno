@@ -110,17 +110,23 @@ impl UnsafeWindowSurface {
     data.width
   }
   #[setter]
-  fn width(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
+  fn width(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: u32,
+  ) -> Result<(), JsErrorBox> {
     let mut data = self.data.borrow_mut();
     data.width = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
-        Context::Bitmap(context) => context.resize(scope),
+        Context::Bitmap(context) => context.resize()?,
         Context::WebGPU(context) => context.resize(scope),
       }
     }
+
+    Ok(())
   }
 
   #[getter]
@@ -129,17 +135,23 @@ impl UnsafeWindowSurface {
     data.height
   }
   #[setter]
-  fn height(&self, scope: &mut v8::PinScope<'_, '_>, value: u32) {
+  fn height(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: u32,
+  ) -> Result<(), JsErrorBox> {
     let mut data = self.data.borrow_mut();
     data.height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
-        Context::Bitmap(context) => context.resize(scope),
+        Context::Bitmap(context) => context.resize()?,
         Context::WebGPU(context) => context.resize(scope),
       }
     }
+
+    Ok(())
   }
 
   #[constructor]

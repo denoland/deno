@@ -113,7 +113,7 @@ impl GPUCanvasContext {
 
   #[fast]
   fn get_configuration(&self) {
-    let configuration = self.configuration.borrow();
+    let _configuration = self.configuration.borrow();
     todo!()
   }
 
@@ -404,9 +404,9 @@ pub struct GPUCanvasConfiguration {
   pub usage: u32,
   #[webidl(default = vec![])]
   pub view_formats: Vec<GPUTextureFormat>,
-  pub tone_mapping: GPUCanvasToneMapping,
+  pub tone_mapping: GPUCanvasToneMapping, // TODO(@crowlkats): support
   #[webidl(default = PredefinedColorSpace::Srgb)]
-  pub color_space: PredefinedColorSpace,
+  pub color_space: PredefinedColorSpace, // TODO(@crowlkats): support
   #[webidl(default = GPUCanvasAlphaMode::Opaque)]
   pub alpha_mode: GPUCanvasAlphaMode,
 
@@ -418,7 +418,7 @@ pub struct GPUCanvasConfiguration {
 #[webidl(dictionary)]
 pub struct GPUCanvasToneMapping {
   #[webidl(default = GPUCanvasToneMappingMode::Standard)]
-  pub mode: GPUCanvasToneMappingMode,
+  pub mode: GPUCanvasToneMappingMode, // TODO(@crowlkats): support
 }
 
 #[derive(WebIDL, Clone)]

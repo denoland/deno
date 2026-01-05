@@ -215,7 +215,12 @@ impl OffscreenCanvas {
 
     let mime_type = match options.r#type.as_str() {
       "image/jpeg" => {
-        let encoder = image::codecs::jpeg::JpegEncoder::new(&mut out);
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+          &mut out,
+          options
+            .quality
+            .map_or(75, |quality| (quality.0 * 100.0).clamp(0.0, 100.0) as u8),
+        );
         data.write_with_encoder(encoder).unwrap();
         "image/jpeg"
       }
@@ -229,7 +234,7 @@ impl OffscreenCanvas {
         data.write_with_encoder(encoder).unwrap();
         "image/x-icon"
       }
-      "image/png" | _ => {
+      _ => {
         let encoder = image::codecs::png::PngEncoder::new(&mut out);
         data.write_with_encoder(encoder).unwrap();
         "image/png"

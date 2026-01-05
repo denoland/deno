@@ -23,6 +23,9 @@ pub struct SurfaceBitmap {
   pub device: wgpu_core::id::DeviceId,
   pub queue: wgpu_core::id::QueueId,
 
+  surface_configuration:
+    wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
+
   render_pipeline: wgpu_core::id::RenderPipelineId,
   vertex_buffer: wgpu_core::id::BufferId,
   index_buffer: wgpu_core::id::BufferId,
@@ -48,7 +51,8 @@ pub struct ImageBitmapRenderingContext {
 
   pub surface_only: Option<SurfaceBitmap>,
 
-  alpha: bool,
+  #[allow(dead_code)]
+  alpha: bool, // TODO(@crowlkats): support alpha optioon
 }
 
 // SAFETY: we're sure this can be GCed
@@ -106,6 +110,7 @@ impl ImageBitmapRenderingContext {
             index_buffer,
             bind_group_layout,
             sampler,
+            ..
           } = self.surface_only.as_ref().unwrap();
 
           let (width, height) = new_data.dimensions();
@@ -375,15 +380,31 @@ impl ImageBitmapRenderingContext {
 }
 
 impl ImageBitmapRenderingContext {
-  pub fn resize(&self, scope: &mut v8::PinScope<'_, '_>) {
+  pub fn resize(&self) -> Result<(), JsErrorBox> {
     let SurfaceBitmap {
       instance,
       device,
-      queue,
+      surface_configuration,
       ..
     } = self.surface_only.as_ref().unwrap();
+    let ContextData::Surface(surface_data) = &self.data else {
+      unreachable!()
+    };
 
-    todo!()
+    let deno_webgpu::canvas::SurfaceData { id, width, height } =
+      &*surface_data.borrow();
+
+    let err = instance.surface_configure(
+      *id,
+      *device,
+      &wgpu_types::SurfaceConfiguration {
+        width: *width,
+        height: *height,
+        ..surface_configuration.clone()
+      },
+    );
+
+    maybe_err_to_err(err)
   }
 }
 
@@ -641,9 +662,8 @@ pub fn create<'s>(
           let unpadded_size =
             vertex_buffer_data.len() as wgpu_types::BufferAddress;
           let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
-          let padded_size = ((unpadded_size + align_mask) & !align_mask)
-            .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
-          padded_size
+          ((unpadded_size + align_mask) & !align_mask)
+            .max(wgpu_types::COPY_BUFFER_ALIGNMENT)
         },
         mapped_at_creation: true,
       },
@@ -658,6 +678,7 @@ pub fn create<'s>(
         Some(size_of_val(VERTICES) as _),
       )
       .unwrap();
+    // SAFETY: creating a mutable slice from the pointer and length provided by wgpu
     unsafe {
       let slice = std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
       slice.copy_from_slice(vertex_buffer_data);
@@ -675,9 +696,8 @@ pub fn create<'s>(
           let unpadded_size =
             index_buffer_data.len() as wgpu_types::BufferAddress;
           let align_mask = wgpu_types::COPY_BUFFER_ALIGNMENT - 1;
-          let padded_size = ((unpadded_size + align_mask) & !align_mask)
-            .max(wgpu_types::COPY_BUFFER_ALIGNMENT);
-          padded_size
+          ((unpadded_size + align_mask) & !align_mask)
+            .max(wgpu_types::COPY_BUFFER_ALIGNMENT)
         },
         mapped_at_creation: true,
       },
@@ -688,6 +708,7 @@ pub fn create<'s>(
     let (range_ptr, len) = instance
       .buffer_get_mapped_range(index_buffer, 0, Some(size_of_val(INDICES) as _))
       .unwrap();
+    // SAFETY: creating a mutable slice from the pointer and length provided by wgpu
     unsafe {
       let slice = std::slice::from_raw_parts_mut(range_ptr.as_ptr(), len as _);
       slice.copy_from_slice(index_buffer_data);
@@ -698,6 +719,7 @@ pub fn create<'s>(
       instance,
       device,
       queue,
+      surface_configuration: config,
       render_pipeline,
       vertex_buffer,
       index_buffer,
