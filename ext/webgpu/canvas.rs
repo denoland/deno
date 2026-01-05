@@ -50,11 +50,7 @@ pub struct GPUCanvasContext {
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUCanvasContext {
-  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
-    if let Some(config) = &*self.configuration.borrow() {
-      config.device.trace(visitor);
-    }
-  }
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
