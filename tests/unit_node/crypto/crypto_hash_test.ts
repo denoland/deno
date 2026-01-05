@@ -16,6 +16,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/crypto] createHmac sha512-224 digest",
+  fn() {
+    assertEquals(
+      createHmac("sha512-224", "secret key").update("too many secrets")
+        .digest("hex"),
+      "b6b4c9b0bce726416d1b41747acbf9ed886cc93aeebfa82a847a8113",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha512-256 digest",
+  fn() {
+    assertEquals(
+      createHmac("sha512-256", "secret key").update("too many secrets")
+        .digest("hex"),
+      "16ccf3457238d495235d582da8ee594e841edc3d25f076b37e566afa87dbb58a",
+    );
+  },
+});
+
+Deno.test({
   name: "[node/crypto] createHash digest",
   fn() {
     assertEquals(
