@@ -232,7 +232,9 @@ class HmacImpl extends Transform {
     const alg = hmac.toLowerCase();
     this.#algorithm = alg;
     // SHA-512 and SHA-384 variants all use 128-byte blocks
-    const blockSize = (alg.startsWith("sha512") || alg.startsWith("sha384")) ? 128 : 64;
+    const blockSize = (alg.startsWith("sha512") || alg.startsWith("sha384"))
+      ? 128
+      : 64;
     const keySize = keyData.length;
 
     let bufKey: Buffer;
