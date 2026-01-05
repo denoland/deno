@@ -1,13 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+mod bitmap;
 mod image_ops;
-mod op_create_image_bitmap;
 pub use image;
 use image::ColorType;
-use op_create_image_bitmap::op_create_image_bitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CanvasError {
+pub enum ImageError {
   /// Image formats that is 32-bit depth are not supported currently due to the following reasons:
   /// - e.g. OpenEXR, it's not covered by the spec.
   /// - JPEG XL supported by WebKit, but it cannot be called a standard today.
@@ -35,16 +34,17 @@ pub enum CanvasError {
   Image(#[from] image::ImageError),
 }
 
-impl CanvasError {
-  /// Convert an [`image::ImageError`] to an [`CanvasError::InvalidImage`].
+impl ImageError {
+  /// Convert an [`image::ImageError`] to an [`ImageError::InvalidImage`].
   fn image_error_to_invalid_image(error: image::ImageError) -> Self {
-    CanvasError::InvalidImage(error)
+    ImageError::InvalidImage(error)
   }
 }
 
 deno_core::extension!(
-  deno_canvas,
+  deno_image,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_create_image_bitmap],
+  ops = [bitmap::op_create_image_bitmap],
+  objects = [bitmap::ImageBitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
