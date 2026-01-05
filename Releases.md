@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.4 / 2026.01.05
+
+- fix(compile): make compile work with `--unstable-npm-lazy-caching` (#31704)
+- fix(ext/node): enable keepAlive connection reuse for HTTP Agent (#31709)
+- fix(ext/node): handle errors in sqlite session filter callback (#31756)
+- fix(ext/node): support TypedArray and DataView targets in Buffer.copy()
+  (#31734)
+- fix(ext/node): support for inspector.url() (#31705)
+- fix(ext/node): support numbered positional parameters in node:sqlite (#31722)
+- fix(ext/websocket): prevent sending multiple close frames (#31747)
+- fix(install): wait for package installations before applying patches (#31711)
+- fix(node/crypto): integrate async_hooks for domain error handling (#31751)
+- fix(serve): net permissions in config file (#31718)
+- fix(task): prioritize member `package.json` when `deno.json` only in root
+  (#31736)
+- fix(webgpu): update wgpu to 28.0.0 (#31163)
+- fix: deno cross compile for intel mac target (#31714)
+- fix: update urlpattern to 0.4.2 (#31193)
+
 ### 2.6.3 / 2025.12.20
 
 - fix(check): improve node types handling

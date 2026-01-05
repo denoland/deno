@@ -1,11 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::OnceCell;
+use std::cell::RefCell;
 use std::io::BufReader;
 use std::io::Cursor;
 
+use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
 use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 // use image::codecs::webp::WebPDecoder;
 use image::DynamicImage;
 use image::ImageDecoder;
@@ -19,7 +22,7 @@ use image::imageops::FilterType;
 use image::imageops::overlay;
 use image::metadata::Orientation;
 
-use crate::CanvasError;
+use crate::ImageError;
 use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
@@ -79,7 +82,7 @@ fn decode_bitmap_data(
   height: u32,
   image_bitmap_source: &ImageBitmapSource,
   mime_type: MimeType,
-) -> Result<DecodeBitmapDataReturn, CanvasError> {
+) -> Result<DecodeBitmapDataReturn, ImageError> {
   let (image, width, height, orientation, icc_profile) =
     match image_bitmap_source {
       ImageBitmapSource::Blob => {
@@ -98,12 +101,12 @@ fn decode_bitmap_data(
           MimeType::Png => {
             // If PngDecoder decodes an animated image, it returns the default image if one is set, or the first frame if not.
             let mut decoder = PngDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -111,12 +114,12 @@ fn decode_bitmap_data(
           MimeType::Jpeg => {
             let mut decoder =
               JpegDecoder::new(BufReader::new(Cursor::new(buf)))
-                .map_err(CanvasError::image_error_to_invalid_image)?;
+                .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -139,24 +142,24 @@ fn decode_bitmap_data(
           }
           MimeType::Bmp => {
             let mut decoder = BmpDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
           }
           MimeType::Ico => {
             let mut decoder = IcoDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -195,7 +198,7 @@ fn decode_bitmap_data(
         let image = match RgbaImage::from_raw(width, height, buf.into()) {
           Some(image) => image.into(),
           None => {
-            return Err(CanvasError::NotBigEnoughChunk(width, height));
+            return Err(ImageError::NotBigEnoughChunk(width, height));
           }
         };
 
@@ -222,14 +225,14 @@ fn decode_bitmap_data(
 /// related issue in whatwg
 /// https://github.com/whatwg/html/issues/10578
 ///
-/// reference in wpt  
-/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18  
+/// reference in wpt
+/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18
 /// https://wpt.live/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html
 fn apply_color_space_conversion(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
   color_space_conversion: &ColorSpaceConversion,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match color_space_conversion {
     // return the decoded image as is.
     ColorSpaceConversion::None => Ok(image),
@@ -243,7 +246,7 @@ fn apply_premultiply_alpha(
   image: DynamicImage,
   image_bitmap_source: &ImageBitmapSource,
   premultiply_alpha: &PremultiplyAlpha,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match premultiply_alpha {
     // 1.
     PremultiplyAlpha::Default => Ok(image),
@@ -369,7 +372,7 @@ fn parse_args(
 }
 
 #[op2]
-#[serde]
+#[cppgc]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,
@@ -387,7 +390,7 @@ pub(super) fn op_create_image_bitmap(
   resize_quality: u8,
   image_bitmap_source: u8,
   mime_type: u8,
-) -> Result<(ToJsBuffer, u32, u32), CanvasError> {
+) -> Result<ImageBitmap, ImageError> {
   let ParsedArgs {
     resize_width,
     resize_height,
@@ -532,7 +535,58 @@ pub(super) fn op_create_image_bitmap(
   let image =
     apply_premultiply_alpha(image, &image_bitmap_source, &premultiply_alpha)?;
 
-  Ok((image.into_bytes().into(), output_width, output_height))
+  Ok(ImageBitmap {
+    detached: Default::default(),
+    data: RefCell::new(image),
+  })
+}
+
+pub struct ImageBitmap {
+  pub detached: OnceCell<()>,
+  pub data: RefCell<DynamicImage>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for ImageBitmap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ImageBitmap"
+  }
+}
+
+impl WebIdlInterfaceConverter for ImageBitmap {
+  const NAME: &'static str = "ImageBitmap";
+}
+
+#[op2]
+impl ImageBitmap {
+  #[getter]
+  fn width(&self) -> u32 {
+    let data = self.data.borrow();
+    data.width()
+  }
+
+  #[getter]
+  fn height(&self) -> u32 {
+    let data = self.data.borrow();
+    data.height()
+  }
+
+  #[fast]
+  fn close(&self) {
+    let _ = self.detached.set(());
+    self
+      .data
+      .replace(DynamicImage::new(0, 0, image::ColorType::Rgba8));
+  }
+
+  #[buffer]
+  #[symbol("Deno_bitmapData")]
+  fn getData(&self) -> Vec<u8> {
+    let data = self.data.borrow();
+    data.as_bytes().to_vec()
+  }
 }
 
 #[cfg(test)]

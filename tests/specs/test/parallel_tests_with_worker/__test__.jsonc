@@ -1,0 +1,6 @@
+// Regression test for: https://github.com/denoland/deno/issues/31652
+{
+  "args": "test --parallel",
+  "exitCode": 0,
+  "output": "result.out"
+}

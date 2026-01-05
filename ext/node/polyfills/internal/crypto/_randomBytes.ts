@@ -4,6 +4,15 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
+import {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
+import process from "node:process";
 
 export const MAX_RANDOM_VALUES = 65536;
 export const MAX_SIZE = 4294967295;
@@ -61,11 +70,31 @@ export default function randomBytes(
         err = new Error("[non-error thrown]");
       }
     }
+
+    // Set up async_hooks tracking
+    const asyncId = newAsyncId();
+    const triggerAsyncId = executionAsyncId();
+    const resource = {};
+    emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
+
     setTimeout(() => {
-      if (err) {
-        cb(err);
-      } else {
-        cb(null, bytes);
+      emitBefore(asyncId);
+      try {
+        if (err) {
+          cb(err);
+        } else {
+          cb(null, bytes);
+        }
+      } catch (callbackErr) {
+        // If there's an active domain, emit error to it
+        if (process.domain && process.domain.listenerCount("error") > 0) {
+          process.domain.emit("error", callbackErr);
+        } else {
+          throw callbackErr;
+        }
+      } finally {
+        emitAfter(asyncId);
+        emitDestroy(asyncId);
       }
     }, 0);
   } else {

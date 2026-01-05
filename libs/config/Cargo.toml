@@ -1,7 +1,7 @@
 # Copyright 2018-2026 the Deno authors. MIT license.
 [package]
 name = "deno_config"
-version = "0.75.0"
+version = "0.76.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

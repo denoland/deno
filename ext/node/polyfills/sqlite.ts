@@ -4,6 +4,7 @@ import { primordials } from "ext:core/mod.js";
 import {
   DatabaseSync as DatabaseSyncOp,
   op_node_database_backup,
+  Session,
   StatementSync,
 } from "ext:core/ops";
 import type { Buffer } from "node:buffer";
@@ -199,6 +200,22 @@ ObjectDefineProperties(DatabaseSync.prototype, {
     enumerable: false,
     configurable: true,
   },
+  [SymbolDispose]: {
+    __proto__: null,
+    value: function () {
+      try {
+        this.close();
+      } catch {
+        // Ignore errors.
+      }
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  },
+});
+
+ObjectDefineProperties(Session.prototype, {
   [SymbolDispose]: {
     __proto__: null,
     value: function () {
