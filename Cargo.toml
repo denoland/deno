@@ -358,7 +358,7 @@ p521 = "0.13.3"
 pbkdf2 = "0.12.1"
 pkcs8 = "0.10.2"
 ripemd = "0.1.3"
-rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+rsa = { version = "0.9.9", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 scrypt = "0.11.0"
 sec1 = "0.7"
 sha1 = { version = "0.10.6", features = ["oid"] }
