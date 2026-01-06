@@ -241,7 +241,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window"],
+          "default": ["deno.window", "deno.unstable", "node"],
           "items": {
             "type": "string",
             "examples": [
@@ -270,7 +270,8 @@
               "es2022",
               "es2023",
               "es2024",
-              "esnext"
+              "esnext",
+              "node"
             ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
@@ -830,24 +831,30 @@
       }
     },
     "publish": {
-      "description": "Configuration for deno publish",
-      "type": "object",
-      "properties": {
-        "include": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be included in the published package.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "exclude": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be excluded from the published package.",
-          "items": {
-            "type": "string"
+      "oneOf": [{
+        "description": "Configuration for deno publish",
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be included in the published package.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be excluded from the published package.",
+            "items": {
+              "type": "string"
+            }
           }
         }
-      }
+      }, {
+        "description": "Disable publishing this package with deno publish",
+        "type": "boolean",
+        "const": "false"
+      }]
     },
     "bench": {
       "description": "Configuration for deno bench",

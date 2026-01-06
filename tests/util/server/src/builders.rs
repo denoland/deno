@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::ops::Deref;
@@ -15,8 +17,13 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
+use file_test_runner::TestResult;
 use os_pipe::pipe;
+use parking_lot::Mutex;
 
 use crate::HttpServerGuard;
 use crate::TempDir;
@@ -26,12 +33,15 @@ use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
+use crate::eprintln;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
+use crate::print::spawn_thread;
+use crate::println;
 use crate::pty::Pty;
 use crate::servers::tsgo_prebuilt_path;
 use crate::strip_ansi_codes;
@@ -70,18 +80,25 @@ static HAS_DENO_JSON_IN_WORKING_DIR_ERR: once_cell::sync::Lazy<Option<String>> =
   });
 
 #[derive(Default, Clone)]
-struct DiagnosticLogger(Option<Rc<RefCell<Vec<u8>>>>);
+enum DiagnosticLogger {
+  Null,
+  #[default]
+  Stderr,
+  Container(Rc<RefCell<Vec<u8>>>),
+}
 
 impl DiagnosticLogger {
   pub fn writeln(&self, text: impl AsRef<str>) {
-    match &self.0 {
-      Some(logger) => {
+    match self {
+      DiagnosticLogger::Null => {}
+      DiagnosticLogger::Stderr => {
+        eprintln!("{}", text.as_ref());
+      }
+      DiagnosticLogger::Container(logger) => {
         let mut logger = logger.borrow_mut();
         logger.write_all(text.as_ref().as_bytes()).unwrap();
         logger.write_all(b"\n").unwrap();
       }
-      #[allow(clippy::print_stderr)]
-      None => eprintln!("{}", text.as_ref()),
     }
   }
 }
@@ -116,7 +133,7 @@ impl TestContextBuilder {
   }
 
   pub fn logging_capture(mut self, logger: Rc<RefCell<Vec<u8>>>) -> Self {
-    self.diagnostic_logger = DiagnosticLogger(Some(logger));
+    self.diagnostic_logger = DiagnosticLogger::Container(logger);
     self
   }
 
@@ -590,6 +607,10 @@ impl TestCommandBuilder {
     self
   }
 
+  pub fn disable_diagnostic_logging(self) -> Self {
+    self.set_diagnostic_logger(DiagnosticLogger::Null)
+  }
+
   fn set_diagnostic_logger(mut self, logger: DiagnosticLogger) -> Self {
     self.diagnostic_logger = logger;
     self
@@ -708,12 +729,8 @@ impl TestCommandBuilder {
       (
         None,
         Some((
-          std::thread::spawn(move || {
-            read_pipe_to_string(stdout_reader, show_output)
-          }),
-          std::thread::spawn(move || {
-            read_pipe_to_string(stderr_reader, show_output)
-          }),
+          spawn_thread(move || read_pipe_to_string(stdout_reader, show_output)),
+          spawn_thread(move || read_pipe_to_string(stderr_reader, show_output)),
         )),
       )
     } else {
@@ -874,6 +891,14 @@ impl TestCommandBuilder {
         tsgo_prebuilt_path().to_string(),
       );
     }
+    if !envs.contains_key("PATH") {
+      let path = std::env::var_os("PATH").unwrap_or_default();
+      let path = std::env::split_paths(&path);
+      let additional = deno_exe_path().parent().to_path_buf();
+      let path =
+        std::env::join_paths(std::iter::once(additional).chain(path)).unwrap();
+      envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
+    }
     for key in &self.envs_remove {
       envs.remove(key);
     }
@@ -920,6 +945,115 @@ impl DenoChild {
     self,
   ) -> Result<std::process::Output, std::io::Error> {
     self.child.wait_with_output()
+  }
+
+  pub fn wait_to_test_result(self, test_name: &str) -> TestResult {
+    let mut deno = self;
+    let now = Instant::now();
+    let stdout = deno.stdout.take().unwrap();
+    let no_capture = *file_test_runner::NO_CAPTURE;
+    let final_output = Arc::new(Mutex::new(Vec::<String>::new()));
+    let stdout = spawn_thread({
+      let final_output = final_output.clone();
+      let test_name = test_name.to_string();
+      move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+          if let Ok(line) = line {
+            if no_capture {
+              println!(
+                "[{test_name} {:0>6.2}] {line}",
+                now.elapsed().as_secs_f32()
+              );
+            } else {
+              final_output.lock().push(line);
+            }
+          } else {
+            break;
+          }
+        }
+      }
+    });
+
+    let now = Instant::now();
+    let stderr = deno.stderr.take().unwrap();
+    let stderr = spawn_thread({
+      let final_output = final_output.clone();
+      let test_name = test_name.to_string();
+      move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+          if let Ok(line) = line {
+            if no_capture {
+              eprintln!(
+                "[{test_name} {:0>6.2}] {line}",
+                now.elapsed().as_secs_f32()
+              );
+            } else {
+              final_output.lock().push(line);
+            }
+          } else {
+            break;
+          }
+        }
+      }
+    });
+
+    const PER_TEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+    let get_failure_result = |duration: Duration, error_message: String| {
+      let mut final_output = std::mem::take(&mut *final_output.lock());
+      final_output.push(error_message);
+      TestResult::Failed {
+        duration: Some(duration),
+        output: final_output.join("\n").into_bytes(),
+      }
+    };
+
+    let now = Instant::now();
+    let status = loop {
+      if now.elapsed() > PER_TEST_TIMEOUT {
+        // Last-ditch kill
+        _ = deno.kill();
+        return get_failure_result(
+          now.elapsed(),
+          format!("Test {} failed to complete in time", test_name),
+        );
+      }
+      if let Some(status) = deno
+        .try_wait()
+        .expect("failed to wait for the child process")
+      {
+        break status;
+      }
+      std::thread::sleep(Duration::from_millis(100));
+    };
+    let duration = now.elapsed();
+
+    #[cfg(unix)]
+    if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status)
+    {
+      return get_failure_result(
+        duration,
+        format!("{:?}\nDeno should not have died with a signal", signal,),
+      );
+    }
+    if status.code() != Some(0) {
+      return get_failure_result(
+        duration,
+        format!(
+          "Deno should have exited cleanly (code: {:?})",
+          status.code(),
+        ),
+      );
+    }
+
+    stdout.join().unwrap();
+    stderr.join().unwrap();
+
+    TestResult::Passed {
+      duration: Some(duration),
+    }
   }
 }
 
@@ -1132,13 +1266,15 @@ impl TestCommandOutput {
     actual: &str,
     expected: impl AsRef<str>,
   ) -> &Self {
-    match &self.diagnostic_logger.0 {
-      Some(logger) => assert_wildcard_match_with_logger(
+    match &self.diagnostic_logger {
+      DiagnosticLogger::Container(logger) => assert_wildcard_match_with_logger(
         actual,
         expected.as_ref(),
         &mut *logger.borrow_mut(),
       ),
-      None => assert_wildcard_match(actual, expected.as_ref()),
+      DiagnosticLogger::Null | DiagnosticLogger::Stderr => {
+        assert_wildcard_match(actual, expected.as_ref())
+      }
     };
     self
   }

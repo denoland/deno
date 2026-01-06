@@ -3,6 +3,7 @@
 import { core } from "ext:core/mod.js";
 
 import * as event from "ext:deno_web/02_event.js";
+import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
 import * as console from "ext:deno_web/01_console.js";
@@ -44,7 +45,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -130,8 +131,8 @@ const windowOrWorkerGlobalScope = {
     (image) => image.createImageBitmap,
     loadImage,
   ),
-  clearInterval: core.propWritable(nodeClearInterval),
-  clearTimeout: core.propWritable(nodeClearTimeout),
+  clearInterval: core.propWritable(timers.clearInterval),
+  clearTimeout: core.propWritable(timers.clearTimeout),
   caches: {
     enumerable: true,
     configurable: true,
@@ -154,8 +155,8 @@ const windowOrWorkerGlobalScope = {
   Buffer: core.propWritable(Buffer),
   global: core.propWritable(globalThis),
   reportError: core.propWritable(event.reportError),
-  setInterval: core.propWritable(nodeSetInterval),
-  setTimeout: core.propWritable(nodeSetTimeout),
+  setInterval: core.propWritable(timers.setInterval),
+  setTimeout: core.propWritable(timers.setTimeout),
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
@@ -338,5 +339,12 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
+
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
+  clearInterval: core.propWritable(nodeClearInterval),
+  clearTimeout: core.propWritable(nodeClearTimeout),
+  setInterval: core.propWritable(nodeSetInterval),
+  setTimeout: core.propWritable(nodeSetTimeout),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

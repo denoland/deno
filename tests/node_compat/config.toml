@@ -135,6 +135,10 @@
 "parallel/test-buffer-zero-fill-cli.js" = {}
 "parallel/test-buffer-zero-fill-reset.js" = {}
 "parallel/test-buffer-zero-fill.js" = {}
+"parallel/test-child-process-advanced-serialization.js" = {}
+# TODO(nathanwhit): figure out why this is failing on windows
+"parallel/test-child-process-advanced-serialization-largebuffer.js" = { windows = false }
+"parallel/test-child-process-advanced-serialization-splitted-length-field.js" = {}
 "parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
 "parallel/test-child-process-default-options.js" = {}
 "parallel/test-child-process-detached.js" = {}
@@ -199,6 +203,7 @@
 "parallel/test-crypto-dh-odd-key.js" = {}
 "parallel/test-crypto-dh-shared.js" = {}
 "parallel/test-crypto-domain.js" = {}
+"parallel/test-crypto-domains.js" = {}
 "parallel/test-crypto-ecb.js" = {}
 "parallel/test-crypto-from-binary.js" = {}
 "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js" = {}
@@ -445,8 +450,7 @@
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-filehandle-use-after-close.js" = {}
 "parallel/test-fs-fsync.js" = {}
-# TODO(bartlomieju): crashes constantly on CI, disabling for now
-# "parallel/test-fs-glob.mjs" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
@@ -459,6 +463,8 @@
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
+# TODO(bartlomieju): crashes constantly on CI, disabling for now
+# "parallel/test-fs-promises-file-handle-readFile.js" = { flaky = true }
 "parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
@@ -539,8 +545,10 @@
 "parallel/test-http-chunked-smuggling.js" = {}
 "parallel/test-http-chunked.js" = {}
 "parallel/test-http-client-abort-event.js" = {}
+"parallel/test-http-client-abort-keep-alive-destroy-res.js" = {}
 "parallel/test-http-client-abort-no-agent.js" = {}
 "parallel/test-http-client-abort-response-event.js" = {}
+"parallel/test-http-client-abort-unix-socket.js" = {}
 "parallel/test-http-client-abort2.js" = {}
 "parallel/test-http-client-abort3.js" = {}
 "parallel/test-http-client-agent-abort-close-event.js" = {}
@@ -803,6 +811,7 @@
 "parallel/test-net-persistent-keepalive.js" = {}
 "parallel/test-net-persistent-nodelay.js" = {}
 "parallel/test-net-persistent-ref-unref.js" = {}
+"parallel/test-net-pipe-connect-errors.js" = {}
 "parallel/test-net-pipe-with-long-path.js" = {}
 "parallel/test-net-reconnect.js" = {}
 "parallel/test-net-remote-address-port.js" = {}
@@ -973,11 +982,14 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-custom-functions.js" = {}
 "parallel/test-sqlite-data-types.js" = {}
 "parallel/test-sqlite-database-sync-dispose.js" = {}
+"parallel/test-sqlite-database-sync.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31634" }
 "parallel/test-sqlite-named-parameters.js" = {}
 "parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-statement-sync-columns.js" = {}
+"parallel/test-sqlite-timeout.js" = {}
 "parallel/test-sqlite-transactions.js" = {}
 "parallel/test-sqlite-typed-array-and-data-view.js" = {}
 "parallel/test-stdin-hang.js" = {}
@@ -1194,7 +1206,17 @@
 "parallel/test-timers-clear-timeout-interval-equivalent.js" = {}
 "parallel/test-timers-clearImmediate-als.js" = {}
 "parallel/test-timers-clearImmediate.js" = {}
-"parallel/test-timers-immediate-queue.js" = {}
+# TODO(bartlomieju): need to rearrange code for this one
+# "parallel/test-timers-immediate-promisified.js" = {}
+# TODO(bartlomieju): doesn't work correctly because of `node:domain`
+# error handling
+# "parallel/test-timers-immediate-queue-throw.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is properly supported
+# after the https://github.com/denoland/deno/pull/31643 revert
+# "parallel/test-timers-immediate-queue.js" = {}
+"parallel/test-timers-immediate-unref-nested-once.js" = {}
+"parallel/test-timers-immediate-unref-simple.js" = {}
+"parallel/test-timers-immediate-unref.js" = {}
 "parallel/test-timers-immediate.js" = {}
 "parallel/test-timers-interval-throw.js" = {}
 "parallel/test-timers-non-integer-delay.js" = {}
@@ -1265,14 +1287,14 @@
 "parallel/test-url-parse-format.js" = {}
 "parallel/test-url-parse-query.js" = {}
 "parallel/test-url-relative.js" = {}
-"parallel/test-url-urltooptions.js" = {}
+"parallel/test-url-urltooptions.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31633" }
 "parallel/test-utf8-scripts.js" = {}
 "parallel/test-util-deprecate-invalid-code.js" = {}
 # TODO(bartlomieju): disabled due to missing `pendingDeprecate` function
 # "parallel/test-util-deprecate.js" = {}
 "parallel/test-util-inherits.js" = {}
 "parallel/test-util-inspect-getters-accessing-this.js" = {}
-"parallel/test-util-isDeepStrictEqual.js" = {}
+"parallel/test-util-isDeepStrictEqual.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31632" }
 "parallel/test-util-primordial-monkeypatching.js" = {}
 "parallel/test-util-text-decoder.js" = {}
 "parallel/test-util-types-exists.js" = {}
@@ -1334,7 +1356,7 @@
 "parallel/test-vm-util-lazy-properties.js" = {}
 "parallel/test-warn-sigprof.js" = {}
 "parallel/test-weakref.js" = {}
-"parallel/test-webcrypto-encrypt-decrypt.js" = {}
+"parallel/test-webcrypto-encrypt-decrypt.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31631" }
 "parallel/test-websocket.js" = {}
 "parallel/test-webstream-string-tag.js" = {}
 "parallel/test-webstreams-compose.js" = {}
@@ -1450,15 +1472,6 @@
 "sequential/test-require-cache-without-stat.js" = {}
 "sequential/test-resolution-inspect-brk.js" = {}
 "sequential/test-runner-run-inspect.mjs" = {}
-"sequential/test-single-executable-application-assets-raw.js" = {}
-"sequential/test-single-executable-application-assets.js" = {}
-"sequential/test-single-executable-application-disable-experimental-sea-warning.js" = {}
-"sequential/test-single-executable-application-empty.js" = {}
-"sequential/test-single-executable-application-snapshot-and-code-cache.js" = {}
-"sequential/test-single-executable-application-snapshot-worker.js" = {}
-"sequential/test-single-executable-application-snapshot.js" = {}
-"sequential/test-single-executable-application-use-code-cache.js" = {}
-"sequential/test-single-executable-application.js" = {}
 "sequential/test-stream2-fs.js" = {}
 "sequential/test-tls-lookup.js" = {}
 "sequential/test-tls-psk-client.js" = {}

@@ -10,6 +10,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
 
+use super::console::new_console_static_text;
 use crate::util::console::console_size;
 
 /// Renders text that will be displayed stacked in a
@@ -61,13 +62,7 @@ static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
     has_draw_thread: false,
     entries: Vec::new(),
     next_entry_id: 0,
-    static_text: ConsoleStaticText::new(|| {
-      let size = console_size().unwrap();
-      console_static_text::ConsoleSize {
-        cols: Some(size.cols as u16),
-        rows: Some(size.rows as u16),
-      }
-    }),
+    static_text: new_console_static_text(),
   }))
 });
 

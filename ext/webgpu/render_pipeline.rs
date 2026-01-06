@@ -431,56 +431,56 @@ pub(crate) struct GPUVertexAttribute {
 #[derive(WebIDL)]
 #[webidl(enum)]
 pub(crate) enum GPUVertexFormat {
-  // #[webidl(rename = "uint8")]
-  // Uint8,
+  #[webidl(rename = "uint8")]
+  Uint8,
   #[webidl(rename = "uint8x2")]
   Uint8x2,
   #[webidl(rename = "uint8x4")]
   Uint8x4,
-  // #[webidl(rename = "sint8")]
-  // Sint8,
+  #[webidl(rename = "sint8")]
+  Sint8,
   #[webidl(rename = "sint8x2")]
   Sint8x2,
   #[webidl(rename = "sint8x4")]
   Sint8x4,
-  // #[webidl(rename = "unorm8")]
-  // Unorm8,
+  #[webidl(rename = "unorm8")]
+  Unorm8,
   #[webidl(rename = "unorm8x2")]
   Unorm8x2,
   #[webidl(rename = "unorm8x4")]
   Unorm8x4,
-  // #[webidl(rename = "snorm8")]
-  // Snorm8,
+  #[webidl(rename = "snorm8")]
+  Snorm8,
   #[webidl(rename = "snorm8x2")]
   Snorm8x2,
   #[webidl(rename = "snorm8x4")]
   Snorm8x4,
-  // #[webidl(rename = "uint16")]
-  // Uint16,
+  #[webidl(rename = "uint16")]
+  Uint16,
   #[webidl(rename = "uint16x2")]
   Uint16x2,
   #[webidl(rename = "uint16x4")]
   Uint16x4,
-  // #[webidl(rename = "sint16")]
-  // Sint16,
+  #[webidl(rename = "sint16")]
+  Sint16,
   #[webidl(rename = "sint16x2")]
   Sint16x2,
   #[webidl(rename = "sint16x4")]
   Sint16x4,
-  // #[webidl(rename = "unorm16")]
-  // Unorm16,
+  #[webidl(rename = "unorm16")]
+  Unorm16,
   #[webidl(rename = "unorm16x2")]
   Unorm16x2,
   #[webidl(rename = "unorm16x4")]
   Unorm16x4,
-  // #[webidl(rename = "snorm16")]
-  // Snorm16,
+  #[webidl(rename = "snorm16")]
+  Snorm16,
   #[webidl(rename = "snorm16x2")]
   Snorm16x2,
   #[webidl(rename = "snorm16x4")]
   Snorm16x4,
-  // #[webidl(rename = "float16")]
-  // Float16,
+  #[webidl(rename = "float16")]
+  Float16,
   #[webidl(rename = "float16x2")]
   Float16x2,
   #[webidl(rename = "float16x4")]
@@ -511,38 +511,38 @@ pub(crate) enum GPUVertexFormat {
   Sint32x4,
   #[webidl(rename = "unorm10-10-10-2")]
   Unorm1010102,
-  // #[webidl(rename = "unorm8x4-bgra")]
-  // Unorm8x4Bgra,
+  #[webidl(rename = "unorm8x4-bgra")]
+  Unorm8x4Bgra,
 }
 
 impl From<GPUVertexFormat> for wgpu_types::VertexFormat {
   fn from(value: GPUVertexFormat) -> Self {
     match value {
-      //GPUVertexFormat::Uint8 => Self::Uint8,
+      GPUVertexFormat::Uint8 => Self::Uint8,
       GPUVertexFormat::Uint8x2 => Self::Uint8x2,
       GPUVertexFormat::Uint8x4 => Self::Uint8x4,
-      //GPUVertexFormat::Sint8 => Self::Sint8,
+      GPUVertexFormat::Sint8 => Self::Sint8,
       GPUVertexFormat::Sint8x2 => Self::Sint8x2,
       GPUVertexFormat::Sint8x4 => Self::Sint8x4,
-      //GPUVertexFormat::Unorm8 => Self::Unorm8,
+      GPUVertexFormat::Unorm8 => Self::Unorm8,
       GPUVertexFormat::Unorm8x2 => Self::Unorm8x2,
       GPUVertexFormat::Unorm8x4 => Self::Unorm8x4,
-      //GPUVertexFormat::Snorm8 => Self::Snorm8,
+      GPUVertexFormat::Snorm8 => Self::Snorm8,
       GPUVertexFormat::Snorm8x2 => Self::Snorm8x2,
       GPUVertexFormat::Snorm8x4 => Self::Snorm8x4,
-      //GPUVertexFormat::Uint16 => Self::Uint16,
+      GPUVertexFormat::Uint16 => Self::Uint16,
       GPUVertexFormat::Uint16x2 => Self::Uint16x2,
       GPUVertexFormat::Uint16x4 => Self::Uint16x4,
-      //GPUVertexFormat::Sint16 => Self::Sint16,
+      GPUVertexFormat::Sint16 => Self::Sint16,
       GPUVertexFormat::Sint16x2 => Self::Sint16x2,
       GPUVertexFormat::Sint16x4 => Self::Sint16x4,
-      //GPUVertexFormat::Unorm16 => Self::Unorm16,
+      GPUVertexFormat::Unorm16 => Self::Unorm16,
       GPUVertexFormat::Unorm16x2 => Self::Unorm16x2,
       GPUVertexFormat::Unorm16x4 => Self::Unorm16x4,
-      //GPUVertexFormat::Snorm16 => Self::Snorm16,
+      GPUVertexFormat::Snorm16 => Self::Snorm16,
       GPUVertexFormat::Snorm16x2 => Self::Snorm16x2,
       GPUVertexFormat::Snorm16x4 => Self::Snorm16x4,
-      //GPUVertexFormat::Float16 => Self::Float16,
+      GPUVertexFormat::Float16 => Self::Float16,
       GPUVertexFormat::Float16x2 => Self::Float16x2,
       GPUVertexFormat::Float16x4 => Self::Float16x4,
       GPUVertexFormat::Float32 => Self::Float32,
@@ -558,7 +558,7 @@ impl From<GPUVertexFormat> for wgpu_types::VertexFormat {
       GPUVertexFormat::Sint32x3 => Self::Sint32x3,
       GPUVertexFormat::Sint32x4 => Self::Sint32x4,
       GPUVertexFormat::Unorm1010102 => Self::Unorm10_10_10_2,
-      //GPUVertexFormat::Unorm8x4Bgra => Self::Unorm8x4Bgra,
+      GPUVertexFormat::Unorm8x4Bgra => Self::Unorm8x4Bgra,
     }
   }
 }

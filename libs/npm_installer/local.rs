@@ -468,6 +468,12 @@ impl<
       }
     }
 
+    // Wait for all npm package installations to complete before applying patches
+    // This prevents race conditions where npm packages could overwrite patch files
+    while let Some(result) = cache_futures.next().await {
+      result?; // surface the first error
+    }
+
     // 2. Setup the patch packages
     for patch_pkg in self.npm_install_deps_provider.patch_pkgs() {
       // there might be multiple ids per package due to peer dep copy packages
@@ -492,7 +498,7 @@ impl<
             let sys = self.sys.clone();
             crate::rt::spawn_blocking({
               move || {
-                clone_dir_recrusive_except_node_modules_child(
+                clone_dir_recursive_except_node_modules_child(
                   &sys, &from_path, &target,
                 )
               }
@@ -978,7 +984,7 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn clone_dir_recrusive_except_node_modules_child(
+fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
@@ -1000,7 +1006,7 @@ fn clone_dir_recrusive_except_node_modules_child(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      clone_dir_recursive(sys, &new_from, &new_to)?;
+      clone_dir_recursive_except_node_modules_child(sys, &new_from, &new_to)?;
     } else if file_type.is_file() {
       hard_link_file(sys, &new_from, &new_to).or_else(|_| {
         sys
@@ -1085,20 +1091,11 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
 
       _ = writeln!(&mut output, "{}", colors::yellow("│"));
 
-      let packages_comma_separated = packages
-        .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
-        .collect::<Vec<_>>()
-        .join(",");
-
       _ = writeln!(
         &mut output,
         "{}  Run \"{}\" to run build scripts.",
         colors::yellow("│"),
-        colors::bold(format!(
-          "deno install --allow-scripts={}",
-          packages_comma_separated
-        ))
+        colors::bold("deno approve-scripts")
       );
       _ = write!(&mut output, "{}", colors::yellow("╰─"));
 

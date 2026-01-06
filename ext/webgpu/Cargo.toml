@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.188.0"
+version = "0.193.0"
 authors = ["the Deno authors"]
 edition.workspace = true
 license = "MIT"
@@ -13,47 +13,36 @@ description = "WebGPU implementation for Deno"
 [lib]
 path = "lib.rs"
 
-[features]
-angle = []
-vulkan-portability = []
-
 # We make all dependencies conditional on not being wasm,
 # so the whole workspace can built as wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu-core = { workspace = true, features = ["raw-window-handle", "trace", "replay", "serde", "strict_asserts", "wgsl", "gles"] }
+wgpu-types = { workspace = true, features = ["serde", "std"] }
+
 deno_core.workspace = true
 deno_error.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
-wgpu-types = { workspace = true, features = ["serde"] }
-raw-window-handle.workspace = true
+raw-window-handle = { workspace = true }
 thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 deno_unsync.workspace = true
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
-workspace = true
-features = [
-  "raw-window-handle",
-  "trace",
-  "replay",
-  "serde",
-  "strict_asserts",
-  "wgsl",
-  "gles",
-]
+# Apple Platforms
+#
+# We want the Metal backend.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wgpu-core = { workspace = true, features = ["metal"] }
 
-# We want the wgpu-core Metal backend on macOS and iOS.
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.wgpu-core]
-workspace = true
-features = ["metal"]
+# Windows
+#
+# We want the DX12 backend.
+[target.'cfg(windows)'.dependencies]
+wgpu-core = { workspace = true, features = ["dx12"] }
 
-# We want the wgpu-core Direct3D backend on Windows.
-[target.'cfg(windows)'.dependencies.wgpu-core]
-workspace = true
-features = ["dx12"]
-
-# We want the wgpu-core Vulkan backend on Unix (but not Emscripten) and Windows.
-[target.'cfg(any(windows, all(unix, not(target_os = "emscripten"))))'.dependencies.wgpu-core]
-workspace = true
-features = ["vulkan"]
+# Windows and Unix (not Emscripten)
+#
+# We want the Vulkan backend.
+[target.'cfg(any(windows, all(unix, not(target_os = "emscripten"))))'.dependencies]
+wgpu-core = { workspace = true, features = ["vulkan"] }

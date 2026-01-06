@@ -25,6 +25,8 @@ use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
+
+mod global;
 pub mod ops;
 
 pub use deno_package_json::PackageJson;
@@ -32,12 +34,17 @@ use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
+pub use ops::inspector::InspectorServerUrl;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
+
+pub use crate::global::GlobalsStorage;
+use crate::global::global_object_middleware;
+use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -151,6 +158,8 @@ deno_core::extension!(deno_node,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
+    ops::buffer::op_node_buffer_compare,
+    ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
     ops::crypto::op_node_check_prime_async,
@@ -273,6 +282,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_open,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
+    ops::fs::op_node_file_from_fd,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -313,6 +323,7 @@ deno_core::extension!(deno_node,
     ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn,
+    ops::http::op_node_http_response_reclaim_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
@@ -365,8 +376,11 @@ deno_core::extension!(deno_node,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
-    ops::ipc::op_node_ipc_write,
-    ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_write_json,
+    ops::ipc::op_node_ipc_read_json,
+    ops::ipc::op_node_ipc_read_advanced,
+    ops::ipc::op_node_ipc_write_advanced,
+    ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
@@ -406,6 +420,7 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
+    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -677,6 +692,8 @@ deno_core::extension!(deno_node,
 
     state.put(AsyncId::default());
   },
+  global_template_middleware = global_template_middleware,
+  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -748,6 +765,42 @@ deno_core::extension!(deno_node,
       vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
         ExternalReference {
           enumerator: *enumerator,
+        }
+      }),
+
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
         }
       }),
     ];

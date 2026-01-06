@@ -9,11 +9,9 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
-use once_cell::sync::Lazy;
-
+use crate::IS_CI;
+use crate::eprintln;
 use crate::strip_ansi_codes;
-
-static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 
 const PTY_ROWS_COLS: (u16, u16) = (500, 800);
 
@@ -63,10 +61,7 @@ impl Pty {
     if is_windows && *IS_CI {
       // the pty tests don't really start up on the windows CI for some reason
       // so ignore them for now
-      #[allow(clippy::print_stderr)]
-      {
-        eprintln!("Ignoring windows CI.");
-      }
+      eprintln!("Ignoring windows CI.");
       false
     } else {
       true
@@ -255,14 +250,11 @@ impl Pty {
     }
 
     let text = self.next_text();
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
-        String::from_utf8_lossy(&self.read_bytes)
-      );
-      eprintln!("Next text: {:?}", text);
-    }
+    eprintln!(
+      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+      String::from_utf8_lossy(&self.read_bytes)
+    );
+    eprintln!("Next text: {:?}", text);
 
     false
   }
@@ -497,6 +489,7 @@ mod windows {
 
   use super::PTY_ROWS_COLS;
   use super::SystemPty;
+  use crate::print::spawn_thread;
 
   macro_rules! assert_win_success {
     ($expression:expr) => {
@@ -598,7 +591,7 @@ mod windows {
 
         // start a thread that will close the pseudoconsole on process exit
         let thread_handle = WinHandle::new(proc_info.hThread);
-        std::thread::spawn({
+        spawn_thread({
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {

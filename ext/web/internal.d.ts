@@ -43,6 +43,7 @@ declare module "ext:deno_web/00_infra.js" {
   function forgivingBase64Decode(data: string): Uint8Array;
   function forgivingBase64UrlEncode(data: Uint8Array | string): string;
   function forgivingBase64UrlDecode(data: string): Uint8Array;
+  function pathFromURL(pathOrURL: string | URL): string;
   function serializeJSValueToJSONString(value: unknown): string;
 }
 
@@ -119,8 +120,9 @@ declare module "ext:deno_web/13_message_port.js" {
 }
 
 declare module "ext:deno_web/00_url.js" {
-  const URL: typeof URL;
-  const URLSearchParams: typeof URLSearchParams;
+  const URL: typeof globalThis.URL;
+  const URLPrototype: typeof globalThis.URL.prototype;
+  const URLSearchParams: typeof globalThis.URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
 }
 
