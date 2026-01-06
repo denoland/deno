@@ -1,6 +1,6 @@
-# deno_canvas
+# deno_image
 
-Extension that implements various OffscreenCanvas related APIs.
+Extension that implements various image processing related APIs.
 
 ## Image processing architecture in Rust
 
