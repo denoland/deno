@@ -38,11 +38,6 @@ pub enum ByowError {
   #[error("Unsupported platform")]
   Unsupported,
   #[class(type)]
-  #[error(
-    "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
-  )]
-  WebGPUNotInitiated,
-  #[class(type)]
   #[error("Invalid parameters")]
   InvalidParameters,
   #[class(generic)]
@@ -160,9 +155,7 @@ impl UnsafeWindowSurface {
     state: &mut OpState,
     #[from_v8] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
-    let instance = state
-      .try_borrow::<deno_webgpu::Instance>()
-      .ok_or(ByowError::WebGPUNotInitiated)?;
+    let (_, instance) = deno_webgpu::get_or_init_instance(state);
 
     // Security note:
     //

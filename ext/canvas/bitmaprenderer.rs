@@ -52,7 +52,7 @@ pub struct ImageBitmapRenderingContext {
   pub surface_only: Option<SurfaceBitmap>,
 
   #[allow(dead_code)]
-  alpha: bool, // TODO(@crowlkats): support alpha optioon
+  alpha: bool, // TODO(@crowlkats): support alpha option
 }
 
 // SAFETY: we're sure this can be GCed
@@ -517,7 +517,7 @@ pub fn create<'s>(
           wgpu_types::AddressMode::ClampToEdge,
           wgpu_types::AddressMode::ClampToEdge,
         ],
-        mag_filter: wgpu_types::FilterMode::Linear,
+        mag_filter: wgpu_types::FilterMode::Nearest,
         min_filter: wgpu_types::FilterMode::Nearest,
         mipmap_filter: wgpu_types::MipmapFilterMode::Nearest,
         lod_min_clamp: 0.0,
