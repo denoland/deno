@@ -127,12 +127,12 @@ fn decode_bitmap_data(
           MimeType::Gif => {
             // The GifDecoder decodes the first frame.
             let mut decoder = GifDecoder::new(BufReader::new(Cursor::new(buf)))
-              .map_err(CanvasError::image_error_to_invalid_image)?;
+              .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
@@ -165,12 +165,12 @@ fn decode_bitmap_data(
             // The WebPDecoder decodes the first frame.
             let mut decoder =
               WebPDecoder::new(BufReader::new(Cursor::new(buf)))
-                .map_err(CanvasError::image_error_to_invalid_image)?;
+                .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
             (
               DynamicImage::from_decoder(decoder)
-                .map_err(CanvasError::image_error_to_invalid_image)?,
+                .map_err(ImageError::image_error_to_invalid_image)?,
               orientation,
               icc_profile,
             )
