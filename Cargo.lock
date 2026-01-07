@@ -2918,9 +2918,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.26.0"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ec9c589f733da0f5dfdf475d44cd01e2087425839a55162538d9898e94556e8"
+checksum = "d6c8906a44dee412f17bf3ec79da41548612c5da3741fd0023c718408d6fe685"
 dependencies = [
  "anyhow",
  "deno_path_util",
@@ -2928,7 +2928,6 @@ dependencies = [
  "glob",
  "monch",
  "nix 0.29.0",
- "os_pipe",
  "path-dedot",
  "sys_traits",
  "thiserror 2.0.12",
