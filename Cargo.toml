@@ -74,7 +74,7 @@ deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.2"
+deno_npm = "=0.42.3"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.26.0"
