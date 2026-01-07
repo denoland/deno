@@ -1,15 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_create_image_bitmap } from "ext:core/ops";
+import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
-  Symbol,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteOffset,
@@ -105,43 +105,11 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
   ],
 );
 
-const _bitmapData = Symbol("[[bitmapData]]");
-const _detached = Symbol("[[detached]]");
-class ImageBitmap {
-  [_width];
-  [_height];
-  [_bitmapData];
-  [_detached];
-
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  get width() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    if (this[_detached]) {
-      return 0;
-    }
-
-    return this[_width];
-  }
-
-  get height() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    if (this[_detached]) {
-      return 0;
-    }
-
-    return this[_height];
-  }
-
-  close() {
-    webidl.assertBranded(this, ImageBitmapPrototype);
-    this[_detached] = true;
-    this[_bitmapData] = null;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+const ImageBitmapPrototype = ImageBitmap.prototype;
+const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
+ObjectDefineProperty(ImageBitmapPrototype, privateCustomInspect, {
+  __proto__: null,
+  value(inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
         object: this,
@@ -153,9 +121,8 @@ class ImageBitmap {
       }),
       inspectOptions,
     );
-  }
-}
-const ImageBitmapPrototype = ImageBitmap.prototype;
+  },
+});
 
 function float16ToUnorm8(data) {
   const length = TypedArrayPrototypeGetLength(data);
@@ -229,8 +196,6 @@ function createImageBitmap(
     );
   }
 
-  const imageBitmap = webidl.createBranded(ImageBitmap);
-
   // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
   const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
@@ -273,28 +238,12 @@ function createImageBitmap(
         mimeType = 2;
       } else if (mimeTypeString === "image/gif") {
         mimeType = 3;
-        // NOTE: Temporarily not supported due to build size concerns
-        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-        return PromiseReject(
-          new DOMException(
-            "The MIME type of source image is not supported currently",
-            "InvalidStateError",
-          ),
-        );
       } else if (mimeTypeString === "image/bmp") {
         mimeType = 4;
       } else if (mimeTypeString === "image/x-icon") {
         mimeType = 5;
       } else if (mimeTypeString === "image/webp") {
         mimeType = 6;
-        // NOTE: Temporarily not supported due to build size concerns
-        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-        return PromiseReject(
-          new DOMException(
-            "The MIME type of source image is not supported currently",
-            "InvalidStateError",
-          ),
-        );
       } else {
         return PromiseReject(
           new DOMException(
@@ -321,10 +270,10 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         TypedArrayPrototypeGetLength(data),
       );
     } else if (isImageBitmap) {
-      width = image[_width];
-      height = image[_height];
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 2;
-      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]));
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]()));
     }
 
     // If those options are not provided, assign 0 to mean undefined(None).
@@ -363,7 +312,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       resizeQuality = 3;
     }
 
-    const processedImage = op_create_image_bitmap(
+    return op_create_image_bitmap(
       buf,
       width,
       height,
@@ -380,17 +329,14 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
       imageBitmapSource,
       mimeType,
     );
-    imageBitmap[_bitmapData] = processedImage[0];
-    imageBitmap[_width] = processedImage[1];
-    imageBitmap[_height] = processedImage[2];
-    return imageBitmap;
   })();
 }
 
+const _bitmapData = SymbolFor("Deno_bitmapData");
 function getBitmapData(imageBitmap) {
-  return imageBitmap[_bitmapData];
+  return imageBitmap[_bitmapData]();
 }
 
 internals.getBitmapData = getBitmapData;
 
-export { _bitmapData, _detached, createImageBitmap, ImageBitmap };
+export { createImageBitmap, ImageBitmap };
