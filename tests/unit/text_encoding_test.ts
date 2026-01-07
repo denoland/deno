@@ -328,11 +328,11 @@ Deno.test(
 Deno.test(
   "TextDecoder should handle empty chunk in stream mode (legacy encodings)",
   () => {
-    // big5
+    // big5: [0xa4, 0xa4] => "中" (U+4E2D)
     {
-      const u8 = new Uint8Array([0x8e, 0xa0]);
+      const u8 = new Uint8Array([0xa4, 0xa4]);
       const str = new TextDecoder("big5").decode(u8);
-      assertEquals(str, "\u594a");
+      assertEquals(str, "\u4e2d");
 
       const d = new TextDecoder("big5");
       const chunks = [
@@ -344,9 +344,9 @@ Deno.test(
       assertEquals(chunks.join(""), str);
     }
 
-    // shift_jis
+    // shift_jis: [0x82, 0xa0] => "あ" (U+3042)
     {
-      const u8 = new Uint8Array([0x81, 0x87]);
+      const u8 = new Uint8Array([0x82, 0xa0]);
       const str = new TextDecoder("shift_jis").decode(u8);
       assertEquals(str, "\u3042");
 
@@ -360,11 +360,11 @@ Deno.test(
       assertEquals(chunks.join(""), str);
     }
 
-    // euc-kr
+    // euc-kr: [0xb0, 0xa1] => "가" (U+AC00)
     {
-      const u8 = new Uint8Array([0xa4, 0xa2]);
+      const u8 = new Uint8Array([0xb0, 0xa1]);
       const str = new TextDecoder("euc-kr").decode(u8);
-      assertEquals(str, "\uac02");
+      assertEquals(str, "\uac00");
 
       const d = new TextDecoder("euc-kr");
       const chunks = [
