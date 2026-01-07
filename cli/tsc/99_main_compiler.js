@@ -106,11 +106,16 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
 
   const { options, errors: configFileParsingDiagnostics } = ts
     .convertCompilerOptionsFromJson(config, "");
-  // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
-  // which is not allowed to be passed in JSON, we need it to allow special
-  // URLs which Deno supports. So we need to either ignore the diagnostic, or
-  // inject it ourselves.
-  Object.assign(options, { allowNonTsExtensions: true });
+  Object.assign(options, {
+    // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
+    // which is not allowed to be passed in JSON, we need it to allow special
+    // URLs which Deno supports. So we need to either ignore the diagnostic, or
+    // inject it ourselves.
+    allowNonTsExtensions: true,
+    // This is special functionality we inject into the compiler options
+    // so that TypeScript can resolve jsxImportSource based on a referrer.
+    resolveJsxImportSource: ops.op_resolve_jsx_import_source,
+  });
   const program = ts.createIncrementalProgram({
     rootNames,
     options,

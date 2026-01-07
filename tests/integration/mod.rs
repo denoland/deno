@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::num::NonZeroUsize;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,9 +10,9 @@ use file_test_runner::TestResult;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
 use test_util::TestMacroCase;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
-use test_util::test_runner::flaky_test_ci;
-use test_util::test_runner::run_flaky_test;
+use test_util::test_runner::run_maybe_flaky_test;
 
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
@@ -81,8 +82,8 @@ pub fn main() {
     return; // no tests to run for the filter
   }
 
-  let number_tests = main_category.test_count();
   let run_test = move |test: &CollectedTest<&'static TestMacroCase>,
+                       flaky_test_tracker: &FlakyTestTracker,
                        parallelism: Option<&Parallelism>| {
     if test.data.ignore {
       return TestResult::Ignored;
@@ -98,52 +99,61 @@ pub fn main() {
         test_util::print::with_captured_output(|| {
           TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
             (test.data.func)();
-            TestResult::Passed
+            TestResult::Passed { duration: None }
           }))
         });
       match result {
-        TestResult::Passed | TestResult::Ignored => result,
-        TestResult::Failed { output } => {
+        TestResult::Passed { .. } | TestResult::Ignored => result,
+        TestResult::Failed { output, duration } => {
           if !captured_output.is_empty() {
             captured_output.push(b'\n');
           }
           captured_output.extend_from_slice(&output);
           TestResult::Failed {
+            duration,
             output: captured_output,
           }
         }
         // no support for sub tests
-        TestResult::SubTests(_) => unreachable!(),
+        TestResult::SubTests { .. } => unreachable!(),
       }
     };
-    // don't use this if we're only running a single test
-    let parallelism = parallelism.filter(|_| number_tests > 1);
-    if test.data.flaky {
-      run_flaky_test(&test.name, parallelism, run_test)
-    } else {
-      flaky_test_ci(&test.name, parallelism, run_test)
-    }
+    run_maybe_flaky_test(
+      &test.name,
+      test.data.flaky || *test_util::IS_CI,
+      flaky_test_tracker,
+      parallelism,
+      run_test,
+    )
   };
 
   let (watcher_tests, main_tests) =
     main_category.partition(|t| t.name.contains("::watcher::"));
 
   // watcher tests are really flaky, so run them sequentially
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
+  let reporter = test_util::test_runner::get_test_reporter(
+    "integration",
+    flaky_test_tracker.clone(),
+  );
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
-      ..Default::default()
+      parallelism: NonZeroUsize::new(1).unwrap(),
+      reporter: reporter.clone(),
     },
-    move |test| run_test(test, None),
+    {
+      let flaky_test_tracker = flaky_test_tracker.clone();
+      move |test| run_test(test, &flaky_test_tracker, None)
+    },
   );
   let parallelism = Parallelism::default();
   file_test_runner::run_tests(
     &main_tests,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
-      ..Default::default()
+      parallelism: parallelism.max_parallelism(),
+      reporter: reporter.clone(),
     },
-    move |test| run_test(test, Some(&parallelism)),
+    move |test| run_test(test, &flaky_test_tracker, Some(&parallelism)),
   );
 }

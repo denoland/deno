@@ -545,3 +545,20 @@ export function errname(errno: number): string {
   }
   return `UNKNOWN (${errno})`;
 }
+
+export function getErrorMessage(errno: number): string {
+  const err = errorMap.get(errno);
+
+  if (err) {
+    return err[1];
+  }
+  return `UNKNOWN (${errno})`;
+}
+
+export function getErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
+export function getCodeMap(): Map<string, number> {
+  return codeMap;
+}

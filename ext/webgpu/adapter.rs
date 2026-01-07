@@ -1,19 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#[allow(clippy::disallowed_types)]
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::V8TaskSpawner;
 use deno_core::WebIDL;
+use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
 use crate::Instance;
-use crate::SameObject;
 use crate::error::GPUGenericError;
 use crate::webidl::GPUFeatureName;
 use crate::webidl::features_to_feature_names;
@@ -83,13 +83,8 @@ impl GPUAdapter {
   fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
-      let limits = self.instance.adapter_limits(self.id);
 
-      GPUAdapterInfo {
-        info,
-        subgroup_min_size: limits.min_subgroup_size,
-        subgroup_max_size: limits.max_subgroup_size,
-      }
+      GPUAdapterInfo { info }
     })
   }
 
@@ -101,6 +96,8 @@ impl GPUAdapter {
   ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.adapter_features(self.id);
+      // Only expose WebGPU features, not wgpu native-only features
+      let features = features & wgpu_types::Features::all_webgpu_mask();
       let features = features_to_feature_names(features);
       GPUSupportedFeatures::new(scope, features)
     })
@@ -117,7 +114,7 @@ impl GPUAdapter {
 
   #[async_method(fake)]
   #[global]
-  fn request_device<'s>(
+  fn request_device(
     &self,
     state: &mut OpState,
     scope: &mut v8::PinScope<'_, '_>,
@@ -125,6 +122,7 @@ impl GPUAdapter {
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
     let supported_features = features_to_feature_names(features);
+    #[allow(clippy::disallowed_types)]
     let required_features = descriptor
       .required_features
       .iter()
@@ -135,9 +133,20 @@ impl GPUAdapter {
       return Err(CreateDeviceError::RequiredFeaturesNotASubset);
     }
 
-    let required_limits = serde_json::from_value(serde_json::to_value(
-      descriptor.required_limits,
-    )?)?;
+    // When support for compatibility mode is added, this will need to look
+    // at whether the adapter is "compatibility-defaulting" or
+    // "core-defaulting", and choose the appropriate set of defaults.
+    //
+    // Support for compatibility mode is tracked in
+    // https://github.com/gfx-rs/wgpu/issues/8124.
+    let required_limits = serde_json::from_value::<wgpu_types::Limits>(
+      serde_json::to_value(descriptor.required_limits)?,
+    )?
+    .or_better_values_from(&wgpu_types::Limits::default());
+
+    let trace = std::env::var_os("DENO_WEBGPU_TRACE")
+      .map(|path| wgpu_types::Trace::Directory(std::path::PathBuf::from(path)))
+      .unwrap_or_default();
 
     let wgpu_descriptor = wgpu_types::DeviceDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
@@ -145,24 +154,21 @@ impl GPUAdapter {
         descriptor.required_features,
       ),
       required_limits,
+      experimental_features: wgpu_types::ExperimentalFeatures::disabled(),
       memory_hints: Default::default(),
+      trace,
     };
 
     let (device, queue) = self.instance.adapter_request_device(
       self.id,
       &wgpu_descriptor,
-      std::env::var("DENO_WEBGPU_TRACE")
-        .ok()
-        .as_ref()
-        .map(std::path::Path::new),
       None,
       None,
     )?;
 
-    let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
-    let (uncaptured_sender, mut uncaptured_receiver) =
-      tokio::sync::mpsc::unbounded_channel();
-
+    let spawner = state.borrow::<V8TaskSpawner>().clone();
+    let lost_resolver = v8::PromiseResolver::new(scope).unwrap();
+    let lost_promise = lost_resolver.get_promise(scope);
     let device = GPUDevice {
       instance: self.instance.clone(),
       id: device,
@@ -170,16 +176,18 @@ impl GPUAdapter {
       label: descriptor.label,
       queue_obj: SameObject::new(),
       adapter_info: self.info.clone(),
-      error_handler: Arc::new(super::error::DeviceErrorHandler::new(
-        lost_sender,
-        uncaptured_sender,
+      error_handler: Rc::new(super::error::DeviceErrorHandler::new(
+        v8::Global::new(scope, lost_resolver),
+        spawner,
       )),
       adapter: self.id,
-      lost_receiver: Mutex::new(Some(lost_receiver)),
+      lost_promise: v8::Global::new(scope, lost_promise),
       limits: SameObject::new(),
       features: SameObject::new(),
+      has_active_capture: std::cell::RefCell::new(false),
     };
     let device = deno_core::cppgc::make_cppgc_object(scope, device);
+    let weak_device = v8::Weak::new(scope, device);
     let event_target_setup = state.borrow::<crate::EventTargetSetup>();
     let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
     device.set(scope, webidl_brand, webidl_brand);
@@ -189,68 +197,15 @@ impl GPUAdapter {
     let null = v8::null(scope);
     set_event_target_data.call(scope, null.into(), &[device.into()]);
 
-    let key = v8::String::new(scope, "dispatchEvent").unwrap();
-    let func = device
-      .get(scope, key.into())
+    // Now that the device is fully constructed, give the error handler a
+    // weak reference to it.
+    let device = device.cast::<v8::Value>();
+    deno_core::cppgc::try_unwrap_cppgc_object::<GPUDevice>(scope, device)
       .unwrap()
-      .cast::<v8::Function>();
+      .error_handler
+      .set_device(weak_device);
 
-    let context = scope.get_current_context();
-
-    let spawner = state.borrow::<deno_core::V8TaskSpawner>().clone();
-    // Cloning a v8::Global requires a valid isolate, but we don't
-    // know if we have one, so wrap them all in an Rc
-    struct Globals {
-      device: v8::Global<v8::Object>,
-      context: v8::Global<v8::Context>,
-      func: v8::Global<v8::Function>,
-    }
-    let globals = Rc::new(Globals {
-      device: v8::Global::new(scope, device),
-      context: v8::Global::new(scope, context),
-      func: v8::Global::new(scope, func),
-    });
-
-    deno_unsync::spawn(async move {
-      loop {
-        let Some(error) = uncaptured_receiver.recv().await else {
-          break;
-        };
-
-        let globals = globals.clone();
-        spawner.spawn(move |task_scope| {
-          v8::scope_with_context!(scope, task_scope, &globals.context);
-          v8::tc_scope!(let scope, scope);
-          let error = deno_core::error::to_v8_error(scope, &error);
-
-          let error_event_class = deno_core::JsRuntime::op_state_from(scope)
-            .borrow()
-            .borrow::<crate::ErrorEventClass>()
-            .0
-            .clone();
-          let error_event_class = v8::Local::new(scope, error_event_class);
-          let constructor =
-            v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
-          let kind = v8::String::new(scope, "uncapturederror").unwrap();
-
-          let obj = v8::Object::new(scope);
-          let key = v8::String::new(scope, "error").unwrap();
-          obj.set(scope, key.into(), error);
-
-          let event = constructor
-            .new_instance(scope, &[kind.into(), obj.into()])
-            .unwrap();
-
-          let recv = v8::Local::new(scope, globals.device.clone());
-          globals
-            .func
-            .open(scope)
-            .call(scope, recv.into(), &[event.into()]);
-        });
-      }
-    });
-
-    Ok(v8::Global::new(scope, device.cast::<v8::Value>()))
+    Ok(v8::Global::new(scope, device))
   }
 }
 
@@ -262,7 +217,7 @@ pub enum CreateDeviceError {
   #[class(inherit)]
   #[error(transparent)]
   Serde(#[from] serde_json::Error),
-  #[class(type)]
+  #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   Device(#[from] wgpu_core::instance::RequestDeviceError),
 }
@@ -449,6 +404,7 @@ unsafe impl GarbageCollected for GPUSupportedFeatures {
 }
 
 impl GPUSupportedFeatures {
+  #[allow(clippy::disallowed_types)]
   pub fn new(
     scope: &mut v8::PinScope<'_, '_>,
     features: HashSet<GPUFeatureName>,
@@ -481,8 +437,6 @@ impl GPUSupportedFeatures {
 
 pub struct GPUAdapterInfo {
   pub info: wgpu_types::AdapterInfo,
-  pub subgroup_min_size: u32,
-  pub subgroup_max_size: u32,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -528,12 +482,12 @@ impl GPUAdapterInfo {
 
   #[getter]
   fn subgroup_min_size(&self) -> u32 {
-    self.subgroup_min_size
+    self.info.subgroup_min_size
   }
 
   #[getter]
   fn subgroup_max_size(&self) -> u32 {
-    self.subgroup_max_size
+    self.info.subgroup_max_size
   }
 
   #[getter]

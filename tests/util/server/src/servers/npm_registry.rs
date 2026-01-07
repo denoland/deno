@@ -474,6 +474,11 @@ fn process_npm_security_audits_body(
     advisories.insert(202020, get_advisory_for_with_vuln2());
     vuln_critical += 1;
   }
+  if requires_map_keys.contains(&"@denotest/with-vuln3".to_string()) {
+    actions.push(get_action_for_with_vuln3());
+    advisories.insert(303030, get_advisory_for_with_vuln3());
+    vuln_high += 1;
+  }
 
   Some(json!({
     "actions": actions,
@@ -571,5 +576,38 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
     "recommendations": "Upgrade to version 2.0.0 or later",
     "patched_versions": ">=2.0.0",
     "url": "https://example.com/vuln/202020"
+  })
+}
+
+fn get_action_for_with_vuln3() -> serde_json::Value {
+  json!({
+    "isMajor": false,
+    "action": "install",
+    "resolves": [{
+      "id": 303030,
+      "path": "@denotest/with-vuln3",
+      "dev": false,
+      "optional": false,
+      "bundled": false,
+    }],
+    // Note: "module" field is intentionally omitted to test fallback logic
+    "target": "1.1.0"
+  })
+}
+
+fn get_advisory_for_with_vuln3() -> serde_json::Value {
+  json!({
+    "findings": [
+      {"version": "1.0.0", "paths": ["@denotest/with-vuln3"]}
+    ],
+    "id": 303030,
+    "overview": "Lorem ipsum dolor sit amet",
+    "title": "@denotest/with-vuln3 has security vulnerability",
+    "severity": "high",
+    "module_name": "@edenotest/with-vuln3",
+    "vulnerable_versions": "<1.1.0",
+    "recommendations": "Upgrade to version 1.1.0 or later",
+    "patched_versions": ">=1.1.0",
+    "url": "https://example.com/vuln/303030"
   })
 }

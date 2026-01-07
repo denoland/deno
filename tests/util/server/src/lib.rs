@@ -30,6 +30,7 @@ mod npm;
 mod parsers;
 pub mod print;
 pub mod pty;
+mod semaphore;
 pub mod servers;
 pub mod spawn;
 pub mod test_runner;
@@ -52,7 +53,6 @@ pub use parsers::parse_strace_output;
 pub use parsers::parse_wrk_output;
 pub use test_macro::test;
 pub use wildcard::WildcardMatchResult;
-pub use wildcard::wildcard_match;
 pub use wildcard::wildcard_match_detailed;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -730,6 +730,10 @@ pub(crate) mod colors {
 
   pub fn gray<S: AsRef<str>>(s: S) -> String {
     fg_color(s, Color::Ansi256(245))
+  }
+
+  pub fn yellow<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Yellow)
   }
 
   fn bold_fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
