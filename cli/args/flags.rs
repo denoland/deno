@@ -1440,6 +1440,16 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_KV_DEFAULT_PATH",
+    description: "Set the default path for Deno.openKv() when no path is provided.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_PATH_PREFIX",
+    description: "Set a prefix to be added to all Deno.openKv() paths.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_EMIT_CACHE_MODE",
     description: "Control if the transpiled sources should be cached.",
     example: None,
