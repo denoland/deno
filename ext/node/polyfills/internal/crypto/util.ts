@@ -7,6 +7,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
+  ERR_CRYPTO_INVALID_DIGEST,
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
@@ -84,6 +85,33 @@ const supportedCiphers = [
 
 export function getCiphers(): string[] {
   return supportedCiphers;
+}
+
+const hashBlockSizes: Record<string, number> = {
+  md5: 64,
+  rmd160: 64,
+  ripemd160: 64,
+  sha1: 64,
+  sha224: 64,
+  sha256: 64,
+  sha384: 128,
+  sha512: 128,
+  "sha512-224": 128,
+  "sha512-256": 128,
+  "sha3-224": 144,
+  "sha3-256": 136,
+  "sha3-384": 104,
+  "sha3-512": 72,
+  blake2b512: 128,
+  blake2s256: 64,
+};
+
+export function getHashBlockSize(algorithm: string): number {
+  const blockSize = hashBlockSizes[algorithm];
+  if (blockSize === undefined) {
+    throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
+  }
+  return blockSize;
 }
 
 export function getCipherInfo(
@@ -242,6 +270,7 @@ export default {
   getCiphers,
   getCipherInfo,
   getCurves,
+  getHashBlockSize,
   getOpenSSLSecLevel,
   secureHeapUsed,
   setEngine,

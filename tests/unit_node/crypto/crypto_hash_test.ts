@@ -2,7 +2,7 @@
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({
@@ -11,6 +11,26 @@ Deno.test({
     assertEquals(
       createHmac("sha256", "secret").update("hello").digest("hex"),
       "88aab3ede8d3adf94d26ab90d3bafd4a2083070c3bcce9c014ee04a443847c0b",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha512-224",
+  fn() {
+    assertEquals(
+      createHmac("sha512-224", "secret").update("hello").digest("hex"),
+      "27ade3215d20a0e939a1ff98f91052148e85f2ece87d926d6a2c1aad",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha512-256",
+  fn() {
+    assertEquals(
+      createHmac("sha512-256", "secret").update("hello").digest("hex"),
+      "e1a285d0317f7cce89acb5642fb6e82fc16d14ab588b0a5abcc7c20ea748594e",
     );
   },
 });
@@ -158,4 +178,75 @@ Deno.test("[node/crypto.createHmac] should not print deprecation warning", async
 
   const decodedStderr = new TextDecoder().decode(stderr).trim();
   assertEquals(decodedStderr, "");
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha3-224",
+  fn() {
+    assertEquals(
+      createHmac("sha3-224", "secret").update("hello").digest("hex"),
+      "d078791e9bf080c2139f883ac65033d4b5b75bbdb4088c494d0b6a14",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha3-256",
+  fn() {
+    assertEquals(
+      createHmac("sha3-256", "secret").update("hello").digest("hex"),
+      "850ae61707b3e60d4e45548c4facfda415d301712641fd11535cf395d9e2d7fe",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha3-384",
+  fn() {
+    assertEquals(
+      createHmac("sha3-384", "secret").update("hello").digest("hex"),
+      "e24e0dc664132644a6740071af5a05622edffea8afacf0a4060111961bc9148f23c001b6f7d7e79a44b9896b1f00cd85",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac sha3-512",
+  fn() {
+    assertEquals(
+      createHmac("sha3-512", "secret").update("hello").digest("hex"),
+      "bc07c2dfc0295b420662bda474eb8db11b0389822e13da56cf9991f467f2f6c713c481aa8663900ecaee310bf2f226eaa5c2d1345dfebee990658bd529a9c504",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac blake2b512",
+  fn() {
+    assertEquals(
+      createHmac("blake2b512", "secret").update("hello").digest("hex"),
+      "59d8e60d8f7f54753ab7b823b11f20879c4db732e5b56a0da5559d10b2c2b7ac37d47474b668725b661178359ad71c189597108dd2d94ca051697fbc24b6d7ad",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac blake2s256",
+  fn() {
+    assertEquals(
+      createHmac("blake2s256", "secret").update("hello").digest("hex"),
+      "56f9d5d171c31a9481d1949743ddd370209f7c666ba8bb6872067ad70398d9ce",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/crypto] createHmac unknown algorithm throws",
+  fn() {
+    assertThrows(
+      () => createHmac("unknown-algorithm", "secret"),
+      TypeError,
+      "Invalid digest: unknown-algorithm",
+    );
+  },
 });
