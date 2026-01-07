@@ -190,6 +190,14 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUCommandEncoder,
     loadWebGPU,
   ),
+  GPUCompilationInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationInfo,
+    loadWebGPU,
+  ),
+  GPUCompilationMessage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationMessage,
+    loadWebGPU,
+  ),
   GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUComputePassEncoder,
     loadWebGPU,
