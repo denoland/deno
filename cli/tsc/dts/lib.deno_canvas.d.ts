@@ -152,7 +152,7 @@ declare function createImageBitmap(
  *   console.error("Failed to create ImageBitmap:", error);
  * }
  * ```
- * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap/createImageBitmap
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap
  */
 declare function createImageBitmap(
   image: ImageBitmapSource,
@@ -208,6 +208,9 @@ interface ImageEncodeOptions {
 type GPUCanvasAlphaMode = "opaque" | "premultiplied";
 
 /** @category Canvas */
+type GPUPresentMode = "auto-vsync" | "auto-no-vsync" | "fifo" | "fifo-relaxed" | "immediate" | "mailbox";
+
+/** @category Canvas */
 interface GPUCanvasConfiguration {
   device: GPUDevice;
   format: GPUTextureFormat;
@@ -215,6 +218,9 @@ interface GPUCanvasConfiguration {
   viewFormats?: GPUTextureFormat[];
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
+
+  // extended from spec
+  presentMode?: GPUPresentMode;
 }
 
 /** @category Canvas */
@@ -246,7 +252,7 @@ declare var ImageBitmapRenderingContext: {
 
 /**
  * @category Canvas
- * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap/createImageBitmap
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
  */
 interface OffscreenCanvas extends EventTarget {
   /** The height of the canvas. */
@@ -277,6 +283,10 @@ interface OffscreenCanvas extends EventTarget {
   transferToImageBitmap(): ImageBitmap;
 }
 
+/**
+ * @category Canvas
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
+ */
 declare var OffscreenCanvas: {
   prototype: OffscreenCanvas;
   new (width: number, height: number): OffscreenCanvas;
