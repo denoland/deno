@@ -1126,14 +1126,13 @@ async fn run_tests_for_worker_inner(
       continue;
     }
 
-    // Close idle Node.js HTTP Agent connections to prevent false positive
-    // resource leak detection for pooled keepAlive connections.
-    if desc.sanitize_resources {
-      _ = worker.js_runtime.execute_script(
-        located_script_name!(),
-        "Deno[Deno.internal].node?.closeIdleConnections?.()",
-      );
-    }
+    // Close idle Node.js HTTP Agent connections to prevent cross-test
+    // pollution and false positive resource leak detection from pooled
+    // keepAlive connections.
+    _ = worker.js_runtime.execute_script(
+      located_script_name!(),
+      "Deno[Deno.internal].node?.closeIdleConnections?.()",
+    );
 
     // Await activity stabilization
     if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
