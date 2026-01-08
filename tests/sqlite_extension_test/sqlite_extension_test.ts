@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE: This test requires building the extension separately (it is excluded
 // from the workspace due to incompatible rusqlite feature requirements):

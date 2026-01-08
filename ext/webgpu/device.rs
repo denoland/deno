@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -6,6 +6,8 @@ use std::num::NonZeroU64;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
+use deno_core::cppgc::SameObject;
+use deno_core::cppgc::make_cppgc_object;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
@@ -25,15 +27,16 @@ use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
 use crate::Instance;
-use crate::SameObject;
 use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
 use crate::command_encoder::GPUCommandEncoder;
+use crate::error::GPUError;
 use crate::error::GPUGenericError;
 use crate::query_set::GPUQuerySet;
 use crate::render_bundle::GPURenderBundleEncoder;
 use crate::render_pipeline::GPURenderPipeline;
+use crate::shader::GPUCompilationInfo;
 use crate::webidl::features_to_feature_names;
 
 pub struct GPUDevice {
@@ -51,8 +54,9 @@ pub struct GPUDevice {
   pub queue_obj: SameObject<GPUQueue>,
 
   pub error_handler: super::error::ErrorHandler,
-  pub lost_receiver:
-    tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+  pub lost_promise: v8::Global<v8::Promise>,
+
+  pub has_active_capture: RefCell<bool>,
 }
 
 impl Drop for GPUDevice {
@@ -124,13 +128,8 @@ impl GPUDevice {
   ) -> v8::Global<v8::Object> {
     self.adapter_info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.adapter);
-      let limits = self.instance.adapter_limits(self.adapter);
 
-      GPUAdapterInfo {
-        info,
-        subgroup_min_size: limits.min_subgroup_size,
-        subgroup_max_size: limits.max_subgroup_size,
-      }
+      GPUAdapterInfo { info }
     })
   }
 
@@ -139,6 +138,7 @@ impl GPUDevice {
   fn queue(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.queue_obj.get(scope, |_| GPUQueue {
       id: self.queue,
+      device: self.id,
       error_handler: self.error_handler.clone(),
       instance: self.instance.clone(),
       label: self.label.clone(),
@@ -146,8 +146,12 @@ impl GPUDevice {
   }
 
   #[fast]
+  #[undefined]
   fn destroy(&self) {
     self.instance.device_destroy(self.id);
+    self
+      .error_handler
+      .push_error(Some(GPUError::Lost(GPUDeviceLostReason::Destroyed)));
   }
 
   #[required(1)]
@@ -156,11 +160,30 @@ impl GPUDevice {
     &self,
     #[webidl] descriptor: super::buffer::GPUBufferDescriptor,
   ) -> Result<GPUBuffer, JsErrorBox> {
+    // wgpu-core would also check this, but it needs to be reported via a JS
+    // error, not a validation error. (WebGPU specifies this check on the
+    // content timeline.)
+    if descriptor.mapped_at_creation
+      && !descriptor
+        .size
+        .is_multiple_of(wgpu_types::COPY_BUFFER_ALIGNMENT)
+    {
+      return Err(JsErrorBox::range_error(format!(
+        "The size of a buffer that is mapped at creation must be a multiple of {}",
+        wgpu_types::COPY_BUFFER_ALIGNMENT,
+      )));
+    }
+
+    // Validation of the usage needs to happen on the device timeline, so
+    // don't raise an error immediately if it isn't valid. wgpu will
+    // reject `BufferUsages::empty()`.
+    let usage = wgpu_types::BufferUsages::from_bits(descriptor.usage)
+      .unwrap_or(wgpu_types::BufferUsages::empty());
+
     let wgpu_descriptor = wgpu_core::resource::BufferDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
       size: descriptor.size,
-      usage: wgpu_types::BufferUsages::from_bits(descriptor.usage)
-        .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?,
+      usage,
       mapped_at_creation: descriptor.mapped_at_creation,
     };
 
@@ -228,6 +251,7 @@ impl GPUDevice {
       id,
       device_id: self.id,
       queue_id: self.queue,
+      default_view_id: Default::default(),
       label: descriptor.label,
       size: wgpu_descriptor.size,
       mip_level_count: wgpu_descriptor.mip_level_count,
@@ -368,7 +392,7 @@ impl GPUDevice {
     let wgpu_descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
       bind_group_layouts: Cow::Owned(bind_group_layouts),
-      push_constant_ranges: Default::default(),
+      immediate_size: 0,
     };
 
     let (id, err) = self.instance.device_create_pipeline_layout(
@@ -401,14 +425,24 @@ impl GPUDevice {
           GPUBindingResource::Sampler(sampler) => {
             BindingResource::Sampler(sampler.id)
           }
+          GPUBindingResource::Texture(texture) => {
+            BindingResource::TextureView(texture.default_view_id())
+          }
           GPUBindingResource::TextureView(texture_view) => {
             BindingResource::TextureView(texture_view.id)
           }
+          GPUBindingResource::Buffer(buffer) => {
+            BindingResource::Buffer(wgpu_core::binding_model::BufferBinding {
+              buffer: buffer.id,
+              offset: 0,
+              size: Some(buffer.size),
+            })
+          }
           GPUBindingResource::BufferBinding(buffer_binding) => {
             BindingResource::Buffer(wgpu_core::binding_model::BufferBinding {
-              buffer_id: buffer_binding.buffer.id,
+              buffer: buffer_binding.buffer.id,
               offset: buffer_binding.offset,
-              size: buffer_binding.size.and_then(NonZeroU64::new),
+              size: buffer_binding.size,
             })
           }
         },
@@ -439,6 +473,7 @@ impl GPUDevice {
   #[cppgc]
   fn create_shader_module(
     &self,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: super::shader::GPUShaderModuleDescriptor,
   ) -> GPUShaderModule {
     let wgpu_descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
@@ -449,18 +484,23 @@ impl GPUDevice {
     let (id, err) = self.instance.device_create_shader_module(
       self.id,
       &wgpu_descriptor,
-      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(
-        descriptor.code,
+      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Borrowed(
+        &descriptor.code,
       )),
       None,
     );
 
+    let compilation_info =
+      GPUCompilationInfo::new(scope, err.iter(), &descriptor.code);
+    let compilation_info = make_cppgc_object(scope, compilation_info);
+    let compilation_info = v8::Global::new(scope, compilation_info);
     self.error_handler.push_error(err);
 
     GPUShaderModule {
       instance: self.instance.clone(),
       id,
       label: descriptor.label,
+      compilation_info,
     }
   }
 
@@ -502,17 +542,29 @@ impl GPUDevice {
     self.new_render_pipeline(descriptor)
   }
 
-  #[cppgc]
-  fn create_command_encoder(
+  fn create_command_encoder<'a>(
     &self,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] descriptor: Option<
       super::command_encoder::GPUCommandEncoderDescriptor,
     >,
-  ) -> GPUCommandEncoder {
+  ) -> v8::Local<'a, v8::Object> {
+    // Metal imposes a limit on the number of outstanding command buffers.
+    // Attempting to create another command buffer after reaching that limit
+    // will block, which can result in a deadlock if GC is required to
+    // recover old command buffers. To encourage V8 to garbage collect
+    // command buffers before that happens, we associate some external
+    // memory with each command buffer.
+    #[cfg(target_vendor = "apple")]
+    const EXTERNAL_MEMORY_AMOUNT: i64 = 1 << 16;
+
     let label = descriptor.map(|d| d.label).unwrap_or_default();
     let wgpu_descriptor = wgpu_types::CommandEncoderDescriptor {
       label: Some(Cow::Owned(label.clone())),
     };
+
+    #[cfg(target_vendor = "apple")]
+    scope.adjust_amount_of_external_allocated_memory(EXTERNAL_MEMORY_AMOUNT);
 
     let (id, err) = self.instance.device_create_command_encoder(
       self.id,
@@ -522,12 +574,39 @@ impl GPUDevice {
 
     self.error_handler.push_error(err);
 
-    GPUCommandEncoder {
+    let encoder = GPUCommandEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
       id,
       label,
+      #[cfg(target_vendor = "apple")]
+      weak: std::sync::OnceLock::new(),
+    };
+
+    let obj = make_cppgc_object(scope, encoder);
+
+    #[cfg(target_vendor = "apple")]
+    {
+      let finalizer = v8::Weak::with_finalizer(
+        scope,
+        obj,
+        Box::new(|isolate: &mut v8::Isolate| {
+          isolate.adjust_amount_of_external_allocated_memory(
+            -EXTERNAL_MEMORY_AMOUNT,
+          );
+        }),
+      );
+      deno_core::cppgc::try_unwrap_cppgc_object::<GPUCommandEncoder>(
+        scope,
+        obj.into(),
+      )
+      .unwrap()
+      .weak
+      .set(finalizer)
+      .unwrap();
     }
+
+    obj
   }
 
   #[required(1)]
@@ -557,11 +636,8 @@ impl GPUDevice {
       multiview: None,
     };
 
-    let res = wgpu_core::command::RenderBundleEncoder::new(
-      &wgpu_descriptor,
-      self.id,
-      None,
-    );
+    let res =
+      wgpu_core::command::RenderBundleEncoder::new(&wgpu_descriptor, self.id);
     let (encoder, err) = match res {
       Ok(encoder) => (encoder, None),
       Err(e) => (
@@ -608,19 +684,14 @@ impl GPUDevice {
     }
   }
 
-  // TODO(@crowlKats): support returning same promise
-  #[async_method]
   #[getter]
-  #[cppgc]
-  async fn lost(&self) -> GPUDeviceLostInfo {
-    if let Some(lost_receiver) = self.lost_receiver.lock().await.take() {
-      let _ = lost_receiver.await;
-    }
-
-    GPUDeviceLostInfo
+  #[global]
+  fn lost(&self) -> v8::Global<v8::Promise> {
+    self.lost_promise.clone()
   }
 
   #[required(1)]
+  #[undefined]
   fn push_error_scope(&self, #[webidl] filter: super::error::GPUErrorFilter) {
     self
       .error_handler
@@ -657,19 +728,6 @@ impl GPUDevice {
 
     Ok(v8::Global::new(scope, val))
   }
-
-  #[fast]
-  fn start_capture(&self) {
-    self.instance.device_start_capture(self.id);
-  }
-  #[fast]
-  fn stop_capture(&self) {
-    self
-      .instance
-      .device_poll(self.id, wgpu_types::Maintain::wait())
-      .unwrap();
-    self.instance.device_stop_capture(self.id);
-  }
 }
 
 impl GPUDevice {
@@ -683,9 +741,7 @@ impl GPUDevice {
       stage: ProgrammableStageDescriptor {
         module: descriptor.compute.module.id,
         entry_point: descriptor.compute.entry_point.map(Into::into),
-        constants: Cow::Owned(
-          descriptor.compute.constants.into_iter().collect(),
-        ),
+        constants: descriptor.compute.constants.into_iter().collect(),
         zero_initialize_workgroup_memory: true,
       },
       cache: None,
@@ -694,7 +750,6 @@ impl GPUDevice {
     let (id, err) = self.instance.device_create_compute_pipeline(
       self.id,
       &wgpu_descriptor,
-      None,
       None,
     );
 
@@ -716,9 +771,7 @@ impl GPUDevice {
       stage: ProgrammableStageDescriptor {
         module: descriptor.vertex.module.id,
         entry_point: descriptor.vertex.entry_point.map(Into::into),
-        constants: Cow::Owned(
-          descriptor.vertex.constants.into_iter().collect(),
-        ),
+        constants: descriptor.vertex.constants.into_iter().collect(),
         zero_initialize_workgroup_memory: true,
       },
       buffers: Cow::Owned(
@@ -727,29 +780,26 @@ impl GPUDevice {
           .buffers
           .into_iter()
           .map(|b| {
-            let layout = b.into_option().ok_or_else(|| {
-              JsErrorBox::type_error(
-                "Nullable GPUVertexBufferLayouts are currently not supported",
-              )
-            })?;
-
-            Ok(wgpu_core::pipeline::VertexBufferLayout {
-              array_stride: layout.array_stride,
-              step_mode: layout.step_mode.into(),
-              attributes: Cow::Owned(
-                layout
-                  .attributes
-                  .into_iter()
-                  .map(|attr| wgpu_types::VertexAttribute {
-                    format: attr.format.into(),
-                    offset: attr.offset,
-                    shader_location: attr.shader_location,
-                  })
-                  .collect(),
-              ),
-            })
+            b.into_option().map_or_else(
+              wgpu_core::pipeline::VertexBufferLayout::default,
+              |layout| wgpu_core::pipeline::VertexBufferLayout {
+                array_stride: layout.array_stride,
+                step_mode: layout.step_mode.into(),
+                attributes: Cow::Owned(
+                  layout
+                    .attributes
+                    .into_iter()
+                    .map(|attr| wgpu_types::VertexAttribute {
+                      format: attr.format.into(),
+                      offset: attr.offset,
+                      shader_location: attr.shader_location,
+                    })
+                    .collect(),
+                ),
+              },
+            )
           })
-          .collect::<Result<_, JsErrorBox>>()?,
+          .collect(),
       ),
     };
 
@@ -818,7 +868,7 @@ impl GPUDevice {
           stage: ProgrammableStageDescriptor {
             module: fragment.module.id,
             entry_point: fragment.entry_point.map(Into::into),
-            constants: Cow::Owned(fragment.constants.into_iter().collect()),
+            constants: fragment.constants.into_iter().collect(),
             zero_initialize_workgroup_memory: true,
           },
           targets: Cow::Owned(
@@ -868,13 +918,12 @@ impl GPUDevice {
       multisample,
       fragment,
       cache: None,
-      multiview: None,
+      multiview_mask: None,
     };
 
     let (id, err) = self.instance.device_create_render_pipeline(
       self.id,
       &wgpu_descriptor,
-      None,
       None,
     );
 
@@ -889,7 +938,26 @@ impl GPUDevice {
   }
 }
 
-pub struct GPUDeviceLostInfo;
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
+pub enum GPUDeviceLostReason {
+  #[default]
+  Unknown,
+  Destroyed,
+}
+
+impl From<wgpu_types::DeviceLostReason> for GPUDeviceLostReason {
+  fn from(value: wgpu_types::DeviceLostReason) -> Self {
+    match value {
+      wgpu_types::DeviceLostReason::Unknown => Self::Unknown,
+      wgpu_types::DeviceLostReason::Destroyed => Self::Destroyed,
+    }
+  }
+}
+
+#[derive(Default)]
+pub struct GPUDeviceLostInfo {
+  pub reason: GPUDeviceLostReason,
+}
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUDeviceLostInfo {
@@ -911,7 +979,11 @@ impl GPUDeviceLostInfo {
   #[getter]
   #[string]
   fn reason(&self) -> &'static str {
-    "unknown"
+    use GPUDeviceLostReason::*;
+    match self.reason {
+      Unknown => "unknown",
+      Destroyed => "destroyed",
+    }
   }
 
   #[getter]
@@ -922,11 +994,41 @@ impl GPUDeviceLostInfo {
 }
 
 #[op2(fast)]
-pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
-  device.instance.device_start_capture(device.id);
+pub fn op_webgpu_device_start_capture(
+  #[cppgc] device: &GPUDevice,
+) -> Result<(), JsErrorBox> {
+  if *device.has_active_capture.borrow() {
+    return Err(JsErrorBox::type_error("capture already started"));
+  }
+
+  // safety: active check is above, other safety concerns are related to the debugger itself
+  unsafe {
+    device
+      .instance
+      .device_start_graphics_debugger_capture(device.id);
+  }
+
+  *device.has_active_capture.borrow_mut() = true;
+
+  Ok(())
 }
 
 #[op2(fast)]
-pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
-  device.instance.device_stop_capture(device.id);
+pub fn op_webgpu_device_stop_capture(
+  #[cppgc] device: &GPUDevice,
+) -> Result<(), JsErrorBox> {
+  if !*device.has_active_capture.borrow() {
+    return Err(JsErrorBox::type_error("No capture active"));
+  }
+
+  // safety: active check is above, other safety concerns are related to the debugger itself
+  unsafe {
+    device
+      .instance
+      .device_stop_graphics_debugger_capture(device.id);
+  }
+
+  *device.has_active_capture.borrow_mut() = false;
+
+  Ok(())
 }
