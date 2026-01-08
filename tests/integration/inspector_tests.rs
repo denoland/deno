@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::process::ChildStderr;
@@ -1876,4 +1876,30 @@ async fn inspector_node_worker_enable() {
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
+}
+
+#[test(flaky)]
+fn inspector_node_runtime_api_url() {
+  let script = util::testdata_path().join("inspector/node/url.js");
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("--allow-sys")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  let output = child.wait_with_output().unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  let first_line = stderr
+    .lines()
+    .collect::<Vec<_>>()
+    .first()
+    .unwrap()
+    .to_string();
+  let expected_url = first_line.strip_prefix("Debugger listening on ").unwrap();
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let actual_url = stdout.trim();
+  assert_eq!(actual_url, expected_url);
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -56,14 +56,17 @@ impl GPUQuerySet {
   }
 
   #[fast]
+  #[undefined]
   fn destroy(&self) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::generic(
-      "This operation is currently not supported",
-    ))
+    // TODO(https://github.com/gfx-rs/wgpu/issues/6495): Destroy the query
+    // set. Until that is supported, it is okay to do nothing here, the
+    // query set will be garbage collected and dropped eventually.
+    Ok(())
   }
 
   #[getter]
   #[string]
+  #[rename("type")]
   fn r#type(&self) -> &'static str {
     self.r#type.as_str()
   }

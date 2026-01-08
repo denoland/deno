@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       deno_web::InMemoryBroadcastChannel::default(),
     ),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
+    deno_image::deno_image::init(),
     deno_fetch::deno_fetch::init(Default::default()),
     deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init(),

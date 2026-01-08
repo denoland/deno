@@ -86,7 +86,7 @@
 "parallel/test-buffer-constructor-node-modules-paths.js" = {}
 "parallel/test-buffer-constructor-node-modules.js" = {}
 "parallel/test-buffer-constructor-outside-node-modules.js" = {}
-"parallel/test-buffer-copy.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31637" }
+"parallel/test-buffer-copy.js" = {}
 "parallel/test-buffer-equals.js" = {}
 "parallel/test-buffer-failed-alloc-typed-arrays.js" = {}
 "parallel/test-buffer-fakes.js" = {}
@@ -202,7 +202,8 @@
 "parallel/test-crypto-dh-leak.js" = {}
 "parallel/test-crypto-dh-odd-key.js" = {}
 "parallel/test-crypto-dh-shared.js" = {}
-"parallel/test-crypto-domain.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31636" }
+"parallel/test-crypto-domain.js" = {}
+"parallel/test-crypto-domains.js" = {}
 "parallel/test-crypto-ecb.js" = {}
 "parallel/test-crypto-from-binary.js" = {}
 "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js" = {}
@@ -431,6 +432,7 @@
 "parallel/test-file-validate-mode-flag.js" = {}
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-filehandle-close.js" = {}
+"parallel/test-filehandle-readablestream.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
 "parallel/test-fs-chmod-mask.js" = {}
@@ -544,8 +546,10 @@
 "parallel/test-http-chunked-smuggling.js" = {}
 "parallel/test-http-chunked.js" = {}
 "parallel/test-http-client-abort-event.js" = {}
+"parallel/test-http-client-abort-keep-alive-destroy-res.js" = {}
 "parallel/test-http-client-abort-no-agent.js" = {}
 "parallel/test-http-client-abort-response-event.js" = {}
+"parallel/test-http-client-abort-unix-socket.js" = {}
 "parallel/test-http-client-abort2.js" = {}
 "parallel/test-http-client-abort3.js" = {}
 "parallel/test-http-client-agent-abort-close-event.js" = {}
@@ -808,6 +812,7 @@
 "parallel/test-net-persistent-keepalive.js" = {}
 "parallel/test-net-persistent-nodelay.js" = {}
 "parallel/test-net-persistent-ref-unref.js" = {}
+"parallel/test-net-pipe-connect-errors.js" = {}
 "parallel/test-net-pipe-with-long-path.js" = {}
 "parallel/test-net-reconnect.js" = {}
 "parallel/test-net-remote-address-port.js" = {}
@@ -983,7 +988,7 @@
 "parallel/test-sqlite-database-sync-dispose.js" = {}
 "parallel/test-sqlite-database-sync.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31634" }
 "parallel/test-sqlite-named-parameters.js" = {}
-"parallel/test-sqlite-session.js" = { darwin = false, linux = false, windows = false, reason = "https://github.com/denoland/deno/issues/31635" }
+"parallel/test-sqlite-session.js" = {}
 "parallel/test-sqlite-statement-sync-columns.js" = {}
 "parallel/test-sqlite-timeout.js" = {}
 "parallel/test-sqlite-transactions.js" = {}
@@ -1207,7 +1212,9 @@
 # TODO(bartlomieju): doesn't work correctly because of `node:domain`
 # error handling
 # "parallel/test-timers-immediate-queue-throw.js" = {}
-"parallel/test-timers-immediate-queue.js" = {}
+# TODO(bartlomieju): Enable when `setImmediate` is properly supported
+# after the https://github.com/denoland/deno/pull/31643 revert
+# "parallel/test-timers-immediate-queue.js" = {}
 "parallel/test-timers-immediate-unref-nested-once.js" = {}
 "parallel/test-timers-immediate-unref-simple.js" = {}
 "parallel/test-timers-immediate-unref.js" = {}

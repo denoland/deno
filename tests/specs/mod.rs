@@ -1,5 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -20,11 +21,11 @@ use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
-use file_test_runner::reporter::LogReporter;
 use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
@@ -264,18 +265,23 @@ pub fn main() {
 
   let _http_guard = test_util::http_server();
   let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
       parallelism: parallelism.max_parallelism(),
-      reporter: Arc::new(LogReporter),
+      reporter: test_util::test_runner::get_test_reporter(
+        "specs",
+        flaky_test_tracker.clone(),
+      ),
     },
-    move |test| run_test(test, &parallelism),
+    move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
 }
 
 fn run_test(
   test: &CollectedTest<serde_json::Value>,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: &Parallelism,
 ) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
@@ -283,7 +289,12 @@ fn run_test(
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if metadata.ignore || !should_run(metadata.if_cond.as_deref()) {
+    let substs = variant_substitutions(&BTreeMap::new(), &metadata.variants);
+    let if_cond = metadata
+      .if_cond
+      .as_deref()
+      .map(|s| apply_substs(s, &substs));
+    if metadata.ignore || !should_run(if_cond.as_deref()) {
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
@@ -292,6 +303,7 @@ fn run_test(
           &metadata,
           &cwd,
           diagnostic_logger.clone(),
+          flaky_test_tracker,
           parallelism,
         );
         if result.is_failed() {
@@ -305,6 +317,7 @@ fn run_test(
         &metadata,
         &cwd,
         diagnostic_logger.clone(),
+        flaky_test_tracker,
         parallelism,
       )
     }
@@ -330,6 +343,7 @@ fn run_test_inner(
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+  flaky_test_tracker: &FlakyTestTracker,
   parallelism: &Parallelism,
 ) -> TestResult {
   let run_fn = || {
@@ -346,7 +360,13 @@ fn run_test_inner(
           TestResult::Passed { duration: None }
         }))
       };
-      let result = run_maybe_flaky_test(&test.name, step.flaky, None, run_func);
+      let result = run_maybe_flaky_test(
+        &test.name,
+        step.flaky,
+        flaky_test_tracker,
+        None,
+        run_func,
+      );
       if result.is_failed() {
         return result;
       }
@@ -356,6 +376,7 @@ fn run_test_inner(
   run_maybe_flaky_test(
     &test.name,
     metadata.flaky || *IS_CI,
+    flaky_test_tracker,
     Some(parallelism),
     run_fn,
   )
@@ -502,11 +523,8 @@ fn run_step(
       if substs.is_empty() {
         command.args(text)
       } else {
-        let mut text = text.clone();
-        for (from, to) in &substs {
-          text = text.replace(from, to);
-        }
-        command.args(text)
+        let text = apply_substs(text, &substs);
+        command.args(text.as_ref())
       }
     }
   };
@@ -515,7 +533,14 @@ fn run_step(
     None => command,
   };
   let command = match &step.command_name {
-    Some(command_name) => command.name(command_name),
+    Some(command_name) => {
+      if substs.is_empty() {
+        command.name(command_name)
+      } else {
+        let command_name = apply_substs(command_name, &substs);
+        command.name(command_name.as_ref())
+      }
+    }
     None => command,
   };
   let command = match *NO_CAPTURE {
@@ -693,5 +718,20 @@ fn substitute_variants_into_envs(
   }
   for key in to_remove {
     envs.remove(&key);
+  }
+}
+
+fn apply_substs<'a>(
+  text: &'a str,
+  substs: &'_ [(String, String)],
+) -> Cow<'a, str> {
+  if substs.is_empty() {
+    Cow::Borrowed(text)
+  } else {
+    let mut text = Cow::Borrowed(text);
+    for (from, to) in substs {
+      text = text.replace(from, to).into();
+    }
+    text
   }
 }

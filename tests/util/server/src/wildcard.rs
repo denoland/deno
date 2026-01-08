@@ -1,21 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use crate::colors;
-use crate::eprintln;
-
-pub fn wildcard_match(pattern: &str, text: &str) -> bool {
-  match wildcard_match_detailed(pattern, text) {
-    WildcardMatchResult::Success => true,
-    WildcardMatchResult::Fail(debug_output) => {
-      eprintln!("{}", debug_output);
-      false
-    }
-  }
-}
 
 pub enum WildcardMatchResult {
   Success,
   Fail(String),
+}
+
+impl WildcardMatchResult {
+  pub fn is_success(&self) -> bool {
+    matches!(self, WildcardMatchResult::Success)
+  }
 }
 
 pub fn wildcard_match_detailed(
@@ -215,7 +210,8 @@ pub fn wildcard_match_detailed(
           let maybe_found_index =
             expected_lines.iter().position(|expected_line| {
               actual_line == *expected_line
-                || wildcard_match(expected_line, actual_line)
+                || wildcard_match_detailed(expected_line, actual_line)
+                  .is_success()
             });
           if let Some(found_index) = maybe_found_index {
             let expected = expected_lines.remove(found_index);
@@ -469,7 +465,7 @@ mod test {
 
     // Iterate through the fixture lists, testing each one
     for (pattern, string, expected) in fixtures {
-      let actual = wildcard_match(pattern, string);
+      let actual = wildcard_match_detailed(pattern, string).is_success();
       dbg!(pattern, string, expected);
       assert_eq!(actual, expected);
     }
@@ -477,8 +473,11 @@ mod test {
 
   #[test]
   fn test_wildcard_match2() {
-    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+    let wildcard_match = |pattern: &str, text: &str| {
+      wildcard_match_detailed(pattern, text).is_success()
+    };
 
+    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
     assert!(wildcard_match("foo[WILDCARD]baz", "foobarbaz"));
     assert!(!wildcard_match("foo[WILDCARD]baz", "foobazbar"));
 
@@ -548,6 +547,9 @@ grault",
 
   #[test]
   fn test_wildcard_match_unordered_lines() {
+    let wildcard_match = |pattern: &str, text: &str| {
+      wildcard_match_detailed(pattern, text).is_success()
+    };
     // matching
     assert!(wildcard_match(
       concat!("[UNORDERED_START]\n", "B\n", "A\n", "[UNORDERED_END]\n"),

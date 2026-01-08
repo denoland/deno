@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -1384,7 +1384,7 @@ impl ConfigData {
       Some(Arc::new(specifier))
     })();
 
-    if let Some(deno_json) = member_dir.maybe_deno_json() {
+    if let Some(deno_json) = member_dir.member_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1396,7 +1396,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = member_dir.maybe_pkg_json() {
+    if let Some(pkg_json) = member_dir.member_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1579,17 +1579,17 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
+    let is_config_import_map = member_dir
+      .member_deno_json()
+      .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      .or_else(|| {
+        member_dir
+          .workspace
+          .root_deno_json()
+          .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      })
+      .unwrap_or(false);
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         None
       } else {
@@ -1602,16 +1602,6 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         import_map_from_settings = None;
       }
@@ -1678,11 +1668,11 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.member_dir.maybe_deno_json()
+    self.member_dir.member_or_root_deno_json()
   }
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
-    self.member_dir.maybe_pkg_json()
+    self.member_dir.member_or_root_pkg_json()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -351,14 +351,14 @@ fn load_configs(
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
-  let npm_config = match start_dir.maybe_pkg_json() {
+  let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
       pkg_json.path.clone(),
     )?),
     None => None,
   };
-  let deno_config = match start_dir.maybe_deno_json() {
+  let deno_config = match start_dir.member_deno_json() {
     Some(deno_json) => Some(ConfigUpdater::new(
       ConfigKind::DenoJson,
       url_to_file_path(&deno_json.specifier)?,
@@ -376,7 +376,7 @@ fn load_configs(
       let options = factory.cli_options()?.clone();
       let deno_json = options
         .start_dir
-        .maybe_deno_json()
+        .member_or_root_deno_json()
         .expect("Just created deno.json");
       (
         factory,

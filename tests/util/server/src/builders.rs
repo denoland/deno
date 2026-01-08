@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -890,6 +890,14 @@ impl TestCommandBuilder {
         "DENO_TSGO_PATH".to_string(),
         tsgo_prebuilt_path().to_string(),
       );
+    }
+    if !envs.contains_key("PATH") {
+      let path = std::env::var_os("PATH").unwrap_or_default();
+      let path = std::env::split_paths(&path);
+      let additional = deno_exe_path().parent().to_path_buf();
+      let path =
+        std::env::join_paths(std::iter::once(additional).chain(path)).unwrap();
+      envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
     }
     for key in &self.envs_remove {
       envs.remove(key);

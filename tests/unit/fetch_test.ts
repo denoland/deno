@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -2308,6 +2308,38 @@ Deno.test(
       },
       TypeError,
     );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5Url() {
+    // Test that socks5 transport accepts socks5:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5hUrl() {
+    // Test that socks5 transport accepts socks5h:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5h://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
   },
 );
 

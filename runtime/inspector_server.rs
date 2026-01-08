@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
@@ -30,6 +30,7 @@ use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
+use deno_node::InspectorServerUrl;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -104,7 +105,7 @@ impl InspectorServer {
     module_url: String,
     inspector: Rc<JsRuntimeInspector>,
     wait_for_session: bool,
-  ) {
+  ) -> InspectorServerUrl {
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(
@@ -114,7 +115,11 @@ impl InspectorServer {
       module_url,
       wait_for_session,
     );
+    let url = InspectorServerUrl(
+      info.get_websocket_debugger_url(&self.host.to_string()),
+    );
     self.register_inspector_tx.unbounded_send(info).unwrap();
+    url
   }
 }
 

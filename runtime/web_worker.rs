@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -531,7 +531,7 @@ impl WebWorker {
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
-      deno_canvas::deno_canvas::init(),
+      deno_image::deno_image::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store_provider: services.root_cert_store_provider.clone(),
@@ -687,7 +687,7 @@ impl WebWorker {
 
       // Send worker proxy to the main runtime
       if main_session_tx.unbounded_send(main_proxy).is_err() {
-        log::warn!("Failed to send inspector session proxy to main runtime");
+        log::debug!("Failed to send inspector session proxy to main runtime");
       }
 
       // Send worker proxy to the worker runtime
@@ -697,7 +697,7 @@ impl WebWorker {
         .unbounded_send(worker_proxy)
         .is_err()
       {
-        log::warn!("Failed to send inspector session proxy to worker runtime");
+        log::debug!("Failed to send inspector session proxy to worker runtime");
       }
     }
 

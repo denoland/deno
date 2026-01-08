@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod args;
 mod cache;
@@ -147,8 +147,8 @@ async fn run_subcommand(
       );
       tools::bundle::bundle(flags, bundle_flags).await
     }),
-    DenoSubcommand::Deploy(subcommand) => spawn_subcommand(async move {
-      tools::deploy::deploy(Arc::unwrap_or_clone(flags), subcommand).await
+    DenoSubcommand::Deploy(deploy_flags) => spawn_subcommand(async move {
+      tools::deploy::deploy(Arc::unwrap_or_clone(flags), deploy_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })

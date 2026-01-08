@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use bytemuck::cast_slice;
 use bytemuck::cast_slice_mut;
@@ -19,7 +19,7 @@ use lcms2::Transform;
 use num_traits::NumCast;
 use num_traits::SaturatingMul;
 
-use crate::CanvasError;
+use crate::ImageError;
 
 pub(crate) trait PremultiplyAlpha {
   fn premultiply_alpha(&self) -> Self;
@@ -90,7 +90,7 @@ where
 /// Premultiply the alpha channel of the image.
 pub(crate) fn premultiply_alpha(
   image: DynamicImage,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match image {
     DynamicImage::ImageLumaA8(image) => {
       Ok(process_premultiply_alpha(&image).into())
@@ -105,10 +105,10 @@ pub(crate) fn premultiply_alpha(
       Ok(process_premultiply_alpha(&image).into())
     }
     DynamicImage::ImageRgb32F(_) => {
-      Err(CanvasError::UnsupportedColorType(image.color()))
+      Err(ImageError::UnsupportedColorType(image.color()))
     }
     DynamicImage::ImageRgba32F(_) => {
-      Err(CanvasError::UnsupportedColorType(image.color()))
+      Err(ImageError::UnsupportedColorType(image.color()))
     }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
@@ -239,7 +239,7 @@ where
 /// Invert the premultiplied alpha channel of the image.
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match image {
     DynamicImage::ImageLumaA8(image) => Ok(if is_premultiplied_alpha(&image) {
       process_unpremultiply_alpha(&image).into()
@@ -264,10 +264,10 @@ pub(crate) fn unpremultiply_alpha(
       image.into()
     }),
     DynamicImage::ImageRgb32F(_) => {
-      Err(CanvasError::UnsupportedColorType(image.color()))
+      Err(ImageError::UnsupportedColorType(image.color()))
     }
     DynamicImage::ImageRgba32F(_) => {
-      Err(CanvasError::UnsupportedColorType(image.color()))
+      Err(ImageError::UnsupportedColorType(image.color()))
     }
     // If the image does not have an alpha channel, return the image as is.
     _ => Ok(image),
@@ -358,7 +358,7 @@ fn process_icc_profile_conversion<I, P, S>(
   color: ColorType,
   input_icc_profile: Profile,
   output_icc_profile: Profile,
-) -> Result<ImageBuffer<P, Vec<S>>, CanvasError>
+) -> Result<ImageBuffer<P, Vec<S>>, ImageError>
 where
   I: GenericImageView<Pixel = P>,
   P: Pixel<Subpixel = S> + SliceToPixel + TransformColorProfile + 'static,
@@ -375,7 +375,7 @@ where
     ColorType::Rgb16 => Ok(PixelFormat::RGB_16),
     ColorType::Rgba8 => Ok(PixelFormat::RGBA_8),
     ColorType::Rgba16 => Ok(PixelFormat::RGBA_16),
-    _ => Err(CanvasError::UnsupportedColorType(color)),
+    _ => Err(ImageError::UnsupportedColorType(color)),
   }?;
   let transformer = Transform::new(
     &input_icc_profile,
@@ -384,7 +384,7 @@ where
     pixel_format,
     output_icc_profile.header_rendering_intent(),
   )
-  .map_err(CanvasError::Lcms)?;
+  .map_err(ImageError::Lcms)?;
 
   for (x, y, mut pixel) in image.pixels() {
     let pixel = pixel.transform_color_profile(&transformer);
@@ -399,7 +399,7 @@ where
 pub(crate) fn to_srgb_from_icc_profile(
   image: DynamicImage,
   icc_profile: Option<Vec<u8>>,
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   match icc_profile {
     // If there is no color profile information, return the image as is.
     None => Ok(image),
@@ -483,12 +483,12 @@ pub(crate) fn to_srgb_from_icc_profile(
             .into(),
           ),
           DynamicImage::ImageRgb32F(_) => {
-            Err(CanvasError::UnsupportedColorType(image.color()))
+            Err(ImageError::UnsupportedColorType(image.color()))
           }
           DynamicImage::ImageRgba32F(_) => {
-            Err(CanvasError::UnsupportedColorType(image.color()))
+            Err(ImageError::UnsupportedColorType(image.color()))
           }
-          _ => Err(CanvasError::UnsupportedColorType(image.color())),
+          _ => Err(ImageError::UnsupportedColorType(image.color())),
         }
       }
     },
@@ -520,13 +520,13 @@ pub(crate) fn create_image_from_raw_bytes(
   width: u32,
   height: u32,
   buffer: &[u8],
-) -> Result<DynamicImage, CanvasError> {
+) -> Result<DynamicImage, ImageError> {
   let total_pixels = (width * height) as usize;
   // avoid to divide by zero
   let bytes_per_pixel = buffer
     .len()
     .checked_div(total_pixels)
-    .ok_or(CanvasError::InvalidSizeZero(width, height))?;
+    .ok_or(ImageError::InvalidSizeZero(width, height))?;
   // convert from a bytes per pixel to the color type of the image
   // https://github.com/image-rs/image/blob/2c986d353333d2604f0c3f1fcef262cc763c0001/src/color.rs#L38-L49
   match bytes_per_pixel {
@@ -580,9 +580,9 @@ pub(crate) fn create_image_from_raw_bytes(
         bytes_per_pixel,
       ),
     )),
-    12 => Err(CanvasError::UnsupportedColorType(ColorType::Rgb32F)),
-    16 => Err(CanvasError::UnsupportedColorType(ColorType::Rgba32F)),
-    _ => Err(CanvasError::UnsupportedColorType(ColorType::L8)),
+    12 => Err(ImageError::UnsupportedColorType(ColorType::Rgb32F)),
+    16 => Err(ImageError::UnsupportedColorType(ColorType::Rgba32F)),
+    _ => Err(ImageError::UnsupportedColorType(ColorType::L8)),
   }
 }
 
