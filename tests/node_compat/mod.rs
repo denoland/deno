@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -236,9 +236,15 @@ fn collect_tests(
 fn should_ignore(config: &TestConfig) -> Option<&str> {
   let os = std::env::consts::OS;
   match os {
-    "windows" if config.windows == Some(false) => config.reason.as_deref(),
-    "linux" if config.linux == Some(false) => config.reason.as_deref(),
-    "macos" if config.darwin == Some(false) => config.reason.as_deref(),
+    "windows" if config.windows == Some(false) => {
+      Some(config.reason.as_deref().unwrap_or("disabled on windows"))
+    }
+    "linux" if config.linux == Some(false) => {
+      Some(config.reason.as_deref().unwrap_or("disabled on linux"))
+    }
+    "macos" if config.darwin == Some(false) => {
+      Some(config.reason.as_deref().unwrap_or("disabled on macos"))
+    }
     _ => None,
   }
 }
