@@ -7261,6 +7261,7 @@ export {
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
   ReadableStreamDefaultController,

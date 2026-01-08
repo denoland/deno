@@ -95,6 +95,10 @@ declare module "ext:deno_web/09_file.js" {
 
 declare module "ext:deno_web/06_streams.js" {
   const ReadableStream: typeof ReadableStream;
+  function readableStreamCancel<T>(
+    stream: ReadableStream<T>,
+    reason?: string,
+  ): Promise<void>;
   function isReadableStreamDisturbed(stream: ReadableStream): boolean;
   function createProxy<T>(stream: ReadableStream<T>): ReadableStream<T>;
 }

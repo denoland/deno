@@ -41,6 +41,13 @@ import {
   denoErrorToNodeError,
   ERR_INVALID_STATE,
 } from "ext:deno_node/internal/errors.ts";
+import { readableStreamCancel } from "ext:deno_web/06_streams.js";
+import {
+  validateBoolean,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import process from "node:process";
 
 const {
   Error,
@@ -275,7 +282,7 @@ export class FileHandle extends EventEmitter {
   }
 
   readableWebStream(
-    options?: { autoClose?: boolean },
+    options: { autoClose?: boolean; type?: string } = kEmptyObject,
   ): ReadableStream<Uint8Array> {
     if (this.fd === -1) {
       throw new ERR_INVALID_STATE("The FileHandle is closed");
@@ -288,13 +295,20 @@ export class FileHandle extends EventEmitter {
     }
     this[kLocked] = true;
 
+    validateObject(options, "options");
     const autoClose = options?.autoClose ?? false;
-    let done = false;
-    let streamController: ReadableByteStreamController | null = null;
+    const type = options?.type ?? "bytes";
+    validateBoolean(autoClose, "options.autoClose");
+
+    if (type !== "bytes") {
+      process.emitWarning(
+        'A non-"bytes" options.type has no effect. A byte-oriented steam is ' +
+          "always created.",
+        "ExperimentalWarning",
+      );
+    }
 
     const ondone = async () => {
-      if (done) return;
-      done = true;
       this[kUnref]();
       if (autoClose) {
         await this.close().catch(() => {});
@@ -305,32 +319,20 @@ export class FileHandle extends EventEmitter {
       type: "bytes",
       autoAllocateChunkSize: 16384,
 
-      start: (controller) => {
-        streamController = controller;
-      },
-
       pull: async (controller) => {
-        try {
-          const view = controller.byobRequest!.view! as Uint8Array;
-          const { bytesRead } = await this.read(
-            view,
-            0,
-            view.byteLength,
-            null,
-          );
+        const view = controller.byobRequest!.view! as Uint8Array;
+        const { bytesRead } = await this.read(
+          view,
+          view.byteOffset,
+          view.byteLength,
+        );
 
-          if (bytesRead === 0) {
-            controller.close();
-            controller.byobRequest!.respond(0);
-            await ondone();
-            return;
-          }
-
-          controller.byobRequest!.respond(bytesRead);
-        } catch (err) {
-          controller.error(err);
+        if (bytesRead === 0) {
+          controller.close();
           await ondone();
         }
+
+        controller.byobRequest!.respond(bytesRead);
       },
 
       cancel: async () => {
@@ -339,17 +341,8 @@ export class FileHandle extends EventEmitter {
     });
 
     this[kRef]();
-
-    // When FileHandle is closed, error the stream (works even when locked)
     this.once("close", () => {
-      if (!done && streamController) {
-        try {
-          streamController.error(new Error("FileHandle was closed"));
-        } catch {
-          // Stream may already be closed/errored
-        }
-        void ondone();
-      }
+      readableStreamCancel(readable);
     });
 
     return readable;
