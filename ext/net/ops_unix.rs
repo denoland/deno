@@ -198,17 +198,25 @@ pub fn op_net_listen_unix(
 
 pub fn net_listen_unixpacket(
   state: &mut OpState,
-  address_path: &str,
+  address_path: Option<&str>,
 ) -> Result<(ResourceId, Option<String>), NetError> {
-  let permissions = state.borrow_mut::<PermissionsContainer>();
-  let address_path = permissions
-    .check_open(
-      Cow::Borrowed(Path::new(address_path)),
-      OpenAccessKind::ReadWriteNoFollow,
-      Some("Deno.listenDatagram()"),
-    )
-    .map_err(NetError::Permission)?;
-  let socket = UnixDatagram::bind(address_path)?;
+  let socket = match address_path {
+    // Bind to given path
+    Some(address_path) => {
+      let permissions = state.borrow_mut::<PermissionsContainer>();
+      let address_path = permissions
+        .check_open(
+          Cow::Borrowed(Path::new(address_path)),
+          OpenAccessKind::ReadWriteNoFollow,
+          Some("Deno.listenDatagram()"),
+        )
+        .map_err(NetError::Permission)?;
+      UnixDatagram::bind(address_path)?
+    }
+
+    // Leave socket unbound
+    None => UnixDatagram::unbound()?,
+  };
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
   let datagram_resource = UnixDatagramResource {
@@ -223,19 +231,19 @@ pub fn net_listen_unixpacket(
 #[serde]
 pub fn op_net_listen_unixpacket(
   state: &mut OpState,
-  #[string] path: &str,
+  #[string] path: Option<String>, // todo: Option<&str> not supported in ops yet
 ) -> Result<(ResourceId, Option<String>), NetError> {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_unixpacket(state, path)
+  net_listen_unixpacket(state, path.as_deref())
 }
 
 #[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_unixpacket(
   state: &mut OpState,
-  #[string] path: &str,
+  #[string] path: Option<String>, // todo: Option<&str> not supported in ops yet
 ) -> Result<(ResourceId, Option<String>), NetError> {
-  net_listen_unixpacket(state, path)
+  net_listen_unixpacket(state, path.as_deref())
 }
 
 pub fn pathstring(pathname: &Path) -> Result<String, NetError> {
