@@ -128,6 +128,9 @@ const supportedAlgorithms = {
     "SHA-256": null,
     "SHA-384": null,
     "SHA-512": null,
+    "SHA3-256": null,
+    "SHA3-384": null,
+    "SHA3-512": null,
   },
   "generateKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
@@ -138,6 +141,7 @@ const supportedAlgorithms = {
     "AES-CTR": "AesKeyGenParams",
     "AES-CBC": "AesKeyGenParams",
     "AES-GCM": "AesKeyGenParams",
+    "AES-OCB": "AesKeyGenParams",
     "AES-KW": "AesKeyGenParams",
     "HMAC": "HmacKeyGenParams",
     "X25519": null,
@@ -170,6 +174,7 @@ const supportedAlgorithms = {
     "AES-CTR": null,
     "AES-CBC": null,
     "AES-GCM": null,
+    "AES-OCB": null,
     "AES-KW": null,
     "Ed25519": null,
     "X25519": null,
@@ -186,12 +191,14 @@ const supportedAlgorithms = {
     "RSA-OAEP": "RsaOaepParams",
     "AES-CBC": "AesCbcParams",
     "AES-GCM": "AesGcmParams",
+    "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
   },
   "decrypt": {
     "RSA-OAEP": "RsaOaepParams",
     "AES-CBC": "AesCbcParams",
     "AES-GCM": "AesGcmParams",
+    "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
   },
   "get key length": {
@@ -449,6 +456,7 @@ function getKeyLength(algorithm) {
     case "AES-CBC":
     case "AES-CTR":
     case "AES-GCM":
+    case "AES-OCB":
     case "AES-KW": {
       // 1.
       if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
@@ -476,6 +484,15 @@ function getKeyLength(algorithm) {
             length = 1024;
             break;
           case "SHA-512":
+            length = 1024;
+            break;
+          case "SHA3-256":
+            length = 512;
+            break;
+          case "SHA3-384":
+            length = 1024;
+            break;
+          case "SHA3-512":
             length = 1024;
             break;
           default:
@@ -710,7 +727,8 @@ class SubtleCrypto {
         // 4.
         return TypedArrayPrototypeGetBuffer(cipherText);
       }
-      case "AES-GCM": {
+      case "AES-GCM":
+      case "AES-OCB": {
         normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
@@ -739,17 +757,22 @@ class SubtleCrypto {
           );
         }
 
-        // 3. We only support 96-bit and 128-bit nonce.
-        if (
-          ArrayPrototypeIncludes(
-            [12, 16],
-            TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv),
-          ) === undefined
-        ) {
-          throw new DOMException(
-            "Initialization vector length not supported",
-            "NotSupportedError",
-          );
+        // 3. We only support 96-bit and 128-bit nonce for GCM, 1-15 bytes for OCB
+        const ivLen = TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv);
+        if (algorithm.name === "AES-GCM") {
+          if (!ArrayPrototypeIncludes([12, 16], ivLen)) {
+            throw new DOMException(
+              "Initialization vector length not supported",
+              "NotSupportedError",
+            );
+          }
+        } else { // AES-OCB
+          if (ivLen < 1 || ivLen > 15) {
+            throw new DOMException(
+              "Initialization vector length not supported",
+              "NotSupportedError",
+            );
+          }
         }
 
         // 4.
@@ -769,7 +792,7 @@ class SubtleCrypto {
         // 5-8.
         const plaintext = await op_crypto_decrypt({
           key: keyData,
-          algorithm: "AES-GCM",
+          algorithm: algorithm.name,
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
           additionalData: normalizedAlgorithm.additionalData ||
@@ -1046,6 +1069,7 @@ class SubtleCrypto {
       case "AES-CTR":
       case "AES-CBC":
       case "AES-GCM":
+      case "AES-OCB":
       case "AES-KW": {
         result = exportKeyAES(format, key, innerKey);
         break;
@@ -1913,7 +1937,8 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
     }
     case "AES-CTR":
     case "AES-CBC":
-    case "AES-GCM": {
+    case "AES-GCM":
+    case "AES-OCB": {
       // 1.
       if (
         ArrayPrototypeFind(
@@ -3109,6 +3134,33 @@ function importKeyHMAC(
           }
           break;
         }
+        case "SHA3-256": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-256") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-256'",
+              "DataError",
+            );
+          }
+          break;
+        }
+        case "SHA3-384": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-384") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-384'",
+              "DataError",
+            );
+          }
+          break;
+        }
+        case "SHA3-512": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-512") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-512'",
+              "DataError",
+            );
+          }
+          break;
+        }
         default:
           throw new TypeError("Unreachable");
       }
@@ -3576,7 +3628,8 @@ async function importKeyInner(
     }
     case "AES-CTR":
     case "AES-CBC":
-    case "AES-GCM": {
+    case "AES-GCM":
+    case "AES-OCB": {
       return importKeyAES(
         format,
         normalizedAlgorithm,
@@ -3859,9 +3912,18 @@ function importKeyRSA(
           case "RS512":
             hash = "SHA-512";
             break;
+          case "RS3-256":
+            hash = "SHA3-256";
+            break;
+          case "RS3-384":
+            hash = "SHA3-384";
+            break;
+          case "RS3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512', 'RS3-256', 'RS3-384', 'RS3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3882,9 +3944,18 @@ function importKeyRSA(
           case "PS512":
             hash = "SHA-512";
             break;
+          case "PS3-256":
+            hash = "SHA3-256";
+            break;
+          case "PS3-384":
+            hash = "SHA3-384";
+            break;
+          case "PS3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512', 'PS3-256', 'PS3-384', 'PS3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3905,9 +3976,18 @@ function importKeyRSA(
           case "RSA-OAEP-512":
             hash = "SHA-512";
             break;
+          case "RSA-OAEP3-256":
+            hash = "SHA3-256";
+            break;
+          case "RSA-OAEP3-384":
+            hash = "SHA3-384";
+            break;
+          case "RSA-OAEP3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', 'RSA-OAEP-512', 'RSA-OAEP3-256', 'RSA-OAEP3-384', or 'RSA-OAEP3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -4198,6 +4278,15 @@ function exportKeyHMAC(format, key, innerKey) {
         case "SHA-512":
           jwk.alg = "HS512";
           break;
+        case "SHA3-256":
+          jwk.alg = "HS3-256";
+          break;
+        case "SHA3-384":
+          jwk.alg = "HS3-384";
+          break;
+        case "SHA3-512":
+          jwk.alg = "HS3-512";
+          break;
         default:
           throw new DOMException(
             "Hash algorithm not supported",
@@ -4278,6 +4367,15 @@ function exportKeyRSA(format, key, innerKey) {
           case "SHA-512":
             jwk.alg = "RS512";
             break;
+          case "SHA3-256":
+            jwk.alg = "RS3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "RS3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "RS3-512";
+            break;
           default:
             throw new DOMException(
               "Hash algorithm not supported",
@@ -4298,6 +4396,15 @@ function exportKeyRSA(format, key, innerKey) {
           case "SHA-512":
             jwk.alg = "PS512";
             break;
+          case "SHA3-256":
+            jwk.alg = "PS3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "PS3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "PS3-512";
+            break;
           default:
             throw new DOMException(
               "Hash algorithm not supported",
@@ -4317,6 +4424,15 @@ function exportKeyRSA(format, key, innerKey) {
             break;
           case "SHA-512":
             jwk.alg = "RSA-OAEP-512";
+            break;
+          case "SHA3-256":
+            jwk.alg = "RSA-OAEP3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "RSA-OAEP3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "RSA-OAEP3-512";
             break;
           default:
             throw new DOMException(
@@ -5086,6 +5202,60 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }, data);
 
       // 8.
+      return TypedArrayPrototypeGetBuffer(cipherText);
+    }
+    case "AES-OCB": {
+      normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+
+      // 1.
+      if (TypedArrayPrototypeGetByteLength(data) > (2 ** 39) - 256) {
+        throw new DOMException(
+          "Plaintext too large",
+          "OperationError",
+        );
+      }
+
+      // 2.
+      // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
+      const ivLen = TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv);
+      if (ivLen < 1 || ivLen > 15) {
+        throw new DOMException(
+          "Invalid nonce length for AES-OCB (must be 1-15 bytes)",
+          "OperationError",
+        );
+      }
+
+      // 3.
+      if (normalizedAlgorithm.tagLength === undefined) {
+        normalizedAlgorithm.tagLength = 128;
+      } else if (
+        !ArrayPrototypeIncludes(
+          [32, 64, 96, 104, 112, 120, 128],
+          normalizedAlgorithm.tagLength,
+        )
+      ) {
+        throw new DOMException(
+          `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
+          "OperationError",
+        );
+      }
+      // 4.
+      if (normalizedAlgorithm.additionalData) {
+        normalizedAlgorithm.additionalData = copyBuffer(
+          normalizedAlgorithm.additionalData,
+        );
+      }
+      // 5-6.
+      const cipherText = await op_crypto_encrypt({
+        key: keyData,
+        algorithm: "AES-OCB",
+        length: key[_algorithm].length,
+        iv: normalizedAlgorithm.iv,
+        additionalData: normalizedAlgorithm.additionalData || null,
+        tagLength: normalizedAlgorithm.tagLength,
+      }, data);
+
+      // 7.
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
     default:
