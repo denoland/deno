@@ -1018,9 +1018,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .new_command()
       .args("run --node-modules-dir=auto --cached-only main.ts")
       .run();
-    output.assert_matches_text(concat!(
+    output.assert_matches_text(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
-    ));
+    );
     output.assert_exit_code(1);
 
     // now try running, it should work (auto-install will set up node_modules)
