@@ -14,7 +14,7 @@ removeSync("test2");
 ### running
 
 ```bash
-deno run -A --unstable run.mjs
+deno run -A run.mjs
 node run.js
 ```
 

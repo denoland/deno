@@ -774,14 +774,6 @@ async fn resolve_flags_and_init(
     );
   }
 
-  // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
-  if flags.unstable_config.legacy_flag_enabled {
-    log::warn!(
-      "{} The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
-      colors::yellow("Warning")
-    );
-  }
-
   if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
     let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
       deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
