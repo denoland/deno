@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  // This test only works on Unix due to @denotest/bin command resolution
+  "if": "unix",
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "task bin extra",
+      "output": "task.out"
+    }
+  ]
+}
