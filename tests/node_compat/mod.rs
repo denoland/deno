@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
@@ -20,6 +22,9 @@ use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use util::env_vars_for_npm_tests;
 use util::tests_path;
+
+/// Global counter for generating unique test serial IDs
+static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
 
 const RUN_ARGS: &[&str] = &[
   "-A",
@@ -239,7 +244,7 @@ fn should_ignore(config: &TestConfig) -> Option<&str> {
 }
 
 fn uses_node_test_module(source: &str) -> bool {
-  source.contains("'node:test'")
+  source.contains("'node:test'") || source.contains("\"node:test\"")
 }
 
 fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
@@ -337,12 +342,16 @@ fn run_test(
   // Add test file
   cmd = cmd.arg(&test_path);
 
+  // Generate unique serial ID for this test (used for temp directory isolation)
+  let serial_id = TEST_SERIAL_ID.fetch_add(1, Ordering::SeqCst);
+
   // Set environment variables
   cmd = cmd
     .env("NODE_TEST_KNOWN_GLOBALS", "0")
     .env("NODE_SKIP_FLAG_CHECK", "1")
     .env("NODE_OPTIONS", node_options.join(" "))
     .env("NO_COLOR", "1")
+    .env("TEST_SERIAL_ID", serial_id.to_string())
     .envs(env_vars_for_npm_tests());
 
   let output = cmd
