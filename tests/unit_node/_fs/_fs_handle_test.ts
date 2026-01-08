@@ -369,3 +369,167 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] Create a readable web stream",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const webStream = fileHandle.readableWebStream();
+
+    assert(webStream instanceof ReadableStream);
+
+    const reader = webStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    const result = new Uint8Array(
+      chunks.reduce((acc, chunk) => acc + chunk.length, 0),
+    );
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    assertEquals(decoder.decode(result), "hello world");
+
+    await fileHandle.close();
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] With autoClose option",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const { promise: closePromise, resolve: closeResolve } = Promise
+      .withResolvers<void>();
+    fileHandle.once("close", closeResolve);
+
+    const webStream = fileHandle.readableWebStream({ autoClose: true });
+
+    assert(webStream instanceof ReadableStream);
+
+    const reader = webStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    const result = new Uint8Array(
+      chunks.reduce((acc, chunk) => acc + chunk.length, 0),
+    );
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    assertEquals(decoder.decode(result), "hello world");
+
+    // Wait for autoClose to complete by waiting for the close event
+    await closePromise;
+
+    // File should be closed
+    assertEquals(fileHandle.fd, -1);
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] Throws when called twice",
+  async function () {
+    const fileHandle = await fs.open(testData);
+
+    // First call should succeed
+    const stream = fileHandle.readableWebStream();
+
+    // Second call should throw
+    let threw = false;
+    try {
+      fileHandle.readableWebStream();
+    } catch (e) {
+      threw = true;
+      assert(e instanceof Error);
+      assertEquals((e as NodeJS.ErrnoException).code, "ERR_INVALID_STATE");
+    }
+
+    assertEquals(threw, true);
+
+    // Cancel the stream to avoid resource leak
+    await stream.cancel();
+    await fileHandle.close();
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] cancel without autoClose keeps fd open",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.readableWebStream({ autoClose: false });
+
+    // Cancel the stream
+    await stream.cancel();
+
+    // fd should still be valid (not -1)
+    assert(fileHandle.fd !== -1);
+
+    // FileHandle should still be usable
+    const stat = await fileHandle.stat();
+    assertEquals(stat.isFile(), true);
+
+    await fileHandle.close();
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] cancel with autoClose closes fd",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const { promise: closePromise, resolve: closeResolve } = Promise
+      .withResolvers<void>();
+    fileHandle.once("close", closeResolve);
+
+    const stream = fileHandle.readableWebStream({ autoClose: true });
+
+    // Cancel the stream - this should trigger autoClose
+    await stream.cancel();
+
+    // Wait for close event
+    await closePromise;
+
+    // fd should be -1
+    assertEquals(fileHandle.fd, -1);
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readableWebStream] close FileHandle while reader is active",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.readableWebStream();
+    const reader = stream.getReader({ mode: "byob" });
+
+    // Close the FileHandle while reader is active
+    await fileHandle.close();
+
+    // fd should be -1
+    assertEquals(fileHandle.fd, -1);
+
+    // Reader should eventually get done or error
+    const buffer = new ArrayBuffer(1024);
+    try {
+      const result = await reader.read(new Uint8Array(buffer));
+      // If no error, should be done
+      assertEquals(result.done, true);
+    } catch {
+      // Error is also acceptable (FileHandle was closed)
+    }
+  },
+);
