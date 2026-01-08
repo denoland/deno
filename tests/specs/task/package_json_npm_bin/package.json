@@ -1,7 +1,7 @@
 {
   "scripts": {
     "echo": "deno eval 'console.log(1)'",
-    "bin": "@denotest/bin hi && cli-esm testing this out && npx cli-cjs test"
+    "bin": "bin hi && cli-esm testing this out && npx cli-cjs test"
   },
   "dependencies": {
     "@denotest/bin": "0.5",

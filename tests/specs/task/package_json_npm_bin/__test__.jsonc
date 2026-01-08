@@ -1,7 +1,5 @@
 {
   "tempDir": true,
-  // This test only works on Unix due to @denotest/bin command resolution
-  "if": "unix",
   "steps": [
     {
       "args": "install",
