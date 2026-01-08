@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -692,6 +692,7 @@ impl StatementSync {
       RETURN = "return",
       DONE = "done",
       VALUE = "value",
+      __STATEMENT_REF = "__statement_ref",
     }
 
     self.reset()?;
@@ -797,8 +798,19 @@ impl StatementSync {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
+      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
-    let values = &[next_func.into(), return_func.into()];
+
+    // Get the cppgc wrapper object to keep the statement alive
+    // We store a reference to the statement object on the iterator to prevent
+    // the GC from collecting it while the iterator is still in use.
+    let statement_ref = if let Some(args) = params {
+      args.this().into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let values = &[next_func.into(), return_func.into(), statement_ref];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,
