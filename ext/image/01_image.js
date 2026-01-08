@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
 import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";

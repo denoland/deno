@@ -1,4 +1,4 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [workspace]
 resolver = "2"
@@ -64,7 +64,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.376.0" }
+deno_core = { version = "0.377.0" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.188.0"
@@ -74,10 +74,10 @@ deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.2"
+deno_npm = "=0.42.3"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
-deno_task_shell = "=0.26.0"
+deno_task_shell = "=0.26.2"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
