@@ -1035,3 +1035,17 @@ Deno.test("[node/sqlite] numbered parameters in different order (?2, ?1)", () =>
   // SQL puts ?2 in column a, ?1 in column b
   assertEquals(row, { a: "second_arg", b: "first_arg", __proto__: null });
 });
+
+// https://github.com/denoland/deno/issues/31744
+Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("create table if not exists t1(id integer primary key)");
+  const p = db.prepare(`insert into t1(id) values (?)`);
+  for (let id = 1; id <= 1_000_000; id++) {
+    p.run(id);
+  }
+  const iter = db.prepare(`select id from t1`).iterate();
+  for (const { id } of iter) {
+    assertEquals(typeof id, "number");
+  }
+});
