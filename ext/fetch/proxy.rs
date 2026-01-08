@@ -128,6 +128,7 @@ pub(crate) enum Target {
     cid: u32,
     port: u32,
   },
+  Tunnel,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -242,6 +243,9 @@ impl Intercept {
       Target::Vsock { .. } => {
         // Auth not supported for Vsock sockets
       }
+      Target::Tunnel => {
+        // Auth not supported for Vsock sockets
+      }
     }
   }
 }
@@ -338,20 +342,6 @@ impl Target {
     };
 
     Some(target)
-  }
-
-  pub(crate) fn new_tcp(hostname: String, port: u16) -> Self {
-    Target::Tcp { hostname, port }
-  }
-
-  #[cfg(not(windows))]
-  pub(crate) fn new_unix(path: PathBuf) -> Self {
-    Target::Unix { path }
-  }
-
-  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-  pub(crate) fn new_vsock(cid: u32, port: u32) -> Self {
-    Target::Vsock { cid, port }
   }
 }
 
@@ -560,6 +550,8 @@ pub enum Proxied<T> {
   /// Forwarded via Vsock socket
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(TokioIo<VsockStream>),
+  /// Forwarded through tunnel
+  Tunnel(TokioIo<deno_net::tunnel::TunnelStream>),
 }
 
 impl<C> Service<Uri> for ProxyConnector<C>
@@ -691,6 +683,15 @@ where
           let io = VsockStream::connect(addr).await?;
           Ok(Proxied::Vsock(TokioIo::new(io)))
         }),
+        Target::Tunnel => Box::pin(async move {
+          let Some(tunnel) = deno_net::tunnel::get_tunnel() else {
+            return Err("tunnel is not connected".into());
+          };
+
+          let stream = tunnel.create_agent_stream().await?;
+
+          Ok(Proxied::Tunnel(TokioIo::new(stream)))
+        }),
       };
     }
 
@@ -808,6 +809,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      Proxied::Tunnel(ref mut p) => Pin::new(p).poll_read(cx, buf),
     }
   }
 }
@@ -835,6 +837,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      Proxied::Tunnel(ref mut p) => Pin::new(p).poll_write(cx, buf),
     }
   }
 
@@ -856,6 +859,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_flush(cx),
+      Proxied::Tunnel(ref mut p) => Pin::new(p).poll_flush(cx),
     }
   }
 
@@ -877,6 +881,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      Proxied::Tunnel(ref mut p) => Pin::new(p).poll_shutdown(cx),
     }
   }
 
@@ -895,6 +900,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref p) => p.is_write_vectored(),
+      Proxied::Tunnel(ref p) => p.is_write_vectored(),
     }
   }
 
@@ -921,6 +927,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      Proxied::Tunnel(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
     }
   }
 }
@@ -958,6 +965,7 @@ where
         target_os = "macos"
       ))]
       Proxied::Vsock(_) => Connected::new().proxy(true),
+      Proxied::Tunnel(_) => Connected::new().proxy(true),
     }
   }
 }

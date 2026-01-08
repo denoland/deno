@@ -2059,6 +2059,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_fs",
+ "deno_net",
  "deno_path_util",
  "deno_permissions",
  "deno_tls",
