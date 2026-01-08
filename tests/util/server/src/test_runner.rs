@@ -463,6 +463,7 @@ struct PtyReporterData {
   failed_tests: Vec<PtyReporterFailedTest>,
   passed_tests: usize,
   ignored_tests: usize,
+  hide: bool,
 }
 
 impl PtyReporterData {
@@ -471,6 +472,9 @@ impl PtyReporterData {
   }
 
   pub fn render(&mut self) -> Option<String> {
+    if self.hide {
+      return Some(self.render_clear());
+    }
     let mut items = Vec::new();
     const MAX_ITEM_DISPLAY: usize = 10;
     if !self.pending_tests.is_empty() {
@@ -541,6 +545,7 @@ impl PtyReporter {
       failed_tests: Default::default(),
       passed_tests: Default::default(),
       ignored_tests: Default::default(),
+      hide: false,
     }));
     #[allow(clippy::disallowed_methods)]
     std::thread::spawn({
@@ -574,6 +579,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     _context: &file_test_runner::reporter::ReporterContext,
   ) {
     let mut data = self.data.lock();
+    data.hide = false;
     let mut final_text = data.render_clear().into_bytes();
     _ = LogReporter::write_report_category_start(&mut final_text, category);
     if let Some(text) = data.render() {
@@ -665,12 +671,11 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     failures: &[file_test_runner::reporter::ReporterFailure<TData>],
     total_tests: usize,
   ) {
-    let clear_text = self
-      .data
-      .lock()
-      .static_text
-      .render_clear()
-      .unwrap_or_default();
+    let clear_text = {
+      let mut data = self.data.lock();
+      data.hide = true;
+      data.render_clear()
+    };
     let mut final_text = clear_text.into_bytes();
     _ = LogReporter::write_report_failures(
       &mut final_text,
