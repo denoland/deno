@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
@@ -24,6 +25,13 @@ use util::tests_path;
 
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
+
+/// Timeout for each test execution in milliseconds
+const TEST_TIMEOUT_MS: u64 = if cfg!(target_os = "macos") {
+  20_000
+} else {
+  10_000
+};
 
 const RUN_ARGS: &[&str] = &[
   "run",
@@ -391,6 +399,34 @@ fn truncate_output(output: &str, max_len: usize) -> String {
   }
 }
 
+enum TestOutput {
+  Completed(std::process::Output),
+  TimedOut,
+}
+
+fn wait_with_timeout(
+  child: test_util::DenoChild,
+  timeout: Duration,
+) -> TestOutput {
+  use std::sync::mpsc;
+  use std::thread;
+
+  let (tx, rx) = mpsc::channel();
+
+  // Spawn thread to wait for child
+  thread::spawn(move || {
+    let result = child.wait_with_output();
+    let _ = tx.send(result);
+  });
+
+  match rx.recv_timeout(timeout) {
+    Ok(Ok(output)) => TestOutput::Completed(output),
+    Ok(Err(_)) => TestOutput::TimedOut, // IO error treated as timeout
+    Err(mpsc::RecvTimeoutError::Timeout) => TestOutput::TimedOut,
+    Err(mpsc::RecvTimeoutError::Disconnected) => TestOutput::TimedOut,
+  }
+}
+
 fn run_test(
   cli_args: &CliArgs,
   test: &CollectedTest<NodeCompatTestData>,
@@ -472,41 +508,63 @@ fn run_test(
     ))
   );
 
-  let output = cmd
-    .piped_output()
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  let success = output.status.success();
+  let child = cmd.piped_output().spawn().unwrap();
 
-  // Collect result for report
-  let collected = if success {
-    CollectedResult {
-      passed: Some(true),
-      error: None,
-      uses_node_test,
-      ignore_reason: None,
-    }
+  let test_output = if cli_args.node_compat_report {
+    let timeout = Duration::from_millis(TEST_TIMEOUT_MS);
+    wait_with_timeout(child, timeout)
   } else {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let output_text = if uses_node_test {
-      stdout.to_string()
-    } else {
-      stderr.to_string()
-    };
+    TestOutput::Completed(child.wait_with_output().unwrap())
+  };
 
-    CollectedResult {
-      passed: Some(false),
-      error: Some(ErrorInfo {
-        code: output.status.code(),
-        stderr: Some(truncate_output(&output_text, 2000)),
-        timeout: None,
-        message: None,
-      }),
-      uses_node_test,
-      ignore_reason: None,
+  let (success, collected, output_for_error) = match test_output {
+    TestOutput::Completed(output) => {
+      let success = output.status.success();
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      let output_text = if uses_node_test {
+        stdout.to_string()
+      } else {
+        stderr.to_string()
+      };
+
+      let collected = if success {
+        CollectedResult {
+          passed: Some(true),
+          error: None,
+          uses_node_test,
+          ignore_reason: None,
+        }
+      } else {
+        CollectedResult {
+          passed: Some(false),
+          error: Some(ErrorInfo {
+            code: output.status.code(),
+            stderr: Some(truncate_output(&output_text, 2000)),
+            timeout: None,
+            message: None,
+          }),
+          uses_node_test,
+          ignore_reason: None,
+        }
+      };
+      let output_str = format!("{}\n{}", stdout, stderr);
+      (success, collected, output_str)
+    }
+    TestOutput::TimedOut => {
+      let collected = CollectedResult {
+        passed: Some(false),
+        error: Some(ErrorInfo {
+          code: None,
+          stderr: None,
+          timeout: Some(TEST_TIMEOUT_MS),
+          message: None,
+        }),
+        uses_node_test,
+        ignore_reason: None,
+      };
+      let output_str = format!("Test timed out after {}ms", TEST_TIMEOUT_MS);
+      (false, collected, output_str)
     }
   };
 
@@ -525,11 +583,9 @@ fn run_test(
     }
     TestResult::Passed { duration: None }
   } else {
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     TestResult::Failed {
       duration: None,
-      output: format!("{}\n{}\n{}", stdout, stderr, debugging_command_text)
+      output: format!("{}\n{}", output_for_error, debugging_command_text)
         .into_bytes(),
     }
   }
