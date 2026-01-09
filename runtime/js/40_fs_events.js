@@ -19,8 +19,8 @@ class FsWatcher {
   #promise;
 
   constructor(paths, options) {
-    const { recursive } = options;
-    this.#rid = op_fs_events_open(recursive, paths);
+    const { recursive, ignore } = options;
+    this.#rid = op_fs_events_open(recursive, ArrayIsArray(ignore) ? ignore : [ignore], paths);
   }
 
   unref() {
