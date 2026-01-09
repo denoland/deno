@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { chown, chownSync } from "node:fs";

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -45,6 +45,7 @@ import {
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
 import {
   getDefaultEncoding,
+  getHashBlockSize,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
 import {
@@ -231,7 +232,7 @@ class HmacImpl extends Transform {
 
     const alg = hmac.toLowerCase();
     this.#algorithm = alg;
-    const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
+    const blockSize = getHashBlockSize(alg);
     const keySize = keyData.length;
 
     let bufKey: Buffer;

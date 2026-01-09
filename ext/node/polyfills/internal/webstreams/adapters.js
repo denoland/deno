@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { destroy } from "ext:deno_node/internal/streams/destroy.js";
 import finished from "ext:deno_node/internal/streams/end-of-stream.js";
 import {
