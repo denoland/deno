@@ -64,7 +64,6 @@ struct NodeCompatConfig {
 #[derive(Debug, Clone)]
 struct NodeCompatTestData {
   test_path: String,
-  config: TestConfig,
 }
 
 /// Report structures for generating report.json
@@ -121,9 +120,9 @@ fn main() {
   let cli_args = parse_cli_args();
   let config = load_config();
   let mut category = if cli_args.all {
-    collect_all_tests(&config)
+    collect_all_tests()
   } else {
-    collect_tests(&config)
+    collect_tests_from_config(&config)
   };
 
   // Apply CLI filter if provided
@@ -151,6 +150,8 @@ fn main() {
     flaky_test_tracker.clone(),
   );
 
+  let config = Arc::new(config);
+
   // Run sequential tests with parallelism=1
   file_test_runner::run_tests(
     &sequential_category,
@@ -160,15 +161,17 @@ fn main() {
     },
     {
       let cli_args = cli_args.clone();
+      let config = config.clone();
       let flaky_test_tracker = flaky_test_tracker.clone();
       let results = results.clone();
       move |test| {
+        let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test.data.config.flaky,
+          test_config.is_some_and(|c| c.flaky),
           &flaky_test_tracker,
           None,
-          || run_test(&cli_args, test, &results),
+          || run_test(&cli_args, test, test_config, &results),
         )
       }
     },
@@ -185,13 +188,15 @@ fn main() {
       let flaky_test_tracker = flaky_test_tracker.clone();
       let results = results.clone();
       let cli_args = cli_args.clone();
+      let config = config.clone();
       move |test| {
+        let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test.data.config.flaky,
+          test_config.is_some_and(|c| c.flaky),
           &flaky_test_tracker,
           Some(&parallelism),
-          || run_test(&cli_args, test, &results),
+          || run_test(&cli_args, test, test_config, &results),
         )
       }
     },
@@ -241,50 +246,25 @@ fn load_config() -> NodeCompatConfig {
   serde_json::from_str(&config_content).expect("Failed to parse config.json")
 }
 
-fn collect_tests(
+fn collect_tests_from_config(
   config: &NodeCompatConfig,
 ) -> CollectedTestCategory<NodeCompatTestData> {
-  let mut children = Vec::new();
-  for (test_name, test_config) in &config.tests {
-    let test_file_path = tests_path()
-      .join("node_compat/runner/suite/test")
-      .join(test_name);
+  let children = config
+    .tests
+    .keys()
+    .map(|test_name| create_collected_test(test_name))
+    .collect();
 
-    let full_name = format!("node_compat::{}", test_name.replace('/', "::"));
-
-    children.push(CollectedCategoryOrTest::Test(CollectedTest {
-      name: full_name,
-      path: test_file_path.to_path_buf(),
-      line_and_column: None,
-      data: NodeCompatTestData {
-        test_path: test_name.clone(),
-        config: test_config.clone(),
-      },
-    }));
-  }
-
-  CollectedTestCategory {
-    name: "node_compat".to_string(),
-    path: tests_path().join("node_compat").to_path_buf(),
-    children,
-  }
+  wrap_in_category(children)
 }
 
-/// Collect all test files from the suite directory, using config for metadata
-/// when available, otherwise using default config.
-fn collect_all_tests(
-  config: &NodeCompatConfig,
-) -> CollectedTestCategory<NodeCompatTestData> {
-  let suite_test_dir = tests_path().join("node_compat/runner/suite/test");
+/// Collect all test files from the suite directory.
+fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+  let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
-  // Walk through parallel/ and sequential/ directories
   for subdir in ["parallel", "sequential"] {
-    let dir_path = suite_test_dir.join(subdir);
-    if !dir_path.exists() {
-      continue;
-    }
-
+    let dir_path = suite_dir.join(subdir);
     let entries = match std::fs::read_dir(&dir_path) {
       Ok(entries) => entries,
       Err(_) => continue,
@@ -301,38 +281,47 @@ fn collect_all_tests(
         None => continue,
       };
 
-      // Only include .js and .mjs test files
+      // Only include test-*.js and test-*.mjs files
+      if !file_name.starts_with("test-") {
+        continue;
+      }
       if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
         continue;
       }
 
-      // Skip non-test files
-      if !file_name.starts_with("test-") {
-        continue;
-      }
-
       let test_name = format!("{}/{}", subdir, file_name);
-      let full_name = format!("node_compat::{}", test_name.replace('/', "::"));
-
-      // Use config if available, otherwise default
-      let test_config = config
-        .tests
-        .get(&test_name)
-        .cloned()
-        .unwrap_or_default();
-
-      children.push(CollectedCategoryOrTest::Test(CollectedTest {
-        name: full_name,
-        path: path.clone(),
-        line_and_column: None,
-        data: NodeCompatTestData {
-          test_path: test_name,
-          config: test_config,
-        },
-      }));
+      children.push(create_collected_test(&test_name));
     }
   }
 
+  wrap_in_category(children)
+}
+
+fn suite_test_dir() -> std::path::PathBuf {
+  tests_path()
+    .join("node_compat/runner/suite/test")
+    .to_path_buf()
+}
+
+fn create_collected_test(
+  test_name: &str,
+) -> CollectedCategoryOrTest<NodeCompatTestData> {
+  let test_file_path = suite_test_dir().join(test_name);
+  let full_name = format!("node_compat::{}", test_name.replace('/', "::"));
+
+  CollectedCategoryOrTest::Test(CollectedTest {
+    name: full_name,
+    path: test_file_path,
+    line_and_column: None,
+    data: NodeCompatTestData {
+      test_path: test_name.to_string(),
+    },
+  })
+}
+
+fn wrap_in_category(
+  children: Vec<CollectedCategoryOrTest<NodeCompatTestData>>,
+) -> CollectedTestCategory<NodeCompatTestData> {
   CollectedTestCategory {
     name: "node_compat".to_string(),
     path: tests_path().join("node_compat").to_path_buf(),
@@ -406,12 +395,13 @@ fn truncate_output(output: &str, max_len: usize) -> String {
 fn run_test(
   cli_args: &CliArgs,
   test: &CollectedTest<NodeCompatTestData>,
+  test_config: Option<&TestConfig>,
   results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
 ) -> TestResult {
   let data = &test.data;
 
   // Check platform-specific ignores
-  if let Some(reason) = should_ignore(&data.config) {
+  if let Some(reason) = test_config.and_then(|c| should_ignore(c)) {
     results.lock().unwrap().insert(
       data.test_path.clone(),
       CollectedResult {
