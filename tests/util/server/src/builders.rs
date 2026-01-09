@@ -857,6 +857,41 @@ impl TestCommandBuilder {
     .collect::<Vec<_>>()
   }
 
+  pub fn build_command_text_for_debugging(&self) -> String {
+    fn escape_arg(arg: &str) -> String {
+      if arg.is_empty() {
+        return "''".to_string();
+      }
+      if arg.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+          || c == '-'
+          || c == '_'
+          || c == '.'
+          || c == '/'
+          || c == ':'
+          || c == '='
+      }) {
+        arg.to_string()
+      } else {
+        format!("'{}'", arg.replace('\'', "'\\''"))
+      }
+    }
+
+    let cwd = self.build_cwd();
+    let command_path = self.build_command_path();
+    let args = self.build_args(&cwd);
+
+    let mut parts = Vec::new();
+
+    parts.push(command_path.to_string());
+
+    for arg in &args {
+      parts.push(escape_arg(arg));
+    }
+
+    parts.join(" ")
+  }
+
   fn build_cwd(&self) -> PathBuf {
     self
       .cwd
