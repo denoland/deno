@@ -20,7 +20,6 @@ use test_util as util;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
-use util::env_vars_for_npm_tests;
 use util::tests_path;
 
 /// Global counter for generating unique test serial IDs
@@ -118,6 +117,7 @@ struct CollectedResult {
 }
 
 fn main() {
+  let cli_args = parse_cli_args();
   let config = load_config();
   let mut category = collect_tests(&config);
 
@@ -155,6 +155,7 @@ fn main() {
       reporter: reporter.clone(),
     },
     {
+      let cli_args = cli_args.clone();
       let flaky_test_tracker = flaky_test_tracker.clone();
       let results = results.clone();
       move |test| {
@@ -163,7 +164,7 @@ fn main() {
           test.data.config.flaky,
           &flaky_test_tracker,
           None,
-          || run_test(test, &results),
+          || run_test(&cli_args, test, &results),
         )
       }
     },
@@ -179,13 +180,14 @@ fn main() {
     {
       let flaky_test_tracker = flaky_test_tracker.clone();
       let results = results.clone();
+      let cli_args = cli_args.clone();
       move |test| {
         run_maybe_flaky_test(
           &test.name,
           test.data.config.flaky,
           &flaky_test_tracker,
           Some(&parallelism),
-          || run_test(test, &results),
+          || run_test(&cli_args, test, &results),
         )
       }
     },
@@ -194,6 +196,31 @@ fn main() {
   // Generate report
   if std::env::var("CI").is_ok() {
     generate_report(&results.lock().unwrap());
+  }
+}
+
+#[derive(Clone)]
+struct CliArgs {
+  inspect_brk: bool,
+  inspect_wait: bool,
+}
+
+// You need to run with `--test node_compat` for this to work.
+// For example: `cargo test --test node_compat <test-file-name> -- --inspect-brk`
+fn parse_cli_args() -> CliArgs {
+  let mut inspect_brk = false;
+  let mut inspect_wait = false;
+  for arg in std::env::args() {
+    if arg == "--inspect-brk" {
+      inspect_brk = true;
+    } else if arg == "--inspect-wait" {
+      inspect_wait = true;
+    }
+  }
+
+  CliArgs {
+    inspect_brk,
+    inspect_wait,
   }
 }
 
@@ -297,6 +324,7 @@ fn truncate_output(output: &str, max_len: usize) -> String {
 }
 
 fn run_test(
+  cli_args: &CliArgs,
   test: &CollectedTest<NodeCompatTestData>,
   results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
 ) -> TestResult {
@@ -345,6 +373,13 @@ fn run_test(
     cmd = cmd.arg(format!("--v8-flags={}", v8_flags.join(",")));
   }
 
+  if cli_args.inspect_brk {
+    cmd = cmd.arg("--inspect-brk");
+  }
+  if cli_args.inspect_wait {
+    cmd = cmd.arg("--inspect-wait");
+  }
+
   // Add test file
   cmd = cmd.arg(&test_path);
 
@@ -357,20 +392,23 @@ fn run_test(
     .env("NODE_SKIP_FLAG_CHECK", "1")
     .env("NODE_OPTIONS", node_options.join(" "))
     .env("NO_COLOR", "1")
-    .env("TEST_SERIAL_ID", serial_id.to_string())
-    .envs(env_vars_for_npm_tests());
+    .env("TEST_SERIAL_ID", serial_id.to_string());
 
-  let output = cmd
-    .piped_output()
-    .spawn()
-    .expect("failed to spawn script")
-    .wait_with_output()
-    .expect("failed to wait for output");
+  let debugging_command_text = format!(
+    "Command: {}",
+    deno_terminal::colors::gray(format!(
+      "NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' {}",
+      node_options.join(" ").replace("'", "\\'"),
+      cmd.build_command_text_for_debugging()
+    ))
+  );
 
-  let success = output.status.success();
+  let output = cmd.run();
+  let success = output.exit_code() == Some(0);
 
   // Collect result for report
   let collected = if success {
+    output.skip_output_check();
     CollectedResult {
       passed: Some(true),
       error: None,
@@ -378,19 +416,13 @@ fn run_test(
       ignore_reason: None,
     }
   } else {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let output_text = if uses_node_test {
-      stdout.to_string()
-    } else {
-      stderr.to_string()
-    };
+    let output_text = output.combined_output();
 
     CollectedResult {
       passed: Some(false),
       error: Some(ErrorInfo {
-        code: output.status.code(),
-        stderr: Some(truncate_output(&output_text, 2000)),
+        code: output.exit_code(),
+        stderr: Some(truncate_output(output_text, 2000)),
         timeout: None,
         message: None,
       }),
@@ -405,14 +437,19 @@ fn run_test(
     .insert(data.test_path.clone(), collected);
 
   if success {
+    if *file_test_runner::NO_CAPTURE {
+      test_util::eprintln!("{}", debugging_command_text);
+    }
     TestResult::Passed { duration: None }
   } else {
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let combined = format!("{}\n{}", stdout, stderr);
     TestResult::Failed {
       duration: None,
-      output: combined.into_bytes(),
+      output: format!(
+        "{}\n{}",
+        output.combined_output(),
+        debugging_command_text
+      )
+      .into_bytes(),
     }
   }
 }

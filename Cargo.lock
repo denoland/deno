@@ -953,6 +953,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_lockfile",
  "deno_semver",
+ "deno_terminal",
  "deno_tower_lsp",
  "deno_unsync",
  "fastwebsockets",
