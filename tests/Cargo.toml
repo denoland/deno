@@ -36,8 +36,9 @@ path = "unit_node/mod.rs"
 harness = false
 
 [[test]]
-name = "node_compat_tests"
-path = "node_compat/test_runner.rs"
+name = "node_compat"
+path = "node_compat/mod.rs"
+harness = false
 
 [dev-dependencies]
 anyhow.workspace = true

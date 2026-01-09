@@ -9,6 +9,7 @@ const filePaths = [
   "test_results_specs.json",
   "test_results_unit.json",
   "test_results_unit_node.json",
+  "test_results_node_compat.json",
 ].map((fileName) => joinTarget(fileName));
 
 const tests = [];
