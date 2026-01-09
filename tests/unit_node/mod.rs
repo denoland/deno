@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use file_test_runner::RunOptions;
