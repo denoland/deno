@@ -1,28 +1,49 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertThrows, fail } from "./test_util.ts";
+import {
+  assertEquals,
+  assertInstanceOf,
+  assertThrows,
+  fail,
+} from "@std/assert";
+
+const errorConstructors = [
+  Deno.errors.NotFound,
+  Deno.errors.PermissionDenied,
+  Deno.errors.ConnectionRefused,
+  Deno.errors.ConnectionReset,
+  Deno.errors.ConnectionAborted,
+  Deno.errors.NotConnected,
+  Deno.errors.AddrInUse,
+  Deno.errors.AddrNotAvailable,
+  Deno.errors.BrokenPipe,
+  Deno.errors.AlreadyExists,
+  Deno.errors.InvalidData,
+  Deno.errors.TimedOut,
+  Deno.errors.Interrupted,
+  Deno.errors.WriteZero,
+  Deno.errors.WouldBlock,
+  Deno.errors.UnexpectedEof,
+  Deno.errors.BadResource,
+  Deno.errors.Http,
+  Deno.errors.Busy,
+  Deno.errors.NotSupported,
+  Deno.errors.FilesystemLoop,
+  Deno.errors.IsADirectory,
+  Deno.errors.NetworkUnreachable,
+  Deno.errors.NotADirectory,
+  Deno.errors.NotCapable,
+];
+
+function assertError(ErrorConstructor: typeof Deno.errors.NotFound) {
+  const error = new ErrorConstructor("msg", { cause: "cause" });
+  assertInstanceOf(error, Error);
+  assertEquals(error.cause, "cause");
+}
 
 Deno.test("Errors work", () => {
-  assert(new Deno.errors.NotFound("msg") instanceof Error);
-  assert(new Deno.errors.PermissionDenied("msg") instanceof Error);
-  assert(new Deno.errors.ConnectionRefused("msg") instanceof Error);
-  assert(new Deno.errors.ConnectionReset("msg") instanceof Error);
-  assert(new Deno.errors.ConnectionAborted("msg") instanceof Error);
-  assert(new Deno.errors.NotConnected("msg") instanceof Error);
-  assert(new Deno.errors.AddrInUse("msg") instanceof Error);
-  assert(new Deno.errors.AddrNotAvailable("msg") instanceof Error);
-  assert(new Deno.errors.BrokenPipe("msg") instanceof Error);
-  assert(new Deno.errors.AlreadyExists("msg") instanceof Error);
-  assert(new Deno.errors.InvalidData("msg") instanceof Error);
-  assert(new Deno.errors.TimedOut("msg") instanceof Error);
-  assert(new Deno.errors.Interrupted("msg") instanceof Error);
-  assert(new Deno.errors.WouldBlock("msg") instanceof Error);
-  assert(new Deno.errors.WriteZero("msg") instanceof Error);
-  assert(new Deno.errors.UnexpectedEof("msg") instanceof Error);
-  assert(new Deno.errors.BadResource("msg") instanceof Error);
-  assert(new Deno.errors.Http("msg") instanceof Error);
-  assert(new Deno.errors.Busy("msg") instanceof Error);
-  assert(new Deno.errors.NotSupported("msg") instanceof Error);
-  assert(new Deno.errors.NotCapable("msg") instanceof Error);
+  for (const errorConstructor of errorConstructors) {
+    assertError(errorConstructor);
+  }
 });
 
 Deno.test("Errors have some tamper resistance", () => {
