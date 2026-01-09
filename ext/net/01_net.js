@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -257,6 +257,17 @@ class UnixConn extends Conn {
 class VsockConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+  }
+}
+
+class PipeConn extends Conn {
+  constructor(rid) {
+    super(rid, null, null);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -749,6 +760,7 @@ export {
   listen,
   Listener,
   listenOptionApiName,
+  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

@@ -13,7 +13,7 @@ true
 true
 []
 process equals process true
-setTimeout 1 true
+setTimeout 1 false
 setTimeout 2 function
 setTimeout 3 function
 setTimeout 4 function

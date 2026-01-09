@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { $, ReleasesMdFile, Repo } from "./deps.ts";
 
@@ -35,7 +35,7 @@ export class DenoWorkspace {
   getCliDependencyCrates() {
     return this.getCliCrate()
       .descendantDependenciesInRepo()
-      .filter((c) => c.name !== "test_server");
+      .filter((c) => c.name !== "test_server" && c.name !== "test_macro");
   }
 
   getCliCrate() {

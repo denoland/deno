@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -42,7 +42,7 @@ To grant permissions, set them before the script argument. For example:
   }
 }
 
-fn set_npm_user_agent() {
+pub fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
     #[allow(clippy::undocumented_unsafe_blocks)]

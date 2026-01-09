@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -18,6 +18,7 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
@@ -238,6 +239,11 @@ impl TypeChecker {
         graph,
         sys: &self.sys,
         cjs_tracker: &self.cjs_tracker,
+        jsx_import_source_config_resolver: Arc::new(
+          JsxImportSourceConfigResolver::from_compiler_options_resolver(
+            &self.compiler_options_resolver,
+          )?,
+        ),
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
         package_json_resolver: &self.package_json_resolver,
@@ -296,11 +302,8 @@ impl TypeChecker {
           imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
-          referrer: self
-            .cli_options
-            .workspace()
-            .resolve_member_dir(root)
-            .maybe_deno_json()
+          referrer: dir
+            .member_or_root_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
         }
@@ -374,6 +377,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   graph: Arc<ModuleGraph>,
   sys: &'a CliSys,
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
+  jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
   package_json_resolver: &'a Arc<CliPackageJsonResolver>,
@@ -538,6 +542,9 @@ impl DiagnosticsByFolderRealIterator<'_> {
         config: check_group.compiler_options.clone(),
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
+        jsx_import_source_config_resolver: self
+          .jsx_import_source_config_resolver
+          .clone(),
         hash_data: compiler_options_hash_data,
         maybe_npm: Some(tsc::RequestNpmState {
           cjs_tracker: self.cjs_tracker.clone(),
@@ -731,7 +738,14 @@ impl<'a> GraphWalker<'a> {
   /// redirects resolved. We need to include all the emittable files in
   /// the roots, so they get type checked and optionally emitted,
   /// otherwise they would be ignored if only imported into JavaScript.
-  pub fn into_tsc_roots(self) -> TscRoots {
+  pub fn into_tsc_roots(mut self) -> TscRoots {
+    if self.has_seen_node_builtin && !self.roots.is_empty() {
+      // inject a specifier that will force node types to be resolved
+      self.roots.push((
+        ModuleSpecifier::parse("asset:///reference_types_node.d.ts").unwrap(),
+        MediaType::Dts,
+      ));
+    }
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
@@ -794,11 +808,6 @@ impl<'a> GraphWalker<'a> {
         Module::Node(_) => {
           if !self.has_seen_node_builtin {
             self.has_seen_node_builtin = true;
-            // inject a specifier that will resolve node types
-            self.roots.push((
-              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-              MediaType::Dts,
-            ));
           }
         }
       }

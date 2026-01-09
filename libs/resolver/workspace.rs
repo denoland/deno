@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // use super::UrlRc;
 
@@ -1834,6 +1834,15 @@ mod test {
           referrer_extra: None,
         }),
       )))
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
     }
   }
 

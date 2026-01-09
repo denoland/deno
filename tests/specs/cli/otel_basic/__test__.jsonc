@@ -84,6 +84,10 @@
       },
       "args": "run -A main.ts metric_temporality.ts",
       "output": "metric_temporality_cumulative.out"
+    },
+    "propagators_api": {
+      "args": "run -A main.ts propagators_api.ts",
+      "output": "propagators_api.out"
     }
   }
 }

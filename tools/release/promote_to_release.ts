@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
-import { patchver } from "jsr:@deno/patchver@0.4.0";
+import { patchver } from "jsr:@deno/patchver@0.5.0";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",

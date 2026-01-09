@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -20,6 +20,7 @@ use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 use jsonc_parser::json;
 
+use super::CacheTopLevelDepsOptions;
 use crate::args::ApproveScriptsFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -41,7 +42,7 @@ pub async fn approve_scripts(
 ) -> Result<(), AnyError> {
   let mut factory = CliFactory::from_flags(flags.clone());
   let mut options = factory.cli_options()?;
-  if options.start_dir.maybe_deno_json().is_none() {
+  if options.start_dir.member_or_root_deno_json().is_none() {
     factory = create_deno_json(&flags, options)?;
     options = factory.cli_options()?;
   }
@@ -125,14 +126,40 @@ pub async fn approve_scripts(
   config_updater.set_allow_scripts_value(allow_scripts_value);
   config_updater.commit()?;
 
-  for req in approvals {
-    log::info!("Approved {}", colors::green(format!("npm:{req}")));
-  }
   for req in denials {
-    log::info!("Denied {}", colors::red(format!("npm:{req}")))
+    log::info!(
+      "{} {}{}",
+      colors::yellow("Denied"),
+      colors::gray("npm:"),
+      req
+    )
+  }
+  for req in approvals.iter() {
+    log::info!(
+      "{} {}{}",
+      colors::green("Approved"),
+      colors::gray("npm:"),
+      req
+    );
   }
 
-  super::npm_install_after_modification(flags, None).await?;
+  super::npm_install_after_modification(
+    flags,
+    None,
+    CacheTopLevelDepsOptions {
+      lockfile_only: approve_flags.lockfile_only,
+    },
+  )
+  .await?;
+
+  for req in approvals {
+    log::info!(
+      "{} {}{}",
+      colors::cyan("Ran build script"),
+      colors::gray("npm:"),
+      req
+    );
+  }
 
   Ok(())
 }

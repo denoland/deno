@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::future::Future;
@@ -1247,7 +1247,6 @@ impl CliFactory {
               .clone(),
           })),
           bare_node_builtins: options.unstable_bare_node_builtins(),
-          types_node_version_req: Some(crate::npm::get_types_node_version_req()),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,

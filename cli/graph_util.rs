@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -297,9 +297,9 @@ pub fn resolution_error_for_tsc_diagnostic(
       | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
       | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
       NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
       | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
     }
   }
@@ -787,15 +787,6 @@ impl ModuleGraphBuilder {
         options.npm_caching,
       )
       .await?;
-
-    if let Some(npm_installer) = &self.npm_installer
-      && graph.has_node_specifier
-      && graph.graph_kind().include_types()
-    {
-      npm_installer
-        .inject_synthetic_types_node_package(options.npm_caching)
-        .await?;
-    }
 
     Ok(())
   }

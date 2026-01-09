@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -12,6 +12,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionsContainer;
+
+pub struct InspectorServerUrl(pub String);
 
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {
@@ -49,9 +51,18 @@ pub fn op_inspector_close() {
 
 #[op2]
 #[string]
-pub fn op_inspector_url() -> Option<String> {
-  // TODO: hook up to InspectorServer
-  None
+pub fn op_inspector_url(
+  state: &mut OpState,
+) -> Result<Option<String>, InspectorConnectError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "inspector.url")?;
+
+  Ok(
+    state
+      .try_borrow::<InspectorServerUrl>()
+      .map(|url| url.0.to_string()),
+  )
 }
 
 #[op2(fast)]

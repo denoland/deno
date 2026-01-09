@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -752,14 +752,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?;
 
+    let module_type = match requested_module_type {
+      RequestedModuleType::Text => ModuleType::Text,
+      RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::None => {
+        match file.resolve_media_type_and_charset().0 {
+          MediaType::Wasm => ModuleType::Wasm,
+          _ => ModuleType::JavaScript,
+        }
+      }
+      t => unreachable!("{t}"),
+    };
+
     Ok(ModuleCodeStringSource {
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
-      module_type: match requested_module_type {
-        RequestedModuleType::Text => ModuleType::Text,
-        RequestedModuleType::Bytes => ModuleType::Bytes,
-        _ => unreachable!(),
-      },
+      module_type,
     })
   }
 
@@ -1246,6 +1254,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
 
     None
+  }
+
+  // todo(dsherret): this method is actually only to determine whether
+  // to show the filename in the stack traces so we should rename it
+  // to something more clear that reflects that (since we skip checking
+  // this for non-npm packages)
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let specifier = resolve_url(source_url).ok()?;
+
+    // some npm packages rely on the file existing or not to end up in
+    // the stack trace, so for backwards compat reasons only check this
+    // for npm packages because we don't want the perf hit otherwise
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return Some(path.is_file());
+    }
+
+    Some(true)
   }
 
   fn get_source_mapped_source_line(

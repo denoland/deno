@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -44,6 +44,7 @@ mod outdated;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
+pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
@@ -350,14 +351,14 @@ fn load_configs(
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
-  let npm_config = match start_dir.maybe_pkg_json() {
+  let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
       pkg_json.path.clone(),
     )?),
     None => None,
   };
-  let deno_config = match start_dir.maybe_deno_json() {
+  let deno_config = match start_dir.member_deno_json() {
     Some(deno_json) => Some(ConfigUpdater::new(
       ConfigKind::DenoJson,
       url_to_file_path(&deno_json.specifier)?,
@@ -375,7 +376,7 @@ fn load_configs(
       let options = factory.cli_options()?.clone();
       let deno_json = options
         .start_dir
-        .maybe_deno_json()
+        .member_or_root_deno_json()
         .expect("Just created deno.json");
       (
         factory,
@@ -598,7 +599,14 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
+  npm_install_after_modification(
+    flags,
+    Some(jsr_resolver),
+    CacheTopLevelDepsOptions {
+      lockfile_only: add_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   Ok(())
 }
@@ -921,7 +929,14 @@ pub async fn remove(
       config.commit()?;
     }
 
-    npm_install_after_modification(flags, None).await?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: remove_flags.lockfile_only,
+      },
+    )
+    .await?;
   }
 
   Ok(())
@@ -931,6 +946,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
@@ -942,7 +958,8 @@ async fn npm_install_after_modification(
   let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
-  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver, cache_options)
+    .await?;
 
   if let Some(install_reporter) = cli_factory.install_reporter()? {
     let workspace = cli_factory.workspace_resolver().await?;

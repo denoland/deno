@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -64,6 +64,16 @@ export function isIP(ip: string) {
   }
 
   return 0;
+}
+
+export function getIPFamily(ip: string): "IPv4" | "IPv6" | undefined {
+  if (isIPv4(ip)) {
+    return "IPv4";
+  }
+  if (isIPv6(ip)) {
+    return "IPv6";
+  }
+  return undefined;
 }
 
 export function makeSyncWrite(fd: number) {

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 mod go;
 mod js;
@@ -24,10 +24,9 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::resolution::PackageReqNotFoundError;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
-use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
@@ -122,25 +121,38 @@ macro_rules! maybe_compressed_source {
   }};
 }
 
-macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
+macro_rules! maybe_compressed_static_asset {
+  ($name: expr, $file: expr, $is_lib: literal) => {
     (
       $name,
       StaticAsset {
-        is_lib: true,
+        is_lib: $is_lib,
         source: maybe_compressed_source!(concat!("tsc/dts/", $file)),
       },
     )
+  };
+  ($e: expr, $is_lib: literal) => {
+    maybe_compressed_static_asset!($e, $e, $is_lib)
+  };
+}
+
+macro_rules! maybe_compressed_lib {
+  ($name: expr, $file: expr) => {
+    maybe_compressed_static_asset!($name, $file, true)
   };
   ($e: expr) => {
     maybe_compressed_lib!($e, $e)
   };
 }
 
+// Include the auto-generated node type libs macro
+include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
+
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   Compressed(CompressedSource),
+  #[allow(dead_code)]
   Uncompressed(&'static str),
   #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
@@ -174,7 +186,7 @@ pub struct StaticAsset {
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
   IndexMap<&'static str, StaticAsset>,
 > = Lazy::new(|| {
-  IndexMap::from([
+  Vec::from([
     // compressed in build.rs
     maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
     maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
@@ -294,6 +306,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -302,16 +315,37 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     (
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
-      "node_types.d.ts",
+      "reference_types_node.d.ts",
       StaticAsset {
         is_lib: false,
         source: StaticAssetSource::Uncompressed(
-          "/// <reference types=\"npm:@types/node\" />\n",
+          // causes either the built-in node types to be used or it
+          // prefers the @types/node if it exists
+          "/// <reference lib=\"node\" />\n/// <reference types=\"npm:@types/node\" />\n",
         ),
       },
     ),
   ])
+  .into_iter()
+  .chain(node_type_libs!())
+  .collect()
 });
+
+pub fn lib_names() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for (key, value) in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.iter() {
+    if !value.is_lib {
+      continue;
+    }
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -477,6 +511,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
+  pub jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   pub hash_data: u64,
   pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -601,18 +636,15 @@ pub enum ResolveError {
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
   #[class(inherit)]
   #[error("{0}")]
-  PackageReqNotFound(#[from] PackageReqNotFoundError),
-  #[class(inherit)]
-  #[error("{0}")]
-  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+  ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveArgs {
+pub struct ResolveArgs<'a> {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  pub base: String,
+  pub base: &'a str,
   /// A list of specifiers that should be resolved.
   /// (is_cjs: bool, raw_specifier: String)
   pub specifiers: Vec<(bool, String)>,
@@ -669,15 +701,9 @@ fn resolve_graph_specifier_types(
       if let Some(npm) = maybe_npm
         && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
       {
-        let managed_resolver = npm
+        let package_folder = npm
           .npm_resolver
-          .as_managed()
-          // should never be byonm because it won't create Module::Npm
-          .unwrap();
-        let pkg_id = managed_resolver
-          .resolve_pkg_id_from_deno_module_req(req_ref.req())?;
-        let package_folder =
-          managed_resolver.resolve_pkg_folder_from_pkg_id(&pkg_id)?;
+          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
@@ -689,34 +715,8 @@ fn resolve_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
-              let reqs = managed_resolver.resolution().package_reqs();
-              if let Some((_, types_nv)) =
-                deno_resolver::npm::find_definitely_typed_package(
-                  &pkg_id.nv,
-                  reqs.iter().map(|tup| (&tup.0, &tup.1)),
-                )
-              {
-                let package_folder = managed_resolver
-                  .resolve_pkg_folder_from_deno_module(types_nv)?;
-                let res_result =
-                  npm.node_resolver.resolve_package_subpath_from_deno_module(
-                    &package_folder,
-                    req_ref.sub_path(),
-                    Some(referrer),
-                    resolution_mode,
-                    NodeResolutionKind::Types,
-                  );
-                if let Ok(res_result) = res_result {
-                  Some(res_result.into_url()?)
-                } else {
-                  None
-                }
-              } else {
-                None
-              }
-            }
-            NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -783,8 +783,6 @@ fn resolve_non_graph_specifier_types(
     match NpmPackageReqReference::from_str(raw_specifier) {
       Ok(npm_req_ref) => {
         debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-        // todo(dsherret): add support for injecting this in the graph so
-        // we don't need this special code here.
         // This could occur when resolving npm:@types/node when it is
         // injected and not part of the graph
         let package_folder =
@@ -803,8 +801,8 @@ fn resolve_non_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
             _ => return Err(err.into()),
           },
         };
@@ -987,7 +985,10 @@ pub fn resolve_specifier_for_tsc(
         ) => {
           // it's most likely requesting the jsxImportSource, which isn't loaded
           // into the graph when not using jsx, so just ignore this error
-          if specifier.ends_with("/jsx-runtime") {
+          if specifier.ends_with("/jsx-runtime")
+            // ignore in order to support attempt to load when it doesn't exist
+            || specifier == "npm:@types/node"
+          {
             None
           } else {
             return Err(err.into());
@@ -1111,6 +1112,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
     media_type = MediaType::from_str(load_specifier);
+    is_cjs = media_type == MediaType::Dcts;
     maybe_source.map(T::from_static)
   } else if let Some(source) = load_raw_import_source(&specifier) {
     return Ok(Some(LoadResponse {

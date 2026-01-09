@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod esbuild;
 mod externals;
@@ -1748,7 +1748,7 @@ fn resolve_roots(
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-        let Ok(main_module) =
+        let Ok(node_resolver::BinValue::JsFile(main_module)) =
           node_resolver.resolve_binary_export(&package_folder, v.sub_path())
         else {
           roots.push(url);

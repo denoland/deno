@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -179,5 +179,20 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         }
       },
     }
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    _maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    let snapshot = self.resolution.snapshot();
+    let pkg_id = super::common::find_definitely_typed_package_from_snapshot(
+      types_package_name,
+      maybe_package_version,
+      &snapshot,
+    )?;
+    self.maybe_package_folder(pkg_id)
   }
 }

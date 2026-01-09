@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -523,22 +523,17 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         specifier: Cow::Borrowed(specifier),
         media_type: MediaType::Wasm,
       }))),
-      Some(deno_graph::Module::External(module))
-        if matches!(
-          requested_module_type,
-          RequestedModuleType::Bytes | RequestedModuleType::Text
-        ) =>
-      {
+      Some(deno_graph::Module::External(module)) => {
+        if module.specifier.as_str().contains("/node_modules/") {
+          return Ok(None);
+        }
         Ok(Some(CodeOrDeferredEmit::ExternalAsset {
           specifier: &module.specifier,
         }))
       }
-      Some(
-        deno_graph::Module::External(_)
-        | deno_graph::Module::Node(_)
-        | deno_graph::Module::Npm(_),
-      )
-      | None => Ok(None),
+      Some(deno_graph::Module::Node(_) | deno_graph::Module::Npm(_)) | None => {
+        Ok(None)
+      }
     }
   }
 
