@@ -346,14 +346,14 @@ fn get_module_roots_and_include_paths(
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
   let initial_cwd = cli_options.initial_cwd();
 
-  fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
+  fn is_module_graph_root_module(url: &ModuleSpecifier) -> bool {
     if url.scheme() != "file" {
       return true;
     }
-    is_module_graph_media_type(MediaType::from_specifier(url))
+    is_module_graph_root_media_type(MediaType::from_specifier(url))
   }
 
-  fn is_module_graph_media_type(media_type: MediaType) -> bool {
+  fn is_module_graph_root_media_type(media_type: MediaType) -> bool {
     match media_type {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -365,16 +365,18 @@ fn get_module_roots_and_include_paths(
       | MediaType::Dts
       | MediaType::Dmts
       | MediaType::Dcts
-      | MediaType::Tsx
-      | MediaType::Json
-      | MediaType::Wasm => true,
+      | MediaType::Tsx => true,
       MediaType::Css
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Json
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,
+      // Wasm is never a module graph root, and might be used outside of an import statement,
+      // fetched() wasm files have their dependencies specified explicitly on instantiation.
+      MediaType::Wasm => false,
     }
   }
 
@@ -422,12 +424,12 @@ fn get_module_roots_and_include_paths(
   module_roots.push(entrypoint.clone());
   for side_module in &compile_flags.include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
-    if is_module_graph_module(&url) {
+    if is_module_graph_root_module(&url) {
       module_roots.push(url.clone());
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
-        if is_module_graph_media_type(media_type)
+        if is_module_graph_root_media_type(media_type)
           && let Ok(file_url) = url_from_file_path(file_path)
         {
           module_roots.push(file_url);
