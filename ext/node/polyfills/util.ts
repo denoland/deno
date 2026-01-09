@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import { op_node_call_is_from_dependency } from "ext:core/ops";

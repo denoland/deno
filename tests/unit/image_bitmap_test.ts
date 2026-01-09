@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, assertRejects } from "./test_util.ts";
 
@@ -250,23 +250,19 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.gif`)],
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
   await t.step("8-bit webp", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.webp`)],
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
   await t.step("8-bit ico", async () => {
     const imageData = new Blob(
@@ -324,12 +320,10 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
         `${prefix}/1x1-3f-lossless-animated-semi-transparent.webp`,
       ),
     ]);
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
   });
   await t.step("animated gif", async () => {
     // the chunk of animated gif is below (3 frames, 1x1, 8-bit, RGBA)
@@ -339,12 +333,10 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-3f-animated.gif`),
     ]);
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
 });
 
