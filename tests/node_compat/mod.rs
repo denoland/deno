@@ -221,7 +221,6 @@ struct CliArgs {
 
 // You need to run with `--test node_compat` for this to work.
 // For example: `cargo test --test node_compat <test-file-name> -- --inspect-brk`
-// Use `-- --all` to run all tests in the suite directory.
 fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
