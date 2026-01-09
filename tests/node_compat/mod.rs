@@ -119,7 +119,7 @@ struct CollectedResult {
 fn main() {
   let cli_args = parse_cli_args();
   let config = load_config();
-  let mut category = if cli_args.all {
+  let mut category = if cli_args.node_compat_report {
     collect_all_tests()
   } else {
     collect_tests_from_config(&config)
@@ -212,8 +212,7 @@ fn main() {
 struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
-  /// Run all tests in the suite directory, not just those in config.json
-  all: bool,
+  node_compat_report: bool,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -222,12 +221,12 @@ struct CliArgs {
 fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
-  let mut all = false;
+  let mut node_compat_report = false;
   for arg in std::env::args() {
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
-      "--all" => all = true,
+      "--node-compat-report" => node_compat_report = true,
       _ => {}
     }
   }
@@ -235,7 +234,7 @@ fn parse_cli_args() -> CliArgs {
   CliArgs {
     inspect_brk,
     inspect_wait,
-    all,
+    node_compat_report,
   }
 }
 
@@ -515,6 +514,10 @@ fn run_test(
     .lock()
     .unwrap()
     .insert(data.test_path.clone(), collected);
+
+  if cli_args.node_compat_report {
+    return TestResult::Passed { duration: None };
+  }
 
   if success {
     if *file_test_runner::NO_CAPTURE {
