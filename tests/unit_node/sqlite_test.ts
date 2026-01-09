@@ -1051,7 +1051,7 @@ Deno.test("[node/sqlite] Database GC should not invalidate statements and sessio
     for (let i = 0; i < 1000000; i++) a.push(0); // Try to trigger GC
     stmt.run();
     sess.changeset();
-   }
+  }
 });
 
 // https://github.com/denoland/deno/issues/31744
