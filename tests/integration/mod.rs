@@ -139,7 +139,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
-      parallelism: NonZeroUsize::new(1).unwrap(),
+      parallelism: file_test_runner::Parallelism::from_usize(1),
       reporter: reporter.clone(),
     },
     {

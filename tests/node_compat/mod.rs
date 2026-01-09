@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -120,7 +119,7 @@ struct CollectedResult {
 fn main() {
   let cli_args = parse_cli_args();
   let config = load_config();
-  let mut category = if cli_args.node_compat_report {
+  let mut category = if cli_args.report {
     collect_all_tests()
   } else {
     collect_tests_from_config(&config)
@@ -154,10 +153,10 @@ fn main() {
   let config = Arc::new(config);
 
   // Run sequential tests with parallelism=1
-  file_test_runner::run_tests(
+  let summary = file_test_runner::run_tests_summary(
     &sequential_category,
     RunOptions {
-      parallelism: NonZeroUsize::new(1).unwrap(),
+      parallelism: file_test_runner::Parallelism::from_usize(1),
       reporter: reporter.clone(),
     },
     {
@@ -177,9 +176,12 @@ fn main() {
       }
     },
   );
+  if !cli_args.report {
+    summary.panic_on_failures();
+  }
 
   // Run parallel tests
-  file_test_runner::run_tests(
+  let summary = file_test_runner::run_tests_summary(
     &parallel_category,
     RunOptions {
       parallelism: parallelism.max_parallelism(),
@@ -203,8 +205,9 @@ fn main() {
     },
   );
 
-  // Generate report
-  if std::env::var("CI").is_ok() {
+  if !cli_args.report {
+    summary.panic_on_failures();
+  } else if std::env::var("CI").is_ok() {
     generate_report(&results.lock().unwrap());
   }
 }
@@ -213,7 +216,7 @@ fn main() {
 struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
-  node_compat_report: bool,
+  report: bool,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -227,7 +230,7 @@ fn parse_cli_args() -> CliArgs {
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
-      "--node-compat-report" => node_compat_report = true,
+      "--report" => node_compat_report = true,
       _ => {}
     }
   }
@@ -235,7 +238,7 @@ fn parse_cli_args() -> CliArgs {
   CliArgs {
     inspect_brk,
     inspect_wait,
-    node_compat_report,
+    report: node_compat_report,
   }
 }
 
@@ -565,10 +568,6 @@ fn run_test(
     .lock()
     .unwrap()
     .insert(data.test_path.clone(), collected);
-
-  if cli_args.node_compat_report {
-    return TestResult::Passed { duration: None };
-  }
 
   if success {
     if *file_test_runner::NO_CAPTURE {
