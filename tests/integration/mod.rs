@@ -36,8 +36,6 @@ mod flags;
 mod fmt;
 #[path = "init_tests.rs"]
 mod init;
-#[path = "inspector_tests.rs"]
-mod inspector;
 #[path = "install_tests.rs"]
 mod install;
 #[path = "jsr_tests.rs"]
