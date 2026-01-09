@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolver;

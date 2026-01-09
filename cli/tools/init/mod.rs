@@ -10,7 +10,7 @@ use color_print::cformat;
 use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_lib::args::UnstableConfig;

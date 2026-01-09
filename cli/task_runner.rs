@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;

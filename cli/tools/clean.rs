@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_graph::packages::PackageSpecifiers;

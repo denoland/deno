@@ -4,7 +4,7 @@ use std::io;
 use std::io::Write;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;

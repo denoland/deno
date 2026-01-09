@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::OpState;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;

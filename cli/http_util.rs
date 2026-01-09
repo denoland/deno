@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde;
 use deno_core::serde_json;

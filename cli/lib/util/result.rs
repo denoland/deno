@@ -6,7 +6,7 @@ use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_resolver::DenoResolveError;
 use deno_resolver::DenoResolveErrorKind;
-use deno_runtime::deno_core::error::AnyError;
+use deno_runtime::deno_core::anyhow::Error as AnyError;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::error::CoreErrorKind;
 

@@ -6,7 +6,7 @@ use std::ops::Range;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use deno_core::ModuleSourceCode;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_error::JsErrorBox;
 use text_lines::LineAndColumnIndex;
 use text_size::TextSize;

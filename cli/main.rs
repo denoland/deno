@@ -40,7 +40,7 @@ use std::sync::Arc;
 
 use args::TaskFlags;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
