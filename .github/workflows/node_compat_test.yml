@@ -47,6 +47,7 @@ jobs:
           project_id: denoland
       - name: Run tests
         env:
+          # override using ldl in .cargo/config.toml
           CARGO_ENCODED_RUSTFLAGS: ''
         run: cd tests/node_compat/runner && deno task test
       - name: Gzip the report
