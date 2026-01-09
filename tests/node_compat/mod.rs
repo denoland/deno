@@ -224,12 +224,12 @@ struct CliArgs {
 fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
-  let mut node_compat_report = false;
+  let mut report = false;
   for arg in std::env::args() {
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
-      "--report" => node_compat_report = true,
+      "--report" => report = true,
       _ => {}
     }
   }
@@ -237,7 +237,7 @@ fn parse_cli_args() -> CliArgs {
   CliArgs {
     inspect_brk,
     inspect_wait,
-    report: node_compat_report,
+    report,
   }
 }
 
