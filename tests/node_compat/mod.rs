@@ -26,13 +26,6 @@ use util::tests_path;
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// Timeout for each test execution in milliseconds
-const TEST_TIMEOUT_MS: u64 = if cfg!(target_os = "macos") {
-  20_000
-} else {
-  10_000
-};
-
 const RUN_ARGS: &[&str] = &[
   "run",
   "-A",
@@ -508,14 +501,13 @@ fn run_test(
     ))
   );
 
-  let child = cmd.piped_output().spawn().unwrap();
-
-  let test_output = if cli_args.node_compat_report {
-    let timeout = Duration::from_millis(TEST_TIMEOUT_MS);
-    wait_with_timeout(child, timeout)
+  let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
+    20_000
   } else {
-    TestOutput::Completed(child.wait_with_output().unwrap())
-  };
+    10_000
+  });
+  let child = cmd.piped_output().spawn().unwrap();
+  let test_output = wait_with_timeout(child, timeout);
 
   let (success, collected, output_for_error) = match test_output {
     TestOutput::Completed(output) => {
@@ -557,13 +549,14 @@ fn run_test(
         error: Some(ErrorInfo {
           code: None,
           stderr: None,
-          timeout: Some(TEST_TIMEOUT_MS),
+          timeout: Some(timeout.as_millis() as u64),
           message: None,
         }),
         uses_node_test,
         ignore_reason: None,
       };
-      let output_str = format!("Test timed out after {}ms", TEST_TIMEOUT_MS);
+      let output_str =
+        format!("Test timed out after {}ms", timeout.as_millis());
       (false, collected, output_str)
     }
   };
