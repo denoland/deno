@@ -1154,6 +1154,44 @@ console.log("imported", import.meta.url);
         .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
         .unwrap(),
     ),
+    // for testing deno upgrade
+    (&Method::GET, path)
+      if path.starts_with("/deno-upgrade/download/")
+        && path.ends_with(".zip") =>
+    {
+      let version = path
+        .strip_prefix("/deno-upgrade/download/v")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("unknown");
+
+      let mut zip_bytes = Vec::new();
+      {
+        use std::io::Write;
+        let mut zip_writer =
+          zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+        let options = zip::write::SimpleFileOptions::default()
+          .compression_method(zip::CompressionMethod::Stored);
+
+        let exe_name = if path.contains("windows") {
+          "deno.exe"
+        } else {
+          "deno"
+        };
+
+        zip_writer.start_file(exe_name, options).unwrap();
+        let content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+        zip_writer.write_all(content.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+      }
+
+      Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/zip")
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(zip_bytes))))
+          .unwrap(),
+      )
+    }
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
