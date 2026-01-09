@@ -22,6 +22,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Setup Rust
+        uses: dsherret/rust-toolchain-file@v1
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
@@ -42,7 +44,7 @@ jobs:
         with:
           project_id: denoland
       - name: Run tests
-        run: deno -A tools/node_compat_tests.js
+        run: cd tests/node_compat/runner && deno task test
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
