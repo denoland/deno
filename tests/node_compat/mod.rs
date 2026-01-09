@@ -134,7 +134,6 @@ fn main() {
   let (sequential_category, parallel_category) =
     category.partition(|test| test.data.test_path.starts_with("sequential/"));
 
-  let _http_guard = util::http_server();
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
 
