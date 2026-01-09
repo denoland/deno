@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -739,6 +739,23 @@ interface Performance extends EventTarget {
 
   /** Removes stored timestamp with the associated name. */
   clearMeasures(measureName?: string): void;
+
+  /** Removes all performance entries with an entryType of "resource" from the
+   * performance timeline and sets the size of the performance resource data
+   * buffer to zero.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  clearResourceTimings(): void;
+
+  /** Sets the desired size of the browser's resource timing buffer which
+   * stores the "resource" performance entries.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  setResourceTimingBufferSize(maxSize: number): void;
 
   getEntries(): PerformanceEntryList;
   getEntriesByName(name: string, type?: string): PerformanceEntryList;

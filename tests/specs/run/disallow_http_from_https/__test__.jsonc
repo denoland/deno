@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "js": {
+      "args": "run --allow-import --quiet --reload --cert ../../../testdata/tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
+      "output": "js.out",
+      "exitCode": 1
+    },
+    "ts": {
+      "args": "run --allow-import --quiet --reload --cert ../../../testdata/tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
+      "output": "ts.out",
+      "exitCode": 1
+    }
+  }
+}
