@@ -47,8 +47,7 @@ jobs:
           project_id: denoland
       - name: Run tests
         env:
-          CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: 'clang'
-          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: ''
+          CARGO_ENCODED_RUSTFLAGS: ''
         run: cd tests/node_compat/runner && deno task test
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
