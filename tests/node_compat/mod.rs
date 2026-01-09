@@ -26,6 +26,7 @@ use util::tests_path;
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
 
 const RUN_ARGS: &[&str] = &[
+  "run",
   "-A",
   "--quiet",
   "--unstable-unsafe-proto",
@@ -119,7 +120,11 @@ struct CollectedResult {
 fn main() {
   let cli_args = parse_cli_args();
   let config = load_config();
-  let mut category = collect_tests(&config);
+  let mut category = if cli_args.all {
+    collect_all_tests(&config)
+  } else {
+    collect_tests(&config)
+  };
 
   // Apply CLI filter if provided
   if let Some(filter) = file_test_runner::collection::parse_cli_arg_filter() {
@@ -202,24 +207,30 @@ fn main() {
 struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
+  /// Run all tests in the suite directory, not just those in config.json
+  all: bool,
 }
 
 // You need to run with `--test node_compat` for this to work.
 // For example: `cargo test --test node_compat <test-file-name> -- --inspect-brk`
+// Use `-- --all` to run all tests in the suite directory.
 fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
+  let mut all = false;
   for arg in std::env::args() {
-    if arg == "--inspect-brk" {
-      inspect_brk = true;
-    } else if arg == "--inspect-wait" {
-      inspect_wait = true;
+    match arg.as_str() {
+      "--inspect-brk" => inspect_brk = true,
+      "--inspect-wait" => inspect_wait = true,
+      "--all" => all = true,
+      _ => {}
     }
   }
 
   CliArgs {
     inspect_brk,
     inspect_wait,
+    all,
   }
 }
 
@@ -250,6 +261,76 @@ fn collect_tests(
         config: test_config.clone(),
       },
     }));
+  }
+
+  CollectedTestCategory {
+    name: "node_compat".to_string(),
+    path: tests_path().join("node_compat").to_path_buf(),
+    children,
+  }
+}
+
+/// Collect all test files from the suite directory, using config for metadata
+/// when available, otherwise using default config.
+fn collect_all_tests(
+  config: &NodeCompatConfig,
+) -> CollectedTestCategory<NodeCompatTestData> {
+  let suite_test_dir = tests_path().join("node_compat/runner/suite/test");
+  let mut children = Vec::new();
+
+  // Walk through parallel/ and sequential/ directories
+  for subdir in ["parallel", "sequential"] {
+    let dir_path = suite_test_dir.join(subdir);
+    if !dir_path.exists() {
+      continue;
+    }
+
+    let entries = match std::fs::read_dir(&dir_path) {
+      Ok(entries) => entries,
+      Err(_) => continue,
+    };
+
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if !path.is_file() {
+        continue;
+      }
+
+      let file_name = match path.file_name().and_then(|n| n.to_str()) {
+        Some(name) => name,
+        None => continue,
+      };
+
+      // Only include .js and .mjs test files
+      if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
+        continue;
+      }
+
+      // Skip non-test files
+      if !file_name.starts_with("test-") {
+        continue;
+      }
+
+      let test_name = format!("{}/{}", subdir, file_name);
+      let full_name = format!("node_compat::{}", test_name.replace('/', "::"));
+
+      // Use config if available, otherwise default
+      let test_config = config
+        .tests
+        .get(&test_name)
+        .cloned()
+        .unwrap_or_default();
+
+      children.push(CollectedCategoryOrTest::Test(CollectedTest {
+        name: full_name,
+        path: path.clone(),
+        line_and_column: None,
+        data: NodeCompatTestData {
+          test_path: test_name,
+          config: test_config,
+        },
+      }));
+    }
   }
 
   CollectedTestCategory {

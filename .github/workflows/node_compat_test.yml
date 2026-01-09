@@ -49,7 +49,7 @@ jobs:
         env:
           # override using ldl in .cargo/config.toml
           CARGO_ENCODED_RUSTFLAGS: ''
-        run: cd tests/node_compat/runner && deno task test
+        run: deno task --cwd tests/node_compat/runner test --all || true
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
