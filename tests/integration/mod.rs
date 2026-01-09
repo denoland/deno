@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
