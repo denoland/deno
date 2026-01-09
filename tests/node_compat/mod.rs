@@ -403,12 +403,16 @@ fn run_test(
     ))
   );
 
-  let output = cmd.run();
-  let success = output.exit_code() == Some(0);
+  let output = cmd
+    .piped_output()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  let success = output.status.success();
 
   // Collect result for report
   let collected = if success {
-    output.skip_output_check();
     CollectedResult {
       passed: Some(true),
       error: None,
@@ -416,13 +420,19 @@ fn run_test(
       ignore_reason: None,
     }
   } else {
-    let output_text = output.combined_output();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let output_text = if uses_node_test {
+      stdout.to_string()
+    } else {
+      stderr.to_string()
+    };
 
     CollectedResult {
       passed: Some(false),
       error: Some(ErrorInfo {
-        code: output.exit_code(),
-        stderr: Some(truncate_output(output_text, 2000)),
+        code: output.status.code(),
+        stderr: Some(truncate_output(&output_text, 2000)),
         timeout: None,
         message: None,
       }),
@@ -442,14 +452,12 @@ fn run_test(
     }
     TestResult::Passed { duration: None }
   } else {
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     TestResult::Failed {
       duration: None,
-      output: format!(
-        "{}\n{}",
-        output.combined_output(),
-        debugging_command_text
-      )
-      .into_bytes(),
+      output: format!("{}\n{}\n{}", stdout, stderr, debugging_command_text)
+        .into_bytes(),
     }
   }
 }
