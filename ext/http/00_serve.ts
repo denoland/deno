@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -638,7 +638,7 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      enterSpan(span);
+      enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -549,4 +549,21 @@ export function errname(errno: number): string {
     return err[0];
   }
   return `UNKNOWN (${errno})`;
+}
+
+export function getErrorMessage(errno: number): string {
+  const err = errorMap.get(errno);
+
+  if (err) {
+    return err[1];
+  }
+  return `UNKNOWN (${errno})`;
+}
+
+export function getErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
+export function getCodeMap(): Map<string, number> {
+  return codeMap;
 }

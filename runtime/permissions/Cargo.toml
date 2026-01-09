@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_permissions"
-version = "0.82.0"
+version = "0.85.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

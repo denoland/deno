@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -242,7 +242,7 @@ fn write_shim(
         &out_path,
         r##"#!/bin/sh
 SCRIPT_DIR="$(dirname -- "$(readlink -f -- "$0")")"
-exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
+exec "$SCRIPT_DIR/deno" x "$@"
 "##
           .as_bytes(),
       )?;

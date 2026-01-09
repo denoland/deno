@@ -1,5 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use file_test_runner::RunOptions;
@@ -9,6 +10,7 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
@@ -27,27 +29,42 @@ fn main() {
     return;
   }
   let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   let _g = util::http_server();
   // Run the crypto category tests separately without concurrency because they run in Deno with --parallel
   let (crypto_category, category) =
     category.partition(|test| test.name.contains("::crypto::"));
+  let reporter = test_util::test_runner::get_test_reporter(
+    "unit_node",
+    flaky_test_tracker.clone(),
+  );
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
-      ..Default::default()
+      parallelism: parallelism.max_parallelism(),
+      reporter: reporter.clone(),
     },
-    move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
+    {
+      let flaky_test_tracker = flaky_test_tracker.clone();
+      move |test| {
+        flaky_test_ci(
+          &test.name,
+          &flaky_test_tracker,
+          Some(&parallelism),
+          || run_test(test),
+        )
+      }
     },
   );
   file_test_runner::run_tests(
     &crypto_category,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
-      ..Default::default()
+      parallelism: NonZeroUsize::new(1).unwrap(),
+      reporter: reporter.clone(),
     },
-    move |test| flaky_test_ci(&test.name, None, || run_test(test)),
+    move |test| {
+      flaky_test_ci(&test.name, &flaky_test_tracker, None, || run_test(test))
+    },
   );
 }
 

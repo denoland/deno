@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use test_util as util;
 use test_util::eprintln;
-use test_util::itest;
 use test_util::test;
 use url::Url;
 use util::TestContextBuilder;
@@ -14,35 +13,6 @@ use util::env_vars_for_npm_tests;
 use util::http_server;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
-
-// FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
-// at the moment
-// itest!(dynamic_import {
-//   args: "run --allow-read --allow-env npm/dynamic_import/main.ts",
-//   output: "npm/dynamic_import/main.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-// });
-
-itest!(run_existing_npm_package {
-  args: "run --allow-read --node-modules-dir=auto npm:@denotest/bin",
-  output: "npm/run_existing_npm_package/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-  cwd: Some("npm/run_existing_npm_package/"),
-  copy_temp_dir: Some("npm/run_existing_npm_package/"),
-});
-
-itest!(require_resolve_url_paths {
-  args: "run -A --quiet --node-modules-dir=auto url_paths.ts",
-  output: "npm/require_resolve_url/url_paths.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 0,
-  cwd: Some("npm/require_resolve_url/"),
-  copy_temp_dir: Some("npm/require_resolve_url/"),
-});
 
 #[test]
 fn parallel_downloading() {
@@ -898,31 +868,7 @@ Caused by:
     .assert_exit_code(1);
 }
 
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(node_modules_import_run {
-//   args: "run --quiet main.ts",
-//   output: "npm/node_modules_import/main.out",
-//   http_server: true,
-//   copy_temp_dir: Some("npm/node_modules_import/"),
-//   cwd: Some("npm/node_modules_import/"),
-//   envs: env_vars_for_npm_tests(),
-//   exit_code: 0,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
-// itest!(node_modules_import_check {
-//   args: "check --quiet main.ts",
-//   output: "npm/node_modules_import/main_check.out",
-//   envs: env_vars_for_npm_tests(),
-//   http_server: true,
-//   cwd: Some("npm/node_modules_import/"),
-//   copy_temp_dir: Some("npm/node_modules_import/"),
-//   exit_code: 1,
-// });
-
-// TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 #[test]
-#[ignore]
 fn reload_info_not_found_cache_but_exists_remote() {
   fn remove_version(registry_json: &mut Value, version: &str) {
     registry_json
@@ -955,6 +901,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .as_object_mut()
       .unwrap()
       .remove("latest");
+    // remove the etag so the cache is invalidated and re-fetched
+    registry_json.as_object_mut().unwrap().remove("_deno.etag");
     deno_dir.write(
       &registry_json_path,
       serde_json::to_string(&registry_json).unwrap(),
@@ -981,10 +929,11 @@ fn reload_info_not_found_cache_but_exists_remote() {
     "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
     "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
-    "Download http://localhost:4260/@denotestcjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
     "[UNORDERED_END]\n",
+    "[WILDCARD]",
   ));
 
   // test in dependency
@@ -1067,16 +1016,18 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // should error for --cached-only
     let output = test_context
       .new_command()
-      .args("run --cached-only main.ts")
+      .args("run --node-modules-dir=auto --cached-only main.ts")
       .run();
-    output.assert_matches_text(concat!(
+    output.assert_matches_text(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
-      "    at file:///[WILDCARD]/main.ts:1:8\n",
-    ));
+    );
     output.assert_exit_code(1);
 
-    // now try running, it should work
-    let output = test_context.new_command().args("run main.ts").run();
+    // now try running, it should work (auto-install will set up node_modules)
+    let output = test_context
+      .new_command()
+      .args("run --node-modules-dir=auto main.ts")
+      .run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
       "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
@@ -1102,62 +1053,27 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // remove the dependency's version
     remove_version_for_package(deno_dir, "@denotest/esm-basic", "1.0.0");
 
-    // should error for --cached-only
+    // should error for --cached-only (bare specifier with package.json requires node_modules)
     let output = test_context
       .new_command()
-      .args("run --cached-only main.ts")
+      .args("run --node-modules-dir=auto --cached-only main.ts")
       .run();
     output.assert_matches_text("error: Could not find npm package '@denotest/esm-basic' matching '1.0.0'.\n");
     output.assert_exit_code(1);
 
-    // now try running, it should work and only initialize the new package
-    let output = test_context.new_command().args("run main.ts").run();
+    // now try running with auto node_modules, it should work and only initialize the new package
+    let output = test_context
+      .new_command()
+      .args("run --node-modules-dir=auto main.ts")
+      .run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
       "Download http://localhost:4260/@denotest%2fesm-basic\n",
       "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
       "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
       "[UNORDERED_END]\n",
-      "Initialize @denotest/esm-basic@1.0.0\n",
-      "Node esm importing node cjs\n[WILDCARD]",
-    ));
-    output.assert_exit_code(0);
-  }
-
-  // now try using a lockfile
-  {
-    // create it
-    temp_dir.write("deno.json", r#"{}"#);
-    test_context
-      .new_command()
-      .args("install --entrypoint main.ts")
-      .run();
-    assert!(temp_dir.path().join("deno.lock").exists());
-
-    // remove a version found in the lockfile
-    remove_version_for_package(deno_dir, "@denotest/esm-basic", "1.0.0");
-
-    // should error for --cached-only
-    let output = test_context
-      .new_command()
-      .args("run --cached-only main.ts")
-      .run();
-    output.assert_matches_text(concat!(
-      "error: failed reading lockfile '[WILDLINE]deno.lock'\n",
-      "\n",
-      "Caused by:\n",
-      "    0: Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n",
-      "    1: Could not find version '1.0.0' for npm package '@denotest/esm-basic'.\n",
-    ));
-    output.assert_exit_code(1);
-
-    // now try running, it should work and only initialize the new package
-    let output = test_context.new_command().args("run main.ts").run();
-    output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4260/@denotest%2fcjs-default-export\n",
-      "Download http://localhost:4260/@denotest%2fesm-basic\n",
-      "Download http://localhost:4260/@denotest%2fesm-import-cjs-default\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));

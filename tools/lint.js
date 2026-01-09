@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -30,7 +30,6 @@ if (!js && !rs) {
 
 if (rs) {
   promises.push(clippy());
-  promises.push(ensureNoNewITests());
   promises.push(ensureNoNonPermissionCapitalLetterShortFlags());
 }
 
@@ -210,65 +209,6 @@ async function ensureCiYmlUpToDate() {
     throw new Error(
       "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
     );
-  }
-}
-
-async function ensureNoNewITests() {
-  // Note: Only decrease these numbers. Never increase them!!
-  // This is to help ensure we slowly deprecate these tests and
-  // replace them with spec tests.
-  const iTestCounts = {
-    "bench_tests.rs": 0,
-    "cache_tests.rs": 0,
-    "cert_tests.rs": 0,
-    "check_tests.rs": 0,
-    "compile_tests.rs": 0,
-    "coverage_tests.rs": 0,
-    "eval_tests.rs": 0,
-    "flags_tests.rs": 0,
-    "fmt_tests.rs": 14,
-    "init_tests.rs": 0,
-    "inspector_tests.rs": 0,
-    "install_tests.rs": 0,
-    "jsr_tests.rs": 0,
-    "js_unit_tests.rs": 0,
-    "jupyter_tests.rs": 0,
-    // Read the comment above. Please don't increase these numbers!
-    "lsp_tests.rs": 0,
-    "node_compat_tests.rs": 0,
-    "node_unit_tests.rs": 2,
-    "npm_tests.rs": 5,
-    "pm_tests.rs": 0,
-    "publish_tests.rs": 0,
-    "repl_tests.rs": 0,
-    "run_tests.rs": 17,
-    "shared_library_tests.rs": 0,
-    "task_tests.rs": 2,
-    "test_tests.rs": 0,
-    "upgrade_tests.rs": 0,
-    "vendor_tests.rs": 1,
-    "watcher_tests.rs": 0,
-    "worker_tests.rs": 0,
-  };
-  const integrationDir = join(ROOT_PATH, "tests", "integration");
-  for await (const entry of Deno.readDir(integrationDir)) {
-    if (!entry.name.endsWith("_tests.rs")) {
-      continue;
-    }
-    const fileText = await Deno.readTextFile(join(integrationDir, entry.name));
-    const actualCount = fileText.match(/itest\!/g)?.length ?? 0;
-    const expectedCount = iTestCounts[entry.name] ?? 0;
-    // console.log(`"${entry.name}": ${actualCount},`);
-    if (actualCount > expectedCount) {
-      throw new Error(
-        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
-      );
-    } else if (actualCount < expectedCount) {
-      throw new Error(
-        `Thanks for removing an itest in ${entry.name}. ` +
-          `Please update the count in tools/lint.js for this file to ${actualCount}.`,
-      );
-    }
   }
 }
 

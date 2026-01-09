@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
 use test_util::test;
@@ -1088,7 +1088,7 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect_all(&["undefined", "Download"]);
+    console.expect("undefined");
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");

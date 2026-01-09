@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,6 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
+
+import { op_get_env_no_permission_check } from "ext:core/ops";
 
 import {
   ERR_INVALID_ARG_VALUE,
@@ -402,7 +404,7 @@ export class Interface extends InterfaceConstructor {
    */
   prompt(preserveCursor) {
     if (this.paused) this.resume();
-    if (this.terminal && process.env.TERM !== "dumb") {
+    if (this.terminal && op_get_env_no_permission_check("TERM") !== "dumb") {
       if (!preserveCursor) this.cursor = 0;
       this[kRefreshLine]();
     } else {

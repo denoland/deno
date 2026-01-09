@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -208,33 +208,34 @@ pub async fn doc(
 
     let mut main_entrypoint = None;
 
-    let rewrite_map =
-      if let Some(config_file) = cli_options.start_dir.maybe_deno_json() {
-        let config = config_file.to_exports_config()?;
+    let rewrite_map = if let Some(config_file) =
+      cli_options.start_dir.member_or_root_deno_json()
+    {
+      let config = config_file.to_exports_config()?;
 
-        main_entrypoint = config.get_resolved(".").ok().flatten();
+      main_entrypoint = config.get_resolved(".").ok().flatten();
 
-        let rewrite_map = config
-          .clone()
-          .into_map()
-          .into_keys()
-          .map(|key| {
-            Ok((
-              config.get_resolved(&key)?.unwrap(),
-              key
-                .strip_prefix('.')
-                .unwrap_or(&key)
-                .strip_prefix('/')
-                .unwrap_or(&key)
-                .to_owned(),
-            ))
-          })
-          .collect::<Result<IndexMap<_, _>, AnyError>>()?;
+      let rewrite_map = config
+        .clone()
+        .into_map()
+        .into_keys()
+        .map(|key| {
+          Ok((
+            config.get_resolved(&key)?.unwrap(),
+            key
+              .strip_prefix('.')
+              .unwrap_or(&key)
+              .strip_prefix('/')
+              .unwrap_or(&key)
+              .to_owned(),
+          ))
+        })
+        .collect::<Result<IndexMap<_, _>, AnyError>>()?;
 
-        Some(rewrite_map)
-      } else {
-        None
-      };
+      Some(rewrite_map)
+    } else {
+      None
+    };
 
     generate_docs_directory(
       doc_nodes_by_url,

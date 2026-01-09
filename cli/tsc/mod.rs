@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 mod go;
 mod js;
@@ -24,6 +24,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -311,6 +312,19 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.webworker.d.ts"),
     maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
     maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
+    (
+      // Special file that can be used to inject the @types/node package.
+      // This is used for `node:` specifiers.
+      "reference_types_node.d.ts",
+      StaticAsset {
+        is_lib: false,
+        source: StaticAssetSource::Uncompressed(
+          // causes either the built-in node types to be used or it
+          // prefers the @types/node if it exists
+          "/// <reference lib=\"node\" />\n/// <reference types=\"npm:@types/node\" />\n",
+        ),
+      },
+    ),
   ])
   .into_iter()
   .chain(node_type_libs!())
@@ -497,6 +511,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
+  pub jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   pub hash_data: u64,
   pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -626,10 +641,10 @@ pub enum ResolveError {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveArgs {
+pub struct ResolveArgs<'a> {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  pub base: String,
+  pub base: &'a str,
   /// A list of specifiers that should be resolved.
   /// (is_cjs: bool, raw_specifier: String)
   pub specifiers: Vec<(bool, String)>,
@@ -765,7 +780,36 @@ fn resolve_non_graph_specifier_types(
         .ok(),
     )))
   } else {
-    Ok(None)
+    match NpmPackageReqReference::from_str(raw_specifier) {
+      Ok(npm_req_ref) => {
+        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
+        // This could occur when resolving npm:@types/node when it is
+        // injected and not part of the graph
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            npm_req_ref.req(),
+            referrer,
+          )?;
+        let res_result = node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            npm_req_ref.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            NodeResolutionKind::Types,
+          );
+        let maybe_url = match res_result {
+          Ok(url_or_path) => Some(url_or_path.into_url()?),
+          Err(err) => match err.code() {
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            _ => return Err(err.into()),
+          },
+        };
+        Ok(Some(into_specifier_and_media_type(maybe_url)))
+      }
+      _ => Ok(None),
+    }
   }
 }
 
@@ -941,7 +985,10 @@ pub fn resolve_specifier_for_tsc(
         ) => {
           // it's most likely requesting the jsxImportSource, which isn't loaded
           // into the graph when not using jsx, so just ignore this error
-          if specifier.ends_with("/jsx-runtime") {
+          if specifier.ends_with("/jsx-runtime")
+            // ignore in order to support attempt to load when it doesn't exist
+            || specifier == "npm:@types/node"
+          {
             None
           } else {
             return Err(err.into());

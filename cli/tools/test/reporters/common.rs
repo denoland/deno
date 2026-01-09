@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::fmt::format_test_error;
 use super::fmt::to_relative_path_or_remote_url;

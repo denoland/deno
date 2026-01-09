@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod interactive;
 
@@ -210,9 +210,7 @@ pub async fn outdated(
     factory.jsr_version_resolver()?.clone(),
   ));
 
-  if !cli_options.start_dir.has_deno_json()
-    && !cli_options.start_dir.has_pkg_json()
-  {
+  if !cli_options.start_dir.has_deno_or_pkg_json() {
     bail!(
       "No deno.json or package.json in \"{}\".",
       cli_options.initial_cwd().display(),

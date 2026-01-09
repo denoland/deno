@@ -1,4 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::sync::Arc;
 
 use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
@@ -8,6 +10,7 @@ use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
 use test_util::TestContextBuilder;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
@@ -24,15 +27,21 @@ fn main() {
     return; // no tests to run for the filter
   }
   let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   let _g = util::http_server();
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
-      ..Default::default()
+      parallelism: parallelism.max_parallelism(),
+      reporter: test_util::test_runner::get_test_reporter(
+        "unit",
+        flaky_test_tracker.clone(),
+      ),
     },
     move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
+      flaky_test_ci(&test.name, &flaky_test_tracker, Some(&parallelism), || {
+        run_test(test)
+      })
     },
   )
 }
