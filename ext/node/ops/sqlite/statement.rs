@@ -1,9 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::rc::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::ToV8;
@@ -67,7 +66,7 @@ pub type InnerStatementPtr = Rc<Cell<Option<*mut ffi::sqlite3_stmt>>>;
 #[derive(Debug)]
 pub struct StatementSync {
   pub inner: InnerStatementPtr,
-  pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
@@ -432,9 +431,8 @@ impl StatementSync {
         self.ignore_next_sqlite_error.set(false);
         return Ok(());
       }
-      let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-      let db = db_rc.borrow();
-      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      let db = self.db.borrow();
+      let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
       // SAFETY: db.handle() is valid
       unsafe {
@@ -630,9 +628,8 @@ impl StatementSync {
     scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
-    let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-    let db = db_rc.borrow();
-    let db = db.as_ref().ok_or(SqliteError::InUse)?;
+    let db = self.db.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     self.bind_params(scope, params)?;
 
@@ -691,6 +688,7 @@ impl StatementSync {
       RETURN = "return",
       DONE = "done",
       VALUE = "value",
+      __STATEMENT_REF = "__statement_ref",
     }
 
     self.reset()?;
@@ -796,8 +794,19 @@ impl StatementSync {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
+      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
-    let values = &[next_func.into(), return_func.into()];
+
+    // Get the cppgc wrapper object to keep the statement alive
+    // We store a reference to the statement object on the iterator to prevent
+    // the GC from collecting it while the iterator is still in use.
+    let statement_ref = if let Some(args) = params {
+      args.this().into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let values = &[next_func.into(), return_func.into(), statement_ref];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,

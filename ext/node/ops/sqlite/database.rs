@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -745,7 +745,7 @@ impl DatabaseSync {
 
     Ok(StatementSync {
       inner: stmt_cell,
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
       use_big_ints: Cell::new(false),
@@ -963,6 +963,7 @@ impl DatabaseSync {
       scope: &'a mut v8::PinScope<'b, 'c>,
       confict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
+      has_caught: bool,
     }
 
     // Conflict handler callback for `sqlite3changeset_apply()`.
@@ -1014,14 +1015,30 @@ impl DatabaseSync {
       unsafe {
         let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
+        // If we've already caught an exception, don't call the filter again
+        // to avoid overwriting the original exception.
+        if ctx.has_caught {
+          return 0;
+        }
+
         if let Some(filter) = &mut ctx.filter {
           let tab = CStr::from_ptr(z_tab).to_str().unwrap();
 
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::String::new(ctx.scope, tab).unwrap().into()];
 
-          let ret = filter.call(ctx.scope, recv, &args).unwrap();
-          return ret.boolean_value(ctx.scope) as i32;
+          v8::tc_scope!(tc_scope, ctx.scope);
+
+          let ret = filter
+            .call(tc_scope, recv, &args)
+            .unwrap_or_else(|| v8::undefined(tc_scope).into());
+          if tc_scope.has_caught() {
+            ctx.has_caught = true;
+            tc_scope.rethrow();
+            return 0;
+          }
+
+          return ret.boolean_value(tc_scope) as i32;
         }
 
         1
@@ -1037,6 +1054,7 @@ impl DatabaseSync {
       scope,
       confict: None,
       filter: None,
+      has_caught: false,
     };
 
     if let Some(options) = options {
@@ -1211,7 +1229,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
     })
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE(bartlomieju): unfortunately it appears that clippy is broken
 // and can't allow a single line ignore for `await_holding_lock`.
@@ -190,8 +190,8 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
 pub fn op_jupyter_create_png_from_texture(
   #[cppgc] texture: &deno_runtime::deno_webgpu::texture::GPUTexture,
 ) -> Result<String, JsErrorBox> {
-  use deno_runtime::deno_canvas::image::ExtendedColorType;
-  use deno_runtime::deno_canvas::image::ImageEncoder;
+  use deno_runtime::deno_image::image::ExtendedColorType;
+  use deno_runtime::deno_image::image::ImageEncoder;
   use deno_runtime::deno_webgpu::error::GPUError;
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
@@ -340,7 +340,7 @@ pub fn op_jupyter_create_png_from_texture(
   let mut out: Vec<u8> = vec![];
 
   let img =
-    deno_runtime::deno_canvas::image::codecs::png::PngEncoder::new(&mut out);
+    deno_runtime::deno_image::image::codecs::png::PngEncoder::new(&mut out);
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
