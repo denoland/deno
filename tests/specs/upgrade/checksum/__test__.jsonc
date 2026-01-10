@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "run -A checksum_test.ts",
+  "output": "checksum_test.out",
+  "exitCode": 0
+}
