@@ -1,4 +1,4 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 [package]
 name = "deno_subprocess_windows"
 version = "0.21.0"
@@ -15,7 +15,7 @@ futures-channel = "0.3.31"
 libc = "0.2.172"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59.0", features = ["Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_Debug", "Win32_Globalization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Environment", "Win32_Foundation", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_UI_Shell", "Win32_System_Com", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_System_Pipes", "Win32_System_Console", "Win32_System_IO"] }
+windows-sys = { version = "0.59.0", features = ["Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_Debug", "Win32_Globalization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Environment", "Win32_Foundation", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_UI_Shell", "Win32_System_Com", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_System_Pipes", "Win32_System_Console", "Win32_System_IO", "Win32_System_SystemInformation"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

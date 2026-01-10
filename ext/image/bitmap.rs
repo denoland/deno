@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -9,15 +9,15 @@ use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
-// use image::codecs::webp::WebPDecoder;
 use image::DynamicImage;
 use image::ImageDecoder;
 use image::RgbaImage;
 use image::codecs::bmp::BmpDecoder;
-// use image::codecs::gif::GifDecoder;
+use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
 use image::codecs::jpeg::JpegDecoder;
 use image::codecs::png::PngDecoder;
+use image::codecs::webp::WebPDecoder;
 use image::imageops::FilterType;
 use image::imageops::overlay;
 use image::metadata::Orientation;
@@ -125,20 +125,17 @@ fn decode_bitmap_data(
             )
           }
           MimeType::Gif => {
-            // NOTE: Temporarily not supported due to build size concerns
-            // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-            unimplemented!();
             // The GifDecoder decodes the first frame.
-            // let mut decoder = GifDecoder::new(BufReader::new(Cursor::new(buf)))
-            //   .map_err(CanvasError::image_error_to_invalid_image)?;
-            // let orientation = decoder.orientation()?;
-            // let icc_profile = decoder.icc_profile()?;
-            // (
-            //   DynamicImage::from_decoder(decoder)
-            //     .map_err(CanvasError::image_error_to_invalid_image)?,
-            //   orientation,
-            //   icc_profile,
-            // )
+            let mut decoder = GifDecoder::new(BufReader::new(Cursor::new(buf)))
+              .map_err(ImageError::image_error_to_invalid_image)?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.icc_profile()?;
+            (
+              DynamicImage::from_decoder(decoder)
+                .map_err(ImageError::image_error_to_invalid_image)?,
+              orientation,
+              icc_profile,
+            )
           }
           MimeType::Bmp => {
             let mut decoder = BmpDecoder::new(BufReader::new(Cursor::new(buf)))
@@ -165,21 +162,18 @@ fn decode_bitmap_data(
             )
           }
           MimeType::Webp => {
-            // NOTE: Temporarily not supported due to build size concerns
-            // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
-            unimplemented!();
             // The WebPDecoder decodes the first frame.
-            // let mut decoder =
-            //   WebPDecoder::new(BufReader::new(Cursor::new(buf)))
-            //     .map_err(CanvasError::image_error_to_invalid_image)?;
-            // let orientation = decoder.orientation()?;
-            // let icc_profile = decoder.icc_profile()?;
-            // (
-            //   DynamicImage::from_decoder(decoder)
-            //     .map_err(CanvasError::image_error_to_invalid_image)?,
-            //   orientation,
-            //   icc_profile,
-            // )
+            let mut decoder =
+              WebPDecoder::new(BufReader::new(Cursor::new(buf)))
+                .map_err(ImageError::image_error_to_invalid_image)?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.icc_profile()?;
+            (
+              DynamicImage::from_decoder(decoder)
+                .map_err(ImageError::image_error_to_invalid_image)?,
+              orientation,
+              icc_profile,
+            )
           }
           // This pattern is unreachable due to current block is already checked by the ImageBitmapSource above.
           MimeType::NoMatch => unreachable!(),

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { join } from "@std/path";
 import { ROOT_PATH } from "./util.js";
@@ -9,6 +9,7 @@ const filePaths = [
   "test_results_specs.json",
   "test_results_unit.json",
   "test_results_unit_node.json",
+  "test_results_node_compat.json",
 ].map((fileName) => joinTarget(fileName));
 
 const tests = [];

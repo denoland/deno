@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -217,6 +217,14 @@ const windowOrWorkerGlobalScope = {
   ),
   GPUCommandEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUCommandEncoder,
+    loadWebGPU,
+  ),
+  GPUCompilationInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationInfo,
+    loadWebGPU,
+  ),
+  GPUCompilationMessage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationMessage,
     loadWebGPU,
   ),
   GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(
