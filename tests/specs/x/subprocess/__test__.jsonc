@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "args": "x -y @denotest/run-in-subprocess ./hi.ts",
+      "output": "Download[WILDCARD]\nhi\n"
+    }
+  ]
+}

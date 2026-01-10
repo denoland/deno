@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
@@ -12,7 +12,6 @@ use std::sync::atomic::Ordering;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
@@ -76,13 +75,20 @@ deno_core::extension!(
   esm = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
+    is_dx_symlink: Option<IsDxSymlink>,
   },
   state = |state, options| {
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
     }
+    if let Some(is_dx_symlink) = options.is_dx_symlink {
+      state.put::<IsDxSymlink>(is_dx_symlink);
+    }
   }
 );
+
+#[derive(Debug, Clone, Copy)]
+pub struct IsDxSymlink(pub fn(&OsStr) -> bool);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
@@ -111,13 +117,16 @@ pub enum OsError {
 
 #[op2]
 #[string]
-fn op_exec_path() -> Result<String, OsError> {
-  let current_exe = env::current_exe().unwrap();
-  // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(Cow::Owned(current_exe));
+fn op_exec_path(state: &OpState) -> Result<String, OsError> {
+  let mut path = env::current_exe()?;
+
+  if let Some(is_dx_symlink) = state.try_borrow::<IsDxSymlink>()
+    && is_dx_symlink.0(path.as_os_str())
+  {
+    path = path.canonicalize().unwrap_or(path);
+  }
 
   path
-    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)

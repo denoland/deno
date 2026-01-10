@@ -216,6 +216,7 @@ pub struct WorkerServiceOptions<
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 
   pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
+  pub is_dx_symlink: Option<deno_os::IsDxSymlink>,
 }
 
 pub struct WorkerOptions {
@@ -583,7 +584,7 @@ impl MainWorker {
         }),
         deno_io::deno_io::args(Some(options.stdio)),
         deno_fs::deno_fs::args(services.fs.clone()),
-        deno_os::deno_os::args(Some(exit_code.clone())),
+        deno_os::deno_os::args(Some(exit_code.clone()), services.is_dx_symlink),
         deno_process::deno_process::args(services.npm_process_state_provider),
         deno_node::deno_node::args::<
           TInNpmPackageChecker,
