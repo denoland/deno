@@ -745,7 +745,7 @@ impl DatabaseSync {
 
     Ok(StatementSync {
       inner: stmt_cell,
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
       use_big_ints: Cell::new(false),
@@ -1229,7 +1229,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
     })
   }
 
