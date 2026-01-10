@@ -130,6 +130,7 @@
     "parallel/test-buffer-set-inspect-max-bytes.js": {},
     "parallel/test-buffer-sharedarraybuffer.js": {},
     "parallel/test-buffer-slice.js": {},
+    "parallel/test-buffer-slow.js": {},
     "parallel/test-buffer-swap.js": {},
     "parallel/test-buffer-tojson.js": {},
     "parallel/test-buffer-tostring-range.js": {},

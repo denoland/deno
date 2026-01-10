@@ -953,6 +953,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_lockfile",
  "deno_semver",
+ "deno_terminal",
  "deno_tower_lsp",
  "deno_unsync",
  "fastwebsockets",
@@ -4065,9 +4066,9 @@ checksum = "c007b1ae3abe1cb6f85a16305acd418b7ca6343b953633fee2b76d8f108b830f"
 
 [[package]]
 name = "file_test_runner"
-version = "0.11.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f10931d8b801120f1248672b54a47edd8776fdd8bc92c1598de5aeb01ee6ffec"
+checksum = "aab2ea62262e650557af93e48bfb0ffbcf3b6d86af4b9fea1aa00f93821b69a9"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
