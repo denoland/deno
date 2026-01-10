@@ -208,7 +208,7 @@ pub enum CryptoError {
   #[class("DOMExceptionOperationError")]
   #[error("decryption error - integrity check failed")]
   DecryptionError,
-  #[class("DOMExceptionQuotaExceededError")]
+  #[class("QuotaExceededError")]
   #[error(
     "The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)"
   )]
