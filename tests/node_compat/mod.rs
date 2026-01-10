@@ -17,7 +17,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use test_util as util;
-use test_util::print::spawn_thread;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
