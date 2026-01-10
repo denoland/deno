@@ -281,7 +281,7 @@ fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
       continue;
     }
 
-    for entry in std::fs::read_dir(&subdir_entry.path()).unwrap().flatten() {
+    for entry in std::fs::read_dir(subdir_entry.path()).unwrap().flatten() {
       let file_name = match entry.file_name().to_str() {
         Some(name) => name.to_string(),
         None => continue,
