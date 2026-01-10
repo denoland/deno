@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use file_test_runner::RunOptions;
@@ -59,7 +58,7 @@ fn main() {
   file_test_runner::run_tests(
     &crypto_category,
     RunOptions {
-      parallelism: NonZeroUsize::new(1).unwrap(),
+      parallelism: file_test_runner::Parallelism::from_usize(1),
       reporter: reporter.clone(),
     },
     move |test| {
