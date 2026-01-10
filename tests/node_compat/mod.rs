@@ -260,6 +260,31 @@ fn collect_tests_from_config(
   wrap_in_category(children)
 }
 
+// Directories that don't contain runnable tests
+// from https://github.com/denoland/std/pull/2787#discussion_r1001237016
+const IGNORED_TEST_DIRS: &[&str] = &[
+  "addons",
+  "async-hooks",
+  "benchmark",
+  "cctest",
+  "common",
+  "doctool",
+  "embedding",
+  "fixtures",
+  "fuzzers",
+  "js-native-api",
+  "known_issues",
+  "node-api",
+  "overlapped-checker",
+  "report",
+  "testpy",
+  "tick-processor",
+  "tools",
+  "v8-updates",
+  "wasi",
+  "wpt",
+];
+
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
   let suite_dir = suite_test_dir();
@@ -277,33 +302,68 @@ fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
       continue;
     }
 
+    // Skip directories that don't contain runnable tests
+    if IGNORED_TEST_DIRS.contains(&subdir_name.as_str()) {
+      continue;
+    }
+
     if !subdir_entry.file_type().is_ok_and(|t| t.is_dir()) {
       continue;
     }
 
-    for entry in std::fs::read_dir(subdir_entry.path()).unwrap().flatten() {
-      let file_name = match entry.file_name().to_str() {
-        Some(name) => name.to_string(),
-        None => continue,
-      };
-
-      // Only include test-*.js and test-*.mjs files
-      if !file_name.starts_with("test-") {
-        continue;
-      }
-      if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
-        continue;
-      }
-      if entry.file_type().is_ok_and(|t| t.is_dir()) {
-        continue;
-      }
-
-      let test_name = format!("{}/{}", subdir_name, file_name);
-      children.push(create_collected_test(&test_name));
-    }
+    // Recursively collect test files from this subdirectory
+    collect_test_files_recursive(
+      &subdir_entry.path(),
+      &subdir_name,
+      &mut children,
+    );
   }
 
   wrap_in_category(children)
+}
+
+fn collect_test_files_recursive(
+  dir: &std::path::Path,
+  relative_prefix: &str,
+  children: &mut Vec<CollectedCategoryOrTest<NodeCompatTestData>>,
+) {
+  for entry in std::fs::read_dir(dir).unwrap().flatten() {
+    let file_name = match entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
+    };
+
+    // Skip hidden files/directories
+    if file_name.starts_with('.') {
+      continue;
+    }
+
+    let file_type = match entry.file_type() {
+      Ok(ft) => ft,
+      Err(_) => continue,
+    };
+
+    if file_type.is_dir() {
+      // Recurse into subdirectory
+      let new_prefix = format!("{}/{}", relative_prefix, file_name);
+      collect_test_files_recursive(&entry.path(), &new_prefix, children);
+    } else {
+      // Only include test-*.{js,mjs,cjs,ts} files
+      if !file_name.starts_with("test-") {
+        continue;
+      }
+      if !file_name.ends_with(".js")
+        && !file_name.ends_with(".mjs")
+        && !file_name.ends_with(".cjs")
+        && !file_name.ends_with(".ts")
+      {
+        continue;
+      }
+
+      let test_name = format!("{}/{}", relative_prefix, file_name);
+      children.push(create_collected_test(&test_name));
+    }
+  }
 }
 
 fn suite_test_dir() -> std::path::PathBuf {
