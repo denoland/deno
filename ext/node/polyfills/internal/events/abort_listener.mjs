@@ -3,7 +3,10 @@
 
 import { primordials } from "ext:core/mod.js";
 const { queueMicrotask, SymbolDispose } = primordials;
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import { validateAbortSignal, validateFunction } from "../validators.mjs";
 import { codes } from "../errors.ts";
 const { ERR_INVALID_ARG_TYPE } = codes;
@@ -28,9 +31,9 @@ function addAbortListener(signal, listener) {
       removeEventListener?.();
       listener({ target: signal });
     };
-    signal[abortSignal.add](handler);
+    addSignalAlgorithm(signal, handler);
     removeEventListener = () => {
-      signal[abortSignal.remove](handler);
+      removeSignalAlgorithm(signal, handler);
     };
   }
   return {

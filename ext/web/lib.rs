@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod event;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -42,6 +43,7 @@ use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
+use crate::event::ReportExceptionStackedCalls;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -84,6 +86,23 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
+    event::op_event_dispatch,
+    event::op_event_get_all_target_listeners,
+    event::op_event_get_target_listener_count,
+    event::op_event_get_target_listeners,
+    event::op_event_set_is_trusted,
+    event::op_event_set_target,
+    event::op_event_create_empty_event_target,
+    event::op_event_wrap_event_target,
+    event::op_event_report_error,
+    event::op_event_report_exception,
+    event::op_event_create_abort_signal,
+    event::op_event_create_dependent_abort_signal,
+    event::op_event_add_abort_algorithm,
+    event::op_event_remove_abort_algorithm,
+    event::op_event_signal_abort,
+    event::op_event_get_source_signals,
+    event::op_event_get_dependent_signals,
     op_now,
     op_time_origin,
     op_defer,
@@ -108,6 +127,18 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+  ],
+  objects = [
+    event::Event,
+    event::CustomEvent,
+    event::ErrorEvent,
+    event::PromiseRejectionEvent,
+    event::CloseEvent,
+    event::MessageEvent,
+    event::ProgressEvent,
+    event::EventTarget,
+    event::AbortSignal,
+    event::AbortController,
   ],
   esm = [
     "00_infra.js",
@@ -144,6 +175,7 @@ deno_core::extension!(deno_web,
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
+    state.put(ReportExceptionStackedCalls::default());
     state.put(StartTime::default());
     state.put(options.bc);
   }
