@@ -486,7 +486,14 @@ pub fn op_read_line_prompt(
       }
       Ok(None)
     }
-    Err(ReadlineError::Eof) => Ok(None),
+    Err(ReadlineError::Eof) => {
+      // Move cursor up to counteract the newline that rustyline outputs on EOF.
+      // This makes prompt() behave consistently with confirm() and alert().
+      // See: https://github.com/denoland/deno/issues/22956
+      #[allow(clippy::print_stdout)]
+      print!("\x1b[1A");
+      Ok(None)
+    }
     Err(err) => Err(JsReadlineError(err)),
   }
 }
