@@ -978,7 +978,7 @@ impl DerefMut for DenoChild {
 
 impl DenoChild {
   pub fn wait_with_output_and_timeout(
-    self,
+    mut self,
     timeout: Duration,
   ) -> Result<std::process::Output, std::io::Error> {
     use std::sync::mpsc;
@@ -1070,6 +1070,9 @@ impl DenoChild {
         output: final_output.join("\n").into_bytes(),
       }
     };
+
+    // keep stdin alive instead of dropping it in wait_with_output
+    let _stdin = deno.stdin.take();
 
     let status = {
       match deno.wait_with_output_and_timeout(PER_TEST_TIMEOUT) {
