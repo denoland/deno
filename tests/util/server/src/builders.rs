@@ -7,6 +7,7 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::ops::Deref;
@@ -976,6 +977,31 @@ impl DerefMut for DenoChild {
 }
 
 impl DenoChild {
+  pub fn wait_with_output_and_timeout(
+    self,
+    timeout: Duration,
+  ) -> Result<std::process::Output, std::io::Error> {
+    use std::sync::mpsc;
+
+    let (tx, rx) = mpsc::channel();
+    let pid = self.id();
+
+    // Spawn thread to wait for child
+    spawn_thread(move || {
+      let result = self.wait_with_output();
+      let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+      Ok(Ok(output)) => Ok(output),
+      Ok(Err(err)) => Err(err),
+      Err(err) => {
+        _ = crate::process::kill(pid);
+        Err(std::io::Error::new(std::io::ErrorKind::TimedOut, err))
+      }
+    }
+  }
+
   pub fn wait_with_output(
     self,
   ) -> Result<std::process::Output, std::io::Error> {
@@ -1045,23 +1071,20 @@ impl DenoChild {
       }
     };
 
-    let now = Instant::now();
-    let status = loop {
-      if now.elapsed() > PER_TEST_TIMEOUT {
-        // Last-ditch kill
-        _ = deno.kill();
-        return get_failure_result(
-          now.elapsed(),
-          format!("Test {} failed to complete in time", test_name),
-        );
+    let status = {
+      match deno.wait_with_output_and_timeout(PER_TEST_TIMEOUT) {
+        Ok(output) => output.status,
+        Err(err) => {
+          if err.kind() == ErrorKind::TimedOut {
+            return get_failure_result(
+              now.elapsed(),
+              format!("Test {} failed to complete in time", test_name),
+            );
+          } else {
+            panic!("{}", err);
+          }
+        }
       }
-      if let Some(status) = deno
-        .try_wait()
-        .expect("failed to wait for the child process")
-      {
-        break status;
-      }
-      std::thread::sleep(Duration::from_millis(100));
     };
     let duration = now.elapsed();
 

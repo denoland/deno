@@ -71,3 +71,22 @@ pub fn exec_replace_inner(
 pub fn exec_replace(command: &str, args: &[&str]) -> Result<Infallible, Error> {
   exec_replace_inner(command, args)
 }
+
+#[cfg(unix)]
+pub fn kill(pid: u32) -> std::io::Result<()> {
+  let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(std::io::Error::last_os_error())
+  }
+}
+
+#[cfg(windows)]
+pub fn kill(pid: u32) -> std::io::Result<()> {
+  use std::process::Command;
+  Command::new("taskkill")
+    .args(["/PID", &pid.to_string(), "/F"])
+    .status()?;
+  Ok(())
+}
