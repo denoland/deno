@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    "level_critical_with_high_vuln": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "install.out"
+        },
+        {
+          // With --level=critical, should exit 0 when only high severity vulns exist
+          "args": "audit --level=critical",
+          "output": "audit_critical.out",
+          "exitCode": 0
+        }
+      ]
+    },
+    "level_high_with_high_vuln": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "install.out"
+        },
+        {
+          // With --level=high, should exit 1 when high severity vulns exist
+          "args": "audit --level=high",
+          "output": "audit_high.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}
