@@ -8,6 +8,7 @@
 
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 import type { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import type { CryptoKey } from "ext:deno_crypto/00_crypto.js";
 
 export const kKeyType = Symbol("kKeyType");
 
