@@ -74,6 +74,7 @@ pub fn exec_replace(command: &str, args: &[&str]) -> Result<Infallible, Error> {
 
 #[cfg(unix)]
 pub fn kill(pid: u32) -> std::io::Result<()> {
+  // SAFETY: libc call
   let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
   if result == 0 {
     Ok(())
