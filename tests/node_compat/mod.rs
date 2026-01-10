@@ -265,21 +265,25 @@ fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
-  for subdir in ["parallel", "sequential"] {
-    let dir_path = suite_dir.join(subdir);
-    let entries = match std::fs::read_dir(&dir_path) {
-      Ok(entries) => entries,
-      Err(_) => continue,
+  // Scan all subdirectories in the test suite
+  for subdir_entry in std::fs::read_dir(&suite_dir).unwrap().flatten() {
+    let subdir_name = match subdir_entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
     };
 
-    for entry in entries.flatten() {
-      let path = entry.path();
-      if !path.is_file() {
-        continue;
-      }
+    // Skip hidden directories (includes .tmp*)
+    if subdir_name.starts_with('.') {
+      continue;
+    }
 
-      let file_name = match path.file_name().and_then(|n| n.to_str()) {
-        Some(name) => name,
+    if !subdir_entry.file_type().is_ok_and(|t| t.is_dir()) {
+      continue;
+    }
+
+    for entry in std::fs::read_dir(&subdir_entry.path()).unwrap().flatten() {
+      let file_name = match entry.file_name().to_str() {
+        Some(name) => name.to_string(),
         None => continue,
       };
 
@@ -290,8 +294,11 @@ fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
       if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
         continue;
       }
+      if entry.file_type().is_ok_and(|t| t.is_dir()) {
+        continue;
+      }
 
-      let test_name = format!("{}/{}", subdir, file_name);
+      let test_name = format!("{}/{}", subdir_name, file_name);
       children.push(create_collected_test(&test_name));
     }
   }
