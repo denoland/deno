@@ -978,7 +978,7 @@ impl DerefMut for DenoChild {
 
 impl DenoChild {
   pub fn wait_with_output_and_timeout(
-    mut self,
+    self,
     timeout: Duration,
   ) -> Result<std::process::Output, std::io::Error> {
     use std::sync::mpsc;
