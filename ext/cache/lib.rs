@@ -309,7 +309,7 @@ impl Resource for CacheResponseResource {
   }
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_cache_storage_open(
   state: Rc<RefCell<OpState>>,
@@ -319,7 +319,7 @@ pub async fn op_cache_storage_open(
   cache.storage_open(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_storage_has(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -328,7 +328,7 @@ pub async fn op_cache_storage_has(
   cache.storage_has(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_storage_delete(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -337,7 +337,7 @@ pub async fn op_cache_storage_delete(
   cache.storage_delete(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_put(
   state: Rc<RefCell<OpState>>,
   #[serde] request_response: CachePutRequest,
@@ -356,7 +356,7 @@ pub async fn op_cache_put(
   cache.put(request_response, resource).await
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_cache_match(
   state: Rc<RefCell<OpState>>,
@@ -373,7 +373,7 @@ pub async fn op_cache_match(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_delete(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheDeleteRequest,

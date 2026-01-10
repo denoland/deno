@@ -194,7 +194,6 @@ unsafe impl GarbageCollected for GPUCompilationInfo {
 #[op2]
 impl GPUCompilationInfo {
   #[getter]
-  #[global]
   fn messages(&self) -> v8::Global<v8::Object> {
     self.messages.clone()
   }

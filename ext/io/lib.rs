@@ -1157,7 +1157,7 @@ pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
     .add(ReadCancelResource(CancelHandle::new_rc()))
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_read_with_cancel_handle(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,

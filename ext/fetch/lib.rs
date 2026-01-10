@@ -29,16 +29,18 @@ use data_url::DataUrl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::JsBuffer;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -87,8 +89,6 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
-use serde::Deserialize;
-use serde::Serialize;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
@@ -285,8 +285,7 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct FetchReturn {
   pub request_rid: ResourceId,
   pub cancel_handle_rid: Option<ResourceId>,
@@ -404,18 +403,17 @@ impl Drop for ResourceToBodyAdapter {
 }
 
 #[op2(stack_trace)]
-#[serde]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::result_large_err)]
 pub fn op_fetch(
   state: &mut OpState,
-  #[serde] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   has_body: bool,
-  #[buffer] data: Option<JsBuffer>,
+  data: Option<Uint8Array>,
   #[smi] resource: Option<ResourceId>,
 ) -> Result<FetchReturn, FetchError> {
   let (client, allow_host) = if let Some(rid) = client_rid {
@@ -466,7 +464,7 @@ pub fn op_fetch(
             // If a body is passed, we use it, and don't return a body for streaming.
             con_len = Some(data.len() as u64);
 
-            ReqBody::full(data.to_vec().into())
+            ReqBody::full(data.0.into())
           }
           (_, Some(resource)) => {
             let resource = state.resource_table.take_any(resource)?;
@@ -584,14 +582,14 @@ pub fn op_fetch(
   })
 }
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct FetchResponse {
   pub status: u16,
   pub status_text: String,
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
+  #[to_v8(serde)]
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
@@ -600,8 +598,7 @@ pub struct FetchResponse {
   pub error: Option<(String, String)>,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -816,24 +813,21 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, FromV8)]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
+  #[from_v8(serde)]
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
+  #[from_v8(serde)]
   pool_idle_timeout: Option<serde_json::Value>,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http1: bool,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http2: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
-}
-
-fn default_true() -> bool {
-  true
 }
 
 #[op2(stack_trace)]
@@ -841,7 +835,7 @@ fn default_true() -> bool {
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client(
   state: &mut OpState,
-  #[serde] mut args: CreateHttpClientArgs,
+  #[scoped] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError> {
   if let Some(proxy) = &mut args.proxy {
@@ -1124,7 +1118,6 @@ pub fn create_http_client(
 }
 
 #[op2]
-#[serde]
 pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
