@@ -7,7 +7,6 @@ import {
   AssertionError,
   AssertionErrorConstructorOptions,
 } from "ext:deno_node/assertion_error.ts";
-import * as asserts from "ext:deno_node/_util/std_asserts.ts";
 import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
@@ -23,12 +22,16 @@ import {
 import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
+import { isRegExp } from "ext:deno_node/internal_binding/types.ts";
 
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypeSlice,
+  NumberIsNaN,
+  ObjectIs,
   ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -39,6 +42,7 @@ function innerFail(obj: {
   expected?: unknown;
   message?: string | Error;
   operator?: string;
+  stackStartFn?: Function;
 }) {
   if (obj.message instanceof Error) {
     throw obj.message;
@@ -49,6 +53,7 @@ function innerFail(obj: {
     expected: obj.expected,
     message: obj.message,
     operator: obj.operator,
+    stackStartFn: obj.stackStartFn,
   });
 }
 
@@ -66,45 +71,6 @@ function createAssertionError(
     error.generatedMessage = true;
   }
   return error;
-}
-
-/** Converts the std assertion error to node.js assertion error */
-function toNode(
-  fn: () => void,
-  opts?: {
-    actual: unknown;
-    expected: unknown;
-    message?: string | Error;
-    operator?: string;
-    stackStartFn?: Function;
-  },
-) {
-  const { operator, message, actual, expected, stackStartFn } = opts || {};
-  try {
-    fn();
-  } catch (e) {
-    if (e instanceof asserts.AssertionError) {
-      if (typeof message === "string") {
-        throw new AssertionError({
-          operator,
-          message,
-          actual,
-          expected,
-          stackStartFn,
-        });
-      } else if (message instanceof Error) {
-        throw message;
-      } else {
-        throw new AssertionError({
-          operator,
-          actual,
-          expected,
-          stackStartFn,
-        });
-      }
-    }
-    throw e;
-  }
 }
 
 function assert(actual: unknown, message?: string | Error): asserts actual {
@@ -267,32 +233,15 @@ function equal(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (actual == expected) {
-    return;
-  }
-
-  if (Number.isNaN(actual) && Number.isNaN(expected)) {
-    return;
-  }
-
-  if (typeof message === "string") {
-    throw new AssertionError({
-      message,
-    });
-  } else if (message instanceof Error) {
-    throw message;
-  }
-
-  toNode(
-    () => asserts.assertStrictEquals(actual, expected),
-    {
-      message: message || `${actual} == ${expected}`,
-      operator: "==",
+  if (actual != expected && (!NumberIsNaN(actual) || !NumberIsNaN(expected))) {
+    innerFail({
       actual,
       expected,
+      message,
+      operator: "==",
       stackStartFn: equal,
-    },
-  );
+    });
+  }
 }
 function notEqual(
   actual: unknown,
@@ -303,36 +252,17 @@ function notEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (Number.isNaN(actual) && Number.isNaN(expected)) {
-    throw new AssertionError({
-      message: `${actual} != ${expected}`,
-      operator: "!=",
+  if (actual == expected || (NumberIsNaN(actual) && NumberIsNaN(expected))) {
+    innerFail({
       actual,
       expected,
-    });
-  }
-  if (actual != expected) {
-    return;
-  }
-
-  if (typeof message === "string") {
-    throw new AssertionError({
       message,
-    });
-  } else if (message instanceof Error) {
-    throw message;
-  }
-
-  toNode(
-    () => asserts.assertNotStrictEquals(actual, expected),
-    {
-      message: message || `${actual} != ${expected}`,
       operator: "!=",
-      actual,
-      expected,
-    },
-  );
+      stackStartFn: notEqual,
+    });
+  }
 }
+
 function strictEqual(
   actual: unknown,
   expected: unknown,
@@ -342,10 +272,15 @@ function strictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  toNode(
-    () => asserts.assertStrictEquals(actual, expected),
-    { message, operator: "strictEqual", actual, expected },
-  );
+  if (!ObjectIs(actual, expected)) {
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "strictEqual",
+      stackStartFn: strictEqual,
+    });
+  }
 }
 function notStrictEqual(
   actual: unknown,
@@ -356,10 +291,15 @@ function notStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  toNode(
-    () => asserts.assertNotStrictEquals(actual, expected),
-    { message, actual, expected, operator: "notStrictEqual" },
-  );
+  if (ObjectIs(actual, expected)) {
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "notStrictEqual",
+      stackStartFn: notStrictEqual,
+    });
+  }
 }
 
 function deepEqual(
@@ -372,9 +312,16 @@ function deepEqual(
   }
 
   if (!isDeepEqual(actual, expected)) {
-    innerFail({ actual, expected, message, operator: "deepEqual" });
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "deepEqual",
+      stackStartFn: deepEqual,
+    });
   }
 }
+
 function notDeepEqual(
   actual: unknown,
   expected: unknown,
@@ -385,9 +332,16 @@ function notDeepEqual(
   }
 
   if (isDeepEqual(actual, expected)) {
-    innerFail({ actual, expected, message, operator: "notDeepEqual" });
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "notDeepEqual",
+      stackStartFn: notDeepEqual,
+    });
   }
 }
+
 function deepStrictEqual(
   actual: unknown,
   expected: unknown,
@@ -398,11 +352,12 @@ function deepStrictEqual(
   }
 
   if (!isDeepStrictEqual(actual, expected)) {
-    throw new AssertionError({
+    innerFail({
       message,
       actual,
       expected,
       operator: "deepStrictEqual",
+      stackStartFn: deepStrictEqual,
     });
   }
 }
@@ -416,10 +371,15 @@ function notDeepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  toNode(
-    () => asserts.assertNotEquals(actual, expected),
-    { message, actual, expected, operator: "deepNotStrictEqual" },
-  );
+  if (isDeepStrictEqual(actual, expected)) {
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "notDeepStrictEqual",
+      stackStartFn: notDeepStrictEqual,
+    });
+  }
 }
 
 let warned = false;
@@ -472,18 +432,52 @@ function fail(
   throw err;
 }
 
-function match(actual: string, regexp: RegExp, message?: string | Error) {
-  if (arguments.length < 2) {
-    throw new ERR_MISSING_ARGS("actual", "regexp");
+function internalMatch(
+  string: string,
+  regexp: RegExp,
+  message: string | Error | undefined,
+  fn: typeof match | typeof doesNotMatch,
+) {
+  if (!isRegExp(regexp)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "regexp",
+      "RegExp",
+      regexp,
+    );
   }
-  if (!(regexp instanceof RegExp)) {
-    throw new ERR_INVALID_ARG_TYPE("regexp", "RegExp", regexp);
-  }
+  const matchFn = fn === match;
+  if (
+    typeof string !== "string" ||
+    RegExpPrototypeExec(regexp, string) !== null !== matchFn
+  ) {
+    if (message instanceof Error) {
+      throw message;
+    }
 
-  toNode(
-    () => asserts.assertMatch(actual, regexp),
-    { message, actual, expected: regexp, operator: "match" },
-  );
+    const generatedMessage = !message;
+
+    // 'The input was expected to not match the regular expression ' +
+    message ||= typeof string !== "string"
+      ? 'The "string" argument must be of type string. Received type ' +
+        `${typeof string} (${inspect(string)})`
+      : (matchFn
+        ? "The input did not match the regular expression "
+        : "The input was expected to not match the regular expression ") +
+        `${inspect(regexp)}. Input:\n\n${inspect(string)}\n`;
+    const err = new AssertionError({
+      actual: string,
+      expected: regexp,
+      message,
+      operator: fn.name,
+      stackStartFn: fn,
+    });
+    err.generatedMessage = generatedMessage;
+    throw err;
+  }
+}
+
+function match(string: string, regexp: RegExp, message?: string | Error) {
+  internalMatch(string, regexp, message, match);
 }
 
 function doesNotMatch(
@@ -491,31 +485,7 @@ function doesNotMatch(
   regexp: RegExp,
   message?: string | Error,
 ) {
-  if (arguments.length < 2) {
-    throw new ERR_MISSING_ARGS("string", "regexp");
-  }
-  if (!(regexp instanceof RegExp)) {
-    throw new ERR_INVALID_ARG_TYPE("regexp", "RegExp", regexp);
-  }
-  if (typeof string !== "string") {
-    if (message instanceof Error) {
-      throw message;
-    }
-    throw new AssertionError({
-      message: message ||
-        `The "string" argument must be of type string. Received type ${typeof string} (${
-          inspect(string)
-        })`,
-      actual: string,
-      expected: regexp,
-      operator: "doesNotMatch",
-    });
-  }
-
-  toNode(
-    () => asserts.assertNotMatch(string, regexp),
-    { message, actual: string, expected: regexp, operator: "doesNotMatch" },
-  );
+  internalMatch(string, regexp, message, doesNotMatch);
 }
 
 function strict(actual: unknown, message?: string | Error): asserts actual {
