@@ -679,7 +679,6 @@ impl GPUDevice {
   }
 
   #[getter]
-  #[global]
   fn lost(&self) -> v8::Global<v8::Promise> {
     self.lost_promise.clone()
   }
