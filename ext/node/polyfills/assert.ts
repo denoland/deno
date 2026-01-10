@@ -18,6 +18,7 @@ import {
 import {
   isDeepEqual,
   isDeepStrictEqual,
+  isPartialStrictEqual,
 } from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
@@ -282,6 +283,7 @@ function strictEqual(
     });
   }
 }
+
 function notStrictEqual(
   actual: unknown,
   expected: unknown,
@@ -298,6 +300,25 @@ function notStrictEqual(
       message,
       operator: "notStrictEqual",
       stackStartFn: notStrictEqual,
+    });
+  }
+}
+
+function partialDeepStrictEqual(
+  actual: unknown,
+  expected: unknown,
+  message?: string | Error,
+) {
+  if (arguments.length < 2) {
+    throw new ERR_MISSING_ARGS("actual", "expected");
+  }
+  if (!isPartialStrictEqual(actual, expected)) {
+    innerFail({
+      actual,
+      expected,
+      message,
+      operator: "partialDeepStrictEqual",
+      stackStartFn: partialDeepStrictEqual,
     });
   }
 }
@@ -965,6 +986,7 @@ export default Object.assign(assert, {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,
@@ -988,6 +1010,7 @@ export {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,
