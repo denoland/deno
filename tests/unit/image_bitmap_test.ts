@@ -273,6 +273,43 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
+  await t.step("8-bit avif", async () => {
+    const imageData = new Blob(
+      // ffmpeg -f lavfi -i "color=c=red:s=20x20" -frames:v 1 -c:v libaom-av1 -pix_fmt yuv420p8le 20x20-red8.avif
+      [await Deno.readFile(`${prefix}/20x20-red8.avif`)],
+    );
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const firstPixel = Deno[Deno.internal].getBitmapData(imageBitmap).slice(
+      0,
+      4,
+    );
+    assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
+  });
+  await t.step("10-bit avif", async () => {
+    const imageData = new Blob(
+      // ffmpeg -f lavfi -i "color=c=red:s=20x20" -frames:v 1 -c:v libaom-av1 -pix_fmt yuv420p10le 20x20-red10.avif
+      [await Deno.readFile(`${prefix}/20x20-red10.avif`)],
+    );
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const firstPixel = extractHighBytes(
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+    ).slice(0, 4);
+    assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
+  });
+  await t.step("12-bit avif", async () => {
+    const imageData = new Blob(
+      // ffmpeg -f lavfi -i "color=c=red:s=20x20" -frames:v 1 -c:v libaom-av1 -pix_fmt yuv420p12le 20x20-red12.avif
+      [await Deno.readFile(`${prefix}/20x20-red12.avif`)],
+    );
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const firstPixel = extractHighBytes(
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+    ).slice(0, 4);
+    assertEquals(firstPixel, new Uint8Array([255, 25, 0, 255]));
+  });
   await t.step("flotat-32-bit exr", async () => {
     // image/x-exr is a known mimetype for OpenEXR
     // https://www.digipres.org/formats/sources/fdd/formats/#fdd000583
@@ -338,15 +375,39 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     // deno-fmt-ignore
     assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
+  await t.step("animated avif", async () => {
+    // the chunk of animated avif is (3 frames, 20x20, 10-bit, RGBA)
+    // 1f red, 2f, green, 3f blue
+    const imageData = new Blob(
+      // ffmpeg - f lavfi - i "color=c=red:s=20x20:r=1" \
+      // -vf "drawbox=t=fill:c=green:enable='eq(n,1)',drawbox=t=fill:c=blue:enable='eq(n,2)'" \
+      // -frames:v 3 \
+      // -c:v libaom - av1 - pix_fmt yuv420p10le \
+      // -cpu - used 8 - usage realtime \
+      // 20x20-3f-animated-10b.avif
+      [await Deno.readFile(`${prefix}/20x20-3f-animated-10b.avif`)],
+    );
+    const imageBitmap = await createImageBitmap(imageData);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    const firstPixel = extractHighBytes(
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+    ).slice(0, 4);
+    assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
+  });
 });
 
 /**
  * extract high bytes from Uint16Array
  */
 function extractHighBytes(array: Uint8Array): Uint8Array {
-  const highBytes = new Uint8Array(array.length / 2);
-  for (let i = 0, j = 1; i < array.length; i++, j += 2) {
-    highBytes[i] = array[j];
+  const u16 = new Uint16Array(
+    array.buffer,
+    array.byteOffset,
+    array.byteLength / 2,
+  );
+  const highBytes = new Uint8Array(u16.length);
+  for (let i = 0; i < u16.length; i++) {
+    highBytes[i] = u16[i] >>> 8;
   }
   return highBytes;
 }
