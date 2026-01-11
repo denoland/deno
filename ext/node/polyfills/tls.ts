@@ -1,9 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
@@ -13,7 +10,26 @@ import {
 } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 
-const { ObjectFreeze } = primordials;
+const {
+  ArrayIsArray,
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
+  ObjectKeys,
+  ObjectFreeze,
+  Proxy,
+  ReflectDefineProperty,
+  ReflectDeleteProperty,
+  ReflectGet,
+  ReflectGetOwnPropertyDescriptor,
+  ReflectHas,
+  ReflectIsExtensible,
+  ReflectOwnKeys,
+  ReflectPreventExtensions,
+  ReflectSet,
+  SafeArrayIterator,
+  StringPrototypeToLowerCase,
+  TypeError,
+} = primordials;
 
 // openssl -> rustls
 const cipherMap = {
@@ -34,7 +50,10 @@ const cipherMap = {
 
 export function getCiphers() {
   // TODO(bnoordhuis) Use locale-insensitive toLowerCase()
-  return Object.keys(cipherMap).map((name) => name.toLowerCase());
+  return ArrayPrototypeMap(
+    ObjectKeys(cipherMap),
+    (name) => StringPrototypeToLowerCase(name),
+  );
 }
 
 let lazyRootCertificates: string[] | null = null;
@@ -43,7 +62,10 @@ function ensureLazyRootCertificates(target: string[]) {
     lazyRootCertificates = op_get_root_certificates() as string[];
     // Clear target and repopulate
     target.length = 0;
-    lazyRootCertificates.forEach((v) => target.push(v));
+    ArrayPrototypeForEach(
+      lazyRootCertificates,
+      (v) => ArrayPrototypePush(target, v),
+    );
     ObjectFreeze(target);
   }
 }
@@ -52,39 +74,39 @@ export const rootCertificates = new Proxy([] as string[], {
   __proto__: null,
   get(target, prop) {
     ensureLazyRootCertificates(target);
-    return Reflect.get(target, prop);
+    return ReflectGet(target, prop);
   },
   ownKeys(target) {
     ensureLazyRootCertificates(target);
-    return Reflect.ownKeys(target);
+    return ReflectOwnKeys(target);
   },
   has(target, prop) {
     ensureLazyRootCertificates(target);
-    return Reflect.has(target, prop);
+    return ReflectHas(target, prop);
   },
   getOwnPropertyDescriptor(target, prop) {
     ensureLazyRootCertificates(target);
-    return Reflect.getOwnPropertyDescriptor(target, prop);
+    return ReflectGetOwnPropertyDescriptor(target, prop);
   },
   set(target, prop, value) {
     ensureLazyRootCertificates(target);
-    return Reflect.set(target, prop, value);
+    return ReflectSet(target, prop, value);
   },
   defineProperty(target, prop, descriptor) {
     ensureLazyRootCertificates(target);
-    return Reflect.defineProperty(target, prop, descriptor);
+    return ReflectDefineProperty(target, prop, descriptor);
   },
   deleteProperty(target, prop) {
     ensureLazyRootCertificates(target);
-    return Reflect.deleteProperty(target, prop);
+    return ReflectDeleteProperty(target, prop);
   },
   isExtensible(target) {
     ensureLazyRootCertificates(target);
-    return Reflect.isExtensible(target);
+    return ReflectIsExtensible(target);
   },
   preventExtensions(target) {
     ensureLazyRootCertificates(target);
-    return Reflect.preventExtensions(target);
+    return ReflectPreventExtensions(target);
   },
   setPrototypeOf() {
     return false;
@@ -102,13 +124,13 @@ export class SecurePair {}
 export const Server = tlsWrap.Server;
 
 export function setDefaultCACertificates(certs: string[]) {
-  if (!Array.isArray(certs)) {
+  if (!ArrayIsArray(certs)) {
     throw new TypeError(
       "The argument 'certs' must be an array of strings",
     );
   }
 
-  for (const cert of certs) {
+  for (const cert of new SafeArrayIterator(certs)) {
     if (typeof cert !== "string") {
       throw new TypeError(
         "Each certificate in 'certs' must be a string",
