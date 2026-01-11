@@ -11,7 +11,7 @@ Deno.
 If you run single node.js test case, use the command:
 
 ```
-./tools/node_compat_tests.js --filter <name of test file>
+cargo test <name of test file>
 ```
 
 ## Configuration file

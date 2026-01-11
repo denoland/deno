@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "ts": {
+      "args": "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
+      "output": "ts.out",
+      "exitCode": 1
+    },
+    "js": {
+      "args": "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
+      "output": "js.out",
+      "exitCode": 1
+    }
+  }
+}

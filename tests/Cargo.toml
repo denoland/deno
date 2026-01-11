@@ -36,8 +36,9 @@ path = "unit_node/mod.rs"
 harness = false
 
 [[test]]
-name = "node_compat_tests"
-path = "node_compat/test_runner.rs"
+name = "node_compat"
+path = "node_compat/mod.rs"
+harness = false
 
 [dev-dependencies]
 anyhow.workspace = true
@@ -47,6 +48,7 @@ chrono = { workspace = true, features = ["now"] }
 deno_cache_dir.workspace = true
 deno_lockfile.workspace = true
 deno_semver.workspace = true
+deno_terminal.workspace = true
 deno_unsync.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true

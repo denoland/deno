@@ -18,7 +18,6 @@ use serde_json::json;
 use test_util as util;
 use test_util::TempDir;
 use test_util::eprintln;
-use test_util::itest;
 use test_util::println;
 use test_util::test;
 use util::PathRef;
@@ -160,15 +159,6 @@ fn _083_legacy_external_source_map() {
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
 }
-
-itest!(_089_run_allow_list {
-  args: "run --allow-run=curl run/089_run_allow_list.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output: "run/089_run_allow_list.ts.out",
-});
 
 #[test(flaky)]
 fn _090_run_permissions_request() {
@@ -510,13 +500,6 @@ fn permissions_audit_with_traces() {
 "#,
   );
 }
-
-itest!(lock_write_fetch {
-  args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
-  output: "run/lock_write_fetch/main.out",
-  http_server: true,
-  exit_code: 0,
-});
 
 #[test]
 fn lock_redirects() {
@@ -922,47 +905,6 @@ fn get_lockfile_npm_package_integrity(
     .to_string()
 }
 
-itest!(error_013_missing_script {
-  args: "run --reload missing_file_name",
-  exit_code: 1,
-  output: "run/error_013_missing_script.out",
-});
-
-// We have an allow-import flag but not allow-read, it should still result in error.
-itest!(error_016_dynamic_import_permissions2 {
-  args: "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
-  output: "run/error_016_dynamic_import_permissions2.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_026_remote_import_error {
-  args: "run --allow-import run/error_026_remote_import_error.ts",
-  output: "run/error_026_remote_import_error.ts.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_local_static_import_from_remote_ts {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.ts.out",
-});
-
-itest!(error_local_static_import_from_remote_js {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.js.out",
-});
-
-itest!(no_check_remote {
-  args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
-  output: "run/no_check_remote.ts.enabled.out",
-  http_server: true,
-});
-
 #[test]
 fn type_directives_js_main() {
   let context = TestContext::default();
@@ -977,44 +919,6 @@ fn type_directives_js_main() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
-
-itest!(type_directives_redirect {
-  args: "run --allow-import --reload --check run/type_directives_redirect.ts",
-  output: "run/type_directives_redirect.ts.out",
-  http_server: true,
-});
-
-itest!(disallow_http_from_https_js {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
-  output: "run/disallow_http_from_https_js.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(disallow_http_from_https_ts {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
-  output: "run/disallow_http_from_https_ts.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(jsx_import_source_import_map_scoped {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map.out",
-  http_server: true,
-});
-
-itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map_dev.out",
-  http_server: true,
-});
-
-// FIXME(bartlomieju): disabled, because this test is very flaky on CI
-// itest!(local_sources_not_cached_in_memory {
-//   args: "run --allow-read --allow-write run/no_mem_cache.js",
-//   output: "run/no_mem_cache.js.out",
-// });
 
 #[test]
 fn no_validate_asm() {
@@ -2071,16 +1975,6 @@ fn running_declaration_files() {
   }
 }
 
-#[cfg(not(target_os = "windows"))]
-itest!(spawn_kill_permissions {
-  args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output_str: Some(""),
-});
-
 #[test]
 fn cache_test() {
   let _g = util::http_server();
@@ -2938,18 +2832,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       });
   }
 }
-
-itest!(extension_import {
-  args: "run run/extension_import.ts",
-  output: "run/extension_import.ts.out",
-  exit_code: 1,
-});
-
-itest!(extension_dynamic_import {
-  args: "run run/extension_dynamic_import.ts",
-  output: "run/extension_dynamic_import.ts.out",
-  exit_code: 1,
-});
 
 #[test]
 pub fn vendor_dir_config_file() {

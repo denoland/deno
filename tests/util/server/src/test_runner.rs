@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::io::Write;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::channel;
@@ -11,7 +10,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use console_static_text::ConsoleStaticText;
-use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
 use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
@@ -75,23 +73,23 @@ impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
 
 pub struct Parallelism {
   semaphore: Semaphore,
-  max_parallelism: NonZeroUsize,
+  max_parallelism: file_test_runner::Parallelism,
   has_raised_count: Mutex<usize>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
-    let max_parallelism = RunOptions::default_parallelism();
+    let parallelism = file_test_runner::Parallelism::default();
     Self {
-      max_parallelism,
-      semaphore: Semaphore::new(max_parallelism.get()),
+      max_parallelism: Default::default(),
+      semaphore: Semaphore::new(parallelism.get()),
       has_raised_count: Default::default(),
     }
   }
 }
 
 impl Parallelism {
-  pub fn max_parallelism(&self) -> NonZeroUsize {
+  pub fn max_parallelism(&self) -> file_test_runner::Parallelism {
     self.max_parallelism
   }
 
@@ -463,6 +461,7 @@ struct PtyReporterData {
   failed_tests: Vec<PtyReporterFailedTest>,
   passed_tests: usize,
   ignored_tests: usize,
+  hide: bool,
 }
 
 impl PtyReporterData {
@@ -471,6 +470,9 @@ impl PtyReporterData {
   }
 
   pub fn render(&mut self) -> Option<String> {
+    if self.hide {
+      return Some(self.render_clear());
+    }
     let mut items = Vec::new();
     const MAX_ITEM_DISPLAY: usize = 10;
     if !self.pending_tests.is_empty() {
@@ -541,6 +543,7 @@ impl PtyReporter {
       failed_tests: Default::default(),
       passed_tests: Default::default(),
       ignored_tests: Default::default(),
+      hide: false,
     }));
     #[allow(clippy::disallowed_methods)]
     std::thread::spawn({
@@ -574,6 +577,7 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     _context: &file_test_runner::reporter::ReporterContext,
   ) {
     let mut data = self.data.lock();
+    data.hide = false;
     let mut final_text = data.render_clear().into_bytes();
     _ = LogReporter::write_report_category_start(&mut final_text, category);
     if let Some(text) = data.render() {
@@ -665,12 +669,11 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     failures: &[file_test_runner::reporter::ReporterFailure<TData>],
     total_tests: usize,
   ) {
-    let clear_text = self
-      .data
-      .lock()
-      .static_text
-      .render_clear()
-      .unwrap_or_default();
+    let clear_text = {
+      let mut data = self.data.lock();
+      data.hide = true;
+      data.render_clear()
+    };
     let mut final_text = clear_text.into_bytes();
     _ = LogReporter::write_report_failures(
       &mut final_text,
