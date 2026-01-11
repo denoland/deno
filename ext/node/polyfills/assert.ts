@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file ban-types prefer-primordials
 
-import { AssertionError } from "ext:deno_node/assertion_error.ts";
+import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
 import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
