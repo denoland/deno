@@ -119,6 +119,10 @@ class TextDecoder {
       stream = options.stream;
     }
 
+    if (stream && input.length === 0) {
+      return "";
+    }
+
     try {
       /** @type {ArrayBufferLike} */
       let buffer = input;
