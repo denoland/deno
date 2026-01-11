@@ -18,6 +18,7 @@ use crate::tools::bundle::OutputFile;
 pub struct Script {
   pub src: Option<String>,
   pub is_async: bool,
+  pub is_defer: bool,
   pub is_module: bool,
   pub resolved_path: Option<PathBuf>,
 }
@@ -76,6 +77,9 @@ impl Script {
     if self.is_async {
       attrs.push(Attr::new("async", None));
     }
+    if self.is_defer {
+      attrs.push(Attr::new("defer", None));
+    }
     if self.is_module {
       attrs.push(Attr::new("type", Some("module".into())));
     }
@@ -113,11 +117,13 @@ fn collect_scripts(doc: &str) -> Result<Vec<Script>, AnyError> {
         };
         let src = el.get_attribute("src").unwrap();
         let is_async = el.has_attribute("async");
+        let is_defer = el.has_attribute("defer");
         let is_module = matches!(typ.as_deref(), Some("module"));
 
         scripts.push(Script {
           src: Some(src),
           is_async,
+          is_defer,
           is_module,
           resolved_path: None,
         });
@@ -333,6 +339,7 @@ impl HtmlEntrypoint {
       rel
     };
     let any_async = self.scripts.iter().any(|s| s.is_async);
+    let any_defer = self.scripts.iter().any(|s| s.is_defer);
     let any_module = self.scripts.iter().any(|s| s.is_module);
 
     let to_inject = Script {
@@ -344,6 +351,7 @@ impl HtmlEntrypoint {
         },
       ),
       is_async: any_async,
+      is_defer: any_defer,
       is_module: any_module,
       resolved_path: None,
     };
