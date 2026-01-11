@@ -67,16 +67,18 @@ import {
   mapSysErrnoToUvErrno,
   UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import type nodeAssert from "node:assert";
+import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
 
-let assert: typeof nodeAssert;
-const lazyLoadAssert = core.createLazyLoader<typeof nodeAssert>(
-  "node:assert",
-);
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 export { errorMap };
 

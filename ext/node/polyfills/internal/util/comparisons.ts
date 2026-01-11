@@ -1298,7 +1298,11 @@ function objEquiv(
 
 // Only handle cycles when they are detected.
 // eslint-disable-next-line func-style
-let detectCycles = function (val1: unknown, val2: unknown, mode: number): boolean {
+let detectCycles = function (
+  val1: unknown,
+  val2: unknown,
+  mode: number,
+): boolean {
   try {
     return innerDeepEqual(val1, val2, mode, null);
   } catch {

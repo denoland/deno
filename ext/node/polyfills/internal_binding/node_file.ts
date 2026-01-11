@@ -25,15 +25,17 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
-import type nodeAssert from "node:assert";
+import type * as nodeAssert from "node:assert";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_sync } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 
-let assert: typeof nodeAssert;
-const lazyLoadAssert = core.createLazyLoader<typeof nodeAssert>(
-  "node:assert",
-);
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 const {
   ErrorPrototype,
