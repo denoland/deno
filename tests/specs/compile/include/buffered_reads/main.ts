@@ -55,3 +55,14 @@
     }
   }
 }
+
+// large amount of data via fetch
+{
+  const res = await fetch(import.meta.resolve("./data/2.dat"));
+  const bytes = await res.bytes();
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== i % 256) {
+      throw new Error("Unexpected data.");
+    }
+  }
+}
