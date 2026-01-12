@@ -1759,6 +1759,7 @@ impl Http2Session {
     let headers = Http2Headers::from(headers);
 
     // TODO(bartlomieju): call `Http2Session::submit_request` instead
+    todo!();
   }
 }
 
