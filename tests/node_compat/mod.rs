@@ -470,22 +470,9 @@ fn wait_with_timeout(
   child: test_util::DenoChild,
   timeout: Duration,
 ) -> TestOutput {
-  use std::sync::mpsc;
-  use std::thread;
-
-  let (tx, rx) = mpsc::channel();
-
-  // Spawn thread to wait for child
-  thread::spawn(move || {
-    let result = child.wait_with_output();
-    let _ = tx.send(result);
-  });
-
-  match rx.recv_timeout(timeout) {
-    Ok(Ok(output)) => TestOutput::Completed(output),
-    Ok(Err(_)) => TestOutput::TimedOut, // IO error treated as timeout
-    Err(mpsc::RecvTimeoutError::Timeout) => TestOutput::TimedOut,
-    Err(mpsc::RecvTimeoutError::Disconnected) => TestOutput::TimedOut,
+  match child.wait_with_output_and_timeout(timeout) {
+    Ok(output) => TestOutput::Completed(output),
+    Err(_) => TestOutput::TimedOut,
   }
 }
 
