@@ -989,6 +989,11 @@ impl From<(String, usize)> for Http2Headers {
 
 #[op2]
 impl Http2Stream {
+  #[fast]
+  fn id(&self) -> i32 {
+    self.id
+  }
+
   fn respond(&self, #[serde] headers: (String, usize), options: i32) {
     let headers = Http2Headers::from(headers);
 
@@ -1627,12 +1632,12 @@ impl Http2Session {
   }
 
   fn submit_request(
-    &mut self,
+    &self,
     priority: Http2Priority,
     headers: Http2Headers,
     mut ret: i32,
     options: i32,
-  ) -> Option<cppgc::Ref<Http2Stream>> {
+  ) -> i32 {
     let mut data_provider = ffi::nghttp2_data_provider {
       source: ffi::nghttp2_data_source {
         ptr: std::ptr::null_mut(),
@@ -1653,14 +1658,24 @@ impl Http2Session {
     const NGHTTP2_ERR_NOMEM: i32 = -901;
     assert_ne!(ret, NGHTTP2_ERR_NOMEM);
     if ret > 0 {
-      // TODO(): options?
-      // let (obj, stream) =
-      // Http2Stream::new(self, ret, ffi::NGHTTP2_HCAT_HEADERS);
-      // stream
-      todo!()
-    } else {
-      None
+      // TODO(): handle options (eg. STREAM_OPTION_*)
+      // Create and register the stream immediately, mirroring Node's behavior
+      let session = unsafe { &mut *self.inner };
+      let (obj, stream) =
+        Http2Stream::new(session, ret, ffi::NGHTTP2_HCAT_HEADERS);
+      if let Some(stream_ref) = &stream {
+        // For requests, initial headers category is HEADERS
+        stream_ref.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
+        // STREAM_OPTION_GET_TRAILERS = 0x2
+        if (options & 0x2) != 0 {
+          stream_ref.set_has_trailers(true);
+        }
+      }
+      if let Some(s) = stream {
+        session.streams.insert(ret, (obj, s));
+      }
     }
+    ret
   }
 }
 
@@ -1747,19 +1762,32 @@ impl Http2Session {
   #[fast]
   fn refresh_state(&self) {}
 
-  fn request(
+  fn request<'s>(
     &self,
+    scope: &mut v8::PinScope<'s, '_>,
     #[serde] headers: (String, usize),
     options: i32,
     stream_id: i32,
     weight: i32,
     exclusive: bool,
-  ) {
+  ) -> v8::Local<'s, v8::Value> {
     let priority = Http2Priority::new(stream_id, weight, exclusive);
     let headers = Http2Headers::from(headers);
 
-    // TODO(bartlomieju): call `Http2Session::submit_request` instead
-    todo!();
+    // Submit request and get stream id or error code
+    let ret = self.submit_request(priority, headers, 0, options);
+    if ret <= 0 {
+      return v8::Integer::new(scope, ret).into();
+    }
+
+    // On success, return the stream object
+    let session = unsafe { &*self.inner };
+    if let Some(stream_obj) = session.find_stream_obj(ret) {
+      let local = v8::Local::new(scope, stream_obj);
+      return local.into();
+    }
+    // Fallback: should not happen, but return error code if stream missing
+    v8::Integer::new(scope, -1).into()
   }
 }
 
