@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::env;
 use std::io::Write;
@@ -29,10 +29,10 @@ mod macros;
 mod npm;
 mod parsers;
 pub mod print;
+pub mod process;
 pub mod pty;
 mod semaphore;
 pub mod servers;
-pub mod spawn;
 pub mod test_runner;
 mod wildcard;
 
@@ -252,6 +252,10 @@ pub fn target_dir() -> PathRef {
 }
 
 pub fn deno_exe_path() -> PathRef {
+  // Allow overriding the deno executable path via environment variable
+  if let Ok(path) = std::env::var("DENO_TEST_UTIL_DENO_EXE") {
+    return PathRef::new(PathBuf::from(path));
+  }
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno").to_path_buf();
   if cfg!(windows) {

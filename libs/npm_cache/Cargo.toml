@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_npm_cache"
-version = "0.44.0"
+version = "0.45.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

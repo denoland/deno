@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_fetch"
-version = "0.249.0"
+version = "0.250.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,7 @@ data-url.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_fs.workspace = true
+deno_io.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
@@ -41,7 +42,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-socks.workspace = true
-tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
 tower-http.workspace = true
 tower-service.workspace = true

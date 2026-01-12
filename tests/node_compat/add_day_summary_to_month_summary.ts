@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // This file mostly mirrors the utils in
 // https://github.com/denoland/node_test_viewer/blob/a642f725f2d9595bc8cf217c41967c446814a79e/util/report.ts
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).

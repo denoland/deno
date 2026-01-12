@@ -1,0 +1,5 @@
+{
+  "args": "fmt --ext=ipynb -",
+  "input": "badly_formatted.in",
+  "output": "expected.out"
+}
