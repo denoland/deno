@@ -28,11 +28,12 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import * as timers from "ext:deno_web/02_timers.js";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
+
+export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 
 interface TimerOptions extends Abortable {
   ref?: boolean | undefined;
@@ -156,6 +157,14 @@ export function setImmediate(
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 
+ObjectDefineProperty(setImmediate, promisify.custom, {
+  __proto__: null,
+  enumerable: true,
+  get() {
+    return promises.setImmediate;
+  },
+});
+
 export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
@@ -252,10 +261,61 @@ async function* setIntervalAsync(
   }
 }
 
+function setImmediatePromisified(value, options = kEmptyObject) {
+  try {
+    validateObject(options, "options");
+
+    if (typeof options?.signal !== "undefined") {
+      validateAbortSignal(options.signal, "options.signal");
+    }
+
+    if (typeof options?.ref !== "undefined") {
+      validateBoolean(options.ref, "options.ref");
+    }
+  } catch (err) {
+    return PromiseReject(err);
+  }
+
+  const { signal, ref = true } = options;
+
+  if (signal?.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
+  }
+
+  let oncancel;
+  const { promise, resolve, reject } = PromiseWithResolvers();
+  const immediate = new Immediate(resolve, value);
+  if (!ref) immediate.unref();
+  if (signal) {
+    oncancel = FunctionPrototypeBind(
+      cancelListenerHandler,
+      immediate,
+      clearImmediate,
+      reject,
+      signal,
+    );
+    signal.addEventListener("abort", oncancel, {
+      __proto__: null,
+      [kResistStopPropagation]: true,
+    });
+  }
+  return oncancel !== undefined
+    ? SafePromisePrototypeFinally(
+      promise,
+      () => signal.removeEventListener("abort", oncancel),
+    )
+    : promise;
+}
+
+ObjectDefineProperty(setImmediatePromisified, "name", {
+  __proto__: null,
+  value: "setImmediate",
+});
+
 export const promises = {
   setTimeout: setTimeoutPromise,
-  setImmediate: promisify(setImmediate),
   setInterval: setIntervalAsync,
+  setImmediate: setImmediatePromisified,
 };
 
 promises.scheduler = {
