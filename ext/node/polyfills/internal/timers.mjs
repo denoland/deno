@@ -12,8 +12,12 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
+  PromiseReject,
+  PromiseWithResolvers,
+  SafePromisePrototypeFinally,
   SafeMap,
   Symbol,
   SymbolToPrimitive,
@@ -25,8 +29,11 @@ import {
 } from "ext:core/ops";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  validateAbortSignal,
+  validateBoolean,
   validateFunction,
   validateNumber,
+  validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
@@ -36,6 +43,9 @@ import {
   setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
 import { runNextTicks } from "ext:deno_node/_next_tick.ts";
+import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { AbortError } from "ext:deno_node/internal/errors.ts";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
