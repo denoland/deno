@@ -122,7 +122,9 @@ fn main() {
   let mut category = if cli_args.report {
     collect_all_tests()
   } else if let Some(filter) = cli_args.filter.as_ref() {
-    collect_tests_from_filter(filter.to_string())
+    let mut category = collect_all_tests();
+    category.filter_children(filter);
+    category
   } else {
     collect_tests_from_config(&config)
   };
@@ -275,9 +277,8 @@ fn collect_tests_from_config(
   wrap_in_category(children)
 }
 
-fn collect_children(
-  filter: Option<String>,
-) -> Vec<CollectedCategoryOrTest<NodeCompatTestData>> {
+/// Collect all test files from the suite directory.
+fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
@@ -308,30 +309,10 @@ fn collect_children(
       }
 
       let test_name = format!("{}/{}", subdir, file_name);
-
-      let passes_filter = match filter.as_ref() {
-        Some(filter) => test_name.contains(filter),
-        None => true,
-      };
-      if passes_filter {
-        children.push(create_collected_test(&test_name));
-      }
+      children.push(create_collected_test(&test_name));
     }
   }
 
-  children
-}
-
-fn collect_tests_from_filter(
-  filter: String,
-) -> CollectedTestCategory<NodeCompatTestData> {
-  let children = collect_children(Some(filter));
-  wrap_in_category(children)
-}
-
-/// Collect all test files from the suite directory.
-fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
-  let children = collect_children(None);
   wrap_in_category(children)
 }
 
