@@ -121,6 +121,8 @@ fn main() {
   let config = load_config();
   let mut category = if cli_args.report {
     collect_all_tests()
+  } else if let Some(filter) = cli_args.filter.as_ref() {
+    collect_tests_from_filter(filter.to_string())
   } else {
     collect_tests_from_config(&config)
   };
@@ -217,6 +219,7 @@ struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
   report: bool,
+  filter: Option<String>,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -225,11 +228,22 @@ fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
   let mut report = false;
+  let mut filter = None;
+
+  let mut has_filter = false;
   for arg in std::env::args() {
+    if has_filter {
+      filter = Some(arg.as_str().to_string());
+      has_filter = false;
+    }
+
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
       "--report" => report = true,
+      "--filter" => {
+        has_filter = true;
+      }
       _ => {}
     }
   }
@@ -238,6 +252,7 @@ fn parse_cli_args() -> CliArgs {
     inspect_brk,
     inspect_wait,
     report,
+    filter,
   }
 }
 
@@ -260,8 +275,9 @@ fn collect_tests_from_config(
   wrap_in_category(children)
 }
 
-/// Collect all test files from the suite directory.
-fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+fn collect_children(
+  filter: Option<String>,
+) -> Vec<CollectedCategoryOrTest<NodeCompatTestData>> {
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
@@ -292,10 +308,30 @@ fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
       }
 
       let test_name = format!("{}/{}", subdir, file_name);
-      children.push(create_collected_test(&test_name));
+
+      let passes_filter = match filter.as_ref() {
+        Some(filter) => test_name.contains(filter),
+        None => true,
+      };
+      if passes_filter {
+        children.push(create_collected_test(&test_name));
+      }
     }
   }
 
+  children
+}
+
+fn collect_tests_from_filter(
+  filter: String,
+) -> CollectedTestCategory<NodeCompatTestData> {
+  let children = collect_children(Some(filter));
+  wrap_in_category(children)
+}
+
+/// Collect all test files from the suite directory.
+fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+  let children = collect_children(None);
   wrap_in_category(children)
 }
 
