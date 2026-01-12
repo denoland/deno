@@ -121,6 +121,10 @@ fn main() {
   let config = load_config();
   let mut category = if cli_args.report {
     collect_all_tests()
+  } else if let Some(filter) = cli_args.filter.as_ref() {
+    let mut category = collect_all_tests();
+    category.filter_children(filter);
+    category
   } else {
     collect_tests_from_config(&config)
   };
@@ -217,6 +221,7 @@ struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
   report: bool,
+  filter: Option<String>,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -225,11 +230,22 @@ fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
   let mut report = false;
+  let mut filter = None;
+
+  let mut has_filter = false;
   for arg in std::env::args() {
+    if has_filter {
+      filter = Some(arg.as_str().to_string());
+      has_filter = false;
+    }
+
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
       "--report" => report = true,
+      "--filter" => {
+        has_filter = true;
+      }
       _ => {}
     }
   }
@@ -238,6 +254,7 @@ fn parse_cli_args() -> CliArgs {
     inspect_brk,
     inspect_wait,
     report,
+    filter,
   }
 }
 
