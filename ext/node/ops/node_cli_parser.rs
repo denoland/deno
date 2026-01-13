@@ -784,6 +784,12 @@ pub struct OptionsParser {
   implications: HashMap<String, Vec<String>>,
 }
 
+impl Default for OptionsParser {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl OptionsParser {
   pub fn new() -> Self {
     let mut parser = Self {
