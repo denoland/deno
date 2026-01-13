@@ -180,6 +180,7 @@
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-event.js": {},
+    "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},

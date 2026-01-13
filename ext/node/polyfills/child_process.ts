@@ -33,7 +33,6 @@ import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } from "ext:deno_node/internal/errors.ts";
@@ -93,8 +92,12 @@ export function fork(
   }
 
   if (pos < arguments.length && arguments[pos] != null) {
-    if (typeof arguments[pos] !== "object") {
-      throw new ERR_INVALID_ARG_VALUE(`arguments[${pos}]`, arguments[pos]);
+    if (typeof arguments[pos] !== "object" || Array.isArray(arguments[pos])) {
+      throw new ERR_INVALID_ARG_TYPE(
+        `arguments[${pos}]`,
+        "object",
+        arguments[pos],
+      );
     }
 
     options = { ...arguments[pos++] };
@@ -438,14 +441,39 @@ export function execFile(
     args = argsOrOptionsOrCallback;
   } else if (argsOrOptionsOrCallback instanceof Function) {
     callback = argsOrOptionsOrCallback;
-  } else if (argsOrOptionsOrCallback) {
+    // When second arg is callback, ignore remaining args
+  } else if (argsOrOptionsOrCallback != null) {
+    if (typeof argsOrOptionsOrCallback !== "object") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "args",
+        ["object", "array"],
+        argsOrOptionsOrCallback,
+      );
+    }
     options = argsOrOptionsOrCallback;
   }
-  if (optionsOrCallback instanceof Function) {
-    callback = optionsOrCallback;
-  } else if (optionsOrCallback) {
-    options = optionsOrCallback;
-    callback = maybeCallback;
+  // Only process subsequent args if callback wasn't set from second arg
+  if (callback === undefined) {
+    if (optionsOrCallback instanceof Function) {
+      callback = optionsOrCallback;
+    } else if (optionsOrCallback != null) {
+      if (
+        typeof optionsOrCallback !== "object" ||
+        Array.isArray(optionsOrCallback)
+      ) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options",
+          "object",
+          optionsOrCallback,
+        );
+      }
+      options = optionsOrCallback;
+      callback = maybeCallback;
+    }
+    // Validate callback if provided
+    if (maybeCallback != null && typeof maybeCallback !== "function") {
+      throw new ERR_INVALID_ARG_TYPE("callback", "function", maybeCallback);
+    }
   }
 
   const execOptions = {
