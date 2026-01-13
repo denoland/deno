@@ -175,6 +175,7 @@
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
+    "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
     "parallel/test-child-process-set-blocking.js": {},
