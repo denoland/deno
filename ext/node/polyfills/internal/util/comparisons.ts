@@ -142,6 +142,7 @@ const wellKnownConstructors = new SafeSet()
 const kStrict = 1;
 const kLoose = 0;
 const kPartial = 2;
+const kStrictWithoutPrototypes = 3;
 
 // Check if they have the same source and flags
 function areSimilarRegExps(a: RegExp, b: RegExp): boolean {
@@ -532,7 +533,7 @@ function keyCheck(
       }
     } else if (keys2.length !== (keys1 = ObjectKeys(val1)).length) {
       return false;
-    } else if (mode === kStrict) {
+    } else if (mode === kStrict || mode === kStrictWithoutPrototypes) {
       const symbolKeysA = getOwnSymbols(val1);
       if (symbolKeysA.length !== 0) {
         let count = 0;
@@ -1315,7 +1316,14 @@ export function isDeepEqual(val1: unknown, val2: unknown): boolean {
   return detectCycles(val1, val2, kLoose);
 }
 
-export function isDeepStrictEqual(val1: unknown, val2: unknown): boolean {
+export function isDeepStrictEqual(
+  val1: unknown,
+  val2: unknown,
+  skipPrototype?: boolean,
+): boolean {
+  if (skipPrototype) {
+    return detectCycles(val1, val2, kStrictWithoutPrototypes);
+  }
   return detectCycles(val1, val2, kStrict);
 }
 

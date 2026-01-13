@@ -925,6 +925,15 @@ export class ERR_CONSOLE_WRITABLE_STREAM extends NodeTypeError {
   }
 }
 
+export class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_REQUIRED",
+      `Class constructor ${x} cannot be invoked without \`new\``,
+    );
+  }
+}
+
 export class ERR_CONTEXT_NOT_INITIALIZED extends NodeError {
   constructor() {
     super("ERR_CONTEXT_NOT_INITIALIZED", "context used is not initialized");
@@ -2933,6 +2942,7 @@ export default {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,

@@ -7,6 +7,7 @@ import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js
 import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_RETURN_VALUE,
@@ -21,15 +22,21 @@ import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
 import { isPromise, isRegExp } from "ext:deno_node/internal_binding/types.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateFunction,
+  validateOneOf,
+} from "ext:deno_node/internal/validators.mjs";
 
 const {
+  ArrayPrototypeForEach,
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ErrorPrototype,
   NumberIsNaN,
+  ObjectAssign,
+  ObjectDefineProperty,
   ObjectIs,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -39,6 +46,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   String,
+  Symbol,
 } = primordials;
 
 type AssertPredicate =
@@ -48,7 +56,81 @@ type AssertPredicate =
   | object
   | Error;
 
+type AssertOptions = {
+  diff: "full" | "simple";
+  strict: boolean;
+  skipPrototype: boolean;
+};
+
+const kOptions = Symbol("options");
+
 const NO_EXCEPTION_SENTINEL = {};
+
+function Assert(options: AssertOptions) {
+  if (!new.target) {
+    throw new ERR_CONSTRUCT_CALL_REQUIRED("Assert");
+  }
+
+  options = ObjectAssign({
+    __proto__: null,
+    strict: true,
+    skipPrototype: false,
+  }, options);
+
+  const allowedDiffs = ["simple", "full"];
+  if (options.diff !== undefined) {
+    validateOneOf(options.diff, "options.diff", allowedDiffs);
+  }
+
+  this.AssertionError = AssertionError;
+  ObjectDefineProperty(this, kOptions, {
+    __proto__: null,
+    value: options,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+
+  if (options.strict) {
+    this.equal = this.strictEqual;
+    this.deepEqual = this.deepStrictEqual;
+    this.notEqual = this.notStrictEqual;
+    this.notDeepEqual = this.notDeepStrictEqual;
+  }
+}
+
+Assert.prototype.fail = fail;
+// Duplicate of the `ok` function below so we don't inherit
+// the extra assigned properties from `assert` function later on.
+Assert.prototype.ok = function (actual: unknown, message?: string | Error) {
+  if (arguments.length === 0) {
+    throw new AssertionError({
+      message: "No value argument passed to `assert.ok()`",
+      expected: true,
+      operator: "==",
+    });
+  }
+  if (actual) {
+    return;
+  }
+  equal(actual, true, message);
+};
+Assert.prototype.equal = equal;
+Assert.prototype.notEqual = notEqual;
+Assert.prototype.deepEqual = deepEqual;
+Assert.prototype.notDeepEqual = notDeepEqual;
+Assert.prototype.deepStrictEqual = deepStrictEqual;
+Assert.prototype.notDeepStrictEqual = notDeepStrictEqual;
+Assert.prototype.strictEqual = strictEqual;
+Assert.prototype.notStrictEqual = notStrictEqual;
+Assert.prototype.partialDeepStrictEqual = partialDeepStrictEqual;
+Assert.prototype.throws = throws;
+Assert.prototype.rejects = rejects;
+Assert.prototype.doesNotThrow = doesNotThrow;
+Assert.prototype.doesNotReject = doesNotReject;
+Assert.prototype.ifError = ifError;
+Assert.prototype.match = match;
+Assert.prototype.doesNotMatch = doesNotMatch;
 
 function innerFail(obj: {
   actual?: unknown;
@@ -56,6 +138,7 @@ function innerFail(obj: {
   message?: string | Error;
   operator?: string;
   stackStartFn?: Function;
+  diff?: "simple" | "full";
 }) {
   if (obj.message instanceof Error) {
     throw obj.message;
@@ -67,6 +150,7 @@ function innerFail(obj: {
     message: obj.message,
     operator: obj.operator,
     stackStartFn: obj.stackStartFn,
+    diff: obj.diff,
   });
 }
 
@@ -74,6 +158,8 @@ function assert(actual: unknown, message?: string | Error): asserts actual {
   if (arguments.length === 0) {
     throw new AssertionError({
       message: "No value argument passed to `assert.ok()`",
+      expected: true,
+      operator: "==",
     });
   }
   if (actual) {
@@ -122,6 +208,7 @@ function compareExceptionKey(
         expected: b,
         operator: "deepStrictEqual",
         stackStartFn: fn,
+        diff: this?.[kOptions]?.diff,
       });
       err.actual = actual;
       err.expected = expected;
@@ -134,6 +221,7 @@ function compareExceptionKey(
       message,
       operator: fn.name,
       stackStartFn: fn,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -169,6 +257,7 @@ function expectedException(
         message,
         operator: "deepStrictEqual",
         stackStartFn: fn,
+        diff: this?.[kOptions]?.diff,
       });
       err.operator = fn.name;
       throw err;
@@ -248,6 +337,7 @@ function expectedException(
       message,
       operator: fn.name,
       stackStartFn: fn,
+      diff: this?.[kOptions]?.diff,
     });
     err.generatedMessage = generatedMessage;
     throw err;
@@ -363,6 +453,7 @@ function expectsError(
       operator: stackStartFn.name,
       message: `Missing expected ${fnType}${details}`,
       stackStartFn,
+      diff: this?.[kOptions]?.diff,
     });
   }
 
@@ -420,6 +511,7 @@ function expectsNoError(
       message: `Got unwanted ${fnType}${details}\n` +
         `Actual message: "${actual?.message}"`,
       stackStartFn,
+      diff: this?.[kOptions]?.diff,
     });
   }
   throw actual;
@@ -485,9 +577,11 @@ function equal(
       message,
       operator: "==",
       stackStartFn: equal,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
+
 function notEqual(
   actual: unknown,
   expected: unknown,
@@ -504,6 +598,7 @@ function notEqual(
       message,
       operator: "!=",
       stackStartFn: notEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -524,6 +619,7 @@ function strictEqual(
       message,
       operator: "strictEqual",
       stackStartFn: strictEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -544,6 +640,7 @@ function notStrictEqual(
       message,
       operator: "notStrictEqual",
       stackStartFn: notStrictEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -563,6 +660,7 @@ function partialDeepStrictEqual(
       message,
       operator: "partialDeepStrictEqual",
       stackStartFn: partialDeepStrictEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -583,6 +681,7 @@ function deepEqual(
       message,
       operator: "deepEqual",
       stackStartFn: deepEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -603,6 +702,7 @@ function notDeepEqual(
       message,
       operator: "notDeepEqual",
       stackStartFn: notDeepEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -616,13 +716,14 @@ function deepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (!isDeepStrictEqual(actual, expected)) {
+  if (!isDeepStrictEqual(actual, expected, this?.[kOptions]?.skipPrototype)) {
     innerFail({
       message,
       actual,
       expected,
       operator: "deepStrictEqual",
       stackStartFn: deepStrictEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -636,13 +737,14 @@ function notDeepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (isDeepStrictEqual(actual, expected)) {
+  if (isDeepStrictEqual(actual, expected, this?.[kOptions]?.skipPrototype)) {
     innerFail({
       actual,
       expected,
       message,
       operator: "notDeepStrictEqual",
       stackStartFn: notDeepStrictEqual,
+      diff: this?.[kOptions]?.diff,
     });
   }
 }
@@ -683,12 +785,17 @@ function fail(
 
   if (message instanceof Error) throw message;
 
+  // IMPORTANT: When adding new references to `this`, ensure they use optional chaining
+  // (this?.[kOptions]?.diff) to handle cases where the method is destructured from an
+  // Assert instance and loses its context. Destructured methods will fall back
+  // to default behavior when `this` is undefined.
   const errArgs = {
     actual,
     expected,
     operator: operator === undefined ? "fail" : operator,
     stackStartFn: stackStartFn || fail,
     message,
+    diff: this?.[kOptions]?.diff,
   };
   const err = new AssertionError(errArgs);
   if (internalMessage) {
@@ -735,6 +842,7 @@ function internalMatch(
       message,
       operator: fn.name,
       stackStartFn: fn,
+      diff: this?.[kOptions]?.diff,
     });
     err.generatedMessage = generatedMessage;
     throw err;
@@ -837,6 +945,7 @@ function ifError(err: any) {
       operator: "ifError",
       message,
       stackStartFn: ifError,
+      diff: this?.[kOptions]?.diff,
     });
 
     // Make sure we actually have a stack trace!
@@ -879,7 +988,40 @@ const CallTracker_ = deprecate(
   "DEP0173",
 );
 
+function setOwnProperty(obj: object, key: string, value: unknown) {
+  return ObjectDefineProperty(obj, key, {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
+ArrayPrototypeForEach([
+  "fail",
+  "equal",
+  "notEqual",
+  "deepEqual",
+  "notDeepEqual",
+  "deepStrictEqual",
+  "notDeepStrictEqual",
+  "strictEqual",
+  "notStrictEqual",
+  "partialDeepStrictEqual",
+  "match",
+  "doesNotMatch",
+  "throws",
+  "rejects",
+  "doesNotThrow",
+  "doesNotReject",
+  "ifError",
+], (name) => {
+  setOwnProperty(assert, name, Assert.prototype[name]);
+});
+
 Object.assign(strict, {
+  Assert,
   AssertionError,
   CallTracker: CallTracker_,
   deepEqual: deepStrictEqual,
@@ -903,6 +1045,7 @@ Object.assign(strict, {
 });
 
 export default Object.assign(assert, {
+  Assert,
   AssertionError,
   CallTracker: CallTracker_,
   deepEqual,
@@ -927,6 +1070,7 @@ export default Object.assign(assert, {
 });
 
 export {
+  Assert,
   AssertionError,
   CallTracker_ as CallTracker,
   deepEqual,
