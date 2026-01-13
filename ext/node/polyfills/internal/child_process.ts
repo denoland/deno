@@ -420,7 +420,7 @@ export class ChildProcess extends EventEmitter {
     } catch (err) {
       let e = err;
       if (e instanceof Deno.errors.NotFound) {
-        e = _createSpawnSyncError("ENOENT", command, args);
+        e = _createSpawnError("ENOENT", command, args);
       }
       this.#_handleError(e);
     }
@@ -979,14 +979,16 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
-function _createSpawnSyncError(
+function _createSpawnError(
   status: string,
   command: string,
   args: string[] = [],
+  sync: boolean = false,
 ): ErrnoException {
+  const syscall = sync ? "spawnSync " : "spawn ";
   const error = errnoException(
     codeMap.get(status),
-    "spawnSync " + command,
+    syscall + command,
   );
   error.path = command;
   error.spawnargs = args;
@@ -1129,7 +1131,7 @@ export function spawnSync(
       (stdout && stdout.length > maxBuffer!) ||
       (stderr && stderr.length > maxBuffer!)
     ) {
-      result.error = _createSpawnSyncError("ENOBUFS", command, args);
+      result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
     if (encoding && encoding !== "buffer") {
@@ -1144,7 +1146,7 @@ export function spawnSync(
     result.output = [output.signal, stdout, stderr];
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
-      result.error = _createSpawnSyncError("ENOENT", command, args);
+      result.error = _createSpawnError("ENOENT", command, args, true);
     }
   }
   return result;
