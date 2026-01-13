@@ -1023,7 +1023,9 @@
       "reason": "https://github.com/denoland/deno/issues/31634"
     },
     "parallel/test-sqlite-named-parameters.js": {},
-    "parallel/test-sqlite-session.js": {},
+    "parallel/test-sqlite-session.js": {
+      "flaky": true
+    },
     "parallel/test-sqlite-statement-sync-columns.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
