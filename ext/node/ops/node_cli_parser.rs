@@ -3160,6 +3160,37 @@ pub fn translate_to_deno_args(
     };
   }
 
+  // Handle --help flag (pass through to Deno)
+  if opts.print_help {
+    deno_args.push("--help".to_string());
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
+  // Handle --version flag (pass through to Deno)
+  if opts.print_version {
+    deno_args.push("--version".to_string());
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
+  // Handle --completion-bash flag (translate to Deno completions)
+  if opts.print_bash_completion {
+    deno_args.push("completions".to_string());
+    deno_args.push("bash".to_string());
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
   // Handle REPL (no arguments)
   if parsed_args.remaining_args.is_empty() || env_opts.force_repl {
     // Return empty args to trigger REPL behavior
