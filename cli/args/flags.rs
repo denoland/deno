@@ -4840,8 +4840,11 @@ fn allow_all_arg() -> Arg {
     .conflicts_with("allow-ffi")
     .conflicts_with("allow-import")
     .conflicts_with("permission-set")
-    .action(ArgAction::SetTrue)
     .help("Allow all permissions")
+    // So situations like `--allow-all -A` don't crash - this is for historic reason,
+    // because VSCode automatically added `--allow-all` in some scenarios, causing crashes
+    // when users used `-A` themselves.
+    .action(ArgAction::Count)
 }
 
 fn runtime_args(
@@ -7073,7 +7076,7 @@ fn permission_args_parse(
     }
   }
 
-  if matches.get_flag("allow-all") {
+  if matches.get_count("allow-all") > 0 {
     flags.allow_all();
   }
 
@@ -14135,6 +14138,35 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
         v8_flags: svec!["--help"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn multiple_allow_all() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-all",
+      "--inspect",
+      "-A",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          ..Default::default()
+        }),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );
