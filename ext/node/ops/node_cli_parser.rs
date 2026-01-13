@@ -3150,6 +3150,16 @@ pub fn translate_to_deno_args(
     };
   }
 
+  // Handle --v8-options flag (print V8 help and exit)
+  if opts.print_v8_help {
+    deno_args.push("--v8-flags=--help".to_string());
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
   // Handle REPL (no arguments)
   if parsed_args.remaining_args.is_empty() || env_opts.force_repl {
     // Return empty args to trigger REPL behavior
