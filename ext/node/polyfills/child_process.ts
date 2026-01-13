@@ -22,6 +22,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
+  validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
@@ -52,21 +53,9 @@ const {
   ArrayPrototypeSlice,
   ObjectAssign,
   PromiseWithResolvers,
-  StringPrototypeIncludes,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
 } = primordials;
-
-// Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
-function validateNullByteNotInArg(value: string, name: string): void {
-  if (StringPrototypeIncludes(value, "\0")) {
-    throw new ERR_INVALID_ARG_VALUE(
-      name,
-      value,
-      "must be a string without null bytes",
-    );
-  }
-}
 
 const MAX_BUFFER = 1024 * 1024;
 

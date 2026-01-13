@@ -692,7 +692,7 @@ function normalizeStdioOption(
 }
 
 // Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
-function validateNullByteNotInArg(value: string, name: string): void {
+export function validateNullByteNotInArg(value: string, name: string): void {
   if (StringPrototypeIncludes(value, "\0")) {
     throw new ERR_INVALID_ARG_VALUE(
       name,
