@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::io::Write;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::channel;
@@ -11,7 +10,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use console_static_text::ConsoleStaticText;
-use file_test_runner::RunOptions;
 use file_test_runner::TestResult;
 use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
@@ -75,23 +73,23 @@ impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
 
 pub struct Parallelism {
   semaphore: Semaphore,
-  max_parallelism: NonZeroUsize,
+  max_parallelism: file_test_runner::Parallelism,
   has_raised_count: Mutex<usize>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
-    let max_parallelism = RunOptions::default_parallelism();
+    let parallelism = file_test_runner::Parallelism::default();
     Self {
-      max_parallelism,
-      semaphore: Semaphore::new(max_parallelism.get()),
+      max_parallelism: Default::default(),
+      semaphore: Semaphore::new(parallelism.get()),
       has_raised_count: Default::default(),
     }
   }
 }
 
 impl Parallelism {
-  pub fn max_parallelism(&self) -> NonZeroUsize {
+  pub fn max_parallelism(&self) -> file_test_runner::Parallelism {
     self.max_parallelism
   }
 
