@@ -32,6 +32,19 @@ function ignoreScriptParsed(msg: CDPMessage): boolean {
   return msg.method !== "Debugger.scriptParsed";
 }
 
+async function extractWsUrl(
+  reader: ReadableStreamDefaultReader<string>,
+): Promise<string> {
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error("Stream closed before WebSocket URL found");
+    buffer += value;
+    const match = buffer.match(/Debugger listening on (ws:\/\/[^\s]+)/);
+    if (match) return match[1];
+  }
+}
+
 class InspectorTester {
   private socket: WebSocket;
   private child: Deno.ChildProcess;
@@ -647,19 +660,7 @@ Deno.test("inspector_json", async () => {
   const stderrReader = child.stderr.pipeThrough(new TextDecoderStream())
     .getReader();
 
-  let buffer = "";
-  let wsUrl = "";
-  while (true) {
-    const { value, done } = await stderrReader.read();
-    if (done) break;
-    buffer += value;
-    const match = buffer.match(/Debugger listening on (ws:\/\/[^\s]+)/);
-    if (match) {
-      wsUrl = match[1];
-      break;
-    }
-  }
-
+  const wsUrl = await extractWsUrl(stderrReader);
   const url = new URL(wsUrl);
 
   const jsonResponse = await fetch(`http://${url.host}/json`);
@@ -693,19 +694,7 @@ Deno.test("inspector_connect_non_ws", async () => {
   const stderrReader = child.stderr.pipeThrough(new TextDecoderStream())
     .getReader();
 
-  let buffer = "";
-  let wsUrl = "";
-  while (true) {
-    const { value, done } = await stderrReader.read();
-    if (done) break;
-    buffer += value;
-    const match = buffer.match(/Debugger listening on (ws:\/\/[^\s]+)/);
-    if (match) {
-      wsUrl = match[1];
-      break;
-    }
-  }
-
+  const wsUrl = await extractWsUrl(stderrReader);
   const url = new URL(wsUrl);
   const httpUrl = `http://${url.host}${url.pathname}`;
   const response = await fetch(httpUrl);
@@ -1297,19 +1286,7 @@ Deno.test("inspector_wait", async () => {
     }
     assert(!fileExists, "File should not exist before debugger connects");
 
-    let buffer = "";
-    let wsUrl = "";
-    while (true) {
-      const { value, done } = await stderrReader.read();
-      if (done) break;
-      buffer += value;
-      const match = buffer.match(/Debugger listening on (ws:\/\/[^\s]+)/);
-      if (match) {
-        wsUrl = match[1];
-        break;
-      }
-    }
-
+    const wsUrl = await extractWsUrl(stderrReader);
     const socket = new WebSocket(wsUrl);
     await new Promise<void>((resolve, reject) => {
       socket.onopen = () => resolve();
@@ -1329,7 +1306,7 @@ Deno.test("inspector_wait", async () => {
 
     send({ id: msgId++, method: "Runtime.runIfWaitingForDebugger" });
 
-    let stderrContent = buffer;
+    let stderrContent = "";
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const { value, done } = await stderrReader.read();
