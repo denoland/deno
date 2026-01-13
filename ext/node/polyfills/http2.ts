@@ -51,6 +51,7 @@ import {
 } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 import { format } from "node:util";
 import {
@@ -80,6 +81,7 @@ import {
   ERR_HTTP2_PING_LENGTH,
   ERR_HTTP2_SESSION_ERROR,
   ERR_HTTP2_SOCKET_BOUND,
+  ERR_HTTP2_STREAM_CANCEL,
   ERR_HTTP2_STREAM_SELF_DEPENDENCY,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
   ERR_INVALID_ARG_TYPE,
