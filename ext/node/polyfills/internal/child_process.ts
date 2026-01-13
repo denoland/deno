@@ -26,6 +26,7 @@ import {
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   ObjectHasOwn,
+  StringPrototypeIncludes,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
@@ -690,6 +691,17 @@ function normalizeStdioOption(
   }
 }
 
+// Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
+export function validateNullByteNotInArg(value: string, name: string): void {
+  if (StringPrototypeIncludes(value, "\0")) {
+    throw new ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      "must be a string without null bytes",
+    );
+  }
+}
+
 export function normalizeSpawnArguments(
   file: string,
   args: string[],
@@ -701,6 +713,9 @@ export function normalizeSpawnArguments(
     throw new ERR_INVALID_ARG_VALUE("file", file, "cannot be empty");
   }
 
+  // Check for null bytes in file
+  validateNullByteNotInArg(file, "file");
+
   if (ArrayIsArray(args)) {
     args = ArrayPrototypeSlice(args);
   } else if (args == null) {
@@ -710,6 +725,14 @@ export function normalizeSpawnArguments(
   } else {
     options = args;
     args = [];
+  }
+
+  // Check for null bytes in args
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (typeof arg === "string") {
+      validateNullByteNotInArg(arg, `args[${i}]`);
+    }
   }
 
   if (options === undefined) {
@@ -723,6 +746,7 @@ export function normalizeSpawnArguments(
   // Validate the cwd, if present.
   if (cwd != null) {
     cwd = getValidatedPath(cwd, "options.cwd") as string;
+    validateNullByteNotInArg(cwd, "options.cwd");
   }
 
   // Validate detached, if present.
@@ -752,10 +776,14 @@ export function normalizeSpawnArguments(
       options.shell,
     );
   }
+  if (typeof options.shell === "string") {
+    validateNullByteNotInArg(options.shell, "options.shell");
+  }
 
   // Validate argv0, if present.
   if (options.argv0 != null) {
     validateString(options.argv0, "options.argv0");
+    validateNullByteNotInArg(options.argv0, "options.argv0");
   }
 
   // Validate windowsHide, if present.
@@ -849,6 +877,9 @@ export function normalizeSpawnArguments(
   for (const key of envKeys) {
     const value = env[key];
     if (value !== undefined) {
+      // Check for null bytes in env keys and values
+      validateNullByteNotInArg(key, `options.env['${key}']`);
+      validateNullByteNotInArg(String(value), `options.env['${key}']`);
       ArrayPrototypePush(envPairs, `${key}=${value}`);
     }
   }

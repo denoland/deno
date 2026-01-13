@@ -22,6 +22,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
+  validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
@@ -73,6 +74,7 @@ export function fork(
   _options?: ForkOptions,
 ) {
   validateString(modulePath, "modulePath");
+  validateNullByteNotInArg(modulePath, "modulePath");
 
   // Get options and args arguments.
   let execArgv;
@@ -101,6 +103,28 @@ export function fork(
     }
 
     options = { ...arguments[pos++] };
+  }
+
+  // Validate null bytes in args
+  for (let i = 0; i < args.length; i++) {
+    if (typeof args[i] === "string") {
+      validateNullByteNotInArg(args[i], `args[${i}]`);
+    }
+  }
+
+  // Validate null bytes in execPath
+  if (options.execPath != null) {
+    validateString(options.execPath, "options.execPath");
+    validateNullByteNotInArg(options.execPath, "options.execPath");
+  }
+
+  // Validate null bytes in execArgv
+  if (options.execArgv != null && Array.isArray(options.execArgv)) {
+    for (let i = 0; i < options.execArgv.length; i++) {
+      if (typeof options.execArgv[i] === "string") {
+        validateNullByteNotInArg(options.execArgv[i], `options.execArgv[${i}]`);
+      }
+    }
   }
 
   // Prepare arguments for fork:
@@ -493,6 +517,7 @@ export function execFile(
     );
   }
   const spawnOptions: SpawnOptions = {
+    argv0: execOptions.argv0,
     cwd: execOptions.cwd,
     env: execOptions.env,
     gid: execOptions.gid,
