@@ -236,7 +236,10 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
-  return new ChildProcess(command, args, options);
+
+  const child = new ChildProcess();
+  child.spawn(options);
+  return child;
 }
 
 function validateTimeout(timeout?: number) {

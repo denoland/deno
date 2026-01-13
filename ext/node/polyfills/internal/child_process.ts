@@ -200,12 +200,12 @@ export class ChildProcess extends EventEmitter {
   /**
    * Command line arguments given to this child process.
    */
-  spawnargs: string[];
+  spawnargs: string[] = [];
 
   /**
    * The executable file name of this child process.
    */
-  spawnfile: string;
+  spawnfile: string = "";
 
   /**
    * This property represents the child process's stdin.
@@ -239,24 +239,92 @@ export class ChildProcess extends EventEmitter {
   [kClosesReceived] = 0;
   [kCanDisconnect] = false;
 
-  constructor(
-    command: string,
-    args?: string[],
-    options?: ChildProcessOptions,
-  ) {
+  constructor() {
     super();
+  }
 
+  /**
+   * Internal spawn method used by Node.js internals.
+   * This is called after creating a ChildProcess instance.
+   */
+  spawn(options: {
+    file?: string;
+    args?: string[];
+    cwd?: string;
+    stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
+    envPairs?: string[];
+    windowsVerbatimArguments?: boolean;
+    detached?: boolean;
+    signal?: AbortSignal;
+    serialization?: "json" | "advanced";
+    // deno-lint-ignore no-explicit-any
+    [key: string]: any;
+  }): void {
+    // Validate options
+    if (options == null || typeof options !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("options", "object", options);
+    }
+
+    // Validate envPairs before file (Node.js validation order)
+    const { envPairs } = options;
+    if (envPairs !== undefined && !ArrayIsArray(envPairs)) {
+      throw new ERR_INVALID_ARG_TYPE("options.envPairs", "Array", envPairs);
+    }
+
+    // Validate args
+    const { args } = options;
+    if (args !== undefined && !ArrayIsArray(args)) {
+      throw new ERR_INVALID_ARG_TYPE("options.args", "Array", args);
+    }
+
+    // Validate file
+    const { file } = options;
+    if (file == null || typeof file !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
+    }
+
+    this.#spawnInternal(file, args || [], options);
+  }
+
+  /**
+   * Internal method that performs the actual spawning.
+   */
+  #spawnInternal(
+    command: string,
+    args: string[],
+    options: {
+      cwd?: string;
+      stdio?: Array<NodeStdio | number | Stream | null | undefined> | NodeStdio;
+      envPairs?: string[];
+      windowsVerbatimArguments?: boolean;
+      detached?: boolean;
+      signal?: AbortSignal;
+      serialization?: "json" | "advanced";
+      // deno-lint-ignore no-explicit-any
+      [key: string]: any;
+    },
+  ): void {
     const {
-      env = {},
       stdio = ["pipe", "pipe", "pipe"],
       cwd,
-      shell = false,
       signal,
       windowsVerbatimArguments = false,
       detached,
-    } = options || {};
+      envPairs,
+    } = options;
 
-    const serialization = options?.serialization || "json";
+    // Convert envPairs array to env object
+    const env: Record<string, string> = {};
+    if (envPairs) {
+      for (const pair of envPairs) {
+        const idx = pair.indexOf("=");
+        if (idx !== -1) {
+          env[pair.substring(0, idx)] = pair.substring(idx + 1);
+        }
+      }
+    }
+
+    const serialization = options.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
@@ -264,12 +332,11 @@ export class ChildProcess extends EventEmitter {
       stderr = "pipe",
       ...extraStdio
     ] = normalizedStdio;
-    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
-      command,
-      args || [],
-      shell,
-      env,
-    );
+
+    // For internal spawn, we don't go through buildCommand since file is already the command
+    const cmd = command;
+    const cmdArgs = args;
+
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
 
@@ -284,13 +351,12 @@ export class ChildProcess extends EventEmitter {
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
-    const stringEnv = mapValues(env, (value) => value.toString());
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
         clearEnv: true,
         cwd,
-        env: stringEnv,
+        env,
         stdin: toDenoStdio(stdin),
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
@@ -299,10 +365,7 @@ export class ChildProcess extends EventEmitter {
         [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        [kNeedsNpmProcessState]:
-          // deno-lint-ignore no-explicit-any
-          (options ?? {} as any)[kNeedsNpmProcessState] ||
-          includeNpmProcessState,
+        [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] || false,
       }).spawn();
       this.pid = this.#process.pid;
 
