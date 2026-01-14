@@ -1356,6 +1356,13 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     Err(FsError::NotSupported)
   }

@@ -1780,6 +1780,28 @@ pub async fn op_fs_flock_async(
 }
 
 #[op2(fast)]
+pub fn op_fs_flock_try_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<bool, FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  Ok(file.try_lock_sync(exclusive)?)
+}
+
+#[op2(async)]
+pub async fn op_fs_flock_try_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<bool, FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  Ok(file.try_lock_async(exclusive).await?)
+}
+
+#[op2(fast)]
 pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,

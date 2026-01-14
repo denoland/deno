@@ -1036,6 +1036,39 @@ impl crate::fs::File for StdFileResourceInner {
       .await
   }
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    self.with_sync(|file| {
+      let result = if exclusive {
+        fs3::FileExt::try_lock_exclusive(file)
+      } else {
+        fs3::FileExt::try_lock_shared(file)
+      };
+      match result {
+        Ok(()) => Ok(true),
+        Err(err) if err.raw_os_error() == Some(libc::EWOULDBLOCK)
+          || err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+        Err(err) => Err(err.into()),
+      }
+    })
+  }
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    self
+      .with_inner_blocking_task(move |file| {
+        let result = if exclusive {
+          fs3::FileExt::try_lock_exclusive(file)
+        } else {
+          fs3::FileExt::try_lock_shared(file)
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(err) if err.raw_os_error() == Some(libc::EWOULDBLOCK)
+            || err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+          Err(err) => Err(err.into()),
+        }
+      })
+      .await
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
   }
