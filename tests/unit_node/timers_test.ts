@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertRejects, fail } from "@std/assert";
 import * as timers from "node:timers";

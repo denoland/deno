@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! Parts of this module should be able to be replaced with other crates
 //! eventually, once generic versions appear in hyper-util, et al.
@@ -603,12 +603,14 @@ where
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
+              let host = orig_dst.host().unwrap();
+              let host = host
+                .strip_prefix('[')
+                .and_then(|s| s.strip_suffix(']'))
+                .unwrap_or(host);
               let tokio_io = TokioIo::new(io);
               let io = tls
-                .connect(
-                  TryFrom::try_from(orig_dst.host().unwrap().to_owned())?,
-                  tokio_io,
-                )
+                .connect(TryFrom::try_from(host.to_owned())?, tokio_io)
                 .await?;
               Ok(Proxied::HttpTunneled(Box::new(TokioIo::new(io))))
             } else {
@@ -627,6 +629,10 @@ where
               proxy_dst.port().map(|p| p.as_u16()).unwrap_or(1080),
             );
             let host = orig_dst.host().ok_or("no host in url")?;
+            let host = host
+              .strip_prefix('[')
+              .and_then(|s| s.strip_suffix(']'))
+              .unwrap_or(host);
             let port = match orig_dst.port() {
               Some(p) => p.as_u16(),
               None if is_https => 443,

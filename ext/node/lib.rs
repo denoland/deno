@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -34,6 +34,7 @@ use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
+pub use ops::inspector::InspectorServerUrl;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -157,6 +158,8 @@ deno_core::extension!(deno_node,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
+    ops::buffer::op_node_buffer_compare,
+    ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
     ops::crypto::op_node_check_prime_async,
@@ -264,6 +267,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::crypto::x509::op_node_x509_public_key,
     ops::dns::op_node_getaddrinfo,
+    ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
     ops::fs::op_node_fs_exists,
     ops::fs::op_node_lchmod_sync,
@@ -278,6 +282,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_open,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
+    ops::fs::op_node_file_from_fd,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -318,6 +323,7 @@ deno_core::extension!(deno_node,
     ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn,
+    ops::http::op_node_http_response_reclaim_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
@@ -365,12 +371,16 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
+    ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
-    ops::ipc::op_node_ipc_write,
-    ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_write_json,
+    ops::ipc::op_node_ipc_read_json,
+    ops::ipc::op_node_ipc_read_advanced,
+    ops::ipc::op_node_ipc_write_advanced,
+    ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
@@ -380,6 +390,7 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
     ops::tls::op_node_tls_start,

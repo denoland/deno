@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
@@ -37,7 +37,9 @@ impl From<PermissionState> for PermissionStatus {
     PermissionStatus {
       state: match state {
         PermissionState::Granted | PermissionState::GrantedPartial => "granted",
-        PermissionState::DeniedPartial | PermissionState::Denied => "denied",
+        PermissionState::Ignored
+        | PermissionState::DeniedPartial
+        | PermissionState::Denied => "denied",
         PermissionState::Prompt => "prompt",
       },
       partial: state == PermissionState::GrantedPartial,

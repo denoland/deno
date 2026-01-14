@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -430,13 +430,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::info("Temporal is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-temporal` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("BroadcastChannel is not defined") {
-      return vec![
-        FixSuggestion::info("BroadcastChannel is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-broadcast-channel` flag to enable this API.",
         ),
       ];
     } else if msg.contains("window is not defined") {

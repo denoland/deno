@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "fmt_stdin": {
+      "args": "fmt -",
+      "input": "const a = 1\n",
+      "output": "const a = 1;\n"
+    },
+    "fmt_stdin_markdown": {
+      "args": "fmt --ext=md -",
+      "input": "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```",
+      "output": "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
+    },
+    "fmt_stdin_json": {
+      "args": "fmt --ext=json -",
+      "input": "{    \"key\":   \"value\"}",
+      "output": "{ \"key\": \"value\" }\n"
+    },
+    "fmt_stdin_check_formatted": {
+      "args": "fmt --check -",
+      "input": "const a = 1;\n",
+      "output": ""
+    },
+    "fmt_stdin_check_not_formatted": {
+      "args": "fmt --check -",
+      "input": "const a = 1\n",
+      "output": "Not formatted stdin\n"
+    }
+  }
+}

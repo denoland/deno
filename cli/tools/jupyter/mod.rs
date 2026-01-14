@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -101,6 +101,8 @@ pub async fn kernel(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
       // `deno jupyter` doesn't support preloading modules
+      vec![],
+      // `deno jupyter` doesn't support require modules
       vec![],
       permissions,
       vec![

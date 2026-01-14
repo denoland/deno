@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -1518,6 +1518,32 @@ Deno.test(function consoleGroup() {
     4
 5
 6
+`,
+    );
+  });
+});
+
+// console.group with console.dir test
+Deno.test(function consoleGroupDir() {
+  mockConsole((console, out) => {
+    console.dir("1");
+    console.group();
+    console.dir("2");
+    console.group();
+    console.dir("3");
+    console.groupEnd();
+    console.dir("4");
+    console.groupEnd();
+    console.dir("5");
+
+    // console.dir should respect group indentation
+    assertEquals(
+      out.toString(),
+      `1
+  2
+    3
+  4
+5
 `,
     );
   });

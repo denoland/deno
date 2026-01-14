@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 /** NOT IMPLEMENTED
@@ -328,6 +328,22 @@ export const exceptionWithHostPort = hideStackFrames(
     }
 
     return ex;
+  },
+);
+
+export const handleDnsError = hideStackFrames(
+  (err: Error, syscall: string, address: string) => {
+    //@ts-expect-error code is safe to access with optional chaining
+    if (typeof err?.uv_errcode === "number") {
+      //@ts-expect-error code is safe to access with optional chaining
+      return dnsException(err?.uv_errcode, syscall, address);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+      return dnsException(codeMap.get("EPERM")!, syscall, address);
+    }
+
+    return denoErrorToNodeError(err, { syscall });
   },
 );
 
@@ -1142,7 +1158,7 @@ export class ERR_FEATURE_UNAVAILABLE_ON_PLATFORM extends NodeTypeError {
   }
 }
 export class ERR_FS_FILE_TOO_LARGE extends NodeRangeError {
-  constructor(x: string) {
+  constructor(x: string | number) {
     super("ERR_FS_FILE_TOO_LARGE", `File size (${x}) is greater than 2 GB`);
   }
 }

@@ -35,6 +35,7 @@
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/node",
     "cli/tsc/dts/typescript.d.ts",
     "cli/tools/doc/prism.css",
     "cli/tools/doc/prism.js",
@@ -83,7 +84,7 @@
     "tests/specs/run/error_syntax_empty_trailing_line/error_syntax_empty_trailing_line.mjs"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.95.11.wasm",
+    "https://plugins.dprint.dev/typescript-0.95.13.wasm",
     "https://plugins.dprint.dev/json-0.21.0.wasm",
     "https://plugins.dprint.dev/markdown-0.20.0.wasm",
     "https://plugins.dprint.dev/toml-0.7.0.wasm",

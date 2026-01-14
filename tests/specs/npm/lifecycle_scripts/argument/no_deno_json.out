@@ -11,8 +11,8 @@ Initialize @denotest/lifecycle-scripts-cjs@1.0.0: running 'install' script
 Installed 2 packages in [WILDCARD]
 Reused 0 packages from cache
 Downloaded 0 packages from JSR
-Downloaded 4 packages from npm
-++++
+Downloaded 2 packages from npm
+++
 
 Dependencies:
 + npm:@denotest/lifecycle-scripts-cjs 1.0.0

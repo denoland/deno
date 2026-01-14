@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod backup;
 mod database;
@@ -78,10 +78,6 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   AlreadyOpen,
   #[class(generic)]
-  #[error("failed to prepare statement")]
-  #[property("code" = self.code())]
-  PrepareFailed,
-  #[class(generic)]
   #[error("failed to create session")]
   #[property("code" = self.code())]
   SessionCreateFailed,
@@ -123,6 +119,10 @@ pub enum SqliteError {
   #[error(transparent)]
   #[property("code" = self.code())]
   Validation(#[from] validators::Error),
+  #[class(generic)]
+  #[error("statement has been finalized")]
+  #[property("code" = self.code())]
+  StatementFinalized,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -181,7 +181,8 @@ impl SqliteError {
       | Self::DuplicateNamedParameter(..)
       | Self::AlreadyClosed
       | Self::InUse
-      | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
+      | Self::AlreadyOpen
+      | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,

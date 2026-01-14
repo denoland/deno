@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_kv"
-version = "0.129.0"
+version = "0.134.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

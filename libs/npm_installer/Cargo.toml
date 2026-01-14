@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_npm_installer"
-version = "0.16.0"
+version = "0.21.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -35,6 +35,7 @@ deno_terminal.workspace = true
 deno_unsync.workspace = true
 dyn-clone.workspace = true
 futures.workspace = true
+lazy-regex.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true

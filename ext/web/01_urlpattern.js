@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -182,7 +182,7 @@ class URLPattern {
         input = { __proto__: null };
       }
       options = webidl.converters.URLPatternOptions(
-        maybeOptions,
+        baseURLOrOptions,
         prefix,
         "Argument 2",
       );

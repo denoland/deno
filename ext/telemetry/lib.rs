@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
 #![expect(unexpected_cfgs)]
@@ -162,18 +162,15 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
+  #[default]
   Ignore = 0,
   Capture = 1,
   Replace = 2,
-}
-
-impl Default for OtelConsoleConfig {
-  fn default() -> Self {
-    Self::Ignore
-  }
 }
 
 static OTEL_SHARED_RUNTIME_SPAWN_TASK_TX: Lazy<

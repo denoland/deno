@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import process from "node:process";
@@ -203,7 +203,11 @@ function close() {
 }
 
 function url() {
-  return op_inspector_url();
+  const u = op_inspector_url();
+  if (u === null) {
+    return undefined;
+  }
+  return u;
 }
 
 function waitForDebugger() {

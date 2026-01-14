@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -357,6 +357,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       | MediaType::Dmts
       | MediaType::Dcts
       | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html

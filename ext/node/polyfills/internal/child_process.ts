@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -9,10 +9,13 @@
 import { core, internals } from "ext:core/mod.js";
 import {
   op_node_in_npm_package,
-  op_node_ipc_read,
+  op_node_ipc_buffer_constructor,
+  op_node_ipc_read_advanced,
+  op_node_ipc_read_json,
   op_node_ipc_ref,
   op_node_ipc_unref,
-  op_node_ipc_write,
+  op_node_ipc_write_advanced,
+  op_node_ipc_write_json,
 } from "ext:core/ops";
 import {
   ArrayIsArray,
@@ -23,6 +26,7 @@ import {
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   ObjectHasOwn,
+  StringPrototypeIncludes,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
@@ -41,6 +45,7 @@ import {
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
+import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -48,6 +53,7 @@ import {
   isInt32,
   validateBoolean,
   validateObject,
+  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -62,6 +68,7 @@ import {
   kInputOption,
   kIpc,
   kNeedsNpmProcessState,
+  kSerialization,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -248,6 +255,8 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
     } = options || {};
+
+    const serialization = options?.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
@@ -287,6 +296,7 @@ export class ChildProcess extends EventEmitter {
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
         detached,
+        [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kNeedsNpmProcessState]:
@@ -386,7 +396,7 @@ export class ChildProcess extends EventEmitter {
 
       const pipeRid = internals.getIpcPipeRid(this.#process);
       if (typeof pipeRid == "number") {
-        setupChannel(this, pipeRid);
+        setupChannel(this, pipeRid, serialization);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
           maybeClose(this);
@@ -410,7 +420,7 @@ export class ChildProcess extends EventEmitter {
     } catch (err) {
       let e = err;
       if (e instanceof Deno.errors.NotFound) {
-        e = _createSpawnSyncError("ENOENT", command, args);
+        e = _createSpawnError("ENOENT", command, args);
       }
       this.#_handleError(e);
     }
@@ -681,6 +691,17 @@ function normalizeStdioOption(
   }
 }
 
+// Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
+export function validateNullByteNotInArg(value: string, name: string): void {
+  if (StringPrototypeIncludes(value, "\0")) {
+    throw new ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      "must be a string without null bytes",
+    );
+  }
+}
+
 export function normalizeSpawnArguments(
   file: string,
   args: string[],
@@ -692,6 +713,9 @@ export function normalizeSpawnArguments(
     throw new ERR_INVALID_ARG_VALUE("file", file, "cannot be empty");
   }
 
+  // Check for null bytes in file
+  validateNullByteNotInArg(file, "file");
+
   if (ArrayIsArray(args)) {
     args = ArrayPrototypeSlice(args);
   } else if (args == null) {
@@ -701,6 +725,14 @@ export function normalizeSpawnArguments(
   } else {
     options = args;
     args = [];
+  }
+
+  // Check for null bytes in args
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (typeof arg === "string") {
+      validateNullByteNotInArg(arg, `args[${i}]`);
+    }
   }
 
   if (options === undefined) {
@@ -714,6 +746,7 @@ export function normalizeSpawnArguments(
   // Validate the cwd, if present.
   if (cwd != null) {
     cwd = getValidatedPath(cwd, "options.cwd") as string;
+    validateNullByteNotInArg(cwd, "options.cwd");
   }
 
   // Validate detached, if present.
@@ -743,10 +776,14 @@ export function normalizeSpawnArguments(
       options.shell,
     );
   }
+  if (typeof options.shell === "string") {
+    validateNullByteNotInArg(options.shell, "options.shell");
+  }
 
   // Validate argv0, if present.
   if (options.argv0 != null) {
     validateString(options.argv0, "options.argv0");
+    validateNullByteNotInArg(options.argv0, "options.argv0");
   }
 
   // Validate windowsHide, if present.
@@ -762,6 +799,12 @@ export function normalizeSpawnArguments(
       "options.windowsVerbatimArguments",
     );
   }
+
+  validateOneOf(options.serialization, "options.serialization", [
+    undefined,
+    "json",
+    "advanced",
+  ]);
 
   if (options.shell) {
     const command = ArrayPrototypeJoin([file, ...args], " ");
@@ -834,6 +877,9 @@ export function normalizeSpawnArguments(
   for (const key of envKeys) {
     const value = env[key];
     if (value !== undefined) {
+      // Check for null bytes in env keys and values
+      validateNullByteNotInArg(key, `options.env['${key}']`);
+      validateNullByteNotInArg(String(value), `options.env['${key}']`);
       ArrayPrototypePush(envPairs, `${key}=${value}`);
     }
   }
@@ -849,6 +895,7 @@ export function normalizeSpawnArguments(
     file,
     windowsHide: !!options.windowsHide,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
+    serialization: options.serialization || "json",
   };
 }
 
@@ -932,14 +979,16 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
-function _createSpawnSyncError(
+function _createSpawnError(
   status: string,
   command: string,
   args: string[] = [],
+  sync: boolean = false,
 ): ErrnoException {
+  const syscall = sync ? "spawnSync " : "spawn ";
   const error = errnoException(
     codeMap.get(status),
-    "spawnSync " + command,
+    syscall + command,
   );
   error.path = command;
   error.spawnargs = args;
@@ -1082,7 +1131,7 @@ export function spawnSync(
       (stdout && stdout.length > maxBuffer!) ||
       (stderr && stderr.length > maxBuffer!)
     ) {
-      result.error = _createSpawnSyncError("ENOBUFS", command, args);
+      result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
     if (encoding && encoding !== "buffer") {
@@ -1097,7 +1146,7 @@ export function spawnSync(
     result.output = [output.signal, stdout, stderr];
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
-      result.error = _createSpawnSyncError("ENOENT", command, args);
+      result.error = _createSpawnError("ENOENT", command, args, true);
     }
   }
   return result;
@@ -1332,20 +1381,22 @@ class Control extends EventEmitter {
   #refExplicitlySet = false;
   #connected = true;
   [kPendingMessages] = [];
-  constructor(channel: number) {
+  #serialization: "json" | "advanced";
+  constructor(channel: number, serialization: "json" | "advanced") {
     super();
     this.#channel = channel;
+    this.#serialization = serialization;
   }
 
   #ref() {
     if (this.#connected) {
-      op_node_ipc_ref(this.#channel);
+      op_node_ipc_ref(this.#channel, this.#serialization === "json");
     }
   }
 
   #unref() {
     if (this.#connected) {
-      op_node_ipc_unref(this.#channel);
+      op_node_ipc_unref(this.#channel, this.#serialization === "json");
     }
   }
 
@@ -1397,10 +1448,28 @@ function internalCmdName(msg: InternalMessage): string {
   return StringPrototypeSlice(msg.cmd, 5);
 }
 
-// deno-lint-ignore no-explicit-any
-export function setupChannel(target: any, ipc: number) {
-  const control = new Control(ipc);
+let hasSetBufferConstructor = false;
+
+export function setupChannel(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  ipc: number,
+  serialization: "json" | "advanced",
+) {
+  const control = new Control(ipc, serialization);
   target.channel = control;
+
+  if (!hasSetBufferConstructor) {
+    op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
+    hasSetBufferConstructor = true;
+  }
+
+  const writeFn = serialization === "json"
+    ? op_node_ipc_write_json
+    : op_node_ipc_write_advanced;
+  const readFn = serialization === "json"
+    ? op_node_ipc_read_json
+    : op_node_ipc_read_advanced;
 
   async function readLoop() {
     try {
@@ -1408,7 +1477,8 @@ export function setupChannel(target: any, ipc: number) {
         if (!target.connected || target.killed) {
           return;
         }
-        const prom = op_node_ipc_read(ipc);
+        // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
+        const prom = readFn(ipc);
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
@@ -1500,7 +1570,7 @@ export function setupChannel(target: any, ipc: number) {
     // this acts as a backpressure mechanism.
     const queueOk = [true];
     control.refCounted();
-    op_node_ipc_write(ipc, message, queueOk)
+    writeFn(ipc, message, queueOk)
       .then(() => {
         control.unrefCounted();
         if (callback) {
