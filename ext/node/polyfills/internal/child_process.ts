@@ -333,9 +333,14 @@ export class ChildProcess extends EventEmitter {
       ...extraStdio
     ] = normalizedStdio;
 
-    // For internal spawn, we don't go through buildCommand since file is already the command
-    const cmd = command;
-    const cmdArgs = args;
+    // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
+    // Note: args[0] is argv0 (prepended by normalizeSpawnArguments), so we skip it
+    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
+      command,
+      args.slice(1),
+      options.shell || false,
+      env,
+    );
 
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
@@ -365,7 +370,8 @@ export class ChildProcess extends EventEmitter {
         [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] || false,
+        [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
+          includeNpmProcessState,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -483,7 +489,8 @@ export class ChildProcess extends EventEmitter {
     } catch (err) {
       let e = err;
       if (e instanceof Deno.errors.NotFound) {
-        e = _createSpawnError("ENOENT", command, args);
+        // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
+        e = _createSpawnError("ENOENT", command, args.slice(1));
       }
       this.#_handleError(e);
     }
