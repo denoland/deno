@@ -996,7 +996,7 @@ function waitForStreamToClose(stream: Stream) {
 
 /**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Handles cases like: `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" check "file.js"`
+ * Handles cases like: `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
  */
 function transformDenoShellCommand(command: string): string {
   const denoPath = Deno.execPath();
@@ -1066,10 +1066,6 @@ function buildCommand(
       }
     }
   }
-
-  // Note: shell handling is done in normalizeSpawnArguments, not here.
-  // If shell=true was passed, normalizeSpawnArguments has already transformed
-  // file to /bin/sh and args to ["-c", command].
 
   return [file, args, includeNpmProcessState];
 }
@@ -1460,8 +1456,9 @@ function toDenoArgs(args: string[]): [string[], string[], boolean] {
       denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
       useRunArgs = false;
     } else if (flag === "-c" || flag === "--check") {
-      // Node's -c/--check does syntax checking without running. Deno equivalent is `deno check`.
-      denoArgs.push("check", flagValue);
+      // Node's -c/--check does syntax checking.
+      // Use `run` which catches syntax errors during parsing.
+      denoArgs.push("run", flagValue);
       useRunArgs = false;
     } else if (isLongWithValue) {
       denoArgs.push(arg);
