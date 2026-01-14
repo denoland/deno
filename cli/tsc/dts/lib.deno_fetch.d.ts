@@ -292,13 +292,13 @@ interface Request extends Body {
   readonly isHistoryNavigation: boolean;
   /**
    * Returns a boolean indicating whether or not request is for a reload
-   * navigation, e.g. a refresh triggered via the browser's reload control or
-   * by calling location.reload().
+   * navigation.
    */
   readonly isReloadNavigation: boolean;
   /**
-   * Returns a boolean indicating whether or not request can outlive the global
-   * in which it was created.
+   * Returns a boolean indicating whether or not request is for a reload
+   * navigation, e.g. a refresh triggered via the browser's reload control or
+   * by calling location.reload().
    */
   readonly keepalive: boolean;
   /**
