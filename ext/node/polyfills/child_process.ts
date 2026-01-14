@@ -297,7 +297,7 @@ export function spawnSync(
   // Validate and translate the kill signal, if present.
   sanitizeKillSignal(options.killSignal);
 
-  return _spawnSync(command, args, options);
+  return _spawnSync(options.file, options.args, options);
 }
 
 interface ExecOptions extends
