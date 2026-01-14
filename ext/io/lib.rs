@@ -1045,8 +1045,12 @@ impl crate::fs::File for StdFileResourceInner {
       };
       match result {
         Ok(()) => Ok(true),
-        Err(err) if err.raw_os_error() == Some(libc::EWOULDBLOCK)
-          || err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+        Err(err)
+          if err.raw_os_error() == Some(libc::EWOULDBLOCK)
+            || err.kind() == std::io::ErrorKind::WouldBlock =>
+        {
+          Ok(false)
+        }
         Err(err) => Err(err.into()),
       }
     })
@@ -1061,8 +1065,12 @@ impl crate::fs::File for StdFileResourceInner {
         };
         match result {
           Ok(()) => Ok(true),
-          Err(err) if err.raw_os_error() == Some(libc::EWOULDBLOCK)
-            || err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+          Err(err)
+            if err.raw_os_error() == Some(libc::EWOULDBLOCK)
+              || err.kind() == std::io::ErrorKind::WouldBlock =>
+          {
+            Ok(false)
+          }
           Err(err) => Err(err.into()),
         }
       })
