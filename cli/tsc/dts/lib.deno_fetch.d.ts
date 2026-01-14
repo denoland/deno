@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -39,7 +39,7 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
 /** @category Fetch */
 declare var FormData: {
   readonly prototype: FormData;
-  new(): FormData;
+  new (): FormData;
 };
 
 /** @category Fetch */
@@ -126,7 +126,7 @@ interface Headers extends DomIterable<string, string> {
  */
 declare var Headers: {
   readonly prototype: Headers;
-  new(init?: HeadersInit): Headers;
+  new (init?: HeadersInit): Headers;
 };
 
 /** @category Fetch */
@@ -297,9 +297,8 @@ interface Request extends Body {
    */
   readonly isReloadNavigation: boolean;
   /**
-   * Returns a boolean indicating whether or not request is for a reload
-   * navigation, e.g. a refresh triggered via the browser's reload control or
-   * by calling location.reload().
+   * Returns a boolean indicating whether or not request can outlive the global
+   * in which it was created.
    */
   readonly keepalive: boolean;
   /**
@@ -350,7 +349,7 @@ interface Request extends Body {
  */
 declare var Request: {
   readonly prototype: Request;
-  new(input: RequestInfo | URL, init?: RequestInit): Request;
+  new (input: RequestInfo | URL, init?: RequestInit): Request;
 };
 
 /** @category Fetch */
@@ -390,7 +389,7 @@ interface Response extends Body {
  */
 declare var Response: {
   readonly prototype: Response;
-  new(body?: BodyInit | null, init?: ResponseInit): Response;
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
   json(data: unknown, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string | URL, status?: number): Response;
@@ -494,7 +493,7 @@ interface EventSource extends EventTarget {
  */
 declare var EventSource: {
   prototype: EventSource;
-  new(url: string | URL, eventSourceInitDict?: EventSourceInit): EventSource;
+  new (url: string | URL, eventSourceInitDict?: EventSourceInit): EventSource;
   readonly CONNECTING: 0;
   readonly OPEN: 1;
   readonly CLOSED: 2;
