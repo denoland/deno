@@ -850,7 +850,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "azure/trusted-signing-action@v0",
+          uses: "Azure/artifact-signing-action@v0",
           with: {
             "endpoint": "https://eus.codesigning.azure.net/",
             "trusted-signing-account-name": "deno-cli-code-signing",
