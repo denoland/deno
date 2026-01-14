@@ -825,7 +825,7 @@ impl Http2Stream {
     session: &mut Session,
     id: i32,
     cat: ffi::nghttp2_headers_category,
-  ) -> (v8::Global<v8::Object>, Option<cppgc::Ref<Self>>) {
+  ) -> (v8::Global<v8::Object>, cppgc::Ref<Self>) {
     // SAFETY: This method is called by `on_frame_recv`.
     // The isolate is valid and we are on the same thread as the isolate.
     let mut isolate =
@@ -853,14 +853,13 @@ impl Http2Stream {
         has_trailers: RefCell::new(false),
       },
     );
-
-    (
-      v8::Global::new(scope, obj),
-      cppgc::try_unwrap_cppgc_persistent_object::<Http2Stream>(
-        scope,
-        obj.into(),
-      ),
+    let stream = cppgc::try_unwrap_cppgc_persistent_object::<Http2Stream>(
+      scope,
+      obj.into(),
     )
+    .unwrap();
+
+    (v8::Global::new(scope, obj), stream)
   }
 }
 
@@ -1028,9 +1027,6 @@ impl Http2Stream {
   }
 
   #[fast]
-  fn refresh_state(&self) {}
-
-  #[fast]
   fn write_utf8_string(
     &self,
     _req: v8::Local<v8::Object>,
@@ -1102,9 +1098,56 @@ impl Http2Stream {
       }
     }
   }
+
+  // TODO: this will fail if code is not a `u32`? This will behave differently than in Node
+  // which just returns
+  // TODO: validate this comment
+  // Submits an RST_STREAM frame effectively closing the Http2Stream. Note that
+  // this *WILL* alter the state of the stream, causing the OnStreamClose
+  // callback to the triggered.
+  #[fast]
+  fn rst_stream(&self, code: u32) {
+    log::debug!("sending rst_stream with code {}", code);
+    // TODO: call Self::submit_rst_stream
+    todo!()
+  }
+
+  #[fast]
+  fn destroy(&self) {
+    todo!()
+  }
+
+  #[fast]
+  fn priority(&self) {
+    todo!()
+  }
+
+  #[fast]
+  fn push_promise(&self) {
+    todo!()
+  }
+
+  #[fast]
+  fn info(&self) {
+    todo!()
+  }
+
+  #[fast]
+  fn refresh_state(&self) {
+    todo!()
+  }
 }
 
 impl Http2Stream {
+  fn submit_rst_stream(&self, code: u32) {
+    self.flush_rst_stream();
+  }
+
+  fn flush_rst_stream(&self) {
+    // TODO: call `ffi::nghttp2_submit_rst_stream`
+    todo!()
+  }
+
   fn add_header(&self, name: &[u8], value: &[u8], flags: u8) -> bool {
     let name_str = match std::str::from_utf8(name) {
       Ok(s) => s.to_string(),
@@ -1242,10 +1285,9 @@ unsafe extern "C" fn on_begin_headers_callbacks(
     // case is that we're receiving a set of trailers
     None => {
       let (obj, stream) = Http2Stream::new(session, id, headers_category);
-      if let Some(stream_ref) = &stream {
-        stream_ref.start_headers(headers_category);
-      }
-      session.streams.insert(id, (obj, stream.unwrap()));
+      stream.start_headers(headers_category);
+      // TODO(bartlomieju): move into `Http2Stream::new`?
+      session.streams.insert(id, (obj, stream));
     }
     Some(s) => {
       s.start_headers(headers_category);
@@ -1663,17 +1705,14 @@ impl Http2Session {
       let session = unsafe { &mut *self.inner };
       let (obj, stream) =
         Http2Stream::new(session, ret, ffi::NGHTTP2_HCAT_HEADERS);
-      if let Some(stream_ref) = &stream {
-        // For requests, initial headers category is HEADERS
-        stream_ref.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
-        // STREAM_OPTION_GET_TRAILERS = 0x2
-        if (options & 0x2) != 0 {
-          stream_ref.set_has_trailers(true);
-        }
+      // For requests, initial headers category is HEADERS
+      stream.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
+      // STREAM_OPTION_GET_TRAILERS = 0x2
+      if (options & 0x2) != 0 {
+        stream.set_has_trailers(true);
       }
-      if let Some(s) = stream {
-        session.streams.insert(ret, (obj, s));
-      }
+      // TODO(bartlomieju): move into `Http2Stream::new`?
+      session.streams.insert(ret, (obj, stream));
     }
     ret
   }
