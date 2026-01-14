@@ -4269,10 +4269,11 @@ fn upgrade_subcommand() -> Command {
 
 {}
 
-The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
+The version is resolved via <p(245)>https://dl.deno.land</> and then downloaded
+from either there or GitHub releases, replacing the current executable.
 
-If you want to not replace the current Deno executable but instead download an update to a
-different location, use the <c>--output</> flag:
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/upgrade</>", UPGRADE_USAGE),
