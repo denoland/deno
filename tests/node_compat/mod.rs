@@ -156,6 +156,7 @@ fn main() {
   );
 
   let config = Arc::new(config);
+  let all_tests_flaky = *IS_CI && !cli_args.report;
 
   // Run sequential tests with parallelism=1
   let summary = file_test_runner::run_tests_summary(
@@ -173,7 +174,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky) || *IS_CI,
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           None,
           || run_test(&cli_args, test, test_config, &results),
@@ -201,7 +202,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky) || *IS_CI,
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           Some(&parallelism),
           || run_test(&cli_args, test, test_config, &results),
