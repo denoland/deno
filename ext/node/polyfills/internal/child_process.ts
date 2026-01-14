@@ -1177,7 +1177,6 @@ export function spawnSync(
     env = Deno.env.toObject(),
     input,
     stdio = ["pipe", "pipe", "pipe"],
-    shell = false,
     cwd,
     encoding,
     uid,
