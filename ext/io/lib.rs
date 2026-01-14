@@ -1037,6 +1037,10 @@ impl crate::fs::File for StdFileResourceInner {
   }
 
   fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    fn is_lock_contention_error(err: &std::io::Error) -> bool {
+      err.kind() == std::io::ErrorKind::WouldBlock
+        || err.raw_os_error() == Some(33) // ERROR_LOCK_VIOLATION on Windows
+    }
     self.with_sync(|file| {
       let result = if exclusive {
         fs3::FileExt::try_lock_exclusive(file)
@@ -1045,12 +1049,16 @@ impl crate::fs::File for StdFileResourceInner {
       };
       match result {
         Ok(()) => Ok(true),
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+        Err(err) if is_lock_contention_error(&err) => Ok(false),
         Err(err) => Err(err.into()),
       }
     })
   }
   async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    fn is_lock_contention_error(err: &std::io::Error) -> bool {
+      err.kind() == std::io::ErrorKind::WouldBlock
+        || err.raw_os_error() == Some(33) // ERROR_LOCK_VIOLATION on Windows
+    }
     self
       .with_inner_blocking_task(move |file| {
         let result = if exclusive {
@@ -1060,7 +1068,7 @@ impl crate::fs::File for StdFileResourceInner {
         };
         match result {
           Ok(()) => Ok(true),
-          Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+          Err(err) if is_lock_contention_error(&err) => Ok(false),
           Err(err) => Err(err.into()),
         }
       })
