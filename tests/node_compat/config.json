@@ -153,6 +153,7 @@
     "parallel/test-child-process-can-write-to-stdout.js": {
       "flaky": true
     },
+    "parallel/test-child-process-constructor.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
     "parallel/test-child-process-disconnect.js": {},
