@@ -795,7 +795,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
-  async function fsFileTryLockSync() {
+  function fsFileTryLockSync() {
     const path = Deno.makeTempFileSync();
     try {
       using file1 = Deno.openSync(path, { read: true, write: true });
@@ -853,7 +853,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
-  async function fsFileTryLockSharedSync() {
+  function fsFileTryLockSharedSync() {
     const path = Deno.makeTempFileSync();
     try {
       using file1 = Deno.openSync(path, { read: true, write: true });
