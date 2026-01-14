@@ -1202,7 +1202,8 @@ pub fn op_print(
     match file.write_all_sync(msg.as_bytes()) {
       Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
       other => other,
-    }.map_err(JsErrorBox::from_err)
+    }
+    .map_err(JsErrorBox::from_err)
   })
 }
 
