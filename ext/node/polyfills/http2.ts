@@ -149,6 +149,7 @@ const onServerStreamFinishChannel = dc.channel("http2.server.stream.finish");
 const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+import console from "node:console";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
 });
@@ -340,6 +341,7 @@ function submitSettings(settings, callback) {
 // be used. The opaqueData must either be a typed array or undefined
 // (which will be checked elsewhere).
 function submitGoaway(code, lastStreamID, opaqueData) {
+  console.log("GOAWAY", { code, lastStreamID, opaqueData });
   if (this.destroyed) {
     return;
   }

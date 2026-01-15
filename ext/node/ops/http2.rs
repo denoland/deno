@@ -1774,15 +1774,25 @@ impl Http2Session {
   // Submits a GOAWAY frame to signal that the Http2Session is in the process
   // of shutting down. Note that this function does not actually alter the
   // state of the Http2Session, it's simply a notification.
-  fn goaway(&self, code: u32, last_stream_id: i32, #[anybuffer] data: &[u8]) {
+  fn goaway(
+    &self,
+    code: u32,
+    last_stream_id: i32,
+    #[anybuffer] maybe_data: Option<&[u8]>,
+  ) {
+    let (data_ptr, data_len) = if let Some(data) = maybe_data {
+      (data.as_ptr(), data.len())
+    } else {
+      (std::ptr::null(), 0)
+    };
     unsafe {
       ffi::nghttp2_submit_goaway(
         self.session,
         ffi::NGHTTP2_FLAG_NONE as _,
         last_stream_id,
         code,
-        data.as_ptr(),
-        data.len(),
+        data_ptr,
+        data_len,
       );
     }
   }
