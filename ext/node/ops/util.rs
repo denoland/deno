@@ -215,3 +215,30 @@ pub fn op_node_get_own_non_index_properties<'s>(
       JsErrorBox::type_error("Failed to get own non-index properties")
     })
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum DotEnvParseErr {
+  #[class(generic)]
+  #[error(transparent)]
+  DotEnv(#[from] dotenvy::Error),
+}
+
+#[op2]
+pub fn op_node_parse_env<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[string] input: &str,
+) -> Result<Option<v8::Local<'a, v8::Object>>, DotEnvParseErr> {
+  let vars = v8::Object::new(scope);
+  let input_reader = std::io::Cursor::new(input);
+  for var in dotenvy::from_read_iter(input_reader) {
+    let (key, value) = var?;
+    let Some(key_v8) = v8::String::new(scope, &key) else {
+      return Ok(None);
+    };
+    let Some(value_v8) = v8::String::new(scope, &value) else {
+      return Ok(None);
+    };
+    vars.set(scope, key_v8.into(), value_v8.into());
+  }
+  Ok(Some(vars))
+}
