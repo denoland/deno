@@ -574,11 +574,15 @@ fn run_test(
     ))
   );
 
-  let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
-    20_000
-  } else {
-    10_000
-  });
+  let timeout = Duration::from_millis(
+    if let Ok(timeout) = std::env::var("NODE_COMPAT_TEST_TIMEOUT") {
+      timeout.parse::<u64>().unwrap()
+    } else if cfg!(target_os = "macos") {
+      20_000
+    } else {
+      10_000
+    },
+  );
   let child = cmd.piped_output().spawn().unwrap();
   let test_output = wait_with_timeout(child, timeout);
 

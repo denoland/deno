@@ -1798,7 +1798,9 @@ impl Http2Session {
   }
 
   #[fast]
-  fn set_graceful_close(&self) {}
+  fn set_graceful_close(&self) {
+    todo!()
+  }
 
   #[fast]
   fn has_pending_data(&self) -> bool {
@@ -1806,10 +1808,14 @@ impl Http2Session {
   }
 
   #[fast]
-  fn local_settings(&self) {}
+  fn local_settings(&self) {
+    todo!()
+  }
 
   #[fast]
-  fn refresh_state(&self) {}
+  fn refresh_state(&self) {
+    todo!()
+  }
 
   fn request<'s>(
     &self,
