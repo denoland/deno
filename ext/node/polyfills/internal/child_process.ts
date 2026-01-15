@@ -41,7 +41,9 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
+  ERR_IPC_SYNC_FORK,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -758,6 +760,95 @@ function normalizeStdioOption(
         notImplemented(`normalizeStdioOption stdio=${typeof stdio} (${stdio})`);
     }
   }
+}
+
+// Valid stdio string values
+const validStdioStrings = ["ignore", "pipe", "inherit", "overlapped"];
+
+// Result type for getValidStdio
+export interface StdioResult {
+  stdio: Array<{ type: string; fd?: number } | null>;
+  ipc: number | undefined;
+  ipcFd: number | undefined;
+}
+
+/**
+ * Validates and processes stdio configuration.
+ * This is an internal function used by Node.js's child_process module.
+ */
+export function getValidStdio(
+  // deno-lint-ignore no-explicit-any
+  stdio: any,
+  sync?: boolean,
+): StdioResult {
+  let ipc: number | undefined;
+  let ipcFd: number | undefined;
+
+  // If stdio is a string, validate it
+  if (typeof stdio === "string") {
+    if (!validStdioStrings.includes(stdio)) {
+      throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
+    }
+    // Convert string to array
+    stdio = [stdio, stdio, stdio];
+  } else if (!ArrayIsArray(stdio)) {
+    throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
+  }
+
+  // Expand stdio array to at least 3 elements (mutates the input array)
+  while (stdio.length < 3) {
+    ArrayPrototypePush(stdio, undefined);
+  }
+
+  // Process each stdio element
+  const result: Array<{ type: string; fd?: number } | null> = [];
+
+  for (let i = 0; i < stdio.length; i++) {
+    const value = stdio[i];
+
+    if (value === "ipc") {
+      if (sync) {
+        throw new ERR_IPC_SYNC_FORK();
+      }
+      ipc = i;
+      ipcFd = i;
+      result.push({ type: "ipc" });
+    } else if (value === "ignore" || value === null) {
+      result.push({ type: "ignore" });
+    } else if (value === "pipe" || value === undefined) {
+      result.push({ type: "pipe" });
+    } else if (value === "inherit") {
+      result.push({ type: "inherit" });
+    } else if (value === "overlapped") {
+      result.push({ type: "overlapped" });
+    } else if (typeof value === "number") {
+      result.push({ type: "fd", fd: value });
+    } else if (typeof value === "string") {
+      // Invalid string value
+      throw new ERR_INVALID_SYNC_FORK_INPUT(value);
+    } else if (typeof value === "object" && value !== null) {
+      // Check if it's a Stream with fd property (like process.stdin/stdout/stderr)
+      if (
+        value.fd !== undefined && typeof value.fd === "number"
+      ) {
+        result.push({ type: "fd", fd: value.fd });
+      } else if (value instanceof Stream) {
+        // Valid Stream object but without fd
+        result.push({ type: "pipe" });
+      } else {
+        // Invalid object
+        throw new ERR_INVALID_ARG_VALUE("stdio", value);
+      }
+    } else {
+      throw new ERR_INVALID_ARG_VALUE("stdio", value);
+    }
+  }
+
+  return {
+    stdio: result,
+    ipc,
+    ipcFd,
+  };
 }
 
 // Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
@@ -1722,6 +1813,7 @@ export function setupChannel(
 
 export default {
   ChildProcess,
+  getValidStdio,
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
