@@ -38,6 +38,7 @@ import assert from "node:assert";
 import http from "node:http";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
+import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
 import {
   kStreamBaseField,
@@ -77,6 +78,7 @@ import {
   ERR_HTTP2_GOAWAY_SESSION,
   ERR_HTTP2_INVALID_ORIGIN,
   ERR_HTTP2_INVALID_SESSION,
+  ERR_HTTP2_INVALID_STREAM,
   ERR_HTTP2_ORIGIN_LENGTH,
   ERR_HTTP2_OUT_OF_STREAMS,
   ERR_HTTP2_PING_LENGTH,
@@ -1696,6 +1698,16 @@ class Http2Stream extends Duplex {
     }
   }
 }
+
+Http2Stream.prototype.priority = deprecate(
+  function priority(options) {
+    if (this.destroyed) {
+      throw new ERR_HTTP2_INVALID_STREAM();
+    }
+  },
+  "http2Stream.priority is longer supported after priority signalling was deprecated in RFC 9113",
+  "DEP0194",
+);
 
 function prepareResponseHeaders(stream, headersParam, options) {
   let headers;
