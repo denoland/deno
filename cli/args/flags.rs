@@ -3677,6 +3677,7 @@ fn x_subcommand() -> Command {
       .arg(
         Arg::new("install-alias")
           .long("install-alias")
+          .help("Creates a dx alias so you can run dx <command> instead of deno x <command>")
           .num_args(0..=1)
           .default_missing_value("dx")
           .value_parser(deno_x_shim_name_parser)
