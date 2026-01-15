@@ -1159,6 +1159,7 @@ mod tests {
   use deno_resolver::factory::WorkspaceFactory;
   use deno_resolver::factory::WorkspaceFactoryOptions;
   use pretty_assertions::assert_eq;
+  use sys_traits::EnvCurrentDir;
   use sys_traits::impls::InMemorySys;
 
   use super::*;
@@ -1421,63 +1422,46 @@ export type * from "./c.d.ts";
 
   #[tokio::test]
   async fn test_unfurl_types_package() {
-    let cwd = get_cwd();
-    let memory_sys = InMemorySys::new_with_cwd(&cwd);
-    memory_sys.fs_insert_json(
-      cwd.join("package.json"),
-      json!({
-        "dependencies": {
-          "@types/package": "^1",
-          "package": "^1.2.3"
-        }
-      }),
-    );
-    memory_sys.fs_insert_json(
-      cwd.join("deno.json"),
-      json!({
-        "name": "@denotest/main",
-        "version": "1.0.0",
-        "exports": "./mod.ts"
-      }),
-    );
-    memory_sys.fs_insert_json(
-      cwd.join("node_modules/package/package.json"),
-      json!({
-        "name": "package",
-        "exports": {
-          ".": "./index.js",
-          "./subpath": "./subpath.js"
-        }
-      }),
-    );
-    memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
-    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
-    memory_sys.fs_insert_json(
-      cwd.join("node_modules/@types/package/package.json"),
-      json!({
-        "name": "@types/package",
-        "types": "./index.d.ts",
-        "exports": {
-          ".": "./index.d.ts",
-          "./subpath": "./subpath.d.ts"
-        }
-      }),
-    );
-    memory_sys
-      .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
-    memory_sys
-      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
-    let unfurler = build_unfurler(memory_sys, &cwd).await;
+    async fn run_test(memory_sys: InMemorySys) {
+      let cwd = memory_sys.env_current_dir().unwrap();
+      memory_sys.fs_insert_json(
+        cwd.join("node_modules/package/package.json"),
+        json!({
+          "name": "package",
+          "exports": {
+            ".": "./index.js",
+            "./subpath": "./subpath.js"
+          }
+        }),
+      );
+      memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+      memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+      memory_sys.fs_insert_json(
+        cwd.join("node_modules/@types/package/package.json"),
+        json!({
+          "name": "@types/package",
+          "types": "./index.d.ts",
+          "exports": {
+            ".": "./index.d.ts",
+            "./subpath": "./subpath.d.ts"
+          }
+        }),
+      );
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+      let unfurler = build_unfurler(memory_sys, &cwd).await;
 
-    let source_code = r#"import { data } from "package";
+      let source_code = r#"import { data } from "package";
 import { helper } from "package/subpath";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "package";
 export { data, helper, other };
 "#;
-    let unfurled_source =
-      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
-    let expected_source = r#"// @ts-types="npm:@types/package@^1"
+      let unfurled_source =
+        unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+      let expected_source = r#"// @ts-types="npm:@types/package@^1"
 import { data } from "npm:package@^1.2.3";
 // @ts-types="npm:@types/package@^1/subpath"
 import { helper } from "npm:package@^1.2.3/subpath";
@@ -1485,7 +1469,80 @@ import { helper } from "npm:package@^1.2.3/subpath";
 import { other } from "npm:package@^1.2.3";
 export { data, helper, other };
 "#;
-    assert_eq!(unfurled_source, expected_source);
+      // when using a deno.json or import map, it adds an extra slash at the
+      // start, which is harmless, so ignore that in order to normalize to the
+      // expected source
+      assert_eq!(unfurled_source.replace("npm:/", "npm:"), expected_source);
+    }
+
+    // these different scenarios should all have the same outcome
+    let cwd = get_cwd();
+    // deno.json
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts",
+          "nodeModulesDir": "manual",
+          "imports": {
+            "@types/package": "npm:@types/package@^1",
+            "package": "npm:package@^1.2.3"
+          }
+        }),
+      );
+      run_test(memory_sys).await;
+    }
+    // package.json
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("package.json"),
+        json!({
+          "dependencies": {
+            "@types/package": "^1",
+            "package": "^1.2.3"
+          }
+        }),
+      );
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts"
+        }),
+      );
+      run_test(memory_sys).await;
+    }
+    // import map
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts",
+          "nodeModulesDir": "manual",
+          "importMap": "./import_map.json",
+        }),
+      );
+      memory_sys.fs_insert_json(
+        cwd.join("import_map.json"),
+        json!({
+          "imports": {
+            "@types/package": "npm:@types/package@^1",
+            "@types/package/": "npm:/@types/package@^1/",
+            "package": "npm:package@^1.2.3",
+            "package/": "npm:/package@^1.2.3/",
+          }
+        }),
+      );
+      run_test(memory_sys).await;
+    }
   }
 
   #[tokio::test]
