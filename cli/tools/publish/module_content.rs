@@ -482,6 +482,7 @@ mod test {
     let specifier_unfurler = SpecifierUnfurler::new(
       resolver_factory.node_resolver().unwrap().clone(),
       resolver_factory.npm_req_resolver().unwrap().clone(),
+      resolver_factory.pkg_json_resolver().clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
       true,
     );

@@ -22,4 +22,5 @@ pub type CliNodeResolver<TSys = CliSys> = deno_runtime::deno_node::NodeResolver<
   CliNpmResolver<TSys>,
   TSys,
 >;
-pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
+pub type CliPackageJsonResolver<TSys = CliSys> =
+  node_resolver::PackageJsonResolver<TSys>;

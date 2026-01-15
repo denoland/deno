@@ -47,6 +47,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolverSys;
 
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
@@ -378,6 +379,7 @@ pub trait SpecifierUnfurlerSys: NodeResolverSys + NpmResolverSys {}
 pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   node_resolver: Arc<CliNodeResolver<TSys>>,
   npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
+  pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
@@ -386,6 +388,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   pub fn new(
     node_resolver: Arc<CliNodeResolver<TSys>>,
     npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
+    pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -396,6 +399,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     Self {
       node_resolver,
       npm_req_resolver,
+      pkg_json_resolver,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -743,57 +747,47 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       node_resolver::NodeResolutionKind::Types,
     );
     eprintln!("TYPES RESOLUTION: {:?}", types_resolution);
-    if let Some(url) =
-      types_resolution.ok().and_then(|url| url.into_path().ok())
-    {
-      // todo: if
+    let resolved_path = types_resolution.ok()?.into_path().ok()?;
+
+    // check if path contains @types - this indicates types come from
+    // a separate @types/* package rather than the main package
+    let path_str = resolved_path.to_string_lossy();
+    if !path_str.contains("@types") {
+      return None;
     }
-    // // check if the resolved types path is within an @types/* package
-    // let resolved_path = match types_resolution {
-    //   node_resolver::NodeResolution::Module(url_or_path) => {
-    //     url_or_path.into_path().ok()?
-    //   }
-    //   node_resolver::NodeResolution::BuiltIn(_) => return None,
-    // };
 
-    // // check if path contains @types - this indicates types come from
-    // // a separate @types/* package rather than the main package
-    // let path_str = resolved_path.to_string_lossy();
-    // if !path_str.contains("@types") {
-    //   return None;
-    // }
+    // get the @types package name
+    let types_pkg_name = node_resolver::types_package_name(pkg_name)?;
 
-    // // get the @types package name
-    // let types_pkg_name = node_resolver::types_package_name(pkg_name)?;
+    // find the @types package folder
+    let referrer_path = node_resolver::UrlOrPathRef::from_url(referrer);
+    let types_pkg_dir = self
+      .node_resolver
+      .resolve_package_folder_from_package(&types_pkg_name, &referrer_path)
+      .ok()?;
 
-    // // find the @types package folder
-    // let referrer_path = node_resolver::UrlOrPathRef::from_url(referrer);
-    // let types_pkg_dir = node_resolver
-    //   .resolve_package_folder_from_package(&types_pkg_name, &referrer_path)
-    //   .ok()?;
+    // determine version constraint
+    let version_req =
+      if let Some(req) = self.find_types_package_version_req(&types_pkg_name) {
+        req.to_string()
+      } else {
+        // fall back to looking up the resolved version with a caret
+        let types_pkg_json_path = types_pkg_dir.join("package.json");
+        let pkg_json = self
+          .pkg_json_resolver
+          .load_package_json(&types_pkg_json_path)
+          .ok()??;
+        let version = pkg_json.version.as_ref()?;
+        format!("^{}", version)
+      };
 
-    // // determine version constraint
-    // let version_req =
-    //   if let Some(req) = self.find_types_package_version_req(&types_pkg_name) {
-    //     req.to_string()
-    //   } else {
-    //     // fall back to looking up the resolved version with a caret
-    //     let types_pkg_json_path = types_pkg_dir.join("package.json");
-    //     let pkg_json = self
-    //       .pkg_json_resolver
-    //       .load_package_json(&types_pkg_json_path)
-    //       .ok()??;
-    //     let version = pkg_json.version.as_ref()?;
-    //     format!("^{}", version)
-    //   };
-
-    // // construct the types specifier with subpath if present
-    // match sub_path {
-    //   Some(path) => {
-    //     Some(format!("npm:{}@{}/{}", types_pkg_name, version_req, path))
-    //   }
-    //   None => Some(format!("npm:{}@{}", types_pkg_name, version_req)),
-    // }
+    // construct the types specifier with subpath if present
+    match sub_path {
+      Some(path) => {
+        Some(format!("npm:{}@{}/{}", types_pkg_name, version_req, path))
+      }
+      None => Some(format!("npm:{}@{}", types_pkg_name, version_req)),
+    }
     None
   }
 
@@ -1520,6 +1514,7 @@ export { data };
     SpecifierUnfurler::new(
       resolver_factory.node_resolver().unwrap().clone(),
       resolver_factory.npm_req_resolver().unwrap().clone(),
+      resolver_factory.pkg_json_resolver().clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
       true,
     )
