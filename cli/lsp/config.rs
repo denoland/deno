@@ -579,6 +579,13 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_document_preload_limit")]
   pub document_preload_limit: usize,
 
+  /// Disables the server-capability for pull diagnostics to force push-based
+  /// diagnostics. NOTE: This is read and stored from the initialization
+  /// options. This value may be updated on configuration change events but
+  /// the new value will be ignored.
+  #[serde(default)]
+  pub force_push_based_diagnostics: bool,
+
   #[serde(default)]
   pub suggest: DenoCompletionSettings,
 
@@ -626,6 +633,7 @@ impl Default for WorkspaceSettings {
       log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
+      force_push_based_diagnostics: false,
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -2145,6 +2153,7 @@ mod tests {
         log_file: false,
         lint: true,
         document_preload_limit: 1_000,
+        force_push_based_diagnostics: false,
         suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,
