@@ -1023,8 +1023,15 @@ fn napi_create_object_with_properties<'s>(
       v8::null(scope).into()
     };
 
-    let names = std::slice::from_raw_parts(property_names, property_count);
-    let values = std::slice::from_raw_parts(property_values, property_count);
+    let (names, values): (&[napi_value<'s>], &[napi_value<'s>]) =
+      if property_count == 0 {
+        (&[], &[])
+      } else {
+        (
+          std::slice::from_raw_parts(property_names, property_count),
+          std::slice::from_raw_parts(property_values, property_count),
+        )
+      };
 
     for name in names {
       if let Some(name_val) = **name {
