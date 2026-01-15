@@ -502,7 +502,6 @@ impl<
         .unwrap(),
         inner,
       })?;
-    eprintln!("Package folder: {}", package_folder.display());
     let resolution_result =
       self.node_resolver.resolve_package_subpath_from_deno_module(
         &package_folder,
@@ -511,7 +510,6 @@ impl<
         resolution_mode,
         resolution_kind,
       );
-    eprintln!("Resolution result: {:?}", resolution_result);
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {

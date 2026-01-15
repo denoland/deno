@@ -746,49 +746,40 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       node_resolver::ResolutionMode::Import,
       node_resolver::NodeResolutionKind::Types,
     );
-    eprintln!("TYPES RESOLUTION: {:?}", types_resolution);
     let resolved_path = types_resolution.ok()?.into_path().ok()?;
+    let types_pkg_json = self
+      .pkg_json_resolver
+      .get_closest_package_jsons(&resolved_path)
+      .filter_map(|pkg_json| pkg_json.ok())
+      .find(|p| p.name.is_some())?;
+    let types_pkg_name = types_pkg_json.name.as_ref()?;
+    let types_pkg_version = types_pkg_json
+      .version
+      .as_ref()
+      .and_then(|v| Version::parse_from_npm(v).ok());
 
-    // check if path contains @types - this indicates types come from
-    // a separate @types/* package rather than the main package
-    let path_str = resolved_path.to_string_lossy();
-    if !path_str.contains("@types") {
+    if !types_pkg_name.starts_with("@types/") {
       return None;
     }
-
-    // get the @types package name
-    let types_pkg_name = node_resolver::types_package_name(pkg_name)?;
-
-    // find the @types package folder
-    let referrer_path = node_resolver::UrlOrPathRef::from_url(referrer);
-    let types_pkg_dir = self
-      .node_resolver
-      .resolve_package_folder_from_package(&types_pkg_name, &referrer_path)
-      .ok()?;
 
     // determine version constraint
     let version_req =
       if let Some(req) = self.find_types_package_version_req(&types_pkg_name) {
         req.to_string()
       } else {
-        // fall back to looking up the resolved version with a caret
-        let types_pkg_json_path = types_pkg_dir.join("package.json");
-        let pkg_json = self
-          .pkg_json_resolver
-          .load_package_json(&types_pkg_json_path)
-          .ok()??;
-        let version = pkg_json.version.as_ref()?;
-        format!("^{}", version)
+        // fall back to using the package's version
+        types_pkg_version
+          .map(|v| format!("^{}", v))
+          .unwrap_or_else(|| "*".to_string())
       };
 
     // construct the types specifier with subpath if present
-    match sub_path {
+    match npm_req_ref.sub_path() {
       Some(path) => {
         Some(format!("npm:{}@{}/{}", types_pkg_name, version_req, path))
       }
       None => Some(format!("npm:{}@{}", types_pkg_name, version_req)),
     }
-    None
   }
 
   /// Attempts to unfurl the dynamic dependency returning `true` on success
@@ -939,7 +930,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             == deno_resolver::workspace::ResolutionKind::Execution
             && dep.types_specifier.is_none()
           {
-            eprintln!("Looking at: {}", dep.specifier);
             // check what the specifier will unfurl to
             if let Ok(Some(unfurled)) = self.unfurl_specifier(
               url,
