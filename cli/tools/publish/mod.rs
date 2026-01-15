@@ -127,6 +127,7 @@ pub async fn publish(
     cli_factory.node_resolver().await?.clone(),
     cli_factory.npm_req_resolver().await?.clone(),
     cli_factory.pkg_json_resolver()?.clone(),
+    cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );

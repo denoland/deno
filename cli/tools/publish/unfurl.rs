@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use deno_ast::ParsedSource;
@@ -27,6 +28,7 @@ use deno_ast::swc::atoms::Atom;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_graph::analysis::DependencyDescriptor;
@@ -42,6 +44,7 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolverSys;
 
@@ -378,6 +381,7 @@ pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   node_resolver: Arc<CliNodeResolver<TSys>>,
   npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
   pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
+  workspace_dir: Arc<WorkspaceDirectory>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
@@ -387,6 +391,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     node_resolver: Arc<CliNodeResolver<TSys>>,
     npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
     pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
+    workspace_dir: Arc<WorkspaceDirectory>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -398,6 +403,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       node_resolver,
       npm_req_resolver,
       pkg_json_resolver,
+      workspace_dir,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -689,9 +695,19 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   fn find_types_package_version_req(
     &self,
     types_package_name: &str,
+    referrer: &ModuleSpecifier,
   ) -> Option<VersionReq> {
     // check package.json dependencies
-    for pkg_json in self.workspace_resolver.package_jsons() {
+    let referrer_path = deno_path_util::url_to_file_path(referrer).ok();
+    let referrer_pkg_jsons = referrer_path
+      .as_ref()
+      .map(|path| self.pkg_json_resolver.get_closest_package_jsons(path))
+      .into_iter()
+      .flatten()
+      .filter_map(|i| i.ok());
+    for pkg_json in referrer_pkg_jsons
+      .chain(self.workspace_dir.workspace.package_jsons().cloned())
+    {
       let deps = pkg_json.resolve_local_package_json_deps();
       if let Some(Ok(PackageJsonDepValue::Req(pkg_req))) =
         deps.get(types_package_name)
@@ -700,25 +716,39 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       }
     }
 
+    let check_dep = |dep: JsrDepPackageReq| {
+      if dep.kind == deno_semver::package::PackageKind::Npm
+        && dep.req.name == types_package_name
+      {
+        Some(dep.req.version_req)
+      } else {
+        None
+      }
+    };
+
+    // now look in the member and root deno json
+    let deno_jsons = [
+      self.workspace_dir.member_deno_json(),
+      self.workspace_dir.workspace.root_deno_json(),
+    ];
+    for deno_json in deno_jsons.iter().flatten() {
+      let deps = deno_json
+        .dependencies()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+      for dep in deps {
+        if let Some(version_req) = check_dep(dep) {
+          return Some(version_req);
+        }
+      }
+    }
+
     // check the import map for the types package
     if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
-      // look up the types package name in the import map
-      for entry in import_map.imports().entries() {
-        if entry.key == types_package_name {
-          if let Some(value) = entry.value {
-            // parse the npm specifier to get the version
-            let address_str = value.as_str();
-            if let Some(version_str) = address_str
-              .strip_prefix("npm:")
-              .and_then(|s: &str| s.split_once('@'))
-              .map(|(_, v)| v)
-              .and_then(|v: &str| v.split('/').next())
-              && let Ok(version_req) = VersionReq::parse_from_npm(version_str)
-            {
-              return Some(version_req);
-            }
-          }
-          break;
+      let deps = deno_config::import_map::import_map_deps(import_map);
+      for dep in deps {
+        if let Some(version_req) = check_dep(dep) {
+          return Some(version_req);
         }
       }
     }
@@ -760,15 +790,16 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     }
 
     // determine version constraint
-    let version_req =
-      if let Some(req) = self.find_types_package_version_req(types_pkg_name) {
-        req.to_string()
-      } else {
-        // fall back to using the package's version
-        types_pkg_version
-          .map(|v| format!("^{}", v))
-          .unwrap_or_else(|| "*".to_string())
-      };
+    let version_req = if let Some(req) =
+      self.find_types_package_version_req(types_pkg_name, referrer)
+    {
+      req.to_string()
+    } else {
+      // fall back to using the package's version
+      types_pkg_version
+        .map(|v| format!("^{}", v))
+        .unwrap_or_else(|| "*".to_string())
+    };
 
     // construct the types specifier with subpath if present
     match npm_req_ref.sub_path() {
@@ -1619,6 +1650,11 @@ export { data, helper };
       resolver_factory.node_resolver().unwrap().clone(),
       resolver_factory.npm_req_resolver().unwrap().clone(),
       resolver_factory.pkg_json_resolver().clone(),
+      resolver_factory
+        .workspace_factory()
+        .workspace_directory()
+        .unwrap()
+        .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
       true,
     )
