@@ -344,4 +344,5 @@ export default {
   isDeepStrictEqual,
   isArray,
   styleText,
+  parseEnv,
 };
