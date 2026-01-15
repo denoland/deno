@@ -970,7 +970,7 @@ export function normalizeSpawnArguments(
   if (options.shell) {
     let command = ArrayPrototypeJoin([file, ...args], " ");
     // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
-    command = transformDenoShellCommand(command);
+    command = transformDenoShellCommand(command, options.env);
     // Set the shell, switches, and commands.
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
@@ -1086,11 +1086,48 @@ function waitForStreamToClose(stream: Stream) {
   return deferred.promise;
 }
 
+// Deno subcommands - used to check if we need to add "run -A"
+const kDenoSubcommandSet = new Set([
+  "add",
+  "bench",
+  "cache",
+  "check",
+  "compile",
+  "completions",
+  "coverage",
+  "doc",
+  "eval",
+  "fmt",
+  "help",
+  "info",
+  "init",
+  "install",
+  "jupyter",
+  "lint",
+  "lsp",
+  "publish",
+  "repl",
+  "run",
+  "serve",
+  "task",
+  "test",
+  "types",
+  "uninstall",
+  "upgrade",
+  "vendor",
+]);
+
 /**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Handles cases like: `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
+ * Handles cases like:
+ * - `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
+ * - `"/path/to/deno" "script.js" args` -> `"/path/to/deno" run -A "script.js" args`
+ * - `"${VAR}" "script.js" args` -> if VAR=deno path, adds run -A
  */
-function transformDenoShellCommand(command: string): string {
+function transformDenoShellCommand(
+  command: string,
+  env?: Record<string, string | number | boolean>,
+): string {
   const denoPath = Deno.execPath();
 
   // Check if the command starts with the Deno executable (possibly quoted)
@@ -1099,6 +1136,7 @@ function transformDenoShellCommand(command: string): string {
 
   let startsWithDeno = false;
   let denoPathLength = 0;
+  let shellVarPrefix = "";
 
   if (command.startsWith(quotedDenoPath)) {
     startsWithDeno = true;
@@ -1109,6 +1147,22 @@ function transformDenoShellCommand(command: string): string {
   } else if (command.startsWith(denoPath)) {
     startsWithDeno = true;
     denoPathLength = denoPath.length;
+  } else if (env) {
+    // Check for shell variable that references the Deno path
+    // Pattern: "${VARNAME}" or $VARNAME at start of command
+    const shellVarMatch = command.match(
+      /^(?:"\$\{([^}]+)\}"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
+    );
+    if (shellVarMatch) {
+      const varName = shellVarMatch[1] || shellVarMatch[2] ||
+        shellVarMatch[3];
+      const varValue = env[varName];
+      if (varValue !== undefined && String(varValue) === denoPath) {
+        startsWithDeno = true;
+        shellVarPrefix = shellVarMatch[0];
+        denoPathLength = shellVarMatch[0].length;
+      }
+    }
   }
 
   if (!startsWithDeno) {
@@ -1119,13 +1173,28 @@ function transformDenoShellCommand(command: string): string {
   const rest = command.slice(denoPathLength).trimStart();
 
   // Transform Node.js -c/--check flag to Deno run subcommand
-  // Node's -c does syntax checking (parse without execute). Deno doesn't have an exact equivalent,
-  // but deno run will fail fast on syntax errors during parsing, achieving similar behavior.
   const checkFlagRegex = /^(-c|--check)\s+(.*)$/;
-  const match = rest.match(checkFlagRegex);
+  const checkMatch = rest.match(checkFlagRegex);
 
-  if (match) {
-    return command.slice(0, denoPathLength) + " run " + match[2];
+  if (checkMatch) {
+    return command.slice(0, denoPathLength) + " run " + checkMatch[2];
+  }
+
+  // Check if the next argument looks like a script file (not a Deno subcommand)
+  // Pattern: "path" or 'path' or ${VAR} or path (starting with /, ./, or alphanumeric)
+  const scriptPattern =
+    /^(?:"([^"]*)"|'([^']*)'|\$\{[^}]+\}|([a-zA-Z0-9_./-][^\s]*))/;
+  const scriptMatch = rest.match(scriptPattern);
+
+  if (scriptMatch) {
+    // Get the unquoted value to check if it's a subcommand
+    const unquotedScript = scriptMatch[1] || scriptMatch[2] ||
+      scriptMatch[3] || "";
+    if (!kDenoSubcommandSet.has(unquotedScript)) {
+      // It's not a subcommand, so add "run -A"
+      const prefix = shellVarPrefix || command.slice(0, denoPathLength);
+      return prefix + " run -A " + rest;
+    }
   }
 
   return command;
