@@ -1681,6 +1681,7 @@ impl<
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageSubpathResolveError>
   {
+    eprintln!("RESOLVING: {}", package_dir_path.display());
     let package_json_path = package_dir_path.join("package.json");
     match self
       .pkg_json_resolver
@@ -1928,9 +1929,11 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
+    eprintln!("HERE");
     let maybe_main = if resolution_kind.is_types() {
       match package_json.types.as_ref() {
         Some(types) => {
+          eprintln!("TYPES: {}", types);
           let types_versions =
             self.pkg_json_types_versions(package_json, resolution_kind);
           Some(
@@ -2032,6 +2035,7 @@ impl<
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, LegacyResolveError> {
+    eprintln!("HERE");
     let index_file_names = if resolution_kind.is_types() {
       // todo(dsherret): investigate exactly how typescript does this
       match resolution_mode {
@@ -2558,7 +2562,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 
 /// Gets the corresponding @types package for the provided package name
 /// returning `None` when the package is already a @types package.
-fn types_package_name(package_name: &str) -> Option<String> {
+pub fn types_package_name(package_name: &str) -> Option<String> {
   if package_name.starts_with("@types/") {
     return None;
   }
