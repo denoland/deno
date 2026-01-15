@@ -35,7 +35,6 @@ use deno_graph::analysis::StaticDependencyKind;
 use deno_graph::analysis::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
-use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolverSys;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::PackageJsonDepResolution;
@@ -48,7 +47,6 @@ use node_resolver::NodeResolverSys;
 
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
 
@@ -715,10 +713,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               .and_then(|s: &str| s.split_once('@'))
               .map(|(_, v)| v)
               .and_then(|v: &str| v.split('/').next())
+              && let Ok(version_req) = VersionReq::parse_from_npm(version_str)
             {
-              if let Ok(version_req) = VersionReq::parse_from_npm(version_str) {
-                return Some(version_req);
-              }
+              return Some(version_req);
             }
           }
           break;
@@ -764,7 +761,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
 
     // determine version constraint
     let version_req =
-      if let Some(req) = self.find_types_package_version_req(&types_pkg_name) {
+      if let Some(req) = self.find_types_package_version_req(types_pkg_name) {
         req.to_string()
       } else {
         // fall back to using the package's version
@@ -929,30 +926,23 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           if resolution_kind
             == deno_resolver::workspace::ResolutionKind::Execution
             && dep.types_specifier.is_none()
-          {
-            // check what the specifier will unfurl to
-            if let Ok(Some(unfurled)) = self.unfurl_specifier(
+            && let Ok(Some(unfurled)) = self.unfurl_specifier(
               url,
               &dep.specifier,
               deno_resolver::workspace::ResolutionKind::Types,
-            ) {
-              // check if it's an npm package that needs @ts-types
-              if unfurled.starts_with("npm:") {
-                if let Some(types_specifier) =
-                  self.get_types_package_specifier(&unfurled, url)
-                {
-                  // insert @ts-types comment above the import line
-                  let line_start =
-                    text_info.line_start(dep.specifier_range.start.line);
-                  let line_start_byte =
-                    line_start.as_byte_index(text_info.range().start);
-                  text_changes.push(deno_ast::TextChange {
-                    range: line_start_byte..line_start_byte,
-                    new_text: format!("// @ts-types=\"{}\"\n", types_specifier),
-                  });
-                }
-              }
-            }
+            )
+            && let Some(types_specifier) =
+              self.get_types_package_specifier(&unfurled, url)
+          {
+            // insert @ts-types comment above the import line
+            let line_start =
+              text_info.line_start(dep.specifier_range.start.line);
+            let line_start_byte =
+              line_start.as_byte_index(text_info.range().start);
+            text_changes.push(deno_ast::TextChange {
+              range: line_start_byte..line_start_byte,
+              new_text: format!("// @ts-types=\"{}\"\n", types_specifier),
+            });
           }
 
           analyze_specifier(
@@ -1157,11 +1147,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_unfurling() {
-    let cwd = if cfg!(windows) {
-      PathBuf::from("C:\\unfurl")
-    } else {
-      PathBuf::from("/unfurl")
-    };
+    let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
     memory_sys.fs_insert_json(
       cwd.join("deno.json"),
@@ -1234,13 +1220,11 @@ const warn2 = await import(`${expr}`);
 import.meta.resolve("chalk");
 import.meta.resolve(nonAnalyzable);
 "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
+      let (unfurled_source, d) = unfurl_text_with_diagnostics(
+        &cwd.join("mod.ts"),
+        source_code,
+        &unfurler,
+      );
       assert_eq!(d.len(), 3);
       assert!(
         matches!(
@@ -1306,14 +1290,8 @@ import.meta.resolve(nonAnalyzable);
       let source_code = r#"import express from "express";"
 export type * from "./c";
 "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("mod.d.ts")).unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
       let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
-      assert_eq!(d.len(), 0);
+        unfurl_text(&cwd.join("mod.d.ts"), source_code, &unfurler);
       let expected_source = r#"import express from "npm:express@5";"
 export type * from "./c.d.ts";
 "#;
@@ -1323,11 +1301,7 @@ export type * from "./c.d.ts";
 
   #[tokio::test]
   async fn test_unfurling_npm_dep_workspace_specifier() {
-    let cwd = if cfg!(windows) {
-      PathBuf::from("C:\\unfurl")
-    } else {
-      PathBuf::from("/unfurl")
-    };
+    let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
     memory_sys.fs_insert_json(
       cwd.join("package.json"),
@@ -1391,14 +1365,11 @@ export type * from "./c.d.ts";
       let source_code = r#"import nonExistent from "non-existent";
   console.log(nonExistent);
   "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("publish").join("other.ts"))
-          .unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
+      let (unfurled_source, d) = unfurl_text_with_diagnostics(
+        &cwd.join("publish").join("other.ts"),
+        source_code,
+        &unfurler,
+      );
       assert_eq!(d.len(), 1);
       match &d[0] {
         SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
@@ -1419,11 +1390,7 @@ export type * from "./c.d.ts";
 
   #[tokio::test]
   async fn test_unfurl_types_package() {
-    let cwd = if cfg!(windows) {
-      PathBuf::from("C:\\unfurl")
-    } else {
-      PathBuf::from("/unfurl")
-    };
+    let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
     memory_sys.fs_insert_json(
       cwd.join("package.json"),
@@ -1445,39 +1412,186 @@ export type * from "./c.d.ts";
     memory_sys.fs_insert_json(
       cwd.join("node_modules/package/package.json"),
       json!({
-        "name": "package"
+        "name": "package",
+        "exports": {
+          ".": "./index.js",
+          "./subpath": "./subpath.js"
+        }
       }),
     );
     memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
     memory_sys.fs_insert_json(
       cwd.join("node_modules/@types/package/package.json"),
       json!({
         "name": "@types/package",
-        "types": "./index.d.ts"
+        "types": "./index.d.ts",
+        "exports": {
+          ".": "./index.d.ts",
+          "./subpath": "./subpath.d.ts"
+        }
       }),
     );
     memory_sys
       .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
     let unfurler = build_unfurler(memory_sys, &cwd).await;
 
-    {
-      let source_code = r#"import { data } from "package";
-export { data };
+    let source_code = r#"import { data } from "package";
+import { helper } from "package/subpath";
+// @ts-types="npm:@types/package@^1.0"
+import { other } from "package";
+export { data, helper, other };
 "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
-      assert_eq!(d.len(), 0);
-      // it will add a ts-type
-      let expected_source = r#"// @ts-types="npm:@types/package@^1"
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    let expected_source = r#"// @ts-types="npm:@types/package@^1"
 import { data } from "npm:package@^1.2.3";
-export { data };
+// @ts-types="npm:@types/package@^1/subpath"
+import { helper } from "npm:package@^1.2.3/subpath";
+// @ts-types="npm:@types/package@^1.0"
+import { other } from "npm:package@^1.2.3";
+export { data, helper, other };
 "#;
-      assert_eq!(unfurled_source, expected_source);
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  #[tokio::test]
+  async fn test_unfurl_types_package_not_dep() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({
+        "dependencies": {
+          "package": "^1.2.3"
+        }
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "name": "@denotest/main",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/package/package.json"),
+      json!({
+        "name": "package",
+        "exports": {
+          ".": "./index.js",
+          "./subpath": "./subpath.js"
+        }
+      }),
+    );
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/@types/package/package.json"),
+      json!({
+        "name": "@types/package",
+        "version": "1.5.6",
+        "types": "./index.d.ts",
+        "exports": {
+          ".": "./index.d.ts",
+          "./subpath": "./subpath.d.ts"
+        }
+      }),
+    );
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import { data } from "package";
+import { helper } from "package/subpath";
+export { data, helper };
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    let expected_source = r#"// @ts-types="npm:@types/package@^1.5.6"
+import { data } from "npm:package@^1.2.3";
+// @ts-types="npm:@types/package@^1.5.6/subpath"
+import { helper } from "npm:package@^1.2.3/subpath";
+export { data, helper };
+"#;
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  #[tokio::test]
+  async fn test_unfurl_types_in_original_package() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({
+        "dependencies": {
+          "@types/package": "^1",
+          "package": "^1.2.3"
+        }
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "name": "@denotest/main",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/package/package.json"),
+      json!({
+        "name": "package",
+        "exports": {
+          ".": "./index.js",
+          "./subpath": "./subpath.js"
+        }
+      }),
+    );
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.d.ts"), ""); // types here, so no injection
+    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/@types/package/package.json"),
+      json!({
+        "name": "@types/package",
+        "types": "./index.d.ts",
+        "exports": {
+          ".": "./index.d.ts",
+          "./subpath": "./subpath.d.ts"
+        }
+      }),
+    );
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import { data } from "package";
+import { helper } from "package/subpath";
+export { data, helper };
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    let expected_source = r#"import { data } from "npm:package@^1.2.3";
+// @ts-types="npm:@types/package@^1/subpath"
+import { helper } from "npm:package@^1.2.3/subpath";
+export { data, helper };
+"#;
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  fn get_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from("C:\\unfurl")
+    } else {
+      PathBuf::from("/unfurl")
     }
   }
 
@@ -1508,6 +1622,30 @@ export { data };
       resolver_factory.workspace_resolver().await.unwrap().clone(),
       true,
     )
+  }
+
+  fn unfurl_text(
+    path: &Path,
+    source_code: &str,
+    unfurler: &SpecifierUnfurler<InMemorySys>,
+  ) -> String {
+    let (unfurled_source, d) =
+      unfurl_text_with_diagnostics(path, source_code, unfurler);
+    assert_eq!(d.len(), 0);
+    unfurled_source
+  }
+
+  fn unfurl_text_with_diagnostics(
+    path: &Path,
+    source_code: &str,
+    unfurler: &SpecifierUnfurler<InMemorySys>,
+  ) -> (String, Vec<SpecifierUnfurlerDiagnostic>) {
+    let specifier = ModuleSpecifier::from_file_path(path).unwrap();
+    let source = parse_ast(&specifier, source_code);
+    let mut d = Vec::new();
+    let mut reporter = |diagnostic| d.push(diagnostic);
+    let unfurled_source = unfurl(unfurler, &specifier, &source, &mut reporter);
+    (unfurled_source, d)
   }
 
   fn unfurl(
