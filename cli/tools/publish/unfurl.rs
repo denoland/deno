@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_ast::ParsedSource;
@@ -767,6 +768,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   ) -> Option<String> {
     let npm_req_ref =
       NpmPackageReqReference::from_str(unfurled_specifier).ok()?;
+    if npm_req_ref.req().name.starts_with("@types/") {
+      return None;
+    }
     let types_resolution = self.npm_req_resolver.resolve_req_reference(
       &npm_req_ref,
       referrer,
@@ -802,12 +806,15 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
 
     // construct the types specifier with subpath if present
-    match npm_req_ref.sub_path() {
-      Some(path) => {
-        Some(format!("npm:{}@{}/{}", types_pkg_name, version_req, path))
-      }
-      None => Some(format!("npm:{}@{}", types_pkg_name, version_req)),
-    }
+    Some(format!(
+      "npm:{}@{}{}",
+      types_pkg_name,
+      version_req,
+      npm_req_ref
+        .sub_path()
+        .map(|path| format!("/{}", path))
+        .unwrap_or_default()
+    ))
   }
 
   /// Attempts to unfurl the dynamic dependency returning `true` on success
@@ -931,6 +938,11 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           });
         }
       };
+    // collect import declaration start positions to correctly insert @ts-types
+    // comments when multiple imports are on the same line
+    let mut specifier_collector = SpecifierStartCollector::default();
+    parsed_source.program().visit_with(&mut specifier_collector);
+
     for dep in &module_info.dependencies {
       match dep {
         DependencyDescriptor::Static(dep) => {
@@ -953,10 +965,8 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             }
           };
 
-          // for execution imports, check if we need to add @ts-types comment
-          if resolution_kind
-            == deno_resolver::workspace::ResolutionKind::Execution
-            && dep.types_specifier.is_none()
+          // check if we need to add @ts-types comment
+          if dep.types_specifier.is_none()
             && let Ok(Some(unfurled)) = self.unfurl_specifier(
               url,
               &dep.specifier,
@@ -965,14 +975,23 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             && let Some(types_specifier) =
               self.get_types_package_specifier(&unfurled, url)
           {
-            // insert @ts-types comment above the import line
-            let line_start =
-              text_info.line_start(dep.specifier_range.start.line);
-            let line_start_byte =
-              line_start.as_byte_index(text_info.range().start);
+            // insert @ts-types comment before the import declaration
+            let specifier_range =
+              dep.specifier_range.as_source_range(text_info);
+            let decl_start_byte_index = specifier_collector
+              .specifier_to_decl_start
+              .get(&specifier_range)
+              .map(|start| start.as_byte_index(text_info.range().start))
+              .unwrap_or_else(|| {
+                // fallback to line start if not found (shouldn't happen)
+                let line_start =
+                  text_info.line_start(dep.specifier_range.start.line);
+                line_start.as_byte_index(text_info.range().start)
+              });
+            // use block comment so it works even with multiple imports on one line
             text_changes.push(deno_ast::TextChange {
-              range: line_start_byte..line_start_byte,
-              new_text: format!("// @ts-types=\"{}\"\n", types_specifier),
+              range: decl_start_byte_index..decl_start_byte_index,
+              new_text: format!("/* @ts-types=\"{}\" */ ", types_specifier),
             });
           }
 
@@ -1107,6 +1126,39 @@ fn to_range(
     range.end -= 1;
   }
   range
+}
+
+/// Collects the start position of import/export declarations for each specifier.
+/// This is needed to correctly insert @ts-types comments before import statements
+/// when multiple imports appear on the same line.
+#[derive(Default)]
+struct SpecifierStartCollector {
+  /// Maps the specifier source range to the start position of the declaration.
+  specifier_to_decl_start: HashMap<SourceRange<SourcePos>, SourcePos>,
+}
+
+impl Visit for SpecifierStartCollector {
+  noop_visit_type!();
+
+  fn visit_import_decl(&mut self, node: &deno_ast::swc::ast::ImportDecl) {
+    let decl_start = node.range().start;
+    let src_range = node.src.range();
+    self.specifier_to_decl_start.insert(src_range, decl_start);
+  }
+
+  fn visit_export_all(&mut self, node: &deno_ast::swc::ast::ExportAll) {
+    let decl_start = node.range().start;
+    let src_range = node.src.range();
+    self.specifier_to_decl_start.insert(src_range, decl_start);
+  }
+
+  fn visit_named_export(&mut self, node: &deno_ast::swc::ast::NamedExport) {
+    if let Some(src) = &node.src {
+      let decl_start = node.range().start;
+      let src_range = src.range();
+      self.specifier_to_decl_start.insert(src_range, decl_start);
+    }
+  }
 }
 
 #[derive(Default)]
@@ -1453,21 +1505,27 @@ export type * from "./c.d.ts";
         .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
       let unfurler = build_unfurler(memory_sys, &cwd).await;
 
-      let source_code = r#"import { data } from "package";
+      let source_code = r#"import { data } from "package"; import { a } from "package";
 import { helper } from "package/subpath";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "package";
-export { data, helper, other };
+export { a, data, helper, other };
+export { b } from "package"; export { c } from "package";
+import type { d } from "package"; import type { e } from "package";
+import type { f } from "@types/package";
+export { d, e, f };
 "#;
       let unfurled_source =
         unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
-      let expected_source = r#"// @ts-types="npm:@types/package@^1"
-import { data } from "npm:package@^1.2.3";
-// @ts-types="npm:@types/package@^1/subpath"
-import { helper } from "npm:package@^1.2.3/subpath";
+      let expected_source = r#"/* @ts-types="npm:@types/package@^1" */ import { data } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import { a } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "npm:package@^1.2.3";
-export { data, helper, other };
+export { a, data, helper, other };
+/* @ts-types="npm:@types/package@^1" */ export { b } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ export { c } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1" */ import type { d } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import type { e } from "npm:package@^1.2.3";
+import type { f } from "npm:@types/package@^1";
+export { d, e, f };
 "#;
       // when using a deno.json or import map, it adds an extra slash at the
       // start, which is harmless, so ignore that in order to normalize to the
@@ -1601,10 +1659,8 @@ export { data, helper };
 "#;
     let unfurled_source =
       unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
-    let expected_source = r#"// @ts-types="npm:@types/package@^1.5.6"
-import { data } from "npm:package@^1.2.3";
-// @ts-types="npm:@types/package@^1.5.6/subpath"
-import { helper } from "npm:package@^1.2.3/subpath";
+    let expected_source = r#"/* @ts-types="npm:@types/package@^1.5.6" */ import { data } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1.5.6/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
 export { data, helper };
 "#;
     assert_eq!(unfurled_source, expected_source);
@@ -1668,8 +1724,7 @@ export { data, helper };
     let unfurled_source =
       unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
     let expected_source = r#"import { data } from "npm:package@^1.2.3";
-// @ts-types="npm:@types/package@^1/subpath"
-import { helper } from "npm:package@^1.2.3/subpath";
+/* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
 export { data, helper };
 "#;
     assert_eq!(unfurled_source, expected_source);
