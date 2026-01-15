@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_bootstrap_color_depth } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";

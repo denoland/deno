@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -1433,11 +1433,15 @@ impl ConfigFile {
   }
 
   pub fn dir_path(&self) -> PathBuf {
-    url_to_file_path(&self.specifier)
-      .unwrap()
-      .parent()
-      .unwrap()
-      .to_path_buf()
+    let path = url_to_file_path(&self.specifier).unwrap();
+    match path.parent() {
+      Some(parent) => parent.to_path_buf(),
+      None => panic!(
+        "Could not get parent of {} ({})",
+        path.display(),
+        self.specifier
+      ),
+    }
   }
 
   pub fn to_import_map_specifier(

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";

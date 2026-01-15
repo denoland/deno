@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.
@@ -850,7 +850,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "azure/trusted-signing-action@v0",
+          uses: "Azure/artifact-signing-action@v0",
           with: {
             "endpoint": "https://eus.codesigning.azure.net/",
             "trusted-signing-account-name": "deno-cli-code-signing",

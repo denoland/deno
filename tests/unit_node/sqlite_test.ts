@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as nodeAssert from "node:assert";
@@ -452,15 +452,18 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
-Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
+  const errMessageClosed = "database is not open";
 
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE test (value INTEGER)");
   const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  const sess = db.createSession();
   stmt.run(1, 2);
   db.close();
 
+  assertThrows(() => stmt.run(), Error, errMessageClosed);
   assertThrows(() => stmt.all(), Error, errMessage);
   assertThrows(() => stmt.expandedSQL, Error, errMessage);
   assertThrows(() => stmt.get(), Error, errMessage);
@@ -473,6 +476,9 @@ Deno.test("[node/sqlite] calling StatementSync methods after connection has clos
   );
   assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
   assertThrows(() => stmt.sourceSQL, Error, errMessage);
+
+  assertThrows(() => sess.changeset(), Error, errMessageClosed);
+  assertThrows(() => sess.patchset(), Error, errMessageClosed);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144
@@ -1034,4 +1040,30 @@ Deno.test("[node/sqlite] numbered parameters in different order (?2, ?1)", () =>
   // first_arg binds to ?1, second_arg binds to ?2
   // SQL puts ?2 in column a, ?1 in column b
   assertEquals(row, { a: "second_arg", b: "first_arg", __proto__: null });
+});
+
+Deno.test("[node/sqlite] Database GC should not invalidate statements and sessions", () => {
+  const db = new DatabaseSync(":memory:");
+  const stmt = db.prepare("SELECT 1");
+  const sess = db.createSession();
+  const a = [];
+  for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000000; i++) a.push(0); // Try to trigger GC
+    stmt.run();
+    sess.changeset();
+  }
+});
+
+// https://github.com/denoland/deno/issues/31744
+Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("create table if not exists t1(id integer primary key)");
+  const p = db.prepare(`insert into t1(id) values (?)`);
+  for (let id = 1; id <= 1_000_000; id++) {
+    p.run(id);
+  }
+  const iter = db.prepare(`select id from t1`).iterate();
+  for (const { id } of iter) {
+    assertEquals(typeof id, "number");
+  }
 });

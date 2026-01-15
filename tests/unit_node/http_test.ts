@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -745,7 +745,6 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
 
 Deno.test({
   name: "[node/https] ClientRequest uses HTTP/1.1",
-  sanitizeResources: false,
   async fn() {
     let body = "";
     const { promise, resolve, reject } = Promise.withResolvers<void>();
@@ -2001,7 +2000,6 @@ const ca = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
 Deno.test({
   name: "[node/https] `request` requires net permission to host and port",
   permissions: { net: ["localhost:5545"] },
-  sanitizeResources: false,
   async fn() {
     const { promise, resolve } = Promise.withResolvers<void>();
     https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
@@ -2149,7 +2147,6 @@ Deno.test("[node/http] client http over unix socket works", {
 Deno.test({
   name: "[node/https] null ca, key and cert req options",
   permissions: { net: ["localhost:5545"] },
-  sanitizeResources: false,
   async fn() {
     const { promise, resolve } = Promise.withResolvers<void>();
     https.request("https://localhost:5545/echo.ts", {

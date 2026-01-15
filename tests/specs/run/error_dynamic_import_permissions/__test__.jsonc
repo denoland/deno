@@ -1,0 +1,6 @@
+{
+  // We have an allow-import flag but not allow-read, it should still result in error.
+  "args": "run --reload --allow-import main.js",
+  "output": "main.out",
+  "exitCode": 1
+}

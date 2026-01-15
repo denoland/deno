@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_bench_util::bencher::Bencher;
 use deno_bench_util::bencher::benchmark_group;

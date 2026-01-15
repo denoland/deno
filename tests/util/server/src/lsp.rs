@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -402,6 +402,12 @@ impl InitializeParamsBuilder {
   pub fn set_unstable(&mut self, value: bool) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("unstable".to_string(), value.into());
+    self
+  }
+
+  pub fn set_force_push_based_diagnostics(&mut self, value: bool) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("forcePushBasedDiagnostics".to_string(), value.into());
     self
   }
 
@@ -877,12 +883,21 @@ impl LspClient {
       Some(workspace) => workspace.configuration == Some(true),
       _ => false,
     };
-    self.supports_pull_diagnostics = params
-      .capabilities
-      .text_document
-      .as_ref()
-      .and_then(|t| t.diagnostic.as_ref())
-      .is_some();
+    let force_push_based_diagnostics = (|| {
+      params
+        .initialization_options
+        .as_ref()?
+        .get("forcePushBasedDiagnostics")?
+        .as_bool()
+    })()
+    .unwrap_or(false);
+    self.supports_pull_diagnostics = !force_push_based_diagnostics
+      && params
+        .capabilities
+        .text_document
+        .as_ref()
+        .and_then(|t| t.diagnostic.as_ref())
+        .is_some();
 
     self.write_request("initialize", params);
     self.write_notification("initialized", json!({}));
