@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -3172,6 +3172,7 @@ class Console {
     this.#printFunc(
       inspectArgs([obj], {
         ...getConsoleInspectOptions(noColorStdout()),
+        indentLevel: this.indentLevel,
         ...options,
       }) + "\n",
       1,

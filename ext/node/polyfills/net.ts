@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1531,9 +1531,7 @@ Object.defineProperty(Socket.prototype, "remoteAddress", {
 
 Object.defineProperty(Socket.prototype, "remoteFamily", {
   get: function () {
-    const { family } = this._getpeername();
-
-    return family ? `IPv${family}` : family;
+    return this._getpeername().family;
   },
 });
 

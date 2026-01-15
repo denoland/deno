@@ -5371,17 +5371,27 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false,
-      "readable-stream.html": false,
-      "reason.html": false,
+      "transfer-with-messageport.window.html": true,
+      "readable-stream.html": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()",
+        "transferring a non-serializable chunk should error both sides"
+      ],
+      "reason.html": [
+        "DOMException errors should be preserved"
+      ],
       "service-worker.https.html": false,
       "shared-worker.html": false,
       "transform-stream-members.any.html": true,
       "transform-stream-members.any.worker.html": true,
-      "transform-stream.html": false,
-      "window.html": false,
-      "worker.html": false,
-      "writable-stream.html": false
+      "transform-stream.html": true,
+      "window.html": [
+        "transfer to and from an iframe should work"
+      ],
+      "worker.html": true,
+      "writable-stream.html": [
+        "writing a unclonable object should error the stream"
+      ]
     }
   },
   "user-timing": {
@@ -6112,18 +6122,16 @@
       ],
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's getter works when called on null / undefined",
-        "Global object's operation throws when called on incompatible object",
-        "Global object's operation works when called on null / undefined",
         "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ],
       "global-object-implicit-this-value.any.worker.html": [
         "Global object's getter throws when called on incompatible object",
-        "Global object's getter works when called on null / undefined",
-        "Global object's operation throws when called on incompatible object",
-        "Global object's operation works when called on null / undefined",
         "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ],
       "legacy-factor-function-subclass.window.html": false,
@@ -7445,8 +7453,6 @@
       "<area>: Setting <mailto:me@example.net>.pathname = '/foo' Opaque paths cannot be set"
     ],
     "url-setters.any.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -7472,8 +7478,6 @@
     "url-setters.any.html?include=javascript": true,
     "url-setters.any.html?include=mailto": true,
     "url-setters.any.worker.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -11706,11 +11710,11 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\t=block",
-          "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\n=block",
           "Fetch: /images/gre\\ten-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\n=block",
+          "Fetch: /images/gre\\ren-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<",
           "Fetch: /images/green-1x1.png?<\\r=block"
         ],
         "dangling-markup-mitigation.tentative.https.html": false,
@@ -12910,8 +12914,8 @@
         "clearinterval-from-callback.any.worker.html": true,
         "cleartimeout-clearinterval.any.html": true,
         "cleartimeout-clearinterval.any.worker.html": true,
-        "evil-spec-example.any.html": false,
-        "evil-spec-example.any.worker.html": false,
+        "evil-spec-example.any.html": true,
+        "evil-spec-example.any.worker.html": true,
         "missing-timeout-setinterval.any.html": true,
         "missing-timeout-setinterval.any.worker.html": true,
         "negative-setinterval.any.html": true,
@@ -13095,7 +13099,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone.any.worker.html": [
@@ -13123,7 +13126,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone-cross-realm-method.html": false
@@ -15006,9 +15008,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,
@@ -15353,7 +15355,6 @@
     "shared-worker-in-data-url-context.window.html": false,
     "worker-performance.worker.html": [
       "Resource timing seems to work in workers",
-      "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
     ],
     "importscripts_mime_local.any.worker.html": [
@@ -15440,22 +15441,7 @@
     "urlpattern.any.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15464,22 +15450,7 @@
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15488,22 +15459,7 @@
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15512,22 +15468,7 @@
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",

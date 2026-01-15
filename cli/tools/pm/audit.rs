@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Write;
 use std::sync::Arc;
@@ -333,18 +333,24 @@ mod npm {
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
     print_report(
-      vulns,
+      &vulns,
       advisories,
       response.actions,
       minimal_severity,
       audit_flags.ignore_unfixable,
     );
 
-    Ok(1)
+    // Exit code 1 only if there are vulnerabilities at or above the specified level
+    let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
+      1
+    } else {
+      0
+    };
+    Ok(exit_code)
   }
 
   fn print_report(
-    vulns: AuditVulnerabilities,
+    vulns: &AuditVulnerabilities,
     advisories: Vec<&AuditAdvisory>,
     actions: Vec<AuditAction>,
     minimal_severity: AdvisorySeverity,
@@ -450,8 +456,8 @@ mod npm {
   #[derive(Debug, Deserialize)]
   pub struct AuditActionResolve {
     pub id: i32,
+    pub path: Option<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub path: String,
     // pub dev: bool,
     // pub optional: bool,
     // pub bundled: bool,
@@ -463,7 +469,7 @@ mod npm {
     pub is_major: bool,
     pub action: String,
     pub resolves: Vec<AuditActionResolve>,
-    pub module: String,
+    pub module: Option<String>,
     pub target: Option<String>,
   }
 
@@ -491,30 +497,41 @@ mod npm {
 
   impl AuditAdvisory {
     fn find_actions(&self, actions: &[AuditAction]) -> Vec<String> {
-      let mut acts = vec![];
+      let mut acts = Vec::new();
 
       for action in actions {
-        if action
-          .resolves
-          .iter()
-          .any(|action_resolve| action_resolve.id == self.id)
-        {
-          acts.push(format!(
-            "{} {}{}{}",
-            action.action,
-            action.module,
-            if let Some(target) = &action.target {
-              &format!("@{}", target)
-            } else {
-              ""
-            },
-            if action.is_major {
-              " (major upgrade)"
-            } else {
-              ""
-            }
-          ))
+        if !action.resolves.iter().any(|r| r.id == self.id) {
+          continue;
         }
+
+        let module = action
+          .module
+          .as_deref()
+          .map(str::to_owned)
+          .or_else(|| {
+            // Fallback to infer from dependency path
+            action.resolves.first().and_then(|r| {
+              r.path
+                .as_deref()
+                .and_then(|p| p.split('>').next_back())
+                .map(|s| s.trim().to_string())
+            })
+          })
+          .unwrap_or_else(|| "<unknown>".to_string());
+
+        let target = action
+          .target
+          .as_deref()
+          .map(|t| format!("@{}", t))
+          .unwrap_or_default();
+
+        let major = if action.is_major {
+          " (major upgrade)"
+        } else {
+          ""
+        };
+
+        acts.push(format!("{} {}{}{}", action.action, module, target, major));
       }
 
       acts
@@ -532,6 +549,15 @@ mod npm {
   impl AuditVulnerabilities {
     fn total(&self) -> i32 {
       self.low + self.moderate + self.high + self.critical
+    }
+
+    fn count_at_or_above(&self, min_severity: AdvisorySeverity) -> i32 {
+      match min_severity {
+        AdvisorySeverity::Low => self.total(),
+        AdvisorySeverity::Moderate => self.moderate + self.high + self.critical,
+        AdvisorySeverity::High => self.high + self.critical,
+        AdvisorySeverity::Critical => self.critical,
+      }
     }
   }
 
@@ -663,10 +689,14 @@ mod socket_dev {
           None
         }
       })
-      .map(|json_response| {
-        let response: FirewallResponse =
-          serde_json::from_str(&json_response).unwrap();
-        response
+      .filter_map(|json_response| {
+        match serde_json::from_str::<FirewallResponse>(&json_response) {
+          Ok(response) => Some(response),
+          Err(err) => {
+            log::error!("Failed deserializing socket.dev response {:?}", err);
+            None
+          }
+        }
       })
       .collect::<Vec<_>>();
 
@@ -675,6 +705,15 @@ mod socket_dev {
 
   fn print_firewall_report(responses: &[FirewallResponse]) {
     let stdout = &mut std::io::stdout();
+
+    let responses_with_alerts = responses
+      .iter()
+      .filter(|r| !r.alerts.is_empty())
+      .collect::<Vec<_>>();
+
+    if responses_with_alerts.is_empty() {
+      return;
+    }
 
     _ = writeln!(stdout);
     _ = writeln!(stdout, "{}", colors::bold("Socket.dev firewall report"));
@@ -687,11 +726,7 @@ mod socket_dev {
     let mut total_low = 0;
     let mut packages_with_issues = 0;
 
-    for response in responses {
-      if response.alerts.is_empty() && response.score.is_none() {
-        continue;
-      }
-
+    for response in responses_with_alerts {
       packages_with_issues += 1;
 
       _ = writeln!(stdout, "╭ pkg:npm/{}@{}", response.name, response.version);

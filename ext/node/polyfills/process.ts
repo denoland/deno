@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -70,6 +70,7 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "ext:deno_node/_next_tick.ts";
+import { runImmediates } from "ext:deno_node/internal/timers.mjs";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -1051,6 +1052,7 @@ internals.__bootstrapNodeProcess = function (
     }
 
     core.setNextTickCallback(processTicksAndRejections);
+    core.setImmediateCallback(runImmediates);
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 

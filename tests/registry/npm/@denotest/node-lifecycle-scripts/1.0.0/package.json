@@ -8,6 +8,7 @@
   },
   "exports": "./index.js",
   "dependencies": {
-    "@denotest/bin": "1.0.0"
+    "@denotest/bin": "1.0.0",
+    "cowsay": "1.5.0"
   }
 }

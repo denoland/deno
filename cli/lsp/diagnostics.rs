@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -1010,17 +1010,6 @@ fn diagnose_resolution(
                       if !is_mapped {
                         diagnostics.push(DenoDiagnostic::BareNodeSpecifier(
                           module_name.to_string(),
-                        ));
-                      }
-                    } else if let Some(npm_resolver) = managed_npm_resolver {
-                      // check that a @types/node package exists in the resolver
-                      let types_node_req =
-                        PackageReq::from_str("@types/node").unwrap();
-                      if !npm_resolver.is_pkg_req_folder_cached(&types_node_req)
-                      {
-                        diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-                          types_node_req,
-                          ModuleSpecifier::parse("npm:@types/node").unwrap(),
                         ));
                       }
                     }

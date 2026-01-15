@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -961,8 +961,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  // TODO(bartlomieju): these should actually be stored somewhere
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = globalThis; (() => {`,
+  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
   "\n})(); })",
 ];
 Module.wrap = function (script) {

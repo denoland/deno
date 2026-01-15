@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference lib="deno.ns" />
 import {
@@ -42,6 +42,7 @@ import {
   lutimes,
   open,
   stat,
+  statfs,
   writeFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -180,6 +181,13 @@ Deno.test(
         }'`,
       );
     }
+  },
+);
+
+Deno.test(
+  "[node/fs/promises statfs] export statfs function",
+  async () => {
+    await statfs(import.meta.filename!);
   },
 );
 

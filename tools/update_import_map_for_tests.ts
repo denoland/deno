@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -RW
 
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-console
 
 /**

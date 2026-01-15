@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -809,6 +809,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
                 deno_resolver::workspace::ResolutionKind::Execution

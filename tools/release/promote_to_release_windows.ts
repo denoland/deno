@@ -1,9 +1,9 @@
 #!/usr/bin/env -S deno run -A
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
-import { patchver } from "jsr:@deno/patchver@0.4.0";
+import { patchver } from "jsr:@deno/patchver@0.5.0";
 
 const CHANNEL = Deno.args[0];
 if (CHANNEL !== "rc" && CHANNEL !== "lts") {

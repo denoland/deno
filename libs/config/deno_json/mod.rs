@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -766,7 +766,7 @@ impl SerializedCompileConfig {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
@@ -1071,7 +1071,7 @@ impl NodeModulesDirMode {
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {
   pub org: String,
-  pub app: String,
+  pub app: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1433,11 +1433,15 @@ impl ConfigFile {
   }
 
   pub fn dir_path(&self) -> PathBuf {
-    url_to_file_path(&self.specifier)
-      .unwrap()
-      .parent()
-      .unwrap()
-      .to_path_buf()
+    let path = url_to_file_path(&self.specifier).unwrap();
+    match path.parent() {
+      Some(parent) => parent.to_path_buf(),
+      None => panic!(
+        "Could not get parent of {} ({})",
+        path.display(),
+        self.specifier
+      ),
+    }
   }
 
   pub fn to_import_map_specifier(
@@ -1542,6 +1546,10 @@ impl ConfigFile {
 
   pub fn is_package(&self) -> bool {
     self.json.name.is_some() && self.json.exports.is_some()
+  }
+
+  pub fn should_publish(&self) -> bool {
+    !matches!(self.json.publish, Some(serde_json::Value::Bool(false)))
   }
 
   pub fn is_workspace(&self) -> bool {
@@ -1912,11 +1920,14 @@ impl ConfigFile {
   pub(crate) fn to_publish_config(
     &self,
   ) -> Result<PublishConfig, ToInvalidConfigError> {
-    match self.json.publish.clone() {
+    match &self.json.publish {
+      Some(serde_json::Value::Bool(_)) | None => Ok(PublishConfig {
+        files: self.to_exclude_files_config()?,
+      }),
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
         let mut serialized: SerializedPublishConfig =
-          serde_json::from_value(config).map_err(|error| {
+          serde_json::from_value(config.clone()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "publish",
               source: error,
@@ -1932,9 +1943,6 @@ impl ConfigFile {
           }
         })
       }
-      None => Ok(PublishConfig {
-        files: self.to_exclude_files_config()?,
-      }),
     }
   }
 
