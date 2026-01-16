@@ -891,14 +891,25 @@ const features = {
   debug: false,
   uv: true,
   ipv6: true,
+  // deno-lint-ignore camelcase
   tls_alpn: true,
+  // deno-lint-ignore camelcase
   tls_sni: true,
+  // deno-lint-ignore camelcase
   tls_ocsp: true,
   tls: true,
+  // deno-lint-ignore camelcase
   openssl_is_boringssl: false,
+  // deno-lint-ignore camelcase
   cached_builtins: true,
+  // deno-lint-ignore camelcase
   require_module: true,
-  typescript: "transform",
+  get typescript() {
+    if (Deno.build.standalone) {
+      return false;
+    }
+    return "transform";
+  },
 };
 
 ObjectDefineProperty(process, "features", {
