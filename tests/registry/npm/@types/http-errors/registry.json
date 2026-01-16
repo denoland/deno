@@ -1,0 +1,54 @@
+{
+  "name": "@types/http-errors",
+  "dist-tags": {
+    "ts5.9": "2.0.5",
+    "ts5.5": "2.0.5",
+    "ts5.8": "2.0.5",
+    "ts5.7": "2.0.5",
+    "ts5.4": "2.0.5",
+    "ts5.3": "2.0.5",
+    "ts5.2": "2.0.5",
+    "ts5.1": "2.0.5",
+    "latest": "2.0.5",
+    "ts5.6": "2.0.5",
+    "ts6.0": "2.0.5"
+  },
+  "versions": {
+    "2.0.5": {
+      "name": "@types/http-errors",
+      "version": "2.0.5",
+      "license": "MIT",
+      "_id": "@types/http-errors@2.0.5",
+      "dist": {
+        "shasum": "5b749ab2b16ba113423feb1a64a95dcd30398472",
+        "tarball": "http://localhost:4260/@types/http-errors/http-errors-2.0.5.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==",
+        "unpackedSize": 6827
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/http-errors"
+      },
+      "description": "TypeScript definitions for http-errors",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.1",
+      "typesPublisherContentHash": "621b9125a6493a2fa928b9150e335cb57429fb00e3bc0257426f1173903f7a4a"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/http-errors",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/http-errors"
+  },
+  "description": "TypeScript definitions for http-errors"
+}

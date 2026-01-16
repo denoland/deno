@@ -718,9 +718,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         match parts.first() {
           Some(DynamicTemplatePart::String { value: specifier }) => {
             // relative doesn't need to be modified
-            let is_relative =
-              specifier.starts_with("./") || specifier.starts_with("../");
-            if is_relative {
+            if deno_path_util::is_relative_specifier(specifier) {
               return true;
             }
             if !specifier.ends_with('/') {
