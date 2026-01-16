@@ -943,6 +943,7 @@
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
+    "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-kill-null.js": {},
