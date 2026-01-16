@@ -722,8 +722,8 @@ pub async fn op_ws_close(
 
   let frame = reason
     .map(|reason| match code {
-      Some(code) => Frame::close(code, reason.as_bytes()),
-      _ => Frame::close_raw(reason.as_bytes().into()),
+      Some(code) => Frame::close(code, &reason.into_bytes()),
+      _ => Frame::close_raw(reason.into_bytes().into()),
     })
     .unwrap_or_else(|| match code {
       Some(code) => Frame::close(code, EMPTY_PAYLOAD),
