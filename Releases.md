@@ -6,6 +6,96 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.5 / 2026.01.15
+
+- feat(ext/canvas): support gif, webp for `createImageBitmap` (#31402)
+- feat(ext/web): add performance.clearResourceTimings() and
+  setResourceTimingBufferSize() (#31603)
+- feat(node/fs): implement FileHandle.readableWebStream() (#31745)
+- fix(audit): respect --level flag for exit code (#31721)
+- fix(ci): rename `trusted-signing-action` to `artifact-signing-action` (#31849)
+- fix(cli/test): close Node HTTP connections before sanitizer check (#31782)
+- fix(ext/fetch): read file urls via vfs (#31814)
+- fix(ext/fetch): support ipv6 destination host with http and socks proxy
+  (#31683)
+- fix(ext/node): `DatabaseSync` garbage collection invalidating associated
+  resources (#31737)
+- fix(ext/node): add tls.setDefaultCACertificates support (#31522)
+- fix(ext/node): emit deprecation warning for SlowBuffer (#31772)
+- fix(ext/node): fix use-after-free in StatementSync JS iterator (#31770)
+- fix(ext/node): use correct block sizes for HMAC algorithms (#31775)
+- fix(ext/web): handle empty TextDecoder input when stream is true (#31691)
+- fix(io): ignore `BrokenPipe` error in `op_print` (#31844)
+- fix(node/child_process): ChildProcess constructor without args (#31838)
+- fix(node/child_process): improve arg type validation for execFile and fork
+  (#31829)
+- fix(node/child_process): reject null bytes in arguments (#31828)
+- fix(node/child_process): use correct syscall name in spawn error (#31836)
+- fix(npm): deduplication pass for initially partially resolved graphs (#31787)
+- fix(runtime): handle `options` parameter in `Deno.errors.*` constructors
+  (#31510)
+- fix(task): preserve signal-based exit codes for child processes (#31789)
+- fix(tsgo): nil deref for exported symbols (#31786)
+- fix(webgpu): correctly expose `GPUCompilationInfo` & `GPUCompilationMessage`
+  (#31780)
+- fix: add more details when panicking getting dir path from deno.json (#31805)
+- fix: allow multiple --allow-all args (#31833)
+- fix: queue dynamic imports for modules with pending TLA (#31670)
+- fix: update config schema for read permission to include ignore property
+  (#31785)
+
+### 2.6.4 / 2026.01.05
+
+- fix(compile): make compile work with `--unstable-npm-lazy-caching` (#31704)
+- fix(ext/node): enable keepAlive connection reuse for HTTP Agent (#31709)
+- fix(ext/node): handle errors in sqlite session filter callback (#31756)
+- fix(ext/node): support TypedArray and DataView targets in Buffer.copy()
+  (#31734)
+- fix(ext/node): support for inspector.url() (#31705)
+- fix(ext/node): support numbered positional parameters in node:sqlite (#31722)
+- fix(ext/websocket): prevent sending multiple close frames (#31747)
+- fix(install): wait for package installations before applying patches (#31711)
+- fix(node/crypto): integrate async_hooks for domain error handling (#31751)
+- fix(serve): net permissions in config file (#31718)
+- fix(task): prioritize member `package.json` when `deno.json` only in root
+  (#31736)
+- fix(webgpu): update wgpu to 28.0.0 (#31163)
+- fix: deno cross compile for intel mac target (#31714)
+- fix: update urlpattern to 0.4.2 (#31193)
+
+### 2.6.3 / 2025.12.20
+
+- fix(check): improve node types handling
+- Revert "fix(ext/node): stub out Module.register and Module.registerHooks"
+  (#31684)
+
+### 2.6.2 / 2025.12.19
+
+- feat(unstable): add sandbox subcommand (#31568)
+- fix(audit): fix deserde for transitive npm audit actions (#31671)
+- fix(check): handle workspace members having different jsx import sources and
+  importing each other (#31654)
+- fix(check): regression with tsgo and node globals (#31621)
+- fix(cli): deno tunnel when token storage isn't working or without deno.json
+  (#31584)
+- fix(compile): ensure temp dir exists during x64 codesign (#31672)
+- fix(ext/node): `sqlite:backup` compatibility (#31610)
+- fix(ext/node): add error handling functions and tests for UV bindings (#31639)
+- fix(ext/node): avoid env permission for TERM in console and readline (#31638)
+- fix(ext/node): fix hot loop in `setImmediate` with a pending timer (#31643)
+- fix(ext/node): stub out Module.register and Module.registerHooks (#31666)
+- fix(ext/node): support named pipe listen, connect and open (#31624)
+- fix(ext/telemetry): otel baggage propagation (#31620)
+- fix(fetch): fix SOCKS5 proxy URL validation logic (#31604)
+- fix(flags): implement a better sandbox subcommand (#31657)
+- fix(inspector): worker debugging support via CDP (#31527)
+- fix(x): cache on demand when running, resolve packages with only one binary,
+  don't fail on node-gyp if not present (#31619)
+- fix(x): fix shim script when use custom alias name, re-enable alias tests
+  (#31653)
+- fix: panic on dropped inspector session (#31658)
+- fix: update glob implementation to match with latest node (#31627)
+
 ### 2.6.1 / 2025.12.15
 
 - feat(unstable): deploy config allow app to be optional (#31567)

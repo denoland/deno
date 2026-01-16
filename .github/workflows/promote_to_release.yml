@@ -58,7 +58,7 @@ jobs:
           enable-AzPSSession: true
 
       - name: Code sign deno.exe
-        uses: azure/trusted-signing-action@v0
+        uses: Azure/artifact-signing-action@v0
         with:
           cache-dependencies: false
           trace: true

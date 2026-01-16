@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -45,7 +45,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -188,6 +188,14 @@ const windowOrWorkerGlobalScope = {
   ),
   GPUCommandEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUCommandEncoder,
+    loadWebGPU,
+  ),
+  GPUCompilationInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationInfo,
+    loadWebGPU,
+  ),
+  GPUCompilationMessage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationMessage,
     loadWebGPU,
   ),
   GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(

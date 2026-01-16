@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -49,6 +49,7 @@ use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
@@ -56,6 +57,7 @@ use deno_resolver::file_fetcher::FetchLocalOptions;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
 
@@ -395,11 +397,25 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         if graph.npm_packages.is_empty() {
           None
         } else {
-          let snapshot = managed
-            .resolution()
-            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+          let snapshot = managed.resolution().snapshot();
+          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+            let reqs = graph
+              .specifiers()
+              .filter_map(|(s, _)| {
+                NpmPackageReqReference::from_specifier(s)
+                  .ok()
+                  .map(|req_ref| req_ref.into_inner().req)
+              })
+              .collect::<Vec<_>>();
+            snapshot.subset(&reqs)
+          } else {
+            snapshot
+          }
+          .as_valid_serialized_for_system(&self.npm_system_info);
           if !snapshot.as_serialized().packages.is_empty() {
-            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            self
+              .fill_npm_vfs(&mut vfs, Some(&snapshot))
+              .context("Building npm vfs.")?;
             Some(snapshot)
           } else {
             None
@@ -407,7 +423,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs)?;
+        self.fill_npm_vfs(&mut vfs, None)?;
         None
       }
     };
@@ -866,7 +882,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
-  fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
+  fn fill_npm_vfs(
+    &self,
+    builder: &mut VfsBuilder,
+    snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+  ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!(
@@ -883,10 +903,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
+          let snapshot = snapshot.unwrap();
           // we'll flatten to remove any custom registries later
-          let mut packages = npm_resolver
-            .resolution()
-            .all_system_packages(&self.npm_system_info);
+          let mut packages =
+            snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           let current_system = NpmSystemInfo::default();
           for package in packages {

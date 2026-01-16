@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertRejects, assertThrows, fail } from "@std/assert";
 import { Buffer } from "node:buffer";
 import { EncodingOption, existsSync, mkdtemp, mkdtempSync } from "node:fs";

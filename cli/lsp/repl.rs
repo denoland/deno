@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 
@@ -313,6 +313,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     log_file: false,
     lint: false,
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
+    force_push_based_diagnostics: false,
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: Default::default(),

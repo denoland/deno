@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
@@ -17,7 +17,9 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypeForEach,
   BigInt,
+  DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
   MathFloor,
@@ -151,10 +153,13 @@ export const constants = {
 };
 
 let bufferWarningAlreadyEmitted = false;
+let slowBufferWarningAlreadyEmitted = false;
 let nodeModulesCheckCounter = 0;
 const bufferWarning = "Buffer() is deprecated due to security and usability " +
   "issues. Please use the Buffer.alloc(), " +
   "Buffer.allocUnsafe(), or Buffer.from() methods instead.";
+const slowBufferWarning =
+  "SlowBuffer() is deprecated. Please use Buffer.allocUnsafeSlow()";
 
 function showFlaggedDeprecation() {
   if (
@@ -512,6 +517,10 @@ function checked(length) {
 }
 
 export function SlowBuffer(length) {
+  if (!slowBufferWarningAlreadyEmitted) {
+    slowBufferWarningAlreadyEmitted = true;
+    process.emitWarning(slowBufferWarning, "DeprecationWarning", "DEP0030");
+  }
   assertSize(length);
   return _alloc(+length);
 }
@@ -1849,7 +1858,7 @@ Buffer.prototype.copy = function copy(
   sourceStart,
   sourceEnd,
 ) {
-  if (!isUint8Array(this)) {
+  if (!isArrayBufferView(this)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "source",
       ["Buffer", "Uint8Array"],
@@ -1857,12 +1866,29 @@ Buffer.prototype.copy = function copy(
     );
   }
 
-  if (!isUint8Array(target)) {
+  if (!isArrayBufferView(target)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
       "target",
       ["Buffer", "Uint8Array"],
       target,
     );
+  }
+
+  // For non-Uint8Array targets, create a Uint8Array view for byte-wise copying
+  if (!isUint8Array(target)) {
+    if (isDataView(target)) {
+      target = new Uint8Array(
+        DataViewPrototypeGetBuffer(target),
+        DataViewPrototypeGetByteOffset(target),
+        DataViewPrototypeGetByteLength(target),
+      );
+    } else {
+      target = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(target),
+        TypedArrayPrototypeGetByteOffset(target),
+        TypedArrayPrototypeGetByteLength(target),
+      );
+    }
   }
 
   if (targetStart === undefined) {

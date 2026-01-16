@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -619,12 +619,13 @@ impl MainWorker {
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
+      let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
+      js_runtime.op_state().borrow_mut().put(inspector_url);
     }
 
     let (
@@ -1045,7 +1046,7 @@ fn common_extensions<
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
+    deno_image::deno_image::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -225,6 +225,12 @@ pub struct JsxImportSourceConfig {
   pub module: String,
   pub import_source: Option<JsxImportSourceSpecifierConfig>,
   pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
+}
+
+impl JsxImportSourceConfig {
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
+  }
 }
 
 #[allow(clippy::disallowed_types)]
@@ -1544,7 +1550,7 @@ pub type CompilerOptionsResolverRc =
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
     FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,

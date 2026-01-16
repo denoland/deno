@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod flags;
 mod flags_net;
@@ -799,7 +799,7 @@ impl CliOptions {
   pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
     if let Some(location) = &self.flags.location {
       StorageKeyResolver::from_flag(location)
-    } else if let Some(deno_json) = self.start_dir.maybe_deno_json() {
+    } else if let Some(deno_json) = self.start_dir.member_or_root_deno_json() {
       StorageKeyResolver::from_config_file_url(&deno_json.specifier)
     } else {
       StorageKeyResolver::new_use_main_module()
@@ -1064,6 +1064,12 @@ impl CliOptions {
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
+      augment_permissions_with_serve_flags(
+        &mut permissions_options,
+        serve_flags,
+      )?;
+    }
     Ok(permissions_options)
   }
 
@@ -1752,6 +1758,28 @@ fn flags_to_permissions_options(
     ),
     prompt: !resolve_no_prompt(flags),
   })
+}
+
+fn augment_permissions_with_serve_flags(
+  permissions_options: &mut PermissionsOptions,
+  serve_flags: &ServeFlags,
+) -> Result<(), AnyError> {
+  let allowed = flags_net::parse(vec![if serve_flags.host == "0.0.0.0" {
+    format!(":{}", serve_flags.port)
+  } else {
+    format!("{}:{}", serve_flags.host, serve_flags.port)
+  }])?;
+  match &mut permissions_options.allow_net {
+    None => {
+      permissions_options.allow_net = Some(allowed);
+    }
+    Some(v) => {
+      if !v.is_empty() {
+        v.extend(allowed);
+      }
+    }
+  }
+  Ok(())
 }
 
 #[cfg(test)]

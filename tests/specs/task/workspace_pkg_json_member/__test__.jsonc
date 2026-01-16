@@ -1,0 +1,5 @@
+{
+  "args": "task --quiet build",
+  "cwd": "package",
+  "output": "member\n"
+}

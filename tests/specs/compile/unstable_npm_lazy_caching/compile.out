@@ -1,0 +1,10 @@
+[WILDCARD]
+
+Embedded Files
+
+[# Note that this doesn't have @denotest/subtract]
+[WILDLINE]
+├── .deno_compile_node_modules/localhost/@denotest/add/* ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+[WILDCARD]

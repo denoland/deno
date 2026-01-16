@@ -1,8 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use serde_json::json;
 use test_util as util;
-use test_util::itest;
 use test_util::test;
 use util::PathRef;
 use util::TestContext;
@@ -221,92 +220,6 @@ fn fmt_auto_ignore_git_and_node_modules() {
   output.assert_exit_code(1);
   assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
-
-itest!(fmt_quiet_check_fmt_dir {
-  args: "fmt --check --quiet fmt/regular/",
-  output_str: Some(""),
-  exit_code: 0,
-});
-
-itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
-  output: "fmt/expected_fmt_check_formatted_files.out",
-  exit_code: 0,
-});
-
-itest!(fmt_check_ignore {
-  args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
-  output: "fmt/expected_fmt_check_ignore.out",
-  exit_code: 0,
-});
-
-itest!(fmt_stdin {
-  args: "fmt -",
-  input: Some("const a = 1\n"),
-  output_str: Some("const a = 1;\n"),
-});
-
-itest!(fmt_stdin_markdown {
-  args: "fmt --ext=md -",
-  input: Some(
-    "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"
-  ),
-  output_str: Some(
-    "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
-  ),
-});
-
-itest!(fmt_stdin_json {
-  args: "fmt --ext=json -",
-  input: Some("{    \"key\":   \"value\"}"),
-  output_str: Some("{ \"key\": \"value\" }\n"),
-});
-
-itest!(fmt_stdin_ipynb {
-  args: "fmt --ext=ipynb -",
-  input: Some(include_str!("../testdata/fmt/badly_formatted.ipynb")),
-  output_str: Some(include_str!("../testdata/fmt/badly_formatted_fixed.ipynb")),
-});
-
-itest!(fmt_stdin_check_formatted {
-  args: "fmt --check -",
-  input: Some("const a = 1;\n"),
-  output_str: Some(""),
-});
-
-itest!(fmt_stdin_check_not_formatted {
-  args: "fmt --check -",
-  input: Some("const a = 1\n"),
-  output_str: Some("Not formatted stdin\n"),
-});
-
-itest!(fmt_with_config {
-  args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
-  output: "fmt/fmt_with_config.out",
-});
-
-itest!(fmt_with_config_default {
-  args: "fmt fmt/with_config/subdir",
-  output: "fmt/fmt_with_config.out",
-});
-
-// Check if CLI flags take precedence
-itest!(fmt_with_config_and_flags {
-  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
-  output: "fmt/fmt_with_config_and_flags.out",
-});
-
-itest!(fmt_with_malformed_config {
-  args: "fmt --config fmt/deno.malformed.jsonc",
-  output: "fmt/fmt_with_malformed_config.out",
-  exit_code: 1,
-});
-
-itest!(fmt_with_malformed_config2 {
-  args: "fmt --config fmt/deno.malformed2.jsonc",
-  output: "fmt/fmt_with_malformed_config2.out",
-  exit_code: 1,
-});
 
 #[test]
 fn fmt_with_glob_config() {

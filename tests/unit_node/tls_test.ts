@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -440,4 +440,42 @@ Deno.test("mTLS client certificate authentication", async () => {
   const result = await promise;
   assertEquals(result, "mTLS success!");
   server.close();
+});
+
+Deno.test("tls.setDefaultCACertificates exists", () => {
+  // deno-lint-ignore no-explicit-any
+  assertEquals(typeof (tls as any).setDefaultCACertificates, "function");
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - must be array", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates("not an array");
+    },
+    TypeError,
+    "must be an array",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates([123, 456]);
+    },
+    TypeError,
+    "must be a string",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => {
+  const testCert = `-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJAKHHCgVZU1FFMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RDQTCB
+-----END CERTIFICATE-----`;
+
+  // deno-lint-ignore no-explicit-any
+  (tls as any).setDefaultCACertificates([testCert]);
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -1437,6 +1437,16 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_KV_DB_MODE",
     description: "Controls whether Deno.openKv() API should use disk based or in-memory\ndatabase.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_DEFAULT_PATH",
+    description: "Set the default path for Deno.openKv() when no path is provided.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_PATH_PREFIX",
+    description: "Set a prefix to be added to all Deno.openKv() paths.",
     example: None,
   },
   EnvVar {
@@ -4259,10 +4269,11 @@ fn upgrade_subcommand() -> Command {
 
 {}
 
-The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
+The version is resolved via <p(245)>https://dl.deno.land</> and then downloaded
+from either there or GitHub releases, replacing the current executable.
 
-If you want to not replace the current Deno executable but instead download an update to a
-different location, use the <c>--output</> flag:
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/upgrade</>", UPGRADE_USAGE),
@@ -4830,8 +4841,11 @@ fn allow_all_arg() -> Arg {
     .conflicts_with("allow-ffi")
     .conflicts_with("allow-import")
     .conflicts_with("permission-set")
-    .action(ArgAction::SetTrue)
     .help("Allow all permissions")
+    // So situations like `--allow-all -A` don't crash - this is for historic reason,
+    // because VSCode automatically added `--allow-all` in some scenarios, causing crashes
+    // when users used `-A` themselves.
+    .action(ArgAction::Count)
 }
 
 fn runtime_args(
@@ -6509,25 +6523,6 @@ fn serve_parse(
   let open_site = matches.remove_one::<bool>("open").unwrap_or(false);
 
   runtime_args_parse(flags, matches, true, true, true)?;
-  // If the user didn't pass --allow-net, add this port to the network
-  // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
-  // as if it was passed to --allow-net directly.
-  let allowed = flags_net::parse(vec![if host == "0.0.0.0" {
-    format!(":{port}")
-  } else {
-    format!("{host}:{port}")
-  }])?;
-  match &mut flags.permissions.allow_net {
-    None if !flags.permissions.allow_all => {
-      flags.permissions.allow_net = Some(allowed)
-    }
-    None => {}
-    Some(v) => {
-      if !v.is_empty() {
-        v.extend(allowed);
-      }
-    }
-  }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
   flags.tunnel = matches.get_flag("tunnel");
@@ -7082,7 +7077,7 @@ fn permission_args_parse(
     }
   }
 
-  if matches.get_flag("allow-all") {
+  if matches.get_count("allow-all") > 0 {
     flags.allow_all();
   }
 
@@ -7984,11 +7979,7 @@ mod tests {
           "0.0.0.0"
         )),
         permissions: PermissionFlags {
-          allow_net: Some(vec![
-            "0.0.0.0:8000".to_string(),
-            "127.0.0.1:8000".to_string(),
-            "localhost:8000".to_string()
-          ]),
+          allow_net: None,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -8005,11 +7996,7 @@ mod tests {
           "0.0.0.0"
         )),
         permissions: PermissionFlags {
-          allow_net: Some(vec![
-            "0.0.0.0:5000".to_string(),
-            "127.0.0.1:5000".to_string(),
-            "localhost:5000".to_string()
-          ]),
+          allow_net: None,
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -8033,12 +8020,7 @@ mod tests {
           "0.0.0.0"
         )),
         permissions: PermissionFlags {
-          allow_net: Some(vec![
-            "example.com".to_string(),
-            "0.0.0.0:5000".to_string(),
-            "127.0.0.1:5000".to_string(),
-            "localhost:5000".to_string()
-          ]),
+          allow_net: Some(vec!["example.com".to_string(),]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -8063,57 +8045,6 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_net: Some(vec![]),
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-    let r = flags_from_vec(svec![
-      "deno",
-      "serve",
-      "--port",
-      "5000",
-      "--host",
-      "example.com",
-      "main.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
-          "main.ts".to_string(),
-          5000,
-          "example.com"
-        )),
-        permissions: PermissionFlags {
-          allow_net: Some(vec!["example.com:5000".to_owned()]),
-          ..Default::default()
-        },
-        code_cache_enabled: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec![
-      "deno",
-      "serve",
-      "--port",
-      "0",
-      "--host",
-      "example.com",
-      "main.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
-          "main.ts".to_string(),
-          0,
-          "example.com"
-        )),
-        permissions: PermissionFlags {
-          allow_net: Some(vec!["example.com:0".to_owned()]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -14208,6 +14139,35 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
         v8_flags: svec!["--help"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn multiple_allow_all() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-all",
+      "--inspect",
+      "-A",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          ..Default::default()
+        }),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
         ..Flags::default()
       }
     );

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -531,7 +531,7 @@ impl WebWorker {
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
-      deno_canvas::deno_canvas::init(),
+      deno_image::deno_image::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store_provider: services.root_cert_store_provider.clone(),
