@@ -869,24 +869,20 @@ impl<
       .resolve_package_folder_from_package(package_name, referrer);
     match result {
       Ok(dir) => Ok(dir),
-      Err(err) => match err.as_kind() {
-        errors::PackageFolderResolveErrorKind::PackageNotFound(_)
-        | errors::PackageFolderResolveErrorKind::ReferrerNotFound(_)
-          if resolution_kind.is_types() =>
-        {
-          if let Some(dir) = self
+      Err(err) => {
+        // attempt to resolve the @types/ package
+        if resolution_kind.is_types()
+          && let Some(dir) = self
             .resolve_types_package_folder_with_name_and_version(
               package_name,
               None,
               Some(referrer),
             )
-          {
-            return Ok(dir);
-          }
-          Err(err)
+        {
+          return Ok(dir);
         }
-        _ => Err(err),
-      },
+        Err(err)
+      }
     }
   }
 

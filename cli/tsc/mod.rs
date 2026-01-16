@@ -942,10 +942,7 @@ pub fn resolve_specifier_for_tsc(
   if specifier.starts_with("node:")
     && let Ok(specifier) = ModuleSpecifier::parse(&specifier)
   {
-    return Ok((
-      specifier.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ));
+    return Ok((specifier.into(), Some(MediaType::Dts.as_ts_extension())));
   }
 
   if specifier.starts_with("asset:///") {
