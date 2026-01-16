@@ -16,7 +16,6 @@ use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_semver::Version;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -192,14 +191,6 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
       path.display()
     );
     Ok(path)
-  }
-
-  pub fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoModuleError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
-    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
   }
 
   pub fn resolve_pkg_id_from_deno_module_req(

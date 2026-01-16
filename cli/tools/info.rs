@@ -28,7 +28,6 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
@@ -322,10 +321,12 @@ fn add_npm_packages_to_json(
         let maybe_package = module
           .get("specifier")
           .and_then(|k| k.as_str())
-          .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
-          .and_then(|package_ref| {
+          .and_then(|specifier| {
+            NpmPackageReqReference::from_str(specifier).ok()
+          })
+          .and_then(|package_req_ref| {
             npm_snapshot
-              .resolve_package_from_deno_module(package_ref.nv())
+              .resolve_pkg_from_pkg_req(package_req_ref.req())
               .ok()
           });
         if let Some(pkg) = maybe_package
