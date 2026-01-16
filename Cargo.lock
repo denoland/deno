@@ -1885,7 +1885,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.379.0"
-source = "git+https://github.com/denoland/deno_core?branch=fix-web-timeout-race#bcf36f250a239d95d2a3bb3a253924029b711965"
+source = "git+https://github.com/denoland/deno_core?rev=058a264#058a264c3203ddf66bae9f11bcc56a187aac958b"
 dependencies = [
  "anyhow",
  "az",
@@ -2625,7 +2625,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.255.0"
-source = "git+https://github.com/denoland/deno_core?branch=fix-web-timeout-race#bcf36f250a239d95d2a3bb3a253924029b711965"
+source = "git+https://github.com/denoland/deno_core?rev=058a264#058a264c3203ddf66bae9f11bcc56a187aac958b"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8268,7 +8268,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.288.0"
-source = "git+https://github.com/denoland/deno_core?branch=fix-web-timeout-race#bcf36f250a239d95d2a3bb3a253924029b711965"
+source = "git+https://github.com/denoland/deno_core?rev=058a264#058a264c3203ddf66bae9f11bcc56a187aac958b"
 dependencies = [
  "deno_error",
  "num-bigint",
