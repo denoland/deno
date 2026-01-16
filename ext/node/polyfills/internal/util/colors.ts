@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import { op_get_env_no_permission_check } from "ext:core/ops";
 import * as io from "ext:deno_io/12_io.js";
 
 let blue = "";
@@ -16,10 +15,6 @@ let hasColors = false;
 
 function shouldColorize() {
   if (!io.stderr.isTerminal()) {
-    return false;
-  }
-
-  if (op_get_env_no_permission_check("NODE_DISABLE_COLORS") == "1") {
     return false;
   }
 
