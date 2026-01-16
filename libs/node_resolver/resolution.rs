@@ -860,12 +860,34 @@ impl<
   /// Resolves an npm package folder path from the specified referrer.
   pub fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    package_name: &str,
     referrer: &UrlOrPathRef,
+    resolution_kind: NodeResolutionKind,
   ) -> Result<PathBuf, errors::PackageFolderResolveError> {
-    self
+    let result = self
       .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(specifier, referrer)
+      .resolve_package_folder_from_package(package_name, referrer);
+    match result {
+      Ok(dir) => Ok(dir),
+      Err(err) => match err.as_kind() {
+        errors::PackageFolderResolveErrorKind::PackageNotFound(_)
+        | errors::PackageFolderResolveErrorKind::ReferrerNotFound(_)
+          if resolution_kind.is_types() =>
+        {
+          if let Some(dir) = self
+            .resolve_types_package_folder_with_name_and_version(
+              package_name,
+              None,
+              Some(referrer),
+            )
+          {
+            return Ok(dir);
+          }
+          Err(err)
+        }
+        _ => Err(err),
+      },
+    }
   }
 
   fn maybe_resolve_types(
@@ -1637,37 +1659,21 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let resolve = |package_dir: &Path| {
-      self.resolve_package_dir_subpath(
-        package_dir,
+    let package_dir = self.resolve_package_folder_from_package(
+      package_name,
+      referrer,
+      resolution_kind,
+    )?;
+    self
+      .resolve_package_dir_subpath(
+        &package_dir,
         package_subpath,
         Some(referrer),
         resolution_mode,
         conditions,
         resolution_kind,
       )
-    };
-    let result: Result<_, PackageResolveError> = self
-      .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(package_name, referrer)
-      .map_err(|err| err.into())
-      .and_then(|package_dir| resolve(&package_dir).map_err(|e| e.into()));
-
-    if resolution_kind.is_types() && result.is_err() {
-      // try to resolve with the @types package based on the package name
-      let maybe_types_package_dir = self
-        .resolve_types_package_folder_with_name_and_version(
-          package_name,
-          None,
-          Some(referrer),
-        );
-      if let Some(types_package_dir) = maybe_types_package_dir
-        && let Ok(result) = resolve(&types_package_dir)
-      {
-        return Ok(result);
-      }
-    }
-    result
+      .map_err(|e| e.into())
   }
 
   #[allow(clippy::too_many_arguments)]

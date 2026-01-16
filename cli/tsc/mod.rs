@@ -637,6 +637,9 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -936,15 +939,24 @@ pub fn resolve_specifier_for_tsc(
   referrer_module: Option<&Module>,
   remapped_specifiers: &mut HashMap<String, ModuleSpecifier>,
 ) -> Result<(String, Option<&'static str>), ResolveError> {
-  if specifier.starts_with("node:") {
+  if specifier.starts_with("node:")
+    && let Ok(specifier) = ModuleSpecifier::parse(&specifier)
+  {
     return Ok((
-      MISSING_DEPENDENCY_SPECIFIER.to_string(),
+      specifier.to_string(),
       Some(MediaType::Dts.as_ts_extension()),
     ));
   }
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+  if referrer.scheme() == "asset"
+    && deno_path_util::is_relative_specifier(&specifier)
+  {
+    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
+    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
@@ -970,12 +982,19 @@ pub fn resolve_specifier_for_tsc(
       )?
     }
     _ => {
-      match resolve_non_graph_specifier_types(
+      let result = resolve_non_graph_specifier_types(
         &specifier,
         referrer,
         resolution_mode,
         maybe_npm,
-      ) {
+      );
+      if result.is_err() && specifier == "node" {
+        return Ok((
+          "asset:///reference_types_node.d.ts".to_string(),
+          Some(MediaType::Dts.as_ts_extension()),
+        ));
+      }
+      match result {
         Ok(maybe_result) => maybe_result,
         Err(
           err
@@ -1263,11 +1282,15 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "CloseEvent",
   "CompressionStream",
   "CountQueuingStrategy",
+  "Crypto",
+  "CryptoKey",
   "CustomEvent",
   "DecompressionStream",
   "Disposable",
   "DOMException",
+  "ErrorEvent",
   "Event",
+  "EventListenerObject",
   "EventSource",
   "EventTarget",
   "fetch",
@@ -1280,8 +1303,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "MessageChannel",
   "MessageEvent",
   "MessagePort",
+  "navigator",
   "Navigator",
   "performance",
+  "Performance",
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
@@ -1297,6 +1322,7 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "Request",
   "Response",
   "Storage",
+  "SubtleCrypto",
   "TextDecoder",
   "TextDecoderStream",
   "TextEncoder",
