@@ -637,6 +637,9 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -697,17 +700,17 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(_)) => {
-      if let Some(npm) = maybe_npm
-        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
-      {
-        let package_folder = npm
-          .npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+    Some(Module::Npm(module)) => {
+      if let Some(npm) = maybe_npm {
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            module.pkg_req_ref.req(),
+            referrer,
+          )?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            req_ref.sub_path(),
+            module.pkg_req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -945,6 +948,17 @@ pub fn resolve_specifier_for_tsc(
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+  if referrer.scheme() == "asset" {
+    debug_assert!(
+      specifier.starts_with("./") || specifier.starts_with("../"),
+      "Specifier: {} | Referrer: {}",
+      specifier,
+      referrer
+    );
+    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
+    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
