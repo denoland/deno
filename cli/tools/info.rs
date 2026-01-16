@@ -30,7 +30,7 @@ use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
 use crate::args::Flags;
@@ -399,7 +399,7 @@ fn add_npm_packages_to_json(
 #[derive(Default)]
 struct NpmInfo {
   package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_ids: HashMap<PackageNv, NpmPackageId>,
+  resolved_ids: HashMap<PackageReq, NpmPackageId>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
@@ -410,17 +410,15 @@ impl NpmInfo {
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
-    if graph.npm_packages.is_empty() {
-      return info; // skip going over the modules if there's no npm packages
-    }
 
     for module in graph.modules() {
       if let Module::Npm(module) = module {
-        // TODO(dsherret): ok to use for now, but we should use the req in the future
-        #[allow(deprecated)]
-        let nv = module.nv_reference.nv();
-        if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
-          info.resolved_ids.insert(nv.clone(), package.id.clone());
+        if let Ok(package) =
+          npm_snapshot.resolve_pkg_from_pkg_req(module.pkg_req_ref.req())
+        {
+          info
+            .resolved_ids
+            .insert(module.pkg_req_ref.req().clone(), package.id.clone());
           if !info.packages.contains_key(&package.id) {
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
@@ -454,9 +452,9 @@ impl NpmInfo {
 
   pub fn resolve_package(
     &self,
-    nv: &PackageNv,
+    req: &PackageReq,
   ) -> Option<&NpmResolutionPackage> {
-    let id = self.resolved_ids.get(nv)?;
+    let id = self.resolved_ids.get(req)?;
     self.packages.get(id)
   }
 }
@@ -602,10 +600,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     let package_or_specifier = match module.npm() {
       Some(npm) => {
-        // TODO(dsherret): ok to use for now, but we should use the req in the future
-        #[allow(deprecated)]
-        let nv = npm.nv_reference.nv();
-        match self.npm_info.resolve_package(nv) {
+        match self.npm_info.resolve_package(npm.pkg_req_ref.req()) {
           Some(package) => Package(Box::new(package.clone())),
           None => Specifier(module.specifier().clone()), // should never happen
         }

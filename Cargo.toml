@@ -542,3 +542,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+deno_doc = { path = "../deno_doc" }
+eszip = { path = "../eszip" }
+import_map = { path = "../import_map/rs-lib" }

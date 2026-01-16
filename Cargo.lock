@@ -1989,8 +1989,6 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.188.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "132e04b64a78cfa36b4e78ac06e12fdf662661ced50eb483fae513d868305d5b"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2142,8 +2140,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.105.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd6d3843cfbbd8803b6ef81025af98519651880e6ffd50ee01bb7251afbd6f5"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2157,7 +2153,6 @@ dependencies = [
  "deno_semver",
  "deno_unsync",
  "futures",
- "import_map",
  "indexmap 2.9.0",
  "log",
  "monch",
@@ -3916,8 +3911,6 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.106.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4f0d4fe2e739b7c47344077694e4dcf6f6141d5d125da6328e7b7a1b1ad7eb3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5359,8 +5352,6 @@ dependencies = [
 [[package]]
 name = "import_map"
 version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83a4958a41489355816028239fee373797435384d162f4908e7980c83c3bb1b"
 dependencies = [
  "boxed_error",
  "deno_error",
