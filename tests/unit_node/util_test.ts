@@ -235,7 +235,7 @@ Deno.test("[util] styleText() with array of formats", () => {
 
 Deno.test("[util] parseEnv()", () => {
   // Node ignores env vars with non-ASCII keys
-  const env = "KEY1=VALUE1\nKEY2='VALUE2'\KEYÄ3=\"VALUE3\"";
+  const env = "KEY1=VALUE1\nKEY2='VALUE2'\nEYÄ3=\"VALUE3\"";
   const parsed = util.parseEnv(env);
   assertEquals(parsed, {
     KEY1: "VALUE1",
