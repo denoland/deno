@@ -10,13 +10,17 @@ import {
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
+import { isNativeError } from "ext:deno_node/internal/util/types.ts";
+
 const {
   ArrayPrototypePush,
+  ErrorPrototype,
   ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectGetPrototypeOf,
   ObjectGetOwnPropertyDescriptors,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
@@ -58,6 +62,17 @@ export const customPromisifyArgs = kCustomPromisifyArgsSymbol;
 /** @param {string} str */
 export function removeColors(str) {
   return StringPrototypeReplace(str, colorRegExp, "");
+}
+
+/**
+ * @param {unknown} e
+ * @returns {boolean}
+ */
+export function isError(e) {
+  // An error could be an instance of Error while not being a native error
+  // or could be from a different realm and not be instance of Error but still
+  // be a native error.
+  return isNativeError(e) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
 }
 
 export function promisify(
@@ -184,6 +199,7 @@ export default {
   customInspectSymbol,
   customPromisifyArgs,
   deprecateInstantiation,
+  isError,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,

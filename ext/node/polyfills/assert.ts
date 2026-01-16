@@ -26,6 +26,7 @@ import {
   validateFunction,
   validateOneOf,
 } from "ext:deno_node/internal/validators.mjs";
+import { isError } from "ext:deno_node/internal/util.mjs";
 
 const {
   ArrayPrototypeForEach,
@@ -33,7 +34,6 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
-  ErrorPrototype,
   NumberIsNaN,
   ObjectAssign,
   ObjectDefineProperty,
@@ -296,7 +296,7 @@ function expectedException(
       generatedMessage = true;
       message = "The error is expected to be an instance of " +
         `"${expected.name}". Received `;
-      if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, actual)) {
+      if (isError(actual)) {
         const name = (actual.constructor?.name) ||
           actual.name;
         if (expected.name === name) {
@@ -322,7 +322,7 @@ function expectedException(
         message = `The ${name}validation function is expected to return` +
           ` "true". Received ${inspect(res)}`;
 
-        if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, actual)) {
+        if (isError(actual)) {
           message += `\n\nCaught error:\n\n${actual}`;
         }
       }

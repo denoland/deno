@@ -5,6 +5,8 @@
 
 import { primordials } from "ext:core/mod.js";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { isError } from "ext:deno_node/internal/util.mjs";
+import { isErrorStackTraceLimitWritable } from "ext:deno_node/internal/errors.ts";
 import * as colors from "ext:deno_node/internal/util/colors.ts";
 import {
   myersDiff,
@@ -26,23 +28,17 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePop,
   ArrayPrototypeSlice,
-  ErrorPrototype,
   Error,
   ErrorCaptureStackTrace,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
   ObjectPrototypeHasOwnProperty,
-  ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeRepeat,
   StringPrototypeSlice,
   StringPrototypeSplit,
 } = primordials;
-
-function isErrorStackTraceLimitWritable() {
-  return false;
-}
 
 const kReadableOperator = {
   deepStrictEqual: "Expected values to be strictly deep-equal:",
@@ -81,7 +77,7 @@ function copyError(source) {
   if (ObjectPrototypeHasOwnProperty(source, "cause")) {
     let { cause } = source;
 
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, cause)) {
+    if (isError(cause)) {
       cause = copyError(cause);
     }
 

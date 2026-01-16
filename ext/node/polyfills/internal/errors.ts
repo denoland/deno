@@ -34,7 +34,10 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeErrorPrototype,
@@ -146,6 +149,17 @@ export function isStackOverflowError(err: Error): boolean {
 
   return err && err.name === maxStackErrorName &&
     err.message === maxStackErrorMessage;
+}
+
+export function isErrorStackTraceLimitWritable(): boolean {
+  const desc = ObjectGetOwnPropertyDescriptor(Error, "stackTraceLimit");
+  if (desc === undefined) {
+    return ObjectIsExtensible(Error);
+  }
+
+  return ObjectPrototypeHasOwnProperty(desc, "writable")
+    ? desc.writable
+    : desc.set !== undefined;
 }
 
 function addNumericalSeparator(val: string) {
@@ -3204,6 +3218,7 @@ export default {
   exceptionWithHostPort,
   genericNodeError,
   hideStackFrames,
+  isErrorStackTraceLimitWritable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,
