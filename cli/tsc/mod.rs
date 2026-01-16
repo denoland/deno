@@ -637,9 +637,6 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -948,17 +945,6 @@ pub fn resolve_specifier_for_tsc(
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
-    return Ok((specifier, Some(ext)));
-  }
-  if referrer.scheme() == "asset" {
-    debug_assert!(
-      specifier.starts_with("./") || specifier.starts_with("../"),
-      "Specifier: {} | Referrer: {}",
-      specifier,
-      referrer
-    );
-    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
-    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
