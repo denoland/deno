@@ -194,7 +194,7 @@ hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
 ignore = "0.4"
-import_map = { version = "0.24.0", features = ["ext"] }
+import_map = { version = "0.25.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 inventory = "0.3.21"
 ipnet = "2.3"
@@ -547,4 +547,3 @@ opt-level = 3
 deno_graph = { path = "../deno_graph" }
 deno_doc = { path = "../deno_doc" }
 eszip = { path = "../eszip" }
-import_map = { path = "../import_map/rs-lib" }
