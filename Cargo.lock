@@ -559,7 +559,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -579,7 +579,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1884,7 +1884,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.377.0"
+version = "0.379.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84f37172a724d87860681cb878d12c87c47f7c71d13440aee1594e248210c501"
 dependencies = [
  "anyhow",
  "az",
@@ -2623,7 +2625,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.253.0"
+version = "0.255.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "487844eebe012e9ca202c298e6e5c73780faa38b5fa52991350ac678acff6beb"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -7215,8 +7219,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.4.1",
- "itertools 0.12.1",
+ "heck 0.5.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -7236,7 +7240,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8265,7 +8269,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.286.0"
+version = "0.288.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a3dab59cf42fa199cb1b393b8717f805399b33c91b228add08ad18673275dc3"
 dependencies = [
  "deno_error",
  "num-bigint",
