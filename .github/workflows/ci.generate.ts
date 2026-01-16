@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 89;
+const cacheVersion = 90;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -850,7 +850,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "azure/trusted-signing-action@v0",
+          uses: "Azure/artifact-signing-action@v0",
           with: {
             "endpoint": "https://eus.codesigning.azure.net/",
             "trusted-signing-account-name": "deno-cli-code-signing",

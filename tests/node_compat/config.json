@@ -153,6 +153,7 @@
     "parallel/test-child-process-can-write-to-stdout.js": {
       "flaky": true
     },
+    "parallel/test-child-process-constructor.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
     "parallel/test-child-process-disconnect.js": {},
@@ -175,11 +176,14 @@
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
+    "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
+    "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
+    "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
@@ -1022,7 +1026,9 @@
       "reason": "https://github.com/denoland/deno/issues/31634"
     },
     "parallel/test-sqlite-named-parameters.js": {},
-    "parallel/test-sqlite-session.js": {},
+    "parallel/test-sqlite-session.js": {
+      "flaky": true
+    },
     "parallel/test-sqlite-statement-sync-columns.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
