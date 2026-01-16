@@ -1495,42 +1495,105 @@
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
-    "sequential/test-cluster-inspect-brk.js": {},
-    "sequential/test-cpu-prof-default.js": {},
-    "sequential/test-cpu-prof-dir-absolute.js": {},
+    "sequential/test-cluster-inspect-brk.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-default.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-dir-absolute.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-cpu-prof-dir-and-name.js": {},
-    "sequential/test-cpu-prof-dir-relative.js": {},
-    "sequential/test-cpu-prof-dir-worker.js": {},
-    "sequential/test-cpu-prof-drained.js": {},
-    "sequential/test-cpu-prof-exit.js": {},
-    "sequential/test-cpu-prof-invalid-options.js": {},
-    "sequential/test-cpu-prof-kill.js": {},
+    "sequential/test-cpu-prof-dir-relative.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-dir-worker.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-drained.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-exit.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-invalid-options.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-cpu-prof-kill.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-cpu-prof-name.js": {},
-    "sequential/test-cpu-prof-worker-argv.js": {},
+    "sequential/test-cpu-prof-worker-argv.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-debug-prompt.js": {},
-    "sequential/test-debugger-custom-port.js": {},
-    "sequential/test-debugger-debug-brk.js": {},
-    "sequential/test-debugger-invalid-args.js": {},
-    "sequential/test-debugger-launch.mjs": {},
-    "sequential/test-debugger-pid.js": {},
-    "sequential/test-diagnostic-dir-cpu-prof.js": {},
-    "sequential/test-diagnostic-dir-heap-prof.js": {},
+    "sequential/test-debugger-custom-port.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-debugger-debug-brk.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-debugger-invalid-args.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-debugger-launch.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-diagnostic-dir-cpu-prof.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-diagnostic-dir-heap-prof.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
-    "sequential/test-inspector-open-dispose.mjs": {},
-    "sequential/test-inspector-port-cluster.js": {},
+    "sequential/test-inspector-open-dispose.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "sequential/test-inspector-port-cluster.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
-    "sequential/test-runner-run-inspect.mjs": {},
+    "sequential/test-runner-run-inspect.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-stream2-fs.js": {},
     "sequential/test-tls-lookup.js": {},
     "sequential/test-tls-psk-client.js": {},
     "sequential/test-vm-timeout-rethrow.js": {},
-    "sequential/test-watch-mode-inspect.mjs": {},
+    "sequential/test-watch-mode-inspect.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
