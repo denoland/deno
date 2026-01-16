@@ -862,28 +862,10 @@ impl<
     &self,
     package_name: &str,
     referrer: &UrlOrPathRef,
-    resolution_kind: NodeResolutionKind,
   ) -> Result<PathBuf, errors::PackageFolderResolveError> {
-    let result = self
+    self
       .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(package_name, referrer);
-    match result {
-      Ok(dir) => Ok(dir),
-      Err(err) => {
-        // attempt to resolve the @types/ package
-        if resolution_kind.is_types()
-          && let Some(dir) = self
-            .resolve_types_package_folder_with_name_and_version(
-              package_name,
-              None,
-              Some(referrer),
-            )
-        {
-          return Ok(dir);
-        }
-        Err(err)
-      }
-    }
+      .resolve_package_folder_from_package(package_name, referrer)
   }
 
   fn maybe_resolve_types(
@@ -1655,21 +1637,36 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<(MaybeTypesResolvedUrl, ResolvedMethod), PackageResolveError> {
-    let package_dir = self.resolve_package_folder_from_package(
-      package_name,
-      referrer,
-      resolution_kind,
-    )?;
-    self
-      .resolve_package_dir_subpath(
-        &package_dir,
+    let resolve = |package_dir: &Path| {
+      self.resolve_package_dir_subpath(
+        package_dir,
         package_subpath,
         Some(referrer),
         resolution_mode,
         conditions,
         resolution_kind,
       )
-      .map_err(|e| e.into())
+    };
+    let result: Result<_, PackageResolveError> = self
+      .npm_pkg_folder_resolver
+      .resolve_package_folder_from_package(package_name, referrer)
+      .map_err(|err| err.into())
+      .and_then(|package_dir| resolve(&package_dir).map_err(|e| e.into()));
+    if resolution_kind.is_types() && result.is_err() {
+      // try to resolve with the @types package based on the package name
+      let maybe_types_package_dir = self
+        .resolve_types_package_folder_with_name_and_version(
+          package_name,
+          None,
+          Some(referrer),
+        );
+      if let Some(types_package_dir) = maybe_types_package_dir
+        && let Ok(result) = resolve(&types_package_dir)
+      {
+        return Ok(result);
+      }
+    }
+    result
   }
 
   #[allow(clippy::too_many_arguments)]

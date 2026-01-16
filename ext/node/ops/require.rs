@@ -269,7 +269,6 @@ pub fn op_require_resolve_deno_dir<
       .resolve_package_folder_from_package(
         request,
         &UrlOrPathRef::from_path(path),
-        NodeResolutionKind::Execution,
       )
       .ok()
       .map(|p| p.to_string_lossy().into_owned()),
