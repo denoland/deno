@@ -1261,6 +1261,7 @@
     "parallel/test-timers-immediate-unref-simple.js": {},
     "parallel/test-timers-immediate-unref.js": {},
     "parallel/test-timers-immediate.js": {},
+    "parallel/test-timers-immediate-queue.js": {},
     "parallel/test-timers-interval-throw.js": {},
     "parallel/test-timers-non-integer-delay.js": {},
     "parallel/test-timers-not-emit-duration-zero.js": {},
