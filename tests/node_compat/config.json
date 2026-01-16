@@ -195,6 +195,7 @@
     "parallel/test-child-process-stdio-overlapped.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
+    "parallel/test-child-process-validate-stdio.js": {},
     "parallel/test-client-request-destroy.js": {},
     "parallel/test-cluster-eaddrinuse.js": {},
     "parallel/test-cluster-uncaught-exception.js": {},
