@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "writes_keylog": {
+      "envs": { "SSLKEYLOGFILE": "./keylog.txt" },
+      "steps": [
+        {
+          "args": "run --allow-net --allow-env main.ts",
+          "output": "[WILDCARD]200[WILDCARD]"
+        },
+        {
+          "commandName": "cat",
+          "args": "keylog.txt",
+          "output": "[WILDCARD]CLIENT_HANDSHAKE_TRAFFIC_SECRET[WILDCARD]"
+        }
+      ]
+    }
+  }
+}

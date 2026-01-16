@@ -28,7 +28,9 @@ use serde::Deserialize;
 pub use webpki;
 pub use webpki_roots;
 
+mod keylog;
 mod tls_key;
+pub use keylog::get_ssl_key_log;
 pub use tls_key::*;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -313,6 +315,7 @@ pub fn create_client_config(
       TlsKeys::Resolver(_) => unimplemented!(),
     };
 
+    client.key_log = get_ssl_key_log();
     add_alpn(&mut client, socket_use);
     return Ok(client);
   }
@@ -346,6 +349,7 @@ pub fn create_client_config(
     TlsKeys::Resolver(_) => unimplemented!(),
   };
 
+  client.key_log = get_ssl_key_log();
   add_alpn(&mut client, socket_use);
 
   if unsafely_disable_hostname_verification {

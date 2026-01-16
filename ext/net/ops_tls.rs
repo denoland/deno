@@ -35,6 +35,7 @@ use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
+use deno_tls::get_ssl_key_log;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::new_resolver;
@@ -552,6 +553,7 @@ pub fn op_net_listen_tls(
       let mut tls_config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert, key)?;
+      tls_config.key_log = get_ssl_key_log();
       tls_config.alpn_protocols = alpn;
       TlsListener {
         tcp_listener,
