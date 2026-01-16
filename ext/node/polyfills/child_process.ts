@@ -22,6 +22,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
+  validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
@@ -33,7 +34,6 @@ import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } from "ext:deno_node/internal/errors.ts";
@@ -74,6 +74,7 @@ export function fork(
   _options?: ForkOptions,
 ) {
   validateString(modulePath, "modulePath");
+  validateNullByteNotInArg(modulePath, "modulePath");
 
   // Get options and args arguments.
   let execArgv;
@@ -93,11 +94,37 @@ export function fork(
   }
 
   if (pos < arguments.length && arguments[pos] != null) {
-    if (typeof arguments[pos] !== "object") {
-      throw new ERR_INVALID_ARG_VALUE(`arguments[${pos}]`, arguments[pos]);
+    if (typeof arguments[pos] !== "object" || Array.isArray(arguments[pos])) {
+      throw new ERR_INVALID_ARG_TYPE(
+        `arguments[${pos}]`,
+        "object",
+        arguments[pos],
+      );
     }
 
     options = { ...arguments[pos++] };
+  }
+
+  // Validate null bytes in args
+  for (let i = 0; i < args.length; i++) {
+    if (typeof args[i] === "string") {
+      validateNullByteNotInArg(args[i], `args[${i}]`);
+    }
+  }
+
+  // Validate null bytes in execPath
+  if (options.execPath != null) {
+    validateString(options.execPath, "options.execPath");
+    validateNullByteNotInArg(options.execPath, "options.execPath");
+  }
+
+  // Validate null bytes in execArgv
+  if (options.execArgv != null && Array.isArray(options.execArgv)) {
+    for (let i = 0; i < options.execArgv.length; i++) {
+      if (typeof options.execArgv[i] === "string") {
+        validateNullByteNotInArg(options.execArgv[i], `options.execArgv[${i}]`);
+      }
+    }
   }
 
   // Prepare arguments for fork:
@@ -209,7 +236,10 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
-  return new ChildProcess(command, args, options);
+
+  const child = new ChildProcess();
+  child.spawn(options);
+  return child;
 }
 
 function validateTimeout(timeout?: number) {
@@ -267,7 +297,7 @@ export function spawnSync(
   // Validate and translate the kill signal, if present.
   sanitizeKillSignal(options.killSignal);
 
-  return _spawnSync(command, args, options);
+  return _spawnSync(options.file, options.args, options);
 }
 
 interface ExecOptions extends
@@ -438,14 +468,39 @@ export function execFile(
     args = argsOrOptionsOrCallback;
   } else if (argsOrOptionsOrCallback instanceof Function) {
     callback = argsOrOptionsOrCallback;
-  } else if (argsOrOptionsOrCallback) {
+    // When second arg is callback, ignore remaining args
+  } else if (argsOrOptionsOrCallback != null) {
+    if (typeof argsOrOptionsOrCallback !== "object") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "args",
+        ["object", "array"],
+        argsOrOptionsOrCallback,
+      );
+    }
     options = argsOrOptionsOrCallback;
   }
-  if (optionsOrCallback instanceof Function) {
-    callback = optionsOrCallback;
-  } else if (optionsOrCallback) {
-    options = optionsOrCallback;
-    callback = maybeCallback;
+  // Only process subsequent args if callback wasn't set from second arg
+  if (callback === undefined) {
+    if (optionsOrCallback instanceof Function) {
+      callback = optionsOrCallback;
+    } else if (optionsOrCallback != null) {
+      if (
+        typeof optionsOrCallback !== "object" ||
+        Array.isArray(optionsOrCallback)
+      ) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options",
+          "object",
+          optionsOrCallback,
+        );
+      }
+      options = optionsOrCallback;
+      callback = maybeCallback;
+    }
+    // Validate callback if provided
+    if (maybeCallback != null && typeof maybeCallback !== "function") {
+      throw new ERR_INVALID_ARG_TYPE("callback", "function", maybeCallback);
+    }
   }
 
   const execOptions = {
@@ -465,6 +520,7 @@ export function execFile(
     );
   }
   const spawnOptions: SpawnOptions = {
+    argv0: execOptions.argv0,
     cwd: execOptions.cwd,
     env: execOptions.env,
     gid: execOptions.gid,
