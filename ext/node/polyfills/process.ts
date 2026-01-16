@@ -94,7 +94,7 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
-const { NumberMAX_SAFE_INTEGER } = primordials;
+const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -884,7 +884,30 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
-process.features = { inspector: false };
+const features = {
+  // TODO(bartlomieju): change value of `inspector` to true
+  inspector: false,
+  // TODO(bartlomieju): not sure if it's worth getting actual value during build process
+  debug: false,
+  uv: true,
+  ipv6: true,
+  tls_alpn: true,
+  tls_sni: true,
+  tls_ocsp: true,
+  tls: true,
+  openssl_is_boringssl: false,
+  cached_builtins: true,
+  require_module: true,
+  typescript: "transform",
+};
+
+ObjectDefineProperty(process, "features", {
+  __proto__: null,
+  enumerable: true,
+  writable: false,
+  configurable: false,
+  value: features,
+});
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
