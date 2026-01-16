@@ -1,0 +1,57 @@
+{
+  "name": "@types/http-assert",
+  "dist-tags": {
+    "latest": "1.5.6",
+    "ts5.8": "1.5.6",
+    "ts5.6": "1.5.6",
+    "ts5.9": "1.5.6",
+    "ts5.7": "1.5.6",
+    "ts5.5": "1.5.6",
+    "ts5.3": "1.5.6",
+    "ts5.2": "1.5.6",
+    "ts4.9": "1.5.6",
+    "ts5.0": "1.5.6",
+    "ts4.8": "1.5.6",
+    "ts5.4": "1.5.6",
+    "ts5.1": "1.5.6",
+    "ts6.0": "1.5.6"
+  },
+  "versions": {
+    "1.5.6": {
+      "name": "@types/http-assert",
+      "version": "1.5.6",
+      "license": "MIT",
+      "_id": "@types/http-assert@1.5.6",
+      "dist": {
+        "shasum": "b6b657c38a2350d21ce213139f33b03b2b5fa431",
+        "tarball": "http://localhost:4260/@types/http-assert/http-assert-1.5.6.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-TTEwmtjgVbYAzZYWyeHPrrtWnfVkm8tQkP8P21uQifPgMRgjrow3XDEYqucuC8SKZJT7pUnhU/JymvjggxO9vw==",
+        "unpackedSize": 6876
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/http-assert"
+      },
+      "description": "TypeScript definitions for http-assert",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "4.8",
+      "typesPublisherContentHash": "fe930681d7f602349897f245aec39c439c78fe6922603726a562dd947f785102"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/http-assert",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/http-assert"
+  },
+  "description": "TypeScript definitions for http-assert"
+}
