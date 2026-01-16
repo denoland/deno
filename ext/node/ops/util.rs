@@ -231,7 +231,9 @@ pub fn op_node_parse_env<'a>(
   let vars = v8::Object::new(scope);
   let input_reader = std::io::Cursor::new(input);
   for var in dotenvy::from_read_iter(input_reader) {
-    let (key, value) = var?;
+    let Ok((key, value)) = var else {
+      return Ok(None);
+    };
     let Some(key_v8) = v8::String::new(scope, &key) else {
       return Ok(None);
     };
