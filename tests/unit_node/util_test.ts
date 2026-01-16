@@ -231,3 +231,14 @@ Deno.test("[util] styleText() with array of formats", () => {
   const colored = util.styleText(["red", "green"], "error");
   assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
 });
+
+
+Deno.test("[util] parseEnv()", () => {
+  // Node ignores env vars with non-ASCII keys
+  const env = "KEY1=VALUE1\nKEY2='VALUE2'\KEYÄ3=\"VALUE3\"";
+  const parsed = util.parseEnv(env);
+  assertEquals(parsed, {
+    KEY1: "VALUE1",
+    KEY2: "VALUE2",
+  });
+});
