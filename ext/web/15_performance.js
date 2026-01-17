@@ -410,8 +410,9 @@ class PerformanceObserverEntryList {
       "Failed to execute 'getEntriesByType' on 'PerformanceObserverEntryList'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     type = webidl.converters.DOMString(type, prefix, "Argument 1");
-    return ArrayPrototypeFilter(this[_entries], (entry) =>
-      entry.entryType === type
+    return ArrayPrototypeFilter(
+      this[_entries],
+      (entry) => entry.entryType === type,
     );
   }
 
@@ -467,7 +468,9 @@ class PerformanceObserver {
     const prefix = "Failed to execute 'observe' on 'PerformanceObserver'";
 
     if (options === undefined || options === null) {
-      throw new TypeError(`${prefix}: 1 argument required, but only 0 present.`);
+      throw new TypeError(
+        `${prefix}: 1 argument required, but only 0 present.`,
+      );
     }
 
     const { entryTypes, type } = options;
@@ -489,8 +492,9 @@ class PerformanceObserver {
       if (!Array.isArray(entryTypes)) {
         throw new TypeError(`${prefix}: 'entryTypes' must be an array.`);
       }
-      types = ArrayPrototypeFilter(entryTypes, (t) =>
-        PerformanceObserver.supportedEntryTypes.includes(t)
+      types = ArrayPrototypeFilter(
+        entryTypes,
+        (t) => PerformanceObserver.supportedEntryTypes.includes(t),
       );
       if (types.length === 0) {
         return;
