@@ -8,6 +8,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -30,7 +31,7 @@ import { DOMException } from "./01_dom_exception.js";
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
-let performanceObservers = [];
+const performanceObservers = [];
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -406,7 +407,7 @@ class PerformanceObserverEntryList {
 
   getEntries() {
     webidl.assertBranded(this, PerformanceObserverEntryListPrototype);
-    return this[_entries].slice();
+    return ArrayPrototypeSlice(this[_entries]);
   }
 
   getEntriesByType(type) {
