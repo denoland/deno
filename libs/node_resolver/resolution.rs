@@ -94,13 +94,6 @@ pub fn set_worker_conditions(conditions: Vec<String>) {
   });
 }
 
-/// Clear the worker conditions for the current thread.
-pub fn clear_worker_conditions() {
-  WORKER_CONDITIONS.with(|c| {
-    c.borrow_mut().clear();
-  });
-}
-
 /// Get the worker conditions for the current thread.
 fn get_worker_conditions() -> Vec<String> {
   WORKER_CONDITIONS.with(|c| c.borrow().clone())
