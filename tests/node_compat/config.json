@@ -252,39 +252,117 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    "parallel/test-debugger-address.mjs": {},
-    "parallel/test-debugger-auto-resume.mjs": {},
+    "parallel/test-debugger-address.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-auto-resume.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-backtrace.js": {},
-    "parallel/test-debugger-break.js": {},
-    "parallel/test-debugger-breakpoint-exists.js": {},
-    "parallel/test-debugger-clear-breakpoints.js": {},
-    "parallel/test-debugger-exceptions.js": {},
-    "parallel/test-debugger-exec-scope.mjs": {},
+    "parallel/test-debugger-break.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-breakpoint-exists.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-clear-breakpoints.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-exceptions.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-exec-scope.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-exec.js": {},
-    "parallel/test-debugger-extract-function-name.mjs": {},
-    "parallel/test-debugger-heap-profiler.js": {},
-    "parallel/test-debugger-help.mjs": {},
+    "parallel/test-debugger-extract-function-name.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-heap-profiler.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-help.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-invalid-json.mjs": {},
-    "parallel/test-debugger-list.js": {},
+    "parallel/test-debugger-list.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-low-level.js": {},
-    "parallel/test-debugger-object-type-remote-object.js": {},
-    "parallel/test-debugger-pid.js": {},
+    "parallel/test-debugger-object-type-remote-object.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-preserve-breaks.js": {},
-    "parallel/test-debugger-profile-command.js": {},
-    "parallel/test-debugger-profile.js": {},
-    "parallel/test-debugger-random-port-with-inspect-port.js": {},
-    "parallel/test-debugger-random-port.js": {},
+    "parallel/test-debugger-profile-command.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-profile.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-random-port-with-inspect-port.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-random-port.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    "parallel/test-debugger-run-after-quit-restart.js": {},
-    "parallel/test-debugger-sb-before-load.js": {},
-    "parallel/test-debugger-scripts.js": {},
-    "parallel/test-debugger-set-context-line-number.mjs": {},
-    "parallel/test-debugger-unavailable-port.js": {},
-    "parallel/test-debugger-use-strict.js": {},
-    "parallel/test-debugger-watch-validation.js": {},
-    "parallel/test-debugger-watchers.mjs": {},
-    "parallel/test-debugger-websocket-secret-mismatch.js": {},
+    "parallel/test-debugger-run-after-quit-restart.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-sb-before-load.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-scripts.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-set-context-line-number.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-unavailable-port.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-use-strict.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-watch-validation.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-watchers.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-debugger-websocket-secret-mismatch.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-address.js": {},
@@ -365,7 +443,10 @@
     "parallel/test-diagnostics-channel-tracing-channel-sync-run-stores.js": {},
     "parallel/test-diagnostics-channel-tracing-channel-sync.js": {},
     "parallel/test-diagnostics-channel-udp.js": {},
-    "parallel/test-disable-sigusr1.js": {},
+    "parallel/test-disable-sigusr1.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-dns-default-order-ipv4.js": {},
     "parallel/test-dns-lookupService.js": {},
     "parallel/test-dns-lookupService-promises.js": {},
@@ -375,7 +456,10 @@
     "parallel/test-dns-setservers-type-check.js": {},
     "parallel/test-domain-add-remove.js": {},
     "parallel/test-domain-crypto.js": {},
-    "parallel/test-domain-dep0097.js": {},
+    "parallel/test-domain-dep0097.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-domain-ee-error-listener.js": {},
     "parallel/test-domain-ee.js": {},
     "parallel/test-domain-nested-throw.js": {},
@@ -550,17 +634,50 @@
     "parallel/test-global-webcrypto.js": {},
     "parallel/test-global-webstreams.js": {},
     "parallel/test-handle-wrap-close-abort.js": {},
-    "parallel/test-heap-prof-basic.js": {},
-    "parallel/test-heap-prof-dir-absolute.js": {},
-    "parallel/test-heap-prof-dir-name.js": {},
-    "parallel/test-heap-prof-dir-relative.js": {},
-    "parallel/test-heap-prof-exec-argv.js": {},
-    "parallel/test-heap-prof-exit.js": {},
-    "parallel/test-heap-prof-interval.js": {},
-    "parallel/test-heap-prof-invalid-args.js": {},
-    "parallel/test-heap-prof-loop-drained.js": {},
-    "parallel/test-heap-prof-name.js": {},
-    "parallel/test-heap-prof-sigint.js": {},
+    "parallel/test-heap-prof-basic.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-dir-absolute.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-dir-name.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-dir-relative.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-exec-argv.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-exit.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-interval.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-invalid-args.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-loop-drained.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-name.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-heap-prof-sigint.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
     "parallel/test-http-agent-close.js": {},
@@ -705,71 +822,224 @@
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
-    "parallel/test-inspect-address-in-use.js": {},
+    "parallel/test-inspect-address-in-use.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
-    "parallel/test-inspect-publish-uid.js": {},
-    "parallel/test-inspect-support-for-node_options.js": {},
-    "parallel/test-inspector-already-activated-cli.js": {},
-    "parallel/test-inspector-async-call-stack-abort.js": {},
-    "parallel/test-inspector-async-call-stack.js": {},
-    "parallel/test-inspector-async-context-brk.js": {},
-    "parallel/test-inspector-async-hook-after-done.js": {},
-    "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
-    "parallel/test-inspector-async-hook-setup-at-signal.js": {},
-    "parallel/test-inspector-async-stack-traces-promise-then.js": {},
-    "parallel/test-inspector-async-stack-traces-set-interval.js": {},
-    "parallel/test-inspector-bindings.js": {},
-    "parallel/test-inspector-break-e.js": {},
-    "parallel/test-inspector-break-when-eval.js": {},
-    "parallel/test-inspector-close-worker.js": {},
-    "parallel/test-inspector-connect-main-thread.js": {},
+    "parallel/test-inspect-publish-uid.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspect-support-for-node_options.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-already-activated-cli.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-call-stack-abort.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-call-stack.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-context-brk.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-hook-after-done.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-hook-setup-at-signal.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-stack-traces-promise-then.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-async-stack-traces-set-interval.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-bindings.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-break-e.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-break-when-eval.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-close-worker.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-connect-main-thread.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-connect-to-main-thread.js": {},
-    "parallel/test-inspector-console-top-frame.js": {},
-    "parallel/test-inspector-console.js": {},
-    "parallel/test-inspector-contexts.js": {},
-    "parallel/test-inspector-debug-brk-flag.js": {},
-    "parallel/test-inspector-debug-end.js": {},
-    "parallel/test-inspector-emit-protocol-event.js": {},
-    "parallel/test-inspector-enabled.js": {},
-    "parallel/test-inspector-esm.js": {},
-    "parallel/test-inspector-exception.js": {},
-    "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {},
-    "parallel/test-inspector-exit-worker-in-wait-for-connection2.js": {},
+    "parallel/test-inspector-console-top-frame.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-console.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-contexts.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-debug-brk-flag.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-debug-end.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-emit-protocol-event.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-enabled.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-esm.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-exception.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-exit-worker-in-wait-for-connection2.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-has-idle.js": {},
-    "parallel/test-inspector-heap-allocation-tracker.js": {},
+    "parallel/test-inspector-heap-allocation-tracker.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-heapdump.js": {},
-    "parallel/test-inspector-inspect-brk-node.js": {},
-    "parallel/test-inspector-invalid-args.js": {},
-    "parallel/test-inspector-ip-detection.js": {},
+    "parallel/test-inspector-inspect-brk-node.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-invalid-args.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-ip-detection.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-module.js": {},
-    "parallel/test-inspector-multisession-js.js": {},
-    "parallel/test-inspector-multisession-ws.js": {},
-    "parallel/test-inspector-network-arbitrary-data.js": {},
-    "parallel/test-inspector-network-fetch.js": {},
-    "parallel/test-inspector-network-http.js": {},
-    "parallel/test-inspector-not-blocked-on-idle.js": {},
-    "parallel/test-inspector-open-coverage.js": {},
+    "parallel/test-inspector-multisession-js.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-multisession-ws.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-network-arbitrary-data.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-network-fetch.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-network-http.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-not-blocked-on-idle.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-open-coverage.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-open-port-integer-overflow.js": {},
-    "parallel/test-inspector-open.js": {},
-    "parallel/test-inspector-port-zero-cluster.js": {},
-    "parallel/test-inspector-port-zero.js": {},
+    "parallel/test-inspector-open.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-port-zero-cluster.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-port-zero.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-promises.js": {},
-    "parallel/test-inspector-reported-host.js": {},
+    "parallel/test-inspector-reported-host.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-resource-name-to-url.js": {},
     "parallel/test-inspector-runtime-evaluate-with-timeout.js": {},
-    "parallel/test-inspector-scriptparsed-context.js": {},
-    "parallel/test-inspector-stop-profile-after-done.js": {},
+    "parallel/test-inspector-scriptparsed-context.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-stop-profile-after-done.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-stops-no-file.js": {},
-    "parallel/test-inspector-stress-http.js": {},
+    "parallel/test-inspector-stress-http.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-strip-types.js": {},
-    "parallel/test-inspector-tracing-domain.js": {},
+    "parallel/test-inspector-tracing-domain.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-vm-global-accessors-getter-sideeffect.js": {},
     "parallel/test-inspector-vm-global-accessors-sideeffects.js": {},
-    "parallel/test-inspector-wait-for-connection.js": {},
-    "parallel/test-inspector-wait.mjs": {},
-    "parallel/test-inspector-waiting-for-disconnect.js": {},
+    "parallel/test-inspector-wait-for-connection.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-wait.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-inspector-waiting-for-disconnect.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-inspector-workers-flat-list.js": {},
-    "parallel/test-inspector.js": {},
+    "parallel/test-inspector.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-instanceof.js": {},
     "parallel/test-internal-fs.js": {},
     "parallel/test-internal-modules.js": {},
@@ -916,8 +1186,14 @@
     "parallel/test-perf-gc-crash.js": {},
     "parallel/test-performance-global.js": {},
     "parallel/test-performanceobserver-gc.js": {},
-    "parallel/test-permission-inspector-brk.js": {},
-    "parallel/test-permission-inspector.js": {},
+    "parallel/test-permission-inspector-brk.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-permission-inspector.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-permission-no-addons.js": {},
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
@@ -988,13 +1264,31 @@
     "parallel/test-readline.js": {},
     "parallel/test-ref-unref-return.js": {},
     "parallel/test-regression-object-prototype.js": {},
-    "parallel/test-repl-inspector.js": {},
-    "parallel/test-repl-preview-newlines.js": {},
-    "parallel/test-repl-preview-timeout.js": {},
-    "parallel/test-repl-preview.js": {},
-    "parallel/test-repl-strict-mode-previews.js": {},
+    "parallel/test-repl-inspector.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-repl-preview-newlines.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-repl-preview-timeout.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-repl-preview.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-repl-strict-mode-previews.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-repl-syntax-error-handling.js": {},
-    "parallel/test-repl-top-level-await.js": {},
+    "parallel/test-repl-top-level-await.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
     "parallel/test-require-exceptions.js": {},
@@ -1004,20 +1298,41 @@
     "parallel/test-require-long-path.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
-    "parallel/test-runner-coverage-source-map.js": {},
-    "parallel/test-runner-coverage-thresholds.js": {},
+    "parallel/test-runner-coverage-source-map.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-runner-coverage-thresholds.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-runner-filter-warning.js": {},
-    "parallel/test-runner-inspect.mjs": {},
+    "parallel/test-runner-inspect.mjs": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
-    "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-set-process-debug-port.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
-    "parallel/test-snapshot-console.js": {},
-    "parallel/test-snapshot-coverage.js": {},
+    "parallel/test-snapshot-console.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-snapshot-coverage.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-socket-address.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
-    "parallel/test-source-map-enable.js": {},
+    "parallel/test-source-map-enable.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
@@ -1315,7 +1630,10 @@
     "parallel/test-trace-events-async-hooks-dynamic.js": {},
     "parallel/test-trace-events-async-hooks-worker.js": {},
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
-    "parallel/test-trace-events-dynamic-enable.js": {},
+    "parallel/test-trace-events-dynamic-enable.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-trace-events-get-category-enabled-buffer.js": {},
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
@@ -1351,13 +1669,25 @@
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
-    "parallel/test-v8-coverage.js": {},
+    "parallel/test-v8-coverage.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-global-setter.js": {},
-    "parallel/test-v8-stop-coverage.js": {},
-    "parallel/test-v8-take-coverage-noop.js": {},
-    "parallel/test-v8-take-coverage.js": {},
+    "parallel/test-v8-stop-coverage.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-v8-take-coverage-noop.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
+    "parallel/test-v8-take-coverage.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1405,7 +1735,10 @@
     "parallel/test-vm-timeout-escape-promise.js": {},
     "parallel/test-vm-timeout.js": {},
     "parallel/test-vm-util-lazy-properties.js": {},
-    "parallel/test-warn-sigprof.js": {},
+    "parallel/test-warn-sigprof.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {
       "darwin": false,
@@ -1441,7 +1774,10 @@
     "parallel/test-whatwg-url-override-hostname.js": {},
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
-    "parallel/test-worker-debug.js": {},
+    "parallel/test-worker-debug.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-worker-dns-terminate-during-query.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
@@ -1452,7 +1788,10 @@
     "parallel/test-worker-message-port-receive-message.js": {},
     "parallel/test-worker-message-port-terminate-transfer-list.js": {},
     "parallel/test-worker-mjs-workerdata.js": {},
-    "parallel/test-worker-name.js": {},
+    "parallel/test-worker-name.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
     "parallel/test-worker-ref-onexit.js": {},
@@ -1490,7 +1829,10 @@
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
     "pummel/test-dh-regr.js": {},
     "pummel/test-fs-watch-system-limit.js": {},
-    "pummel/test-heapdump-inspector.js": {},
+    "pummel/test-heapdump-inspector.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
