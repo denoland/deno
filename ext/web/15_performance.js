@@ -3,10 +3,15 @@
 import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
 const {
+  ArrayIsArray,
   ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  queueMicrotask,
   ReflectHas,
   Symbol,
   SymbolFor,
@@ -365,7 +370,7 @@ const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 function queuePerformanceEntry(entry) {
   for (let i = 0; i < performanceObservers.length; i++) {
     const observer = performanceObservers[i];
-    if (observer[_entryTypes].includes(entry.entryType)) {
+    if (ArrayPrototypeIncludes(observer[_entryTypes], entry.entryType)) {
       ArrayPrototypePush(observer[_buffer], entry);
       if (!observer[_scheduled]) {
         observer[_scheduled] = true;
@@ -489,18 +494,21 @@ class PerformanceObserver {
 
     let types;
     if (entryTypes !== undefined) {
-      if (!Array.isArray(entryTypes)) {
+      if (!ArrayIsArray(entryTypes)) {
         throw new TypeError(`${prefix}: 'entryTypes' must be an array.`);
       }
       types = ArrayPrototypeFilter(
         entryTypes,
-        (t) => PerformanceObserver.supportedEntryTypes.includes(t),
+        (t) =>
+          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t),
       );
       if (types.length === 0) {
         return;
       }
     } else {
-      if (!PerformanceObserver.supportedEntryTypes.includes(type)) {
+      if (
+        !ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, type)
+      ) {
         return;
       }
       types = [type];
@@ -509,16 +517,16 @@ class PerformanceObserver {
     this[_entryTypes] = types;
     this[_buffer] = [];
 
-    if (!performanceObservers.includes(this)) {
+    if (!ArrayPrototypeIncludes(performanceObservers, this)) {
       ArrayPrototypePush(performanceObservers, this);
     }
   }
 
   disconnect() {
     webidl.assertBranded(this, PerformanceObserverPrototype);
-    const index = performanceObservers.indexOf(this);
+    const index = ArrayPrototypeIndexOf(performanceObservers, this);
     if (index !== -1) {
-      performanceObservers.splice(index, 1);
+      ArrayPrototypeSplice(performanceObservers, index, 1);
     }
     this[_entryTypes] = [];
     this[_buffer] = [];
