@@ -339,8 +339,8 @@ fn add_npm_packages_to_json(
             pkg.id.as_serialized().into_string().into(),
           );
 
-          // for backwards compat, change the specifier from a
-          // req to an nv even though a req makes way more sense
+          // for backwards compat, change the specifier
+          // from a req to an nv
           if let Some(value) = module.get_mut("specifier")
             && let Some(specifier) = value.as_str()
           {
