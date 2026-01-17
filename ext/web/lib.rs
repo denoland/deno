@@ -18,6 +18,7 @@ use std::sync::Arc;
 pub use blob::BlobError;
 pub use compression::CompressionError;
 use deno_core::ByteString;
+use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use deno_core::U16String;
 use deno_core::op2;
@@ -108,6 +109,9 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+  ],
+  objects = [
+    DOMException
   ],
   esm = [
     "00_infra.js",
@@ -447,3 +451,116 @@ fn op_encoding_encode_into_fast(
 }
 
 pub struct Location(pub Url);
+
+pub struct DOMException {
+  message: String,
+  name: String,
+  code: u32,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DOMException {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DOMException"
+  }
+}
+
+// Defined in WebIDL 4.3.
+// https://webidl.spec.whatwg.org/#idl-DOMException
+const INDEX_SIZE_ERR: u32 = 1;
+const HIERARCHY_REQUEST_ERR: u32 = 3;
+const WRONG_DOCUMENT_ERR: u32 = 4;
+const INVALID_CHARACTER_ERR: u32 = 5;
+const NO_MODIFICATION_ALLOWED_ERR: u32 = 7;
+const NOT_FOUND_ERR: u32 = 8;
+const NOT_SUPPORTED_ERR: u32 = 9;
+const INUSE_ATTRIBUTE_ERR: u32 = 10;
+const INVALID_STATE_ERR: u32 = 11;
+const SYNTAX_ERR: u32 = 12;
+const INVALID_MODIFICATION_ERR: u32 = 13;
+const NAMESPACE_ERR: u32 = 14;
+const INVALID_ACCESS_ERR: u32 = 15;
+const TYPE_MISMATCH_ERR: u32 = 17;
+const SECURITY_ERR: u32 = 18;
+const NETWORK_ERR: u32 = 19;
+const ABORT_ERR: u32 = 20;
+const URL_MISMATCH_ERR: u32 = 21;
+const QUOTA_EXCEEDED_ERR: u32 = 22;
+const TIMEOUT_ERR: u32 = 23;
+const INVALID_NODE_TYPE_ERR: u32 = 24;
+const DATA_CLONE_ERR: u32 = 25;
+
+fn name_to_code_mapping(name: &str) -> u32 {
+  match name {
+    "IndexSizeError" => INDEX_SIZE_ERR,
+    "HierarchyRequestError" => HIERARCHY_REQUEST_ERR,
+    "WrongDocumentError" => WRONG_DOCUMENT_ERR,
+    "InvalidCharacterError" => INVALID_CHARACTER_ERR,
+    "NoModificationAllowedError" => NO_MODIFICATION_ALLOWED_ERR,
+    "NotFoundError" => NOT_FOUND_ERR,
+    "NotSupportedError" => NOT_SUPPORTED_ERR,
+    "InUseAttributeError" => INUSE_ATTRIBUTE_ERR,
+    "InvalidStateError" => INVALID_STATE_ERR,
+    "SyntaxError" => SYNTAX_ERR,
+    "InvalidModificationError" => INVALID_MODIFICATION_ERR,
+    "NamespaceError" => NAMESPACE_ERR,
+    "InvalidAccessError" => INVALID_ACCESS_ERR,
+    "TypeMismatchError" => TYPE_MISMATCH_ERR,
+    "SecurityError" => SECURITY_ERR,
+    "NetworkError" => NETWORK_ERR,
+    "AbortError" => ABORT_ERR,
+    "URLMismatchError" => URL_MISMATCH_ERR,
+    "QuotaExceededError" => QUOTA_EXCEEDED_ERR,
+    "TimeoutError" => TIMEOUT_ERR,
+    "InvalidNodeTypeError" => INVALID_NODE_TYPE_ERR,
+    "DataCloneError" => DATA_CLONE_ERR,
+    _ => 0,
+  }
+}
+
+#[op2]
+impl DOMException {
+  // https://webidl.spec.whatwg.org/#dom-domexception-domexception
+  #[constructor]
+  #[reentrant]
+  fn new<'s>(
+    scope: &'s mut v8::PinScope<'_, '_>,
+    #[string] message: String,
+    #[string] name: Option<String>,
+  ) -> v8::Local<'s, v8::Object> {
+    let name = name.unwrap_or_else(|| "Error".to_string());
+    let code = name_to_code_mapping(&name);
+
+    // TODO: gus will modify v8
+    let dom_exp = deno_core::cppgc::make_cppgc_object(
+      scope,
+      DOMException {
+        message,
+        name,
+        code,
+      },
+    );
+    v8::Exception::capture_stack_trace(scope.get_current_context(), dom_exp);
+
+    dom_exp
+  }
+
+  #[getter]
+  #[string]
+  fn message(&self) -> String {
+    self.message.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn name(&self) -> String {
+    self.name.clone()
+  }
+
+  #[getter]
+  fn code(&self) -> u32 {
+    self.code
+  }
+}
