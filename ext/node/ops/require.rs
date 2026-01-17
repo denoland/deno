@@ -490,7 +490,7 @@ pub fn op_require_try_self<
       exports,
       Some(&referrer),
       ResolutionMode::Require,
-      node_resolver.require_conditions(),
+      &node_resolver.require_conditions(),
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(r)?))
@@ -588,7 +588,7 @@ pub fn op_require_resolve_exports<
       .map(|r| UrlOrPathRef::from_path(r))
       .as_ref(),
     ResolutionMode::Require,
-    node_resolver.require_conditions(),
+    &node_resolver.require_conditions(),
     NodeResolutionKind::Execution,
   )?;
   Ok(Some(url_or_path_to_string(r)?))
