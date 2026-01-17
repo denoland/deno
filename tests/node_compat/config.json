@@ -1507,7 +1507,10 @@
       "ignore": true,
       "reason": "https://github.com/denoland/deno/pull/31863"
     },
-    "sequential/test-cpu-prof-dir-and-name.js": {},
+    "sequential/test-cpu-prof-dir-and-name.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-cpu-prof-dir-relative.js": {
       "ignore": true,
       "reason": "https://github.com/denoland/deno/pull/31863"
@@ -1532,7 +1535,10 @@
       "ignore": true,
       "reason": "https://github.com/denoland/deno/pull/31863"
     },
-    "sequential/test-cpu-prof-name.js": {},
+    "sequential/test-cpu-prof-name.js": {
+      "ignore": true,
+      "reason": "https://github.com/denoland/deno/pull/31863"
+    },
     "sequential/test-cpu-prof-worker-argv.js": {
       "ignore": true,
       "reason": "https://github.com/denoland/deno/pull/31863"
