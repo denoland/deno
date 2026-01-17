@@ -616,6 +616,16 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<LibMainWorker, CoreError> {
+    // Check for node conditions passed via environment variable from child_process.fork
+    // This allows forked processes to use custom conditions for module resolution
+    if let Ok(conditions_str) = std::env::var("__DENO_NODE_CONDITIONS") {
+      let conditions: Vec<String> =
+        conditions_str.split(',').map(|s| s.to_string()).collect();
+      if !conditions.is_empty() {
+        node_resolver::set_worker_conditions(conditions);
+      }
+    }
+
     let shared = &self.shared;
     let CreateModuleLoaderResult {
       module_loader,
