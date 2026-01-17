@@ -3,18 +3,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { performance, PerformanceEntry } from "ext:deno_web/15_performance.js";
+import {
+  performance,
+  PerformanceEntry,
+  PerformanceObserver,
+  PerformanceObserverEntryList,
+} from "ext:deno_web/15_performance.js";
 import { EldHistogram } from "ext:core/ops";
-
-class PerformanceObserver {
-  static supportedEntryTypes = [];
-  observe() {
-    // todo(lucacasonato): actually implement this
-  }
-  disconnect() {
-    // todo(lucacasonato): actually implement this
-  }
-}
 
 const constants = {};
 
@@ -58,6 +53,7 @@ function monitorEventLoopDelay(options = {}) {
 export default {
   performance,
   PerformanceObserver,
+  PerformanceObserverEntryList,
   PerformanceEntry,
   monitorEventLoopDelay,
   constants,
@@ -69,4 +65,5 @@ export {
   performance,
   PerformanceEntry,
   PerformanceObserver,
+  PerformanceObserverEntryList,
 };
