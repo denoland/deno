@@ -640,18 +640,22 @@ impl<'a> GraphDisplayContext<'a> {
       Package(package) => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
+    let header_text = match &package_or_specifier {
+      Package(package) => format!("npm:/{}", package.id.as_serialized()),
+      Specifier(specifier) => specifier.to_string(),
+    };
     let header_text = if was_seen {
       let specifier_str = if type_dep {
-        colors::italic_gray(module.specifier()).to_string()
+        colors::italic_gray(header_text).to_string()
       } else {
-        colors::gray(module.specifier()).to_string()
+        colors::gray(header_text).to_string()
       };
       format!("{} {}", specifier_str, colors::gray("*"))
     } else {
       let header_text = if type_dep {
-        colors::italic(module.specifier()).to_string()
+        colors::italic(header_text).to_string()
       } else {
-        module.specifier().to_string()
+        header_text
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
