@@ -389,8 +389,22 @@ impl<
     }
   }
 
-  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
-    self.condition_resolver.require_conditions()
+  pub fn require_conditions(&self) -> Cow<'_, [Cow<'static, str>]> {
+    let base_conditions = self.condition_resolver.require_conditions();
+    // Merge worker-specific conditions (from execArgv --conditions) with the base conditions
+    let worker_conditions = get_worker_conditions();
+    if worker_conditions.is_empty() {
+      Cow::Borrowed(base_conditions)
+    } else {
+      // Prepend worker conditions to base conditions
+      let mut merged: Vec<Cow<'static, str>> =
+        Vec::with_capacity(worker_conditions.len() + base_conditions.len());
+      for c in worker_conditions {
+        merged.push(Cow::Owned(c));
+      }
+      merged.extend(base_conditions.iter().cloned());
+      Cow::Owned(merged)
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
