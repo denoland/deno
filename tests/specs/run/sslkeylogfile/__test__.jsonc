@@ -14,6 +14,11 @@
           "output": "[WILDCARD]CLIENT_HANDSHAKE_TRAFFIC_SECRET[WILDCARD]"
         }
       ]
+    },
+    "warns_on_unwritable_path": {
+      "envs": { "SSLKEYLOGFILE": "/nonexistent/path/keylog.txt" },
+      "args": "run --allow-net --allow-env main.ts",
+      "output": "[WILDCARD]SSLKEYLOGFILE is set but the file could not be opened:[WILDCARD]"
     }
   }
 }
