@@ -20,8 +20,7 @@ pub fn get_ssl_key_log() -> Arc<dyn KeyLog> {
   SSL_KEY_LOG
     .get_or_init(|| {
       if let Some(path) = env::var_os("SSLKEYLOGFILE")
-        && let Err(e) =
-          OpenOptions::new().append(true).create(true).open(&path)
+        && let Err(e) = OpenOptions::new().append(true).create(true).open(&path)
       {
         log::warn!(
           "SSLKEYLOGFILE is set but the file could not be opened: {e}"
