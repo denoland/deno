@@ -312,6 +312,7 @@ fn add_npm_packages_to_json(
   // ideally deno_graph could handle this, but for now we just modify the json here
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
+  let mut redirects_to_add = Vec::new();
   if let Some(modules) = modules {
     for module in modules.iter_mut() {
       if matches!(module.get("kind").and_then(|k| k.as_str()), Some("npm")) {
@@ -328,14 +329,33 @@ fn add_npm_packages_to_json(
             npm_snapshot
               .resolve_pkg_from_pkg_req(package_req_ref.req())
               .ok()
+              .map(|pkg| (package_req_ref, pkg))
           });
-        if let Some(pkg) = maybe_package
+        if let Some((pkg_req_ref, pkg)) = maybe_package
           && let Some(module) = module.as_object_mut()
         {
           module.insert(
             "npmPackage".to_string(),
             pkg.id.as_serialized().into_string().into(),
           );
+
+          // for backwards compat, change the specifier from a
+          // req to an nv even though a req makes way more sense
+          if let Some(value) = module.get_mut("specifier")
+            && let Some(specifier) = value.as_str()
+          {
+            let new_specifier = format!(
+              "npm:/{}{}",
+              pkg.id.nv,
+              pkg_req_ref
+                .sub_path()
+                .map(|path| format!("/{}", path))
+                .unwrap_or_default()
+            );
+            redirects_to_add
+              .push((specifier.to_string(), new_specifier.clone()));
+            *value = serde_json::Value::String(new_specifier);
+          }
         }
       }
 
@@ -394,6 +414,14 @@ fn add_npm_packages_to_json(
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
+
+  if let Some(redirects) = json.get_mut("redirects")
+    && let serde_json::Value::Object(redirects) = redirects
+  {
+    for (from, to) in redirects_to_add {
+      redirects.insert(from, to.into());
+    }
+  }
 }
 
 /// Precached information about npm packages that are used in deno info.
