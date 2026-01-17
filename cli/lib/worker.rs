@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -18,7 +19,6 @@ use deno_runtime::UNSTABLE_FEATURES;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
@@ -38,8 +38,10 @@ use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::inspector_server::MainInspectorSessionChannel;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -345,11 +347,12 @@ pub struct LibMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
-  pub node_ipc: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub maybe_initial_cwd: Option<Url>,
 }
 
 #[derive(Default, Clone)]
@@ -368,6 +371,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -456,12 +460,15 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.compiled_wasm_module_store.clone(),
         ),
         maybe_inspector_server,
+        main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        bundle_provider: shared.bundle_provider.clone(),
       };
+      let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -486,7 +493,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
-          node_ipc_fd: None,
+          node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
@@ -503,7 +510,9 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           .clone(),
         seed: shared.options.seed,
         create_web_worker_cb,
-        format_js_error_fn: Some(Arc::new(format_js_error)),
+        format_js_error_fn: Some(Arc::new(move |a| {
+          format_js_error(a, maybe_initial_cwd.as_ref())
+        })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
@@ -558,6 +567,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         fs,
         maybe_coverage_dir,
         maybe_inspector_server,
+        main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -579,11 +589,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     permissions: PermissionsContainer,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       vec![],
       Default::default(),
@@ -598,6 +610,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -657,6 +670,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       bundle_provider: shared.bundle_provider.clone(),
     };
 
+    let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
@@ -678,7 +693,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_fd: shared.options.node_ipc,
+        node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
@@ -694,7 +709,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
@@ -713,9 +730,15 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
 
+    // Store the main inspector session sender for worker debugging
+    let inspector = worker.js_runtime.inspector();
+    let session_tx = inspector.get_session_sender();
+    shared.main_inspector_session_tx.set(session_tx);
+
     Ok(LibMainWorker {
       main_module,
       preload_modules,
+      require_modules,
       worker,
     })
   }
@@ -731,7 +754,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(url_from_file_path(&path)?),
+      Ok(bin_value) => Ok(url_from_file_path(bin_value.path())?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
@@ -803,6 +826,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 pub struct LibMainWorker {
   main_module: Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -867,6 +891,13 @@ impl LibMainWorker {
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    // Even though we load as ESM here, these files will be forced to be loaded as CJS
+    // because of checks in get_known_mode_with_is_script
+    for require_module_url in self.require_modules.iter() {
+      let id = self.worker.preload_side_module(require_module_url).await?;
       self.worker.evaluate_module(id).await?;
       self.worker.run_event_loop(false).await?;
     }

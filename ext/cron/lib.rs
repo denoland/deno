@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod interface;
 pub mod local;
@@ -21,7 +21,6 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
 deno_core::extension!(deno_cron,
-  deps = [ deno_console ],
   parameters = [ C: CronHandler ],
   ops = [
     op_cron_create<C>,

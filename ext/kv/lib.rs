@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod config;
 pub mod dynamic;
@@ -63,7 +63,7 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 deno_core::extension!(deno_kv,
-  deps = [ deno_console, deno_web ],
+  deps = [ deno_web ],
   parameters = [ DBH: DatabaseHandler ],
   ops = [
     op_kv_database_open<DBH>,

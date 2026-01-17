@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
@@ -18,7 +18,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import { EventTarget } from "./02_event.js";
 import { DOMException } from "./01_dom_exception.js";
 
@@ -416,6 +416,24 @@ class Performance extends EventTarget {
         (entry) => entry.entryType !== "measure",
       );
     }
+  }
+
+  clearResourceTimings() {
+    webidl.assertBranded(this, PerformancePrototype);
+    performanceEntries = ArrayPrototypeFilter(
+      performanceEntries,
+      (entry) => entry.entryType !== "resource",
+    );
+  }
+
+  setResourceTimingBufferSize(_maxSize) {
+    webidl.assertBranded(this, PerformancePrototype);
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to execute 'setResourceTimingBufferSize' on 'Performance'",
+    );
+    // This is a noop in Deno as we don't have resource timing entries
   }
 
   getEntries() {

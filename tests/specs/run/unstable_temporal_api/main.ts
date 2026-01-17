@@ -52,7 +52,12 @@ console.log(
 );
 console.log(
   "Temporal.PlainMonthDay",
-  Temporal.PlainMonthDay.from({ month: 7, day: 14 }),
+  Temporal.PlainMonthDay.from({
+    calendar: "iso8601",
+    year: 2020,
+    month: 7,
+    day: 14,
+  }),
 );
 console.log(
   "Temporal.Duration",

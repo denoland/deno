@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! It would be best to move these utilities out of this
 //! crate as this is not specific to resolution, but for

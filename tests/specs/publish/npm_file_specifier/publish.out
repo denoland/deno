@@ -1,6 +1,6 @@
-Check file:///[WILDLINE]/index.mts
+Check [WILDCARD]index.mts
 Checking for slow types in the public API...
-Check file:///[WILDLINE]/index.mts
+Check [WILDCARD]index.mts
 error[unsupported-file-specifier]: unsupported package.json file specifier for 'package-b'
  --> [WILDLINE]index.mts:1:28
   | 

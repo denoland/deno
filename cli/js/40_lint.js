@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 
@@ -390,6 +390,12 @@ export class Context {
 
     const start = range[0];
     const end = range[1];
+
+    if (start > end) {
+      throw new RangeError(
+        `Invalid range. Start value is bigger than end value: [${start}, ${end}]`,
+      );
+    }
 
     /** @type {Deno.lint.Fix[]} */
     const fixes = [];

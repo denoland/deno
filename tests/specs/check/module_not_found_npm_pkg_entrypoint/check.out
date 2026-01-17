@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module 'package'.
     at file:///[WILDLINE]/main.ts:1:22
 

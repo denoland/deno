@@ -1,0 +1,5 @@
+{
+  "args": "run --preload main.ts main.ts",
+  "exitCode": 0,
+  "output": "main.out"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -92,6 +92,8 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           | MediaType::Html
           | MediaType::Sql
           | MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css => {
             // not unfurlable data

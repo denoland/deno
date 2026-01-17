@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::future::Future;
 use std::rc::Rc;
 
@@ -235,8 +235,15 @@ pub fn op_node_create_cipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
+  #[smi] auth_tag_length: i32,
 ) -> Result<u32, cipher::CipherContextError> {
-  let context = cipher::CipherContext::new(algorithm, key, iv)?;
+  let auth_tag_length = if auth_tag_length == -1 {
+    None
+  } else {
+    Some(auth_tag_length as usize)
+  };
+  let context =
+    cipher::CipherContext::new(algorithm, key, iv, auth_tag_length)?;
   Ok(state.resource_table.add(context))
 }
 

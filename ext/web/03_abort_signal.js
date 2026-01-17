@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -25,7 +25,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "./00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import {
   defineEventHandler,
   Event,

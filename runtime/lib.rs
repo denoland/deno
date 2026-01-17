@@ -1,9 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-pub use deno_broadcast_channel;
 pub use deno_cache;
-pub use deno_canvas;
-pub use deno_console;
 pub use deno_core;
 pub use deno_cron;
 pub use deno_crypto;
@@ -11,6 +8,7 @@ pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_fs;
 pub use deno_http;
+pub use deno_image;
 pub use deno_io;
 pub use deno_kv;
 pub use deno_napi;
@@ -22,7 +20,6 @@ pub use deno_process;
 pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
-pub use deno_url;
 pub use deno_web;
 pub use deno_webgpu;
 pub use deno_webidl;

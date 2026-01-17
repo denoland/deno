@@ -45,3 +45,6 @@ Untitled*.ipynb
 /.ms-playwright
 
 **/.claude/settings.local.json
+
+# pyenv
+/.python-version

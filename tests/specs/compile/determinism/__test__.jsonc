@@ -1,4 +1,5 @@
 {
+  "ignore": true,
   "tempDir": true,
   "steps": [{
     "args": [

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -718,9 +718,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         match parts.first() {
           Some(DynamicTemplatePart::String { value: specifier }) => {
             // relative doesn't need to be modified
-            let is_relative =
-              specifier.starts_with("./") || specifier.starts_with("../");
-            if is_relative {
+            if deno_path_util::is_relative_specifier(specifier) {
               return true;
             }
             if !specifier.ends_with('/') {
@@ -809,6 +807,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
                 deno_resolver::workspace::ResolutionKind::Execution
@@ -979,7 +978,7 @@ impl Visit for ImportMetaResolveCollector {
         self.specifiers.push((
           // remove quotes
           SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.clone(),
+          arg.value.to_atom_lossy().into_owned(),
         ));
       } else {
         self.diagnostic_ranges.push(first_arg.expr.range());

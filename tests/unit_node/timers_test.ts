@@ -1,9 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertRejects, fail } from "@std/assert";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 import { assertEquals } from "@std/assert";
+import { performance } from "node:perf_hooks";
+
+Deno.test("[node/perf_hooks] performance.timerify()", () => {
+  function sayHello() {
+    return "hello world";
+  }
+
+  const wrapped = performance.timerify(sayHello);
+  const result = wrapped();
+
+  if (result !== "hello world") {
+    throw new Error(`Expected "hello world", got "${result}"`);
+  }
+});
 
 Deno.test("[node/timers setTimeout]", () => {
   {

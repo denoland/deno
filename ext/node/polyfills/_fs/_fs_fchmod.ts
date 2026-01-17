@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   type CallbackWithError,
@@ -10,6 +10,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { op_fs_fchmod_async, op_fs_fchmod_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 const { PromisePrototypeThen } = primordials;
 
@@ -34,3 +35,8 @@ export function fchmodSync(fd: number, mode: string | number) {
 
   op_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
 }
+
+export const fchmodPromise = promisify(fchmod) as (
+  fd: number,
+  mode: string | number,
+) => Promise<void>;

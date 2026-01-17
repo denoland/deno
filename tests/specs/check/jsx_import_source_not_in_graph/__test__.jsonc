@@ -1,5 +1,6 @@
 {
-  "args": "check main.ts",
+  "tempDir": true,
+  "args": "check main.tsx",
   "output": "main.out",
   "variants": {
     "tsgo": {

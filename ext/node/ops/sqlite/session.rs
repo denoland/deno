@@ -1,9 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Weak;
+use std::rc::Rc;
 
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
@@ -87,7 +87,7 @@ pub struct Session {
   pub(crate) freed: Cell<bool>,
 
   // Hold a weak reference to the database.
-  pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -134,11 +134,7 @@ impl Session {
   #[fast]
   #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
 
@@ -151,11 +147,7 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
@@ -170,11 +162,7 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {

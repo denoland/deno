@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2304 [ERROR]: Cannot find name 'onmessage'.
 onmessage;
 ~~~~~~~~~
@@ -11,7 +11,7 @@ onmessage;
 
 Found 2 errors.
 
-Check file:///[WILDLINE]/member/mod.ts
+Check [WILDCARD]mod.ts
 TS2304 [ERROR]: Cannot find name 'localStorage'.
 localStorage;
 ~~~~~~~~~~~~

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -147,6 +147,9 @@ const validateInt32 = hideStackFrames(
   },
 );
 
+/**
+ * @type {(value: unknown, name: string, positive?: boolean) => asserts value is number}
+ */
 const validateUint32 = hideStackFrames(
   (value, name, positive) => {
     if (!isUint32(value)) {

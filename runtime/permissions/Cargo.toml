@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_permissions"
-version = "0.78.0"
+version = "0.86.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -42,4 +42,4 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }

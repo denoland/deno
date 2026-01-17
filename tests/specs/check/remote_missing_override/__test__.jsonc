@@ -1,6 +1,6 @@
 {
   "args": "check --allow-import --all main.ts",
-  "output": "Download [WILDLINE]\nCheck [WILDLINE]\n",
+  "output": "Download [WILDLINE]\nCheck [WILDCARD]\n",
   "variants": {
     "tsgo": {
       "use_tsgo": "1"

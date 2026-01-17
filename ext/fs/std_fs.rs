@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
@@ -424,14 +424,12 @@ impl FileSystem for RealFs {
     .await?
   }
 
-  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_checked_path(
-      OpenOptions {
-        read: true,
-        ..Default::default()
-      },
-      path,
-    )?;
+  fn read_file_sync(
+    &self,
+    path: &CheckedPath,
+    options: OpenOptions,
+  ) -> FsResult<Cow<'static, [u8]>> {
+    let mut file = open_with_checked_path(options, path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
     Ok(Cow::Owned(buf))
@@ -439,14 +437,9 @@ impl FileSystem for RealFs {
   async fn read_file_async<'a>(
     &'a self,
     path: CheckedPathBuf,
+    options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_checked_path(
-      OpenOptions {
-        read: true,
-        ..Default::default()
-      },
-      &path.as_checked_path(),
-    )?;
+    let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {
       let mut buf = Vec::new();
       file.read_to_end(&mut buf)?;
