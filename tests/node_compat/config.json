@@ -1001,7 +1001,10 @@
       "ignore": true,
       "reason": "https://github.com/denoland/deno/pull/31863"
     },
-    "parallel/test-inspector-resource-name-to-url.js": {},
+    "parallel/test-inspector-resource-name-to-url.js": {
+      "windows": false,
+      "reason": "Uses lowercase 'a' instead of 'A' for drive letter"
+    },
     "parallel/test-inspector-runtime-evaluate-with-timeout.js": {},
     "parallel/test-inspector-scriptparsed-context.js": {
       "ignore": true,
