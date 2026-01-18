@@ -721,7 +721,10 @@ pub async fn op_ws_close(
   const EMPTY_PAYLOAD: &[u8] = &[];
 
   let frame = reason
-    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
+    .map(|reason| match code {
+      Some(code) => Frame::close(code, &reason.into_bytes()),
+      _ => Frame::close_raw(reason.into_bytes().into()),
+    })
     .unwrap_or_else(|| match code {
       Some(code) => Frame::close(code, EMPTY_PAYLOAD),
       _ => Frame::close_raw(EMPTY_PAYLOAD.into()),

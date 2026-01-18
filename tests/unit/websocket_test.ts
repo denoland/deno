@@ -1093,3 +1093,52 @@ Deno.test("WebSocket custom host header", async () => {
   ac.abort();
   await server.finished;
 });
+
+Deno.test("WebSocket close with reason but no code doesn't send 1005", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+
+  const server = Deno.serve({
+    handler: (request) => {
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      socket.onerror = () => fail();
+      socket.onopen = () => {
+        socket.close(undefined, "A");
+      };
+      socket.onclose = () => ac.abort();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: () => listeningDeferred.resolve(),
+    hostname: "localhost",
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+
+  const conn = await Deno.connect({ port: servePort, hostname: "localhost" });
+  await conn.write(
+    new TextEncoder().encode(
+      "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+    ),
+  );
+
+  const response = new Uint8Array(2048);
+  const n = await conn.read(response);
+  assert(n !== null && n > 0);
+  const headerEnd = new TextDecoder().decode(response).indexOf("\r\n\r\n");
+  assert(headerEnd > 0);
+
+  const frameStart = headerEnd + 4;
+  // [FIN+opcode][length][payload]
+  assertEquals(response[frameStart], 0x88);
+  const payloadLength = response[frameStart + 1] & 0x7F;
+
+  // Payload should just be "A" (1 byte), NOT 1005 code (2 bytes) + "A"
+  assertEquals(payloadLength, 1);
+  assertEquals(response[frameStart + 2], "A".charCodeAt(0));
+
+  conn.close();
+  await server.finished;
+});

@@ -2481,7 +2481,7 @@ console.log("finish");
 }
 
 #[test]
-fn broken_stdout() {
+fn stdout_early_read_drop() {
   let (reader, writer) = os_pipe::pipe().unwrap();
   // drop the reader to create a broken pipe
   drop(reader);
@@ -2497,10 +2497,9 @@ fn broken_stdout() {
     .wait_with_output()
     .unwrap();
 
-  assert!(!output.status.success());
+  assert!(output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Uncaught (in promise) BrokenPipe"));
-  assert!(!stderr.contains("panic"));
+  assert_eq!(stderr, "", "{:?}", stderr);
 }
 
 #[test]
