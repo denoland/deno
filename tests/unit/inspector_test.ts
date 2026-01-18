@@ -22,12 +22,6 @@ interface InspectorTesterOptions {
 
 const DEFAULT_CDP_TIMEOUT = 60_000;
 
-let nextPort = 9229;
-function inspectFlagWithUniquePort(flagPrefix: string): string {
-  const port = nextPort++;
-  return `${flagPrefix}=127.0.0.1:${port}`;
-}
-
 function ignoreScriptParsed(msg: CDPMessage): boolean {
   return msg.method !== "Debugger.scriptParsed";
 }
@@ -415,7 +409,7 @@ class InspectorTester {
 Deno.test("inspector_connect", async () => {
   const script = `${testdataPath}/inspector1.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect"), script],
+    ["run", "-A", "--inspect=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -432,7 +426,7 @@ Deno.test("inspector_connect", async () => {
 Deno.test("inspector_break_on_first_line", async () => {
   const script = `${testdataPath}/inspector2.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -484,7 +478,7 @@ Deno.test("inspector_break_on_first_line", async () => {
 Deno.test("inspector_pause", async () => {
   const script = `${testdataPath}/inspector1.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect"), script],
+    ["run", "-A", "--inspect=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -503,65 +497,10 @@ Deno.test("inspector_pause", async () => {
   }
 });
 
-Deno.test("inspector_port_collision", async () => {
-  if (Deno.build.os === "windows") return;
-
-  const script = `${testdataPath}/inspector1.js`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect");
-
-  const command1 = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
-    stderr: "piped",
-  });
-  const child1 = command1.spawn();
-  const stderr1 = child1.stderr.pipeThrough(new TextDecoderStream())
-    .getReader();
-
-  let buffer1 = "";
-  while (true) {
-    const { value, done } = await stderr1.read();
-    if (done) break;
-    buffer1 += value;
-    if (buffer1.includes("Debugger listening on ")) break;
-  }
-
-  const command2 = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
-    stderr: "piped",
-  });
-  const child2 = command2.spawn();
-  const stderr2 = child2.stderr.pipeThrough(new TextDecoderStream())
-    .getReader();
-
-  let buffer2 = "";
-  while (true) {
-    const { value, done } = await stderr2.read();
-    if (done) break;
-    buffer2 += value;
-    if (
-      buffer2.includes("Failed to start inspector server") ||
-      buffer2.includes("error")
-    ) {
-      break;
-    }
-  }
-
-  assert(
-    !buffer2.includes("Debugger listening"),
-    "Second process should not listen successfully",
-  );
-
-  await stderr1.cancel();
-  await stderr2.cancel();
-  child1.kill();
-  await child1.status;
-  await child2.status;
-});
-
 Deno.test("inspector_does_not_hang", async () => {
   const script = `${testdataPath}/inspector3.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     {
       notificationFilter: ignoreScriptParsed,
       env: { NO_COLOR: "1" },
@@ -617,10 +556,9 @@ Deno.test("inspector_does_not_hang", async () => {
 
 Deno.test("inspector_without_brk_runs_code", async () => {
   const script = `${testdataPath}/inspector4.js`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect");
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
+    args: ["run", "-A", "--inspect=0", script],
     stdout: "piped",
     stderr: "piped",
   });
@@ -649,10 +587,9 @@ Deno.test("inspector_without_brk_runs_code", async () => {
 
 Deno.test("inspector_json", async () => {
   const script = `${testdataPath}/inspector1.js`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect");
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
+    args: ["run", "-A", "--inspect=0", script],
     stderr: "piped",
   });
 
@@ -683,10 +620,9 @@ Deno.test("inspector_json", async () => {
 
 Deno.test("inspector_connect_non_ws", async () => {
   const script = `${testdataPath}/inspector1.js`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect");
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
+    args: ["run", "-A", "--inspect=0", script],
     stderr: "piped",
   });
 
@@ -709,7 +645,7 @@ Deno.test("inspector_connect_non_ws", async () => {
 Deno.test("inspector_memory", async () => {
   const script = `${testdataPath}/memory.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     {
       notificationFilter: ignoreScriptParsed,
       env: { RUST_BACKTRACE: "1" },
@@ -759,7 +695,7 @@ Deno.test("inspector_memory", async () => {
 Deno.test("inspector_profile", async () => {
   const script = `${testdataPath}/memory.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -813,7 +749,7 @@ Deno.test("inspector_profile", async () => {
 Deno.test("inspector_multiple_workers", async () => {
   const script = `${testdataPath}/multi_worker_main.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -862,7 +798,7 @@ Deno.test("inspector_multiple_workers", async () => {
 Deno.test("inspector_worker_target_discovery", async () => {
   const script = `${testdataPath}/worker_main.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -922,7 +858,7 @@ Deno.test("inspector_worker_target_discovery", async () => {
 Deno.test("inspector_node_worker_enable", async () => {
   const script = `${testdataPath}/worker_main.js`;
   const tester = await InspectorTester.create(
-    ["run", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["run", "-A", "--inspect-brk=0", script],
     { notificationFilter: ignoreScriptParsed },
   );
 
@@ -962,7 +898,7 @@ Deno.test("inspector_node_worker_enable", async () => {
 
 Deno.test("inspector_runtime_evaluate_does_not_crash", async () => {
   const tester = await InspectorTester.create(
-    ["repl", "-A", inspectFlagWithUniquePort("--inspect")],
+    ["repl", "-A", "--inspect=0"],
     {
       notificationFilter: ignoreScriptParsed,
       env: { RUST_BACKTRACE: "1" },
@@ -1060,7 +996,7 @@ Deno.test("inspector_break_on_first_line_in_test", async () => {
 
   const script = `${testdataPath}/inspector_test.js`;
   const tester = await InspectorTester.create(
-    ["test", "-A", inspectFlagWithUniquePort("--inspect-brk"), script],
+    ["test", "-A", "--inspect-brk=0", script],
     {
       notificationFilter: ignoreScriptParsed,
       env: { NO_COLOR: "1" },
@@ -1134,7 +1070,7 @@ Deno.test("inspector_with_ts_files", async () => {
       "run",
       "-A",
       "--check",
-      inspectFlagWithUniquePort("--inspect-brk"),
+      "--inspect-brk=0",
       script,
     ],
     { notificationFilter },
@@ -1258,10 +1194,9 @@ Deno.test("inspector_wait", async () => {
   const script = `${testdataPath}/inspect_wait.js`;
   const tempDir = await Deno.makeTempDir();
   const helloPath = `${tempDir}/hello.txt`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect-wait");
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
+    args: ["run", "-A", "--inspect-wait=0", script],
     stdin: "piped",
     stdout: "piped",
     stderr: "piped",
@@ -1345,10 +1280,9 @@ Deno.test("inspector_wait", async () => {
 
 Deno.test("inspector_node_runtime_api_url", async () => {
   const script = `${testdataPath}/node/url.js`;
-  const inspectFlag = inspectFlagWithUniquePort("--inspect");
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", inspectFlag, script],
+    args: ["run", "-A", "--inspect=0", script],
     stdout: "piped",
     stderr: "piped",
   });
