@@ -710,14 +710,6 @@ class Performance extends EventTarget {
         throw new TypeError('Options cannot be passed with "endMark"');
       }
       if (
-        !ReflectHas(startOrMeasureOptions, "start") &&
-        !ReflectHas(startOrMeasureOptions, "end")
-      ) {
-        throw new TypeError(
-          'A "start" or "end" mark must be supplied in options',
-        );
-      }
-      if (
         ReflectHas(startOrMeasureOptions, "start") &&
         ReflectHas(startOrMeasureOptions, "duration") &&
         ReflectHas(startOrMeasureOptions, "end")
