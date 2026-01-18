@@ -181,14 +181,6 @@ export function fork(
   // deno-lint-ignore no-explicit-any
   (options as any)[kNeedsNpmProcessState] = true;
 
-  // Pass node conditions to child process via environment variable
-  // This allows the child to use the same conditions for module resolution
-  if (nodeConditions.length > 0) {
-    options.env = options.env || { ...process.env };
-    // deno-lint-ignore no-explicit-any
-    (options.env as any).__DENO_NODE_CONDITIONS = nodeConditions.join(",");
-  }
-
   return spawn(options.execPath, args, options);
 }
 

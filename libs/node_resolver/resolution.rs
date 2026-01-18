@@ -79,26 +79,6 @@ pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
   &[Cow::Borrowed("require"), Cow::Borrowed("node")];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
-std::thread_local! {
-  /// Thread-local storage for additional worker conditions.
-  /// These are prepended to the default conditions when resolving modules.
-  /// This is used to support Node.js worker_threads/child_process --conditions flag.
-  static WORKER_CONDITIONS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// Set the worker conditions for the current thread.
-/// These conditions will be prepended to the default conditions during resolution.
-pub fn set_worker_conditions(conditions: Vec<String>) {
-  WORKER_CONDITIONS.with(|c| {
-    *c.borrow_mut() = conditions;
-  });
-}
-
-/// Get the worker conditions for the current thread.
-fn get_worker_conditions() -> Vec<String> {
-  WORKER_CONDITIONS.with(|c| c.borrow().clone())
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
@@ -382,22 +362,8 @@ impl<
     }
   }
 
-  pub fn require_conditions(&self) -> Cow<'_, [Cow<'static, str>]> {
-    let base_conditions = self.condition_resolver.require_conditions();
-    // Merge worker-specific conditions (from execArgv --conditions) with the base conditions
-    let worker_conditions = get_worker_conditions();
-    if worker_conditions.is_empty() {
-      Cow::Borrowed(base_conditions)
-    } else {
-      // Prepend worker conditions to base conditions
-      let mut merged: Vec<Cow<'static, str>> =
-        Vec::with_capacity(worker_conditions.len() + base_conditions.len());
-      for c in worker_conditions {
-        merged.push(Cow::Owned(c));
-      }
-      merged.extend(base_conditions.iter().cloned());
-      Cow::Owned(merged)
-    }
+  pub fn require_conditions(&self) -> &[Cow<'static, str>] {
+    self.condition_resolver.require_conditions()
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -458,23 +424,7 @@ impl<
       }
     }
 
-    let base_conditions = self.condition_resolver.resolve(resolution_mode);
-    // Merge worker-specific conditions (from execArgv --conditions) with the base conditions
-    let worker_conditions = get_worker_conditions();
-    let conditions: Cow<'_, [Cow<'static, str>]> =
-      if worker_conditions.is_empty() {
-        Cow::Borrowed(base_conditions)
-      } else {
-        // Prepend worker conditions to base conditions
-        let mut merged: Vec<Cow<'static, str>> =
-          Vec::with_capacity(worker_conditions.len() + base_conditions.len());
-        for c in worker_conditions {
-          merged.push(Cow::Owned(c));
-        }
-        merged.extend(base_conditions.iter().cloned());
-        Cow::Owned(merged)
-      };
-    let conditions: &[Cow<'static, str>] = &conditions;
+    let conditions = self.condition_resolver.resolve(resolution_mode);
     let referrer = UrlOrPathRef::from_url(referrer);
     let (url, resolved_kind) = self.module_resolve(
       specifier,
