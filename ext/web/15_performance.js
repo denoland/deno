@@ -4,7 +4,6 @@ import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
   ArrayPrototypePush,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -12,6 +11,7 @@ const {
   SafeSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
+  SetPrototypeForEach,
   Symbol,
   SymbolFor,
   TypeError,
@@ -42,7 +42,7 @@ function unregisterPerformanceObserver(observer) {
 }
 
 function notifyObservers(entry) {
-  ArrayPrototypeForEach([...performanceObservers], (observer) => {
+  SetPrototypeForEach(performanceObservers, (observer) => {
     observer(entry);
   });
 }
