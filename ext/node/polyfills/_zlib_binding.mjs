@@ -46,6 +46,10 @@ export const BROTLI_DECODE = 8;
 export const BROTLI_ENCODE = 9;
 export const ZSTD_COMPRESS = 10;
 export const ZSTD_DECOMPRESS = 11;
+// Zstd end directives (~flush levels)
+export const ZSTD_e_continue = 0;
+export const ZSTD_e_flush = 1;
+export const ZSTD_e_end = 2;
 
 export const Z_MIN_WINDOWBITS = 8;
 export const Z_MAX_WINDOWBITS = 15;
@@ -71,6 +75,8 @@ import {
   op_zlib_crc32,
   op_zlib_crc32_string,
   Zlib,
+  ZstdCompress,
+  ZstdDecompress,
 } from "ext:core/ops";
 
 function crc32(buf, crc) {
@@ -83,6 +89,68 @@ function crc32(buf, crc) {
   return op_zlib_crc32(buf, crc);
 }
 
-export { BrotliDecoder, BrotliEncoder, crc32, Zlib };
+export {
+  BrotliDecoder,
+  BrotliEncoder,
+  crc32,
+  Zlib,
+  ZstdCompress,
+  ZstdDecompress,
+};
 
-export default { BrotliDecoder, BrotliEncoder, Zlib, crc32 };
+export default {
+  BrotliDecoder,
+  BrotliEncoder,
+  Zlib,
+  crc32,
+  ZstdCompress,
+  ZstdDecompress,
+};
+
+// Wrap Zstd methods to ensure numeric args are int32 SMIs
+if (ZstdCompress && ZstdCompress.prototype?.write) {
+  const _write = ZstdCompress.prototype.write;
+  ZstdCompress.prototype.write = function (
+    flush,
+    input,
+    in_off,
+    in_len,
+    out,
+    out_off,
+    out_len,
+  ) {
+    return _write.call(
+      this,
+      flush | 0,
+      input,
+      in_off | 0,
+      in_len | 0,
+      out,
+      out_off | 0,
+      out_len | 0,
+    );
+  };
+}
+if (ZstdCompress && ZstdCompress.prototype?.write_sync) {
+  const _writeSync = ZstdCompress.prototype.write_sync;
+  ZstdCompress.prototype.write_sync = function (
+    flush,
+    input,
+    in_off,
+    in_len,
+    out,
+    out_off,
+    out_len,
+  ) {
+    return _writeSync.call(
+      this,
+      flush | 0,
+      input,
+      in_off | 0,
+      in_len | 0,
+      out,
+      out_off | 0,
+      out_len | 0,
+    );
+  };
+}

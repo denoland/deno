@@ -544,16 +544,19 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.availOutBefore = self._chunkSize - self._outOffset;
   handle.availInBefore = chunk.byteLength;
   handle.inOff = 0;
-  handle.flushFlag = flushFlag;
+  handle.flushFlag = flushFlag ?? 0;
 
+  // Pass plain numbers to avoid relying on handle's dynamic properties
+  const inLen = chunk.byteLength;
+  const outAvail = self._chunkSize - self._outOffset;
   handle.write(
-    flushFlag,
+    flushFlag | 0,
     chunk, // in
     0, // in_off
-    handle.availInBefore, // in_len
+    inLen | 0, // in_len
     self._outBuffer, // out
-    self._outOffset, // out_off
-    handle.availOutBefore,
+    self._outOffset | 0, // out_off
+    outAvail | 0,
   ); // out_len
 }
 
@@ -609,11 +612,12 @@ function processCallback() {
 
     if (!streamBufferIsFull) {
       process.nextTick(() => {
+        const remainingIn = this.buffer.byteLength - handle.inOff;
         this.write(
           handle.flushFlag,
           this.buffer, // in
           handle.inOff, // in_off
-          handle.availInBefore, // in_len
+          remainingIn, // in_len
           self._outBuffer, // out
           self._outOffset, // out_off
           self._chunkSize,
@@ -983,10 +987,10 @@ class Zstd extends ZlibBase {
     }
 
     const handle = mode === ZSTD_COMPRESS
-      ? new binding.ZstdCompress()
-      : new binding.ZstdDecompress();
+      ? new binding.ZstdCompress(mode)
+      : new binding.ZstdDecompress(mode);
 
-    const pledgedSrcSize = opts?.pledgedSrcSize ?? undefined;
+    const pledgedSrcSize = opts?.pledgedSrcSize ?? 0;
 
     const writeState = new Uint32Array(2);
     handle.init(
