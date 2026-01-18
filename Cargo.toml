@@ -67,9 +67,9 @@ deno_ast = { version = "=0.52.0", features = ["transpiling"] }
 deno_core = { version = "0.380.0" }
 
 deno_cache_dir = "=0.26.3"
-deno_doc = "=0.188.0"
+deno_doc = "=0.189.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.105.0", default-features = false }
+deno_graph = { version = "=0.106.0", default-features = false }
 deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
@@ -81,7 +81,7 @@ deno_task_shell = "=0.26.2"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.106.0"
+eszip = "=0.107.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -194,7 +194,7 @@ hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
 ignore = "0.4"
-import_map = { version = "0.24.0", features = ["ext"] }
+import_map = { version = "0.25.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 inventory = "0.3.21"
 ipnet = "2.3"
