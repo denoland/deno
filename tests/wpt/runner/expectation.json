@@ -13549,7 +13549,7 @@
     "MessagePort_onmessage_start.any.html": true,
     "MessagePort_onmessage_start.any.worker.html": true,
     "postMessage_MessagePorts_xsite.sub.window.html": false,
-    "MessageEvent_onmessage_postMessage_infinite_loop.html": false,
+    "MessageEvent_onmessage_postMessage_infinite_loop.html": true,
     "messageerror.html": false,
     "multi-globals": {
       "broadcastchannel-current.sub.html": false,
