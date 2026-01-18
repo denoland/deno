@@ -144,11 +144,16 @@ export function fork(
   const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
   const result = op_node_translate_cli_args(nodeArgs, false);
 
-  // Prepend the bootstrap unstable args
-  args = [
-    ...op_bootstrap_unstable_args(),
-    ...result.deno_args,
-  ];
+  // Insert bootstrap unstable args after "run" but before other args
+  // result.deno_args is like ["run", "-A", "script.js", ...]
+  // We need ["run", ...bootstrapArgs, "-A", "script.js", ...]
+  const denoArgs = result.deno_args;
+  const bootstrapArgs = op_bootstrap_unstable_args();
+  if (denoArgs.length > 0 && denoArgs[0] === "run" && bootstrapArgs.length > 0) {
+    args = [denoArgs[0], ...bootstrapArgs, ...denoArgs.slice(1)];
+  } else {
+    args = [...bootstrapArgs, ...denoArgs];
+  }
 
   // Handle NODE_OPTIONS if the parser returned any
   if (result.node_options.length > 0) {
