@@ -37,7 +37,9 @@ class PerformanceObserver extends WebPerformanceObserver {
     if (typeof options !== "object" || options === null) {
       throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
     }
-    if (options.entryTypes !== undefined && !Array.isArray(options.entryTypes)) {
+    if (
+      options.entryTypes !== undefined && !Array.isArray(options.entryTypes)
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "options.entryTypes",
         "string[]",
