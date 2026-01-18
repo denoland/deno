@@ -441,16 +441,15 @@ impl NpmInfo {
     let mut info = NpmInfo::default();
 
     for module in graph.modules() {
-      if let Module::Npm(module) = module {
-        if let Ok(package) =
+      if let Module::Npm(module) = module
+        && let Ok(package) =
           npm_snapshot.resolve_pkg_from_pkg_req(module.pkg_req_ref.req())
-        {
-          info
-            .resolved_ids
-            .insert(module.pkg_req_ref.req().clone(), package.id.clone());
-          if !info.packages.contains_key(&package.id) {
-            info.fill_package_info(package, npm_resolver, npm_snapshot);
-          }
+      {
+        info
+          .resolved_ids
+          .insert(module.pkg_req_ref.req().clone(), package.id.clone());
+        if !info.packages.contains_key(&package.id) {
+          info.fill_package_info(package, npm_resolver, npm_snapshot);
         }
       }
     }
