@@ -26,7 +26,6 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
-  SafeArrayIterator,
   StringPrototypeToLowerCase,
   TypeError,
 } = primordials;
@@ -130,7 +129,8 @@ export function setDefaultCACertificates(certs: string[]) {
     );
   }
 
-  for (const cert of new SafeArrayIterator(certs)) {
+  for (let i = 0; i < certs.length; ++i) {
+    const cert = certs[i];
     if (typeof cert !== "string") {
       throw new TypeError(
         "Each certificate in 'certs' must be a string",
