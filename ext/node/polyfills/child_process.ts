@@ -149,7 +149,9 @@ export function fork(
   // We need ["run", ...bootstrapArgs, "-A", "script.js", ...]
   const denoArgs = result.deno_args;
   const bootstrapArgs = op_bootstrap_unstable_args();
-  if (denoArgs.length > 0 && denoArgs[0] === "run" && bootstrapArgs.length > 0) {
+  if (
+    denoArgs.length > 0 && denoArgs[0] === "run" && bootstrapArgs.length > 0
+  ) {
     args = [denoArgs[0], ...bootstrapArgs, ...denoArgs.slice(1)];
   } else {
     args = [...bootstrapArgs, ...denoArgs];
