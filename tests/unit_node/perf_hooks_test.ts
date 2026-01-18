@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import * as perfHooks from "node:perf_hooks";
 import {
   monitorEventLoopDelay,
   performance,
@@ -7,53 +6,9 @@ import {
 } from "node:perf_hooks";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
-Deno.test({
-  name: "[perf_hooks] performance",
-  fn() {
-    assertEquals(perfHooks.performance.measure, performance.measure);
-    assertEquals(perfHooks.performance.clearMarks, performance.clearMarks);
-    assertEquals(perfHooks.performance.mark, performance.mark);
-    assertEquals(perfHooks.performance.now, performance.now);
-    assertEquals(
-      perfHooks.performance.getEntriesByName,
-      performance.getEntriesByName,
-    );
-    assertEquals(
-      perfHooks.performance.getEntriesByType,
-      performance.getEntriesByType,
-    );
-    // @ts-ignore toJSON is not in Performance interface
-    assertEquals(perfHooks.performance.toJSON, performance.toJSON);
-    perfHooks.performance.measure("test");
-    perfHooks.performance.mark("test");
-    perfHooks.performance.clearMarks("test");
-    perfHooks.performance.now();
-    assertEquals(perfHooks.performance.getEntriesByName("event", "mark"), []);
-    assertEquals(perfHooks.performance.getEntriesByType("mark"), []);
-    // @ts-ignore toJSON is not in Performance interface
-    perfHooks.performance.toJSON();
-  },
-});
-
-Deno.test({
-  name: "[perf_hooks] performance destructured",
-  fn() {
-    performance.measure("test");
-    performance.mark("test");
-    performance.clearMarks("test");
-    performance.now();
-    // @ts-ignore toJSON is not in Performance interface
-    performance.toJSON();
-  },
-});
-
-Deno.test({
-  name: "[perf_hooks] PerformanceEntry & PerformanceObserver",
-  fn() {
-    assertEquals<unknown>(perfHooks.PerformanceEntry, PerformanceEntry);
-    assertEquals<unknown>(perfHooks.PerformanceObserver, PerformanceObserver);
-  },
-});
+// Basic performance API tests removed - covered by Node compat tests:
+// - parallel/test-performance-global.js
+// - parallel/test-performanceobserver-gc.js
 
 Deno.test({
   name: "[perf_hooks] performance.timeOrigin",

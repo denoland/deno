@@ -916,6 +916,7 @@
     "parallel/test-perf-gc-crash.js": {},
     "parallel/test-performance-global.js": {},
     "parallel/test-performanceobserver-gc.js": {},
+    "parallel/test-performance-measure-detail.js": {},
     "parallel/test-permission-inspector-brk.js": {},
     "parallel/test-permission-inspector.js": {},
     "parallel/test-permission-no-addons.js": {},
