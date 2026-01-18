@@ -4,10 +4,14 @@ import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
   ArrayPrototypePush,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectHas,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
   Symbol,
   SymbolFor,
   TypeError,
@@ -25,6 +29,23 @@ import { DOMException } from "./01_dom_exception.js";
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
+
+// Observer registry for PerformanceObserver support
+const performanceObservers = new SafeSet();
+
+function registerPerformanceObserver(observer) {
+  SetPrototypeAdd(performanceObservers, observer);
+}
+
+function unregisterPerformanceObserver(observer) {
+  SetPrototypeDelete(performanceObservers, observer);
+}
+
+function notifyObservers(entry) {
+  ArrayPrototypeForEach([...performanceObservers], (observer) => {
+    observer(entry);
+  });
+}
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -488,8 +509,9 @@ class Performance extends EventTarget {
     // same name as a read only attribute in the PerformanceTiming interface,
     // throw a SyntaxError. - not implemented
     const entry = new PerformanceMark(markName, markOptions);
-    // 3.1.1.7 Queue entry - not implemented
+    // 3.1.1.7 Queue entry
     ArrayPrototypePush(performanceEntries, entry);
+    notifyObservers(entry);
     return entry;
   }
 
@@ -592,6 +614,7 @@ class Performance extends EventTarget {
       illegalConstructorKey,
     );
     ArrayPrototypePush(performanceEntries, entry);
+    notifyObservers(entry);
     return entry;
   }
 
@@ -634,5 +657,7 @@ export {
   PerformanceEntry,
   PerformanceMark,
   PerformanceMeasure,
+  registerPerformanceObserver,
   setTimeOrigin,
+  unregisterPerformanceObserver,
 };

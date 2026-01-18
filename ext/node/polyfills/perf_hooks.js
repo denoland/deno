@@ -3,16 +3,94 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { performance, PerformanceEntry } from "ext:deno_web/15_performance.js";
+import {
+  performance,
+  PerformanceEntry,
+  registerPerformanceObserver,
+  unregisterPerformanceObserver,
+} from "ext:deno_web/15_performance.js";
 import { EldHistogram } from "ext:core/ops";
 
-class PerformanceObserver {
-  static supportedEntryTypes = [];
-  observe() {
-    // todo(lucacasonato): actually implement this
+class PerformanceObserverEntryList {
+  #entries;
+
+  constructor(entries) {
+    this.#entries = entries;
   }
+
+  getEntries() {
+    return this.#entries;
+  }
+
+  getEntriesByType(type) {
+    return this.#entries.filter((entry) => entry.entryType === type);
+  }
+
+  getEntriesByName(name, type) {
+    return this.#entries.filter(
+      (entry) =>
+        entry.name === name && (type === undefined || entry.entryType === type),
+    );
+  }
+}
+
+class PerformanceObserver {
+  static supportedEntryTypes = ["mark", "measure"];
+
+  #callback;
+  #entryTypes = [];
+  #buffer = [];
+  #handler = null;
+
+  constructor(callback) {
+    if (typeof callback !== "function") {
+      throw new TypeError("callback must be a function");
+    }
+    this.#callback = callback;
+  }
+
+  observe(options = {}) {
+    if (options.entryTypes) {
+      this.#entryTypes = options.entryTypes;
+    } else if (options.type) {
+      this.#entryTypes = [options.type];
+    } else {
+      throw new TypeError(
+        "observe requires either 'entryTypes' or 'type' option",
+      );
+    }
+
+    // Create handler that filters by entry type and buffers entries
+    this.#handler = (entry) => {
+      if (this.#entryTypes.includes(entry.entryType)) {
+        this.#buffer.push(entry);
+        // Use queueMicrotask to batch entries and call callback asynchronously
+        queueMicrotask(() => {
+          if (this.#buffer.length > 0) {
+            const entries = this.#buffer;
+            this.#buffer = [];
+            const entryList = new PerformanceObserverEntryList(entries);
+            this.#callback(entryList, this);
+          }
+        });
+      }
+    };
+
+    registerPerformanceObserver(this.#handler);
+  }
+
   disconnect() {
-    // todo(lucacasonato): actually implement this
+    if (this.#handler) {
+      unregisterPerformanceObserver(this.#handler);
+      this.#handler = null;
+    }
+    this.#buffer = [];
+  }
+
+  takeRecords() {
+    const entries = this.#buffer;
+    this.#buffer = [];
+    return entries;
   }
 }
 
