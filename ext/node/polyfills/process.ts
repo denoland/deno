@@ -39,7 +39,7 @@ import {
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
@@ -94,7 +94,7 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
-const { NumberMAX_SAFE_INTEGER } = primordials;
+const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -884,7 +884,41 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
-process.features = { inspector: false };
+const features = {
+  // TODO(bartlomieju): change value of `inspector` to true
+  inspector: false,
+  // TODO(bartlomieju): not sure if it's worth getting actual value during build process
+  debug: false,
+  uv: true,
+  ipv6: true,
+  // deno-lint-ignore camelcase
+  tls_alpn: true,
+  // deno-lint-ignore camelcase
+  tls_sni: true,
+  // deno-lint-ignore camelcase
+  tls_ocsp: true,
+  tls: true,
+  // deno-lint-ignore camelcase
+  openssl_is_boringssl: false,
+  // deno-lint-ignore camelcase
+  cached_builtins: true,
+  // deno-lint-ignore camelcase
+  require_module: true,
+  get typescript() {
+    if (Deno.build.standalone) {
+      return false;
+    }
+    return "transform";
+  },
+};
+
+ObjectDefineProperty(process, "features", {
+  __proto__: null,
+  enumerable: true,
+  writable: false,
+  configurable: false,
+  value: features,
+});
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
