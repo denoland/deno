@@ -4968,7 +4968,7 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
 
     let host_ip = host_part
       .parse::<IpAddr>()
-      .map_err(|_| format!("Invalid inspector host '{host_part}'"))?;
+      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
 
     return Ok(SocketAddr::new(host_ip, port));
   }
@@ -4978,9 +4978,9 @@ pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
     return Ok(SocketAddr::new(default_host, port));
   }
 
-  let host_ip = host_and_port
-    .parse::<IpAddr>()
-    .map_err(|_| format!("Invalid inspector host '{host_and_port}'"))?;
+  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
+    format!("Invalid inspector host '{host_and_port}': {:?}", e)
+  })?;
 
   Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
 }
