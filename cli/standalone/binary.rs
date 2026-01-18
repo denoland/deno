@@ -394,9 +394,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        if graph.npm_packages.is_empty() {
-          None
-        } else {
+        if graph.modules().any(|m| m.npm().is_some()) {
           let snapshot = managed.resolution().snapshot();
           let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
             let reqs = graph
@@ -420,6 +418,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           } else {
             None
           }
+        } else {
+          None
         }
       }
       CliNpmResolver::Byonm(_) => {
