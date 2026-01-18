@@ -39,7 +39,7 @@ import {
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
