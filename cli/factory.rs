@@ -97,6 +97,7 @@ use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
@@ -739,6 +740,13 @@ impl CliFactory {
   pub async fn node_resolver(&self) -> Result<&Arc<CliNodeResolver>, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.node_resolver()
+  }
+
+  pub async fn npm_req_resolver(
+    &self,
+  ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
+    self.initialize_npm_resolution_if_managed().await?;
+    self.resolver_factory()?.npm_req_resolver()
   }
 
   async fn initialize_npm_resolution_if_managed(&self) -> Result<(), AnyError> {
