@@ -10,6 +10,7 @@ import { internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
+  op_node_translate_cli_args,
 } from "ext:core/ops";
 
 import {
@@ -54,7 +55,6 @@ const {
   ObjectAssign,
   PromiseWithResolvers,
   StringPrototypeSlice,
-  StringPrototypeStartsWith,
 } = primordials;
 
 const MAX_BUFFER = 1024 * 1024;
@@ -139,56 +139,28 @@ export function fork(
     }
   }
 
-  // TODO(bartlomieju): this is incomplete, currently only handling a single
-  // V8 flag to get Prisma integration running, we should fill this out with
-  // more
-  const v8Flags: string[] = [];
-  if (Array.isArray(execArgv)) {
-    let index = 0;
-    while (index < execArgv.length) {
-      const flag = execArgv[index];
-      if (flag.startsWith("--max-old-space-size")) {
-        execArgv.splice(index, 1);
-        v8Flags.push(flag);
-      } else if (flag.startsWith("--enable-source-maps")) {
-        // https://github.com/denoland/deno/issues/21750
-        execArgv.splice(index, 1);
-      } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
-        let rm = 1;
-        if (flag.indexOf("=") === -1) {
-          // --conditions foo
-          // so remove the next argument as well.
-          rm = 2;
-        }
-        execArgv.splice(index, rm);
-      } else if (flag.startsWith("--no-warnings")) {
-        execArgv[index] = "--quiet";
-      } else if (
-        StringPrototypeStartsWith(execArgv[index], "--experimental-")
-      ) {
-        // `--experimental-*` args are ignored, because most experimental Node features
-        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
-        execArgv.splice(index, 1);
-        index++;
-      } else {
-        index++;
-      }
+  // Use the Rust parser to translate Node.js CLI args to Deno args
+  // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
+  const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
+  const result = op_node_translate_cli_args(nodeArgs, false);
+
+  // Prepend the bootstrap unstable args
+  args = [
+    ...op_bootstrap_unstable_args(),
+    ...result.deno_args,
+  ];
+
+  // Handle NODE_OPTIONS if the parser returned any
+  if (result.node_options.length > 0) {
+    const nodeOptionsStr = result.node_options.join(" ");
+    if (options.env) {
+      options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
+        ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
+        : nodeOptionsStr;
+    } else {
+      options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
     }
   }
-
-  const stringifiedV8Flags: string[] = [];
-  if (v8Flags.length > 0) {
-    stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
-  }
-  args = [
-    "run",
-    ...op_bootstrap_unstable_args(),
-    "-A",
-    ...stringifiedV8Flags,
-    ...execArgv,
-    modulePath,
-    ...args,
-  ];
 
   if (typeof options.stdio === "string") {
     options.stdio = stdioStringToArray(options.stdio, "ipc");
