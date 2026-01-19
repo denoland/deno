@@ -401,8 +401,15 @@ pub async fn run(
       if let Some(exit_code) = res {
         Ok(exit_code)
       } else {
-        let managed_npm_resolver =
-          managed_factory.npm_resolver().await?.as_managed().unwrap();
+        let managed_npm_resolver = managed_factory
+          .npm_resolver()
+          .await?
+          .as_managed()
+          .ok_or_else(|| {
+            anyhow::anyhow!(
+              "Expected managed npm resolver for package installation, but found BYONM resolver instead"
+            )
+          })?;
         let bin_commands = bin_commands_for_package(
           runner_node_resolver,
           managed_npm_resolver,
