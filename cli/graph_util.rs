@@ -333,33 +333,39 @@ pub fn resolution_error_for_tsc_diagnostic(
           })
         }
       },
-      ResolveError::ImportMap(error) => match error.as_kind() {
-        ImportMapErrorKind::JsonParse(_)
-        | ImportMapErrorKind::ImportMapNotObject
-        | ImportMapErrorKind::ImportsFieldNotObject
-        | ImportMapErrorKind::ScopesFieldNotObject
-        | ImportMapErrorKind::ScopePrefixNotObject(_)
-        | ImportMapErrorKind::BlockedByNullEntry(_)
-        | ImportMapErrorKind::SpecifierResolutionFailure { .. }
-        | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
-        ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
-          Some(ResolutionErrorRef {
+      ResolveError::Other(error) => {
+        if let Some(error) =
+          error.get_ref().downcast_ref::<import_map::ImportMapError>()
+        {
+          match error.as_kind() {
+            ImportMapErrorKind::JsonParse(_)
+            | ImportMapErrorKind::ImportMapNotObject
+            | ImportMapErrorKind::ImportsFieldNotObject
+            | ImportMapErrorKind::ScopesFieldNotObject
+            | ImportMapErrorKind::ScopePrefixNotObject(_)
+            | ImportMapErrorKind::BlockedByNullEntry(_)
+            | ImportMapErrorKind::SpecifierResolutionFailure { .. }
+            | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
+            ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
+              Some(ResolutionErrorRef {
+                specifier,
+                range,
+                is_module_not_found: false,
+              })
+            }
+          }
+        } else {
+          let is_module_not_found_error =
+            downcast_ref_deno_resolve_error(error)
+              .and_then(|err| err.maybe_node_code())
+              .map(is_module_not_found_code)
+              .unwrap_or(false);
+          is_module_not_found_error.then(|| ResolutionErrorRef {
             specifier,
             range,
-            is_module_not_found: false,
+            is_module_not_found: true,
           })
         }
-      },
-      ResolveError::Other(error) => {
-        let is_module_not_found_error = downcast_ref_deno_resolve_error(error)
-          .and_then(|err| err.maybe_node_code())
-          .map(is_module_not_found_code)
-          .unwrap_or(false);
-        is_module_not_found_error.then(|| ResolutionErrorRef {
-          specifier,
-          range,
-          is_module_not_found: true,
-        })
       }
     },
   }

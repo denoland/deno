@@ -344,7 +344,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
         dependencies: if let Some(map) = maybe_external_import_map {
-          deno_config::import_map::import_map_deps(map)
+          deno_config::import_map::import_map_deps_from_value(map)
+            .collect::<HashSet<_>>()
         } else {
           root_folder
             .deno_json

@@ -5,7 +5,7 @@ import {
   type Dirent,
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 
