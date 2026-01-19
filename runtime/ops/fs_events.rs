@@ -144,10 +144,10 @@ pub enum FsEventsError {
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
 }
-
 fn start_watcher(
   state: &mut OpState,
   paths: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
 ) -> Result<(), FsEventsError> {
   if let Some(watcher) = state.try_borrow_mut::<WatcherState>() {
@@ -169,7 +169,13 @@ fn start_watcher(
 
         // Only send the event if the path matches one of the paths that the user is watching
         if let Ok(event) = &res2 {
-          if paths.iter().any(|path| {
+          let ignore = ignore.iter().any(|path| {
+            event.paths.iter().any(|event_path| {
+              same_file::is_same_file(event_path, path).unwrap_or(false)
+                || starts_with_canonicalized(event_path, path)
+            })
+          });
+          if !ignore && paths.iter().any(|path| {
             event.paths.iter().any(|event_path| {
               same_file::is_same_file(event_path, path).unwrap_or(false)
                 || starts_with_canonicalized(event_path, path)
@@ -201,11 +207,24 @@ fn start_watcher(
 fn op_fs_events_open(
   state: &mut OpState,
   recursive: bool,
+  #[serde] ignore:Vec<String>,
   #[serde] paths: Vec<String>,
 ) -> Result<ResourceId, FsEventsError> {
   let mut resolved_paths = Vec::with_capacity(paths.len());
+  let mut ignore_paths = Vec::with_capacity(ignore.len());
   {
     let permissions_container = state.borrow_mut::<PermissionsContainer>();
+    for path in &ignore {
+      ignore_paths.push(
+        permissions_container
+          .check_open(
+            Cow::Owned(PathBuf::from(path)),
+            deno_permissions::OpenAccessKind::ReadNoFollow,
+            Some("Deno.watchFs()"),
+          )?
+          .into_owned_path(),
+      );
+    }
     for path in paths {
       resolved_paths.push(
         permissions_container
@@ -221,7 +240,7 @@ fn op_fs_events_open(
 
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, NotifyError>>(16);
 
-  start_watcher(state, resolved_paths.clone(), sender)?;
+  start_watcher(state, resolved_paths.clone(), ignore_paths.clone(), sender)?;
 
   let recursive_mode = if recursive {
     RecursiveMode::Recursive
