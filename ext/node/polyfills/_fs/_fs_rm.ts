@@ -52,11 +52,7 @@ export function rm(
           if (options?.force && err instanceof Deno.errors.NotFound) {
             callback(null);
           } else {
-            callback(
-              err instanceof Error
-                ? denoErrorToNodeError(err, { syscall: "rm" })
-                : err,
-            );
+            callback(denoErrorToNodeError(err, { syscall: "rm" }));
           }
         });
     },
@@ -76,10 +72,6 @@ export function rmSync(path: string | URL, options?: rmOptions) {
     if (options?.force && err instanceof Deno.errors.NotFound) {
       return;
     }
-    if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
-    } else {
-      throw err;
-    }
+    throw denoErrorToNodeError(err, { syscall: "rm" });
   }
 }
