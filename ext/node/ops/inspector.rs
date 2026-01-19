@@ -16,9 +16,10 @@ use deno_permissions::PermissionsContainer;
 pub struct InspectorServerUrl(pub String);
 
 #[op2(fast)]
-pub fn op_inspector_enabled() -> bool {
-  // TODO: hook up to InspectorServer
-  false
+pub fn op_inspector_enabled(state: &OpState) -> bool {
+  // If there's `InspectorServerUrl` then inspector is enabled, this
+  // will change once `op_inspector_open` will be implemented
+  state.try_borrow::<InspectorServerUrl>().is_some()
 }
 
 #[op2(stack_trace)]

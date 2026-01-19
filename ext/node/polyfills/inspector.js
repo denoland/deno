@@ -33,6 +33,17 @@ import {
   ERR_INSPECTOR_NOT_WORKER,
 } from "ext:deno_node/internal/errors.ts";
 
+function isLoopback(host) {
+  const hostLower = host.toLowerCase();
+
+  return (
+    hostLower === "localhost" ||
+    hostLower.startsWith("127.") ||
+    hostLower === "[::1]" ||
+    hostLower === "[0:0:0:0:0:0:0:1]"
+  );
+}
+
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -185,6 +196,16 @@ function open(port, host, wait) {
     // equiv of handling args[1]->IsString()
     host = undefined;
   }
+
+  if (host && !isLoopback(host)) {
+    process.emitWarning(
+      "Binding the inspector to a public IP with an open port is insecure, " +
+        "as it allows external hosts to connect to the inspector " +
+        "and perform a remote code execution attack.",
+      "SecurityWarning",
+    );
+  }
+
   op_inspector_open(port, host);
   if (wait) {
     op_inspector_wait();
@@ -193,7 +214,7 @@ function open(port, host, wait) {
   return {
     __proto__: null,
     [SymbolDispose]() {
-      _debugEnd();
+      op_inspector_close();
     },
   };
 }
