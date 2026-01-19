@@ -49,7 +49,7 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { addSignalAlgorithm } from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 let process: NodeJS.Process;
@@ -252,7 +252,7 @@ export async function aborted(
     return PromiseResolve();
   }
   const abortPromise = PromiseWithResolvers();
-  signal[abortSignal.add](abortPromise.resolve);
+  addSignalAlgorithm(signal, abortPromise.resolve);
   return abortPromise.promise;
 }
 

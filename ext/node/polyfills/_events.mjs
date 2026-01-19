@@ -72,10 +72,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
 import { nextTick } from "ext:deno_node/_process/process.ts";
-import {
-  eventTargetData,
-  kResistStopImmediatePropagation,
-} from "ext:deno_web/02_event.js";
+import { getAllListeners, getListeners } from "ext:deno_web/02_event.js";
 
 export { addAbortListener } from "./internal/events/abort_listener.mjs";
 
@@ -867,9 +864,7 @@ export function getEventListeners(emitterOrTarget, type) {
     return emitterOrTarget.listeners(type);
   }
   if (emitterOrTarget instanceof EventTarget) {
-    return emitterOrTarget[eventTargetData]?.listeners?.[type]?.map((
-      listener,
-    ) => listener.callback) || [];
+    return getListeners(emitterOrTarget, type);
   }
   throw new ERR_INVALID_ARG_TYPE(
     "emitter",
@@ -934,7 +929,7 @@ export async function once(emitter, name, options = kEmptyObject) {
         signal,
         "abort",
         abortListener,
-        { once: true, [kResistStopImmediatePropagation]: true },
+        { once: true, [SymbolFor("Deno.stopImmediatePropagation")]: true },
       );
     }
   });
@@ -976,14 +971,11 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
 
 const kEventsGetter = {
   get() {
-    const data = this[eventTargetData];
-    if (!data) {
-      return new SafeMap();
-    }
+    const listeners = getAllListeners(this);
     return new SafeMap(
       ArrayPrototypeMap(
         ArrayPrototypeFilter(
-          ObjectEntries(data.listeners),
+          ObjectEntries(listeners),
           ([_, listeners]) => listeners.length > 0,
         ),
         ([key, listeners]) => [key, new SafeSet(listeners)],

@@ -29,7 +29,10 @@ import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
 import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
 import { packageData } from "ext:deno_fetch/22_body.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import {
   ReadableStream,
   readableStreamCollectIntoUint8Array,
@@ -314,11 +317,15 @@ class ChildProcess {
         // Ignore the error for https://github.com/denoland/deno/issues/27112
       }
     };
-    signal?.[abortSignal.add](onAbort);
+    if (signal != null) {
+      addSignalAlgorithm(signal, onAbort);
+    }
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
-      signal?.[abortSignal.remove](onAbort);
+      if (signal != null) {
+        removeSignalAlgorithm(signal, onAbort);
+      }
       this.#waitComplete = true;
       return res;
     });
