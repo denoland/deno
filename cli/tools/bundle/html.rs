@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use capacity_builder::StringBuilder;
 use deno_core::anyhow;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use lol_html::element;
 use lol_html::html_content::ContentType as LolContentType;
 

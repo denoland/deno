@@ -17,7 +17,7 @@ use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
 use deno_cache_dir::file_fetcher::File;
 use deno_core::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;

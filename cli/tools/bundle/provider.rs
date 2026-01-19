@@ -6,7 +6,7 @@ use std::sync::Arc;
 use deno_bundle_runtime as rt_bundle;
 use deno_bundle_runtime::BundleOptions as RtBundleOptions;
 use deno_bundle_runtime::BundleProvider;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;

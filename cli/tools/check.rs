@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_terminal::colors;
 
 use crate::args::CheckFlags;

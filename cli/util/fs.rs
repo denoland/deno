@@ -12,8 +12,8 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 
 use super::progress_bar::UpdateGuard;
 use crate::sys::CliSys;

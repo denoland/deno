@@ -25,7 +25,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;

@@ -10,7 +10,7 @@ use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;

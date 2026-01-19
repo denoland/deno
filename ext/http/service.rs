@@ -805,7 +805,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_handle_request() -> Result<(), deno_core::error::AnyError> {
+  async fn test_handle_request() -> Result<(), deno_core::anyhow::Error> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let server_state = HttpServerState::new();
     let server_state_check = server_state.clone();

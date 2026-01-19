@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::ModuleSpecifier;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;

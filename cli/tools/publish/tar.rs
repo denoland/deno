@@ -5,7 +5,7 @@ use std::io::Write;
 
 use bytes::Bytes;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use sha2::Digest;

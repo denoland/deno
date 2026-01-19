@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::thread;
 
 use deno_core::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;

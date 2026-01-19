@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::serde_json;
 
 /// A function that converts a float to a string the represents a human

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm_cache::TarballCache;

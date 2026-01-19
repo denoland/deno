@@ -6,7 +6,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirLintConfig;
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::url::Url;
 use deno_lint::linter::LintConfig;
 use deno_resolver::deno_json::CompilerOptionsKey;

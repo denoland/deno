@@ -6,8 +6,8 @@ use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 
 pub struct PublishOrderGraph {

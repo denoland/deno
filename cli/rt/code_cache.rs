@@ -9,8 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::anyhow::Error as AnyError;
 use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_lib::util::hash::FastInsecureHasher;

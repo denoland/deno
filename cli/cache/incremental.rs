@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error as AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
