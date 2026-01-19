@@ -38,10 +38,12 @@ export class ReadStream extends Socket {
       throw new ERR_INVALID_FD(fd);
     }
 
-    // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
+    // We only support `stdin`, `stdout` and `stderr`.
+    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
-    const tty = new TTY(io.stdin);
+    const tty = new TTY(
+      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+    );
     super({
       readableHighWaterMark: 0,
       handle: tty,
