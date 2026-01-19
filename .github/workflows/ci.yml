@@ -32,7 +32,7 @@ jobs:
           git config --global fetch.parallel 32
         if: github.event.pull_request.draft == true
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -135,7 +135,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -187,7 +187,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Install Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: 3.11
         if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
@@ -201,7 +201,7 @@ jobs:
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
         name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 18
       - if: |-
@@ -211,7 +211,7 @@ jobs:
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
         name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -225,7 +225,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: denoland
       - name: Setup gcloud (windows)
@@ -236,7 +236,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
@@ -386,7 +386,7 @@ jobs:
         with:
           cache-path: ./target
       - name: Set up playwright cache
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
@@ -431,7 +431,7 @@ jobs:
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))))
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
           path: target/release/deno
@@ -590,7 +590,7 @@ jobs:
           !startsWith(github.ref, 'refs/tags/'))
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         if: |-
           !(matrix.skip) && (always() &&
           matrix.job == 'test' &&
@@ -715,7 +715,7 @@ jobs:
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v0.1.15
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
@@ -794,7 +794,7 @@ jobs:
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -863,7 +863,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 5
           submodules: false
@@ -896,14 +896,14 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@v2
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: denoland
       - name: Upload canary version file to dl.deno.land
