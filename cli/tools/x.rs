@@ -405,10 +405,8 @@ pub async fn run(
           .npm_resolver()
           .await?
           .as_managed()
-          .ok_or_else(|| {
-            anyhow::anyhow!(
-              "Expected managed npm resolver for package installation, but found BYONM resolver instead"
-            )
+          .with_context(|| {
+            "Expected managed npm resolver for package installation, but found BYONM resolver instead"
           })?;
         let bin_commands = bin_commands_for_package(
           runner_node_resolver,
