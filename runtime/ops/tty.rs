@@ -19,6 +19,7 @@ use deno_error::JsErrorClass;
 use deno_error::builtin_classes::GENERIC_ERROR;
 #[cfg(windows)]
 use deno_io::WinTtyState;
+use deno_io::StdFileResourceInner;
 #[cfg(unix)]
 use nix::sys::termios;
 use rustyline::Cmd;
@@ -59,7 +60,7 @@ use winapi::um::wincon;
 
 deno_core::extension!(
   deno_tty,
-  ops = [op_set_raw, op_console_size, op_read_line_prompt],
+  ops = [op_set_raw, op_console_size, op_read_line_prompt, op_open_tty_from_fd],
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
@@ -488,5 +489,130 @@ pub fn op_read_line_prompt(
     }
     Err(ReadlineError::Eof) => Ok(None),
     Err(err) => Err(JsReadlineError(err)),
+  }
+}
+
+/// Creates a FileResource from a file descriptor for TTY use.
+/// This allows Node.js TTY streams to work with arbitrary file descriptors,
+/// not just 0, 1, and 2.
+#[op2(fast)]
+#[smi]
+pub fn op_open_tty_from_fd(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<u32, JsErrorBox> {
+  use deno_io::fs::FileResource;
+  use std::fs::File as StdFile;
+  use std::rc::Rc;
+  
+  if fd < 0 {
+    return Err(JsErrorBox::generic("Invalid file descriptor"));
+  }
+
+  // Check if fd is a TTY using the same logic as isTerminal
+  #[cfg(unix)]
+  {
+    use std::io::IsTerminal;
+    use std::os::unix::io::FromRawFd;
+    
+    // Duplicate the fd so we can check if it's a terminal without taking ownership
+    let dup_fd = unsafe { libc::dup(fd) };
+    if dup_fd < 0 {
+      return Err(JsErrorBox::generic("Failed to duplicate file descriptor"));
+    }
+    
+    // SAFETY: We just duplicated the fd successfully
+    let file = unsafe { StdFile::from_raw_fd(dup_fd) };
+    
+    if !file.is_terminal() {
+      return Err(JsErrorBox::type_error(
+        "File descriptor is not a TTY"
+      ));
+    }
+
+    // Now duplicate it again for the resource
+    let final_fd = unsafe { libc::dup(fd) };
+    if final_fd < 0 {
+      return Err(JsErrorBox::generic("Failed to duplicate file descriptor"));
+    }
+
+    // SAFETY: We duplicated the fd successfully
+    let tty_file = unsafe { StdFile::from_raw_fd(final_fd) };
+    
+    // Create a FileResource using StdFileResourceInner
+    let inner = StdFileResourceInner::file(tty_file, None);
+    let resource = FileResource::new(Rc::new(inner), format!("tty-{}", fd));
+    let rid = state.resource_table.add(resource);
+    Ok(rid)
+  }
+
+  #[cfg(windows)]
+  {
+    use std::io::IsTerminal;
+    use std::os::windows::io::FromRawHandle;
+    use winapi::um::handleapi::DuplicateHandle;
+    use winapi::um::processthreadsapi::GetCurrentProcess;
+    use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
+    use winapi::um::winnt::HANDLE;
+
+    // On Windows, fd is actually a HANDLE
+    let handle = fd as isize as HANDLE;
+    
+    // Duplicate the handle to check if it's a terminal
+    let mut dup_handle: HANDLE = std::ptr::null_mut();
+    let current_process = unsafe { GetCurrentProcess() };
+    
+    // SAFETY: WinAPI calls
+    let result = unsafe {
+      DuplicateHandle(
+        current_process,
+        handle,
+        current_process,
+        &mut dup_handle,
+        0,
+        1,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    
+    if result == 0 {
+      return Err(JsErrorBox::generic("Failed to duplicate handle"));
+    }
+
+    // SAFETY: We just duplicated the handle successfully
+    let file = unsafe { StdFile::from_raw_handle(dup_handle) };
+    
+    if !file.is_terminal() {
+      return Err(JsErrorBox::type_error(
+        "File descriptor is not a TTY"
+      ));
+    }
+
+    // Duplicate again for the resource
+    let mut final_handle: HANDLE = std::ptr::null_mut();
+    let result = unsafe {
+      DuplicateHandle(
+        current_process,
+        handle,
+        current_process,
+        &mut final_handle,
+        0,
+        1,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    
+    if result == 0 {
+      return Err(JsErrorBox::generic("Failed to duplicate handle"));
+    }
+
+    // SAFETY: We duplicated the handle successfully
+    let tty_file = unsafe { StdFile::from_raw_handle(final_handle) };
+    
+    // Create a FileResource using StdFileResourceInner
+    let inner = StdFileResourceInner::file(tty_file, None);
+    let resource = FileResource::new(Rc::new(inner), format!("tty-{}", fd));
+    let rid = state.resource_table.add(resource);
+    Ok(rid)
   }
 }
