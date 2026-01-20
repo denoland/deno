@@ -4,11 +4,13 @@
 use core::convert::Infallible as Never;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::task::Poll;
 use std::thread;
 
@@ -30,7 +32,6 @@ use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_node::InspectorServerUrl;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -40,13 +41,46 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+/// URL of the inspector server for a runtime instance.
+/// This is used to check if the inspector is enabled and to get
+/// the WebSocket URL for connecting to the debugger.
+pub struct InspectorServerUrl(pub String);
+
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
   shutdown_server_tx: Option<broadcast::Sender<()>>,
-  thread_handle: Option<thread::JoinHandle<()>>,
+  // Wrapped in Mutex to make InspectorServer Sync (JoinHandle is Send but not Sync)
+  thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
+  OnceLock::new();
+
+/// Returns the global inspector server if it has been created.
+pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
+  GLOBAL_INSPECTOR_SERVER.get().cloned()
+}
+
+/// Creates a global inspector server at the given address with the given name.
+/// Returns a reference to the server if created successfully, or the existing
+/// server if one was already created (ignoring the provided parameters).
+pub fn create_inspector_server(
+  host: SocketAddr,
+  name: &'static str,
+) -> Result<Arc<InspectorServer>, InspectorServerError> {
+  // Return existing server if already created
+  if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
+    return Ok(server.clone());
+  }
+
+  let server = Arc::new(InspectorServer::new(host, name)?);
+  // If another thread created the server between our check and now,
+  // just return the existing one
+  let _ = GLOBAL_INSPECTOR_SERVER.set(server);
+  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap().clone())
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -72,6 +106,15 @@ pub enum InspectorServerError {
   },
 }
 
+fn create_basic_runtime() -> tokio::runtime::Runtime {
+  tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .enable_time()
+    .max_blocking_threads(4)
+    .build()
+    .unwrap()
+}
+
 impl InspectorServer {
   pub fn new(
     host: SocketAddr,
@@ -91,7 +134,7 @@ impl InspectorServer {
       .map_err(|source| InspectorServerError::LocalAddr { host, source })?;
 
     let thread_handle = thread::spawn(move || {
-      let rt = crate::tokio_util::create_basic_runtime();
+      let rt = create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
         &rt,
@@ -108,7 +151,7 @@ impl InspectorServer {
       host,
       register_inspector_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
-      thread_handle: Some(thread_handle),
+      thread_handle: Mutex::new(Some(thread_handle)),
     })
   }
 
@@ -143,7 +186,7 @@ impl Drop for InspectorServer {
         .expect("unable to send shutdown signal");
     }
 
-    if let Some(thread_handle) = self.thread_handle.take() {
+    if let Some(thread_handle) = self.thread_handle.lock().take() {
       thread_handle.join().expect("unable to join thread");
     }
   }

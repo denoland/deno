@@ -34,7 +34,6 @@ use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
-pub use ops::inspector::InspectorServerUrl;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;

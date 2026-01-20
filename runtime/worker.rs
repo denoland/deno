@@ -57,7 +57,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::inspector_server::InspectorServer;
+use crate::deno_inspector_server::get_inspector_server;
 use crate::ops;
 use crate::shared::runtime;
 
@@ -244,7 +244,6 @@ pub struct WorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
   // `should_wait_for_inspector_session`.
@@ -276,7 +275,6 @@ impl Default for WorkerOptions {
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
       trace_ops: Default::default(),
-      maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
@@ -618,7 +616,7 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
+    if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),

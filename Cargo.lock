@@ -2232,6 +2232,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_inspector_server"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "fastwebsockets",
+ "http 1.1.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "log",
+ "thiserror 2.0.12",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "deno_io"
 version = "0.137.0"
 dependencies = [
@@ -2455,6 +2472,7 @@ dependencies = [
  "deno_error",
  "deno_fetch",
  "deno_fs",
+ "deno_inspector_server",
  "deno_io",
  "deno_net",
  "deno_package_json",
@@ -2822,6 +2840,7 @@ dependencies = [
  "deno_fs",
  "deno_http",
  "deno_image",
+ "deno_inspector_server",
  "deno_io",
  "deno_kv",
  "deno_napi",

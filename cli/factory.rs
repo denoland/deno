@@ -53,7 +53,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -305,7 +304,6 @@ struct CliFactoryServices {
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
-  maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
@@ -879,16 +877,12 @@ impl CliFactory {
       .await
   }
 
-  pub fn maybe_inspector_server(
-    &self,
-  ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
-    self.services.maybe_inspector_server.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      match cli_options.resolve_inspector_server() {
-        Ok(server) => Ok(server.map(Arc::new)),
-        Err(err) => Err(err),
-      }
-    })
+  pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
+    let cli_options = self.cli_options()?;
+    if let Some((host, name)) = cli_options.resolve_inspector_server_options() {
+      deno_runtime::deno_inspector_server::create_inspector_server(host, name)?;
+    }
+    Ok(())
   }
 
   pub async fn module_load_preparer(
@@ -1067,6 +1061,7 @@ impl CliFactory {
     };
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
+    self.maybe_start_inspector_server()?;
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -1079,7 +1074,6 @@ impl CliFactory {
       self.feature_checker()?.clone(),
       fs.clone(),
       cli_options.coverage_dir(),
-      self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
       create_npm_process_state_provider(npm_resolver),

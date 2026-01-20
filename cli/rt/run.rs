@@ -1071,7 +1071,6 @@ pub async fn run(
     feature_checker,
     fs,
     None,
-    None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),

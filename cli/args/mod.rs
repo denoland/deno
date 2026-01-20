@@ -6,6 +6,7 @@ mod flags_net;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -51,7 +52,6 @@ use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
@@ -832,23 +832,16 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_inspector_server(
+  pub fn resolve_inspector_server_options(
     &self,
-  ) -> Result<Option<InspectorServer>, AnyError> {
-    let maybe_inspect_host = self
+  ) -> Option<(SocketAddr, &'static str)> {
+    let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
-      .or(self.flags.inspect_wait);
+      .or(self.flags.inspect_wait)?;
 
-    let Some(host) = maybe_inspect_host else {
-      return Ok(None);
-    };
-
-    Ok(Some(InspectorServer::new(
-      host,
-      DENO_VERSION_INFO.user_agent,
-    )?))
+    Some((host, DENO_VERSION_INFO.user_agent))
   }
 
   pub fn resolve_fmt_options_for_members(
