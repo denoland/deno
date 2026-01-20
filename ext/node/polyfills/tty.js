@@ -114,11 +114,11 @@ export class ReadStream extends Socket {
         handle = new TTY(stream);
       } catch (e) {
         throw new Error(
-          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`
+          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
         );
       }
     } else {
-      // For stdin/stdout/stderr, use the built-in handles  
+      // For stdin/stdout/stderr, use the built-in handles
       handle = new TTY(
         fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
       );
@@ -162,7 +162,7 @@ export class WriteStream extends Socket {
         handle = new TTY(stream);
       } catch (e) {
         throw new Error(
-          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`
+          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
         );
       }
     } else {
