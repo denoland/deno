@@ -872,7 +872,7 @@ impl CliFactory {
   pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
     let cli_options = self.cli_options()?;
     if let Some((host, name)) = cli_options.resolve_inspector_server_options() {
-      deno_runtime::inspector_server::create_inspector_server(host, name)?;
+      deno_runtime::deno_inspector_server::create_inspector_server(host, name)?;
     }
     Ok(())
   }

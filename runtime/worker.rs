@@ -57,7 +57,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::inspector_server::get_inspector_server;
+use crate::deno_inspector_server::get_inspector_server;
 use crate::ops;
 use crate::shared::runtime;
 

@@ -34,6 +34,7 @@ members = [
   "ext/webstorage",
   "libs/config",
   "libs/crypto",
+  "libs/inspector_server",
   "libs/maybe_sync",
   "libs/node_resolver",
   "libs/npm_cache",
@@ -118,6 +119,7 @@ denort_helper = { version = "0.25.0", path = "./ext/rt_helper" }
 # workspace libraries
 deno_bench_util = { version = "0.221.0", path = "./bench_util" }
 deno_config = { version = "0.77.0", features = ["workspace"], path = "./libs/config" }
+deno_inspector_server = { version = "0.1.0", path = "./libs/inspector_server" }
 deno_crypto_provider = { version = "0.21.0", path = "./libs/crypto" }
 deno_features = { version = "0.24.0", path = "./runtime/features" }
 deno_lib = { version = "0.45.0", path = "./cli/lib" }

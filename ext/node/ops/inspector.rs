@@ -11,9 +11,8 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_inspector_server::InspectorServerUrl;
 use deno_permissions::PermissionsContainer;
-
-pub struct InspectorServerUrl(pub String);
 
 #[op2(fast)]
 pub fn op_inspector_enabled(state: &OpState) -> bool {
