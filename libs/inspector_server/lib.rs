@@ -15,6 +15,11 @@ use std::sync::OnceLock;
 use std::task::Poll;
 use std::thread;
 
+use deno_core::InspectorMsg;
+use deno_core::InspectorSessionChannels;
+use deno_core::InspectorSessionKind;
+use deno_core::InspectorSessionProxy;
+use deno_core::JsRuntimeInspector;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -24,15 +29,10 @@ use deno_core::futures::prelude::*;
 use deno_core::futures::stream::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_core::InspectorMsg;
-use deno_core::InspectorSessionChannels;
-use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionProxy;
-use deno_core::JsRuntimeInspector;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -107,52 +107,11 @@ pub enum InspectorServerError {
   },
 }
 
-/// Default configuration for tokio. In the future, this method may have different defaults
-/// depending on the platform and/or CPU layout.
-const fn tokio_configuration() -> (u32, u32, usize) {
-  (61, 31, 1024)
-}
-
-fn tokio_env<T: FromStr>(name: &'static str, default: T) -> T
-where
-  <T as FromStr>::Err: Debug,
-{
-  match std::env::var(name) {
-    Ok(value) => value.parse().unwrap(),
-    Err(_) => default,
-  }
-}
-
 fn create_basic_runtime() -> tokio::runtime::Runtime {
-  let (event_interval, global_queue_interval, max_io_events_per_tick) =
-    tokio_configuration();
-
   tokio::runtime::Builder::new_current_thread()
     .enable_io()
     .enable_time()
-    .event_interval(tokio_env("DENO_TOKIO_EVENT_INTERVAL", event_interval))
-    .global_queue_interval(tokio_env(
-      "DENO_TOKIO_GLOBAL_QUEUE_INTERVAL",
-      global_queue_interval,
-    ))
-    .max_io_events_per_tick(tokio_env(
-      "DENO_TOKIO_MAX_IO_EVENTS_PER_TICK",
-      max_io_events_per_tick,
-    ))
-    // This limits the number of threads for blocking operations (like for
-    // synchronous fs ops) or CPU bound tasks like when we run dprint in
-    // parallel for deno fmt.
-    // The default value is 512, which is an unhelpfully large thread pool. We
-    // don't ever want to have more than a couple dozen threads.
-    .max_blocking_threads(if cfg!(windows) {
-      // on windows, tokio uses blocking tasks for child process IO, make sure
-      // we have enough available threads for other tasks to run
-      4 * std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(8)
-    } else {
-      32
-    })
+    .max_blocking_threads(4)
     .build()
     .unwrap()
 }
