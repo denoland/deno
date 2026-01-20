@@ -5397,12 +5397,8 @@
   "user-timing": {
     "buffered-flag.any.html": false,
     "buffered-flag.any.worker.html": false,
-    "case-sensitivity.any.html": [
-      "getEntriesByType values are case sensitive"
-    ],
-    "case-sensitivity.any.worker.html": [
-      "getEntriesByType values are case sensitive"
-    ],
+    "case-sensitivity.any.html": true,
+    "case-sensitivity.any.worker.html": true,
     "clear_all_marks.any.html": true,
     "clear_all_marks.any.worker.html": true,
     "clear_all_measures.any.html": true,
