@@ -11,6 +11,7 @@ use sha2::Digest;
 
 use super::tsgo_version;
 use crate::cache::DenoDir;
+use crate::colors;
 use crate::http_util::HttpClientProvider;
 
 fn get_download_url(platform: &str) -> String {
@@ -127,7 +128,7 @@ pub async fn ensure_tsgo(
     .map_err(DownloadError::CreateTempDirFailed)?;
 
   // Show user feedback that download is starting
-  eprintln!("Downloading TypeScript Go compiler...");
+  log::info!("{}", colors::gray("Downloading TypeScript Go compiler..."));
 
   let client = http_client_provider
     .get_or_create()
@@ -176,7 +177,7 @@ pub async fn ensure_tsgo(
     })?;
 
   // Show completion message
-  eprintln!("TypeScript Go compiler downloaded successfully.");
+  log::info!("{}", colors::green("TypeScript Go compiler downloaded successfully."));
 
   Ok(TSGO_PATH.get_or_init(|| bin_path))
 }
