@@ -970,10 +970,11 @@ pub async fn op_dns_resolve(
       name_server.port,
       true,
     );
-    (
-      ResolverConfig::from_parts(None, vec![], group),
-      ResolverOpts::default(),
-    )
+    (ResolverConfig::from_parts(None, vec![], group), {
+      let mut opts = ResolverOpts::default();
+      opts.edns0 = true;
+      opts
+    })
   } else {
     system_conf::read_system_conf()?
   };
