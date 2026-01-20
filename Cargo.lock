@@ -6355,8 +6355,9 @@ dependencies = [
 [[package]]
 name = "node_shim"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fd40e1e54559b3bb6dd391c0e1dc5f85b8f451ce5895def8c6c5573369f84c4"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "nom"
