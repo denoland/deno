@@ -177,7 +177,10 @@ pub async fn ensure_tsgo(
     })?;
 
   // Show completion message
-  log::info!("{}", colors::green("TypeScript Go compiler downloaded successfully."));
+  log::info!(
+    "{}",
+    colors::green("TypeScript Go compiler downloaded successfully.")
+  );
 
   Ok(TSGO_PATH.get_or_init(|| bin_path))
 }
