@@ -90,7 +90,6 @@ fn run_js_file(
   let mut command = std::process::Command::new(deno_exe);
   command.args(&args);
 
-  // Pass npm process state to subprocess via temp file + env var
   let _temp_file = if let Some(state) = &npm_process_state {
     let fd =
       deno_runtime::deno_process::npm_process_state_tempfile(state.as_bytes())
@@ -144,7 +143,6 @@ async fn maybe_run_local_npm_bin(
     return Ok(None);
   };
 
-  // Get npm process state to pass to subprocess
   let npm_process_state = match npm_resolver {
     deno_resolver::npm::NpmResolver::Managed(managed) => Some(
       deno_npm_installer::process_state::NpmProcessState::new_managed(
@@ -159,8 +157,7 @@ async fn maybe_run_local_npm_bin(
   match bin_value {
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
-      return run_js_file(&path, &flags.argv, npm_process_state, true)
-        .map(Some);
+      run_js_file(&path, &flags.argv, npm_process_state, true).map(Some)
     }
     BinValue::Executable(mut path_buf) => {
       if cfg!(windows) && path_buf.extension().is_none() {
@@ -454,7 +451,6 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       )
       .await?;
 
-      // JSR packages may depend on npm packages, so pass npm process state
       let npm_resolver = new_factory.npm_resolver().await?;
       let npm_process_state = match npm_resolver {
         deno_resolver::npm::NpmResolver::Managed(managed) => Some(
