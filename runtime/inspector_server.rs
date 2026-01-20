@@ -62,6 +62,14 @@ pub enum InspectorServerError {
     #[inherit]
     source: std::io::Error,
   },
+  #[class(inherit)]
+  #[error("Failed to get inspector server's assigned address")]
+  LocalAddr {
+    host: SocketAddr,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
 }
 
 impl InspectorServer {
@@ -77,6 +85,10 @@ impl InspectorServer {
     let tcp_listener = std::net::TcpListener::bind(host)
       .map_err(|source| InspectorServerError::Connect { host, source })?;
     tcp_listener.set_nonblocking(true)?;
+    // TODO(bartlomieju): update process wide inspector server host
+    let host = tcp_listener
+      .local_addr()
+      .map_err(|source| InspectorServerError::LocalAddr { host, source })?;
 
     let thread_handle = thread::spawn(move || {
       let rt = crate::tokio_util::create_basic_runtime();

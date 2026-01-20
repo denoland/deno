@@ -6,7 +6,6 @@ mod flags_net;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
-use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1023,12 +1022,12 @@ impl CliOptions {
       || self.flags.inspect_wait.is_some()
   }
 
-  pub fn inspect_brk(&self) -> Option<SocketAddr> {
-    self.flags.inspect_brk
+  pub fn inspect_brk(&self) -> bool {
+    self.flags.inspect_brk.is_some()
   }
 
-  pub fn inspect_wait(&self) -> Option<SocketAddr> {
-    self.flags.inspect_wait
+  pub fn inspect_wait(&self) -> bool {
+    self.flags.inspect_wait.is_some()
   }
 
   pub fn log_level(&self) -> Option<log::Level> {
