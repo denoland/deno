@@ -1,0 +1,145 @@
+name: Build dav1d
+
+on:
+  push:
+    branches:
+      - add-avif
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.rust-target }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- Linux ---
+          - os-name: linux
+            runner: ubuntu-22.04
+            arch: x86_64
+            rust-target: x86_64-unknown-linux-gnu
+            cc: gcc
+            cxx: g++
+          - os-name: linux
+            runner: ubuntu-22.04-arm
+            arch: aarch64
+            rust-target: aarch64-unknown-linux-gnu
+            cc: gcc
+            cxx: g++
+
+          # --- macOS ---
+          - os-name: macos
+            runner: macos-15-intel
+            arch: x86_64
+            rust-target: x86_64-apple-darwin
+            cc: clang
+            cxx: clang++
+          - os-name: macos
+            runner: macos-14
+            arch: aarch64
+            rust-target: aarch64-apple-darwin
+            cc: clang
+            cxx: clang++
+
+          # --- Windows ---
+          - os-name: windows
+            runner: windows-2022
+            arch: x86_64
+            rust-target: x86_64-pc-windows-msvc
+            cc: clang-cl
+            cxx: clang-cl
+          - os-name: windows
+            runner: windows-11-arm
+            arch: aarch64
+            rust-target: aarch64-pc-windows-msvc
+            cc: clang-cl
+            cxx: clang-cl
+
+    env:
+      FILE_PATH_PREFIX: ${{ matrix.rust-target }}
+
+    steps:
+      - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v6
+
+      - name: Install NASM (x86_64 only)
+        if: matrix.arch == 'x86_64'
+        uses: ilammy/setup-nasm@v1
+
+      - name: Install Python
+        uses: actions/setup-python@4f41a90a1f38628c7ccc608d05fbafe701bc20ae # v6
+        with:
+          python-version: "3.x"
+
+      - name: Install pip packages
+        run: |
+          pip install -U pip
+          pip install -U wheel setuptools
+          pip install -U meson ninja
+
+      - name: Build dav1d
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          # Keep sync the version
+          # https://github.com/rust-av/dav1d-rs/blob/03477a36c3de4f2aacbab81a8951150ffdb9c4c3/dav1d-sys/build.rs#L10
+          git clone https://code.videolan.org/videolan/dav1d.git -b 1.5.0 --depth 1
+          cd dav1d
+
+          # options for meson
+          # https://mesonbuild.com/Builtin-options.html
+          # https://code.videolan.org/videolan/dav1d/-/blob/1.5.0/meson_options.txt?ref_type=tags
+          meson setup build \
+            --buildtype release \
+            --default-library static \
+            -Ddebug=false \
+            -Db_ndebug=true \
+            -Dtrim_dsp=true \
+            -Dlogging=false \
+            -Denable_tests=false \
+            -Denable_tools=false \
+            --werror
+
+          ninja -C build
+
+      - name: Prepare Artifacts
+        shell: bash
+        run: |
+          mkdir -p dist/${{ env.FILE_PATH_PREFIX }}
+
+          # Standardize filenames to match system-deps expectations:
+          # Windows (MSVC): Expects "dav1d.lib"
+          # Unix-like (macOS/Linux): Expects "libdav1d.a"
+          # https://github.com/gdesmott/system-deps/blob/f5592dd43672bcf0197f52f79f77b1144493e872/src/lib.rs#L1049-L1064
+          if [[ "${{ matrix.os-name }}" == "windows" ]]; then
+            cp dav1d/build/src/libdav1d.a dist/${{ env.FILE_PATH_PREFIX }}/dav1d.lib
+          else
+            cp dav1d/build/src/libdav1d.a dist/${{ env.FILE_PATH_PREFIX }}/libdav1d.a
+          fi
+
+          ls -lh dav1d/build/src/libdav1d.a
+
+          # strip symbols for Linux (ELF)
+          if [[ "${{ matrix.os-name }}" == "linux" ]]; then
+            strip dist/${{ env.FILE_PATH_PREFIX }}/libdav1d.a
+
+            # show size after stripping
+            ls -lh dist/${{ env.FILE_PATH_PREFIX }}/libdav1d.a
+          fi
+
+      - name: Generate Attestations
+        uses: actions/attest-build-provenance@6865550d0380db508fc599a58cc87c50c0bba5c5 # v3
+        with:
+          subject-path: dist/${{ env.FILE_PATH_PREFIX }}/*
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ env.FILE_PATH_PREFIX }}
+          path: dist/
