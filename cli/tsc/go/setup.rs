@@ -126,6 +126,9 @@ pub async fn ensure_tsgo(
   std::fs::create_dir_all(&folder_path)
     .map_err(DownloadError::CreateTempDirFailed)?;
 
+  // Show user feedback that download is starting
+  eprintln!("Downloading TypeScript Go compiler...");
+
   let client = http_client_provider
     .get_or_create()
     .map_err(DownloadError::HttpClient)?;
@@ -171,6 +174,9 @@ pub async fn ensure_tsgo(
         e,
       )
     })?;
+
+  // Show completion message
+  eprintln!("TypeScript Go compiler downloaded successfully.");
 
   Ok(TSGO_PATH.get_or_init(|| bin_path))
 }
