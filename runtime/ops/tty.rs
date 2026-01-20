@@ -554,6 +554,7 @@ pub fn op_open_tty_from_fd(
   {
     use std::io::IsTerminal;
     use std::os::windows::io::FromRawHandle;
+
     use winapi::um::handleapi::DuplicateHandle;
     use winapi::um::processthreadsapi::GetCurrentProcess;
     use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
