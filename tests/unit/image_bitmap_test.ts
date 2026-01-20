@@ -79,7 +79,6 @@ Deno.test(async function imageBitmapScale() {
   const imageBitmap = await createImageBitmap(imageData, {
     resizeHeight: 5,
     resizeWidth: 5,
-    resizeQuality: "pixelated",
   });
   // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore

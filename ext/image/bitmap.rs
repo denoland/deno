@@ -508,9 +508,6 @@ pub(super) fn op_create_image_bitmap(
     ResizeQuality::Medium => FilterType::CatmullRom,
     ResizeQuality::High => FilterType::Lanczos3,
   };
-  // NOTE: The imageBitmapScale test in ./tests/unit/image_bitmap_test.ts
-  // started to fail after update
-  // https://github.com/image-rs/image/pull/2639
   image.resize_exact(output_width, output_height, filter_type);
 
   // 8.
