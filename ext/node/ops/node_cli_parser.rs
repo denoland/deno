@@ -6,7 +6,7 @@
 //! and translates them to Deno CLI arguments.
 
 use deno_core::op2;
-use deno_core::serde::Serialize;
+use serde::Serialize;
 pub use node_shim::DebugOptions;
 pub use node_shim::EnvironmentOptions;
 pub use node_shim::HostPort;
@@ -23,7 +23,6 @@ pub use node_shim::parse_node_options_env_var;
 
 /// Result of translating Node.js CLI args to Deno args
 #[derive(Debug, Clone, Serialize)]
-#[serde(crate = "deno_core::serde")]
 pub struct TranslatedArgs {
   /// The Deno CLI arguments
   pub deno_args: Vec<String>,
