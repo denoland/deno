@@ -1136,7 +1136,7 @@ function transformDenoShellCommand(command: string): string {
  * This is used to determine if the user is spawning a Deno subcommand
  * or a script, and to check if the script is in an npm package.
  */
-function findFirstNonFlagArg(args: string[]): string | null {
+export function findFirstNonFlagArg(args: string[]): string | null {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     // Stop at '--' - everything after is positional
@@ -1382,7 +1382,7 @@ export function spawnSync(
   return result;
 }
 
-const kDenoSubcommands = new Set([
+export const kDenoSubcommands = new Set([
   "add",
   "bench",
   "cache",
