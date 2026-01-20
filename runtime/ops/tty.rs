@@ -522,6 +522,7 @@ pub fn op_open_tty_from_fd(
     use std::os::unix::io::FromRawFd;
 
     // Duplicate the fd so we can check if it's a terminal without taking ownership
+    // SAFETY: Assumes fd is valid; dup safely creates a new handle without affecting the original handle's ownership
     let dup_fd = unsafe { libc::dup(fd) };
     if dup_fd < 0 {
       return Err(JsErrorBox::generic("Failed to duplicate file descriptor"));
@@ -535,6 +536,7 @@ pub fn op_open_tty_from_fd(
     }
 
     // Now duplicate it again for the resource
+    // SAFETY: Assumes fd is valid; dup safely creates a new handle without affecting the original handle's ownership
     let final_fd = unsafe { libc::dup(fd) };
     if final_fd < 0 {
       return Err(JsErrorBox::generic("Failed to duplicate file descriptor"));
