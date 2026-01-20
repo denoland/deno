@@ -567,6 +567,7 @@ pub fn op_open_tty_from_fd(
 
     // Duplicate the handle to check if it's a terminal
     let mut dup_handle: HANDLE = std::ptr::null_mut();
+    // SAFETY: WinAPI call
     let current_process = unsafe { GetCurrentProcess() };
 
     // SAFETY: WinAPI calls
@@ -595,6 +596,7 @@ pub fn op_open_tty_from_fd(
 
     // Duplicate again for the resource
     let mut final_handle: HANDLE = std::ptr::null_mut();
+    // SAFETY: WinAPI calls
     let result = unsafe {
       DuplicateHandle(
         current_process,
