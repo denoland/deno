@@ -5510,7 +5510,8 @@
     "measure.html": false,
     "measure_associated_with_navigation_timing.html": false,
     "measure_exception.html": [
-      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception."
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception.",
+      "Invocation of performance.measure(\"Exception8\", {\"detail\": \"non-empty\"}) should throw TypeError Exception."
     ],
     "measure_exceptions_navigation_timing.html": false,
     "measure_navigation_timing.html": false,
