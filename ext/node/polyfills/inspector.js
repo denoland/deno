@@ -168,7 +168,6 @@ class Session extends EventEmitter {
     }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
-    // deno-lint-ignore prefer-primordials
     for (const callback of this.#messageCallbacks.values()) {
       process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
