@@ -4,10 +4,10 @@ import { op_bootstrap_color_depth } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
+  Symbol,
 } = primordials;
 const {
   isTerminal,
-  opAsync,
   ops: { op_open_tty_from_fd },
 } = core;
 
@@ -66,14 +66,14 @@ class TTYStream {
     return core.isTerminal(this.#rid);
   }
 
-  [Symbol.for("REF")]() {
+  [Symbol("REF")]() {
     this.#ref = true;
     if (this.#opPromise) {
       core.refOpPromise(this.#opPromise);
     }
   }
 
-  [Symbol.for("UNREF")]() {
+  [Symbol("UNREF")]() {
     this.#ref = false;
     if (this.#opPromise) {
       core.unrefOpPromise(this.#opPromise);
