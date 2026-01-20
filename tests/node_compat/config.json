@@ -535,7 +535,9 @@
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
     "parallel/test-fs-rename-type-check.js": {},
-    "parallel/test-fs-rm.js": {},
+    "parallel/test-fs-rm.js": {
+      "darwin": false
+    },
     "parallel/test-fs-rmdir-type-check.js": {},
     "parallel/test-fs-stat-bigint.js": {},
     "parallel/test-fs-statfs.js": {},
