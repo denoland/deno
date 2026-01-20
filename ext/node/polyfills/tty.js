@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_bootstrap_color_depth, op_node_is_terminal } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { op_bootstrap_color_depth } from "ext:core/ops";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
+const {
+  isTerminal,
+} = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
@@ -18,7 +21,12 @@ function isatty(fd) {
     return false;
   }
   try {
-    return op_node_is_terminal(fd);
+    /**
+     * TODO: Treat `fd` as real file descriptors. Currently, `rid` 0, 1, 2
+     * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
+     * the future.
+     */
+    return isTerminal(fd);
   } catch (_) {
     return false;
   }

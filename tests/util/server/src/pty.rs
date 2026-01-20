@@ -404,8 +404,6 @@ fn run_in_pty_impl(
   };
 
   // Close child's secondary handle in parent
-  // SAFETY: fds is a valid file descriptor obtained from posix_openpt/ptsname.
-  // We're closing it in the parent process after the child has been spawned.
   unsafe {
     libc::close(fds);
   }
@@ -423,8 +421,6 @@ fn run_in_pty_impl(
   let mut buf = [0u8; 1024];
 
   use std::os::fd::FromRawFd;
-  // SAFETY: fdm is a valid file descriptor for the master side of the PTY,
-  // obtained from posix_openpt. We take ownership of it here.
   let mut file = unsafe { std::fs::File::from_raw_fd(fdm) };
 
   loop {
