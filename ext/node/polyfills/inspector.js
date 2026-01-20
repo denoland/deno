@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file prefer-primordials
+
 import process from "node:process";
 import { EventEmitter } from "node:events";
 import { primordials } from "ext:core/mod.js";
