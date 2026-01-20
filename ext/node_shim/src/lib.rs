@@ -3178,6 +3178,41 @@ pub fn wrap_eval_code(source_code: &str) -> String {
   )
 }
 
+/// Deno subcommands - if the first arg is one of these, pass through unchanged
+const DENO_SUBCOMMANDS: &[&str] = &[
+  "add",
+  "bench",
+  "cache",
+  "check",
+  "compile",
+  "completions",
+  "coverage",
+  "doc",
+  "eval",
+  "fmt",
+  "help",
+  "info",
+  "init",
+  "install",
+  "lint",
+  "lsp",
+  "publish",
+  "repl",
+  "run",
+  "task",
+  "tasks",
+  "test",
+  "types",
+  "uninstall",
+  "upgrade",
+  "vendor",
+];
+
+/// Check if a string is a Deno subcommand
+pub fn is_deno_subcommand(arg: &str) -> bool {
+  DENO_SUBCOMMANDS.contains(&arg)
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
@@ -3186,6 +3221,16 @@ pub fn translate_to_deno_args(
   let mut result = TranslatedArgs::default();
   let deno_args = &mut result.deno_args;
   let node_options = &mut result.node_options;
+
+  // Check if the args already look like Deno args (e.g., from vitest workers)
+  // If the first remaining arg is a Deno subcommand, pass through unchanged
+  if let Some(first_arg) = parsed_args.remaining_args.first()
+    && is_deno_subcommand(first_arg)
+  {
+    // Already Deno-style args, return unchanged
+    result.deno_args = parsed_args.remaining_args;
+    return result;
+  }
 
   let opts = &parsed_args.options;
   let env_opts = &opts.per_isolate.per_env;

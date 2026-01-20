@@ -1136,7 +1136,7 @@ function transformDenoShellCommand(command: string): string {
  * This is used to determine if the user is spawning a Deno subcommand
  * or a script, and to check if the script is in an npm package.
  */
-export function findFirstNonFlagArg(args: string[]): string | null {
+function findFirstNonFlagArg(args: string[]): string | null {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     // Stop at '--' - everything after is positional
@@ -1178,30 +1178,25 @@ function buildCommand(
     // Ensure all args are strings (Node allows numbers in args array)
     args = args.map((arg) => String(arg));
 
-    // The user is trying to spawn another Deno process as Node.js.
-    // First, check if this is actually a Deno subcommand
+    // Find script path to check if it's in an npm package
     const firstNonFlagArg = findFirstNonFlagArg(args);
-    if (firstNonFlagArg !== null && kDenoSubcommands.has(firstNonFlagArg)) {
-      // This is a Deno command, not Node compat mode - pass through unchanged
-    } else {
-      // Use the Rust parser to translate Node.js args to Deno args
-      // This handles all cases including eval, test, run, etc.
-      const scriptInNpmPackage = firstNonFlagArg !== null
-        ? op_node_in_npm_package(firstNonFlagArg)
-        : false;
+    const scriptInNpmPackage = firstNonFlagArg !== null
+      ? op_node_in_npm_package(firstNonFlagArg)
+      : false;
 
-      const result = op_node_translate_cli_args(args, scriptInNpmPackage);
-      args = result.deno_args;
-      includeNpmProcessState = result.needs_npm_process_state;
+    // Use the Rust parser to translate Node.js args to Deno args
+    // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
+    const result = op_node_translate_cli_args(args, scriptInNpmPackage);
+    args = result.deno_args;
+    includeNpmProcessState = result.needs_npm_process_state;
 
-      // Update NODE_OPTIONS if needed
-      if (result.node_options.length > 0) {
-        const options = result.node_options.join(" ");
-        if (env.NODE_OPTIONS) {
-          env.NODE_OPTIONS += " " + options;
-        } else {
-          env.NODE_OPTIONS = options;
-        }
+    // Update NODE_OPTIONS if needed
+    if (result.node_options.length > 0) {
+      const options = result.node_options.join(" ");
+      if (env.NODE_OPTIONS) {
+        env.NODE_OPTIONS += " " + options;
+      } else {
+        env.NODE_OPTIONS = options;
       }
     }
   }
@@ -1381,34 +1376,6 @@ export function spawnSync(
   }
   return result;
 }
-
-export const kDenoSubcommands = new Set([
-  "add",
-  "bench",
-  "cache",
-  "check",
-  "compile",
-  "completions",
-  "coverage",
-  "doc",
-  "eval",
-  "fmt",
-  "help",
-  "info",
-  "init",
-  "install",
-  "lint",
-  "lsp",
-  "publish",
-  "repl",
-  "run",
-  "tasks",
-  "test",
-  "types",
-  "uninstall",
-  "upgrade",
-  "vendor",
-]);
 
 const kControlDisconnect = Symbol("kControlDisconnect");
 const kPendingMessages = Symbol("kPendingMessages");

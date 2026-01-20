@@ -16,8 +16,6 @@ import {
 import {
   ChildProcess,
   ChildProcessOptions,
-  findFirstNonFlagArg,
-  kDenoSubcommands,
   normalizeSpawnArguments,
   setupChannel,
   type SpawnOptions,
@@ -144,23 +142,11 @@ export function fork(
   // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
   const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
 
-  // Check if the args already look like Deno args (e.g., from vitest workers)
-  // If the first non-flag arg is a Deno subcommand, pass through unchanged
-  const firstNonFlagArg = findFirstNonFlagArg(nodeArgs);
+  // Use the Rust parser to translate Node.js CLI args to Deno args
+  // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
+  const result = op_node_translate_cli_args(nodeArgs, false);
+  const denoArgs = result.deno_args;
   const bootstrapArgs = op_bootstrap_unstable_args();
-
-  let denoArgs: string[];
-  let nodeOptions: string[] = [];
-
-  if (firstNonFlagArg !== null && kDenoSubcommands.has(firstNonFlagArg)) {
-    // Already Deno-style args, pass through unchanged
-    denoArgs = nodeArgs;
-  } else {
-    // Use the Rust parser to translate Node.js CLI args to Deno args
-    const result = op_node_translate_cli_args(nodeArgs, false);
-    denoArgs = result.deno_args;
-    nodeOptions = result.node_options;
-  }
 
   // Insert bootstrap unstable args after "run" but before other args
   // denoArgs is like ["run", "-A", "script.js", ...]
@@ -174,8 +160,8 @@ export function fork(
   }
 
   // Handle NODE_OPTIONS if the parser returned any
-  if (nodeOptions.length > 0) {
-    const nodeOptionsStr = nodeOptions.join(" ");
+  if (result.node_options.length > 0) {
+    const nodeOptionsStr = result.node_options.join(" ");
     if (options.env) {
       options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
         ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
