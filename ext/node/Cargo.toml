@@ -67,6 +67,7 @@ log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
+node_shim.workspace = true
 num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true
