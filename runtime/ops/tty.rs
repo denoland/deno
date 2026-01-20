@@ -506,9 +506,10 @@ pub fn op_open_tty_from_fd(
   state: &mut OpState,
   #[smi] fd: i32,
 ) -> Result<u32, JsErrorBox> {
-  use deno_io::fs::FileResource;
   use std::fs::File as StdFile;
   use std::rc::Rc;
+
+  use deno_io::fs::FileResource;
 
   if fd < 0 {
     return Err(JsErrorBox::generic("Invalid file descriptor"));
