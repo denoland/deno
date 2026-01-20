@@ -105,6 +105,41 @@ pub fn translate_to_deno_args(
     };
   }
 
+  // Handle --run flag (run package.json script via deno task)
+  if !opts.run.is_empty() {
+    deno_args.push("task".to_string());
+    deno_args.push(opts.run.clone());
+    deno_args.extend(parsed_args.remaining_args);
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
+  // Handle --test flag (run tests via deno test)
+  if env_opts.test_runner {
+    deno_args.push("test".to_string());
+    deno_args.push("-A".to_string());
+
+    // Add watch mode if enabled
+    if env_opts.watch_mode {
+      deno_args.push("--watch".to_string());
+    }
+
+    // Add V8 flags
+    if !parsed_args.v8_args.is_empty() {
+      deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
+    }
+
+    deno_args.extend(parsed_args.remaining_args);
+    return TranslatedArgs {
+      deno_args,
+      node_options,
+      needs_npm_process_state,
+    };
+  }
+
   // Handle REPL (no arguments)
   if parsed_args.remaining_args.is_empty() || env_opts.force_repl {
     // Return empty args to trigger REPL behavior
@@ -511,5 +546,29 @@ mod tests {
     let parsed = parse_args(svec!["script.js"]).unwrap();
     let result = translate_to_deno_args(parsed, true);
     assert!(result.needs_npm_process_state);
+  }
+
+  #[test]
+  fn test_translate_run_script() {
+    let parsed = parse_args(svec!["--run", "build"]).unwrap();
+    let result = translate_to_deno_args(parsed, false);
+    assert_eq!(result.deno_args, svec!["task", "build"]);
+  }
+
+  #[test]
+  fn test_translate_test_runner() {
+    let parsed = parse_args(svec!["--test", "test.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, false);
+    assert!(result.deno_args.contains(&"test".to_string()));
+    assert!(result.deno_args.contains(&"-A".to_string()));
+    assert!(result.deno_args.contains(&"test.js".to_string()));
+  }
+
+  #[test]
+  fn test_translate_test_with_watch() {
+    let parsed = parse_args(svec!["--test", "--watch", "test.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, false);
+    assert!(result.deno_args.contains(&"test".to_string()));
+    assert!(result.deno_args.contains(&"--watch".to_string()));
   }
 }
