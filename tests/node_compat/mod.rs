@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use test_util as util;
+use test_util::IS_CI;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
@@ -121,6 +122,10 @@ fn main() {
   let config = load_config();
   let mut category = if cli_args.report {
     collect_all_tests()
+  } else if let Some(filter) = cli_args.filter.as_ref() {
+    let mut category = collect_all_tests();
+    category.filter_children(filter);
+    category
   } else {
     collect_tests_from_config(&config)
   };
@@ -151,6 +156,7 @@ fn main() {
   );
 
   let config = Arc::new(config);
+  let all_tests_flaky = *IS_CI && !cli_args.report;
 
   // Run sequential tests with parallelism=1
   let summary = file_test_runner::run_tests_summary(
@@ -168,7 +174,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky),
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           None,
           || run_test(&cli_args, test, test_config, &results),
@@ -196,7 +202,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky),
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           Some(&parallelism),
           || run_test(&cli_args, test, test_config, &results),
@@ -217,6 +223,7 @@ struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
   report: bool,
+  filter: Option<String>,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -225,11 +232,22 @@ fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
   let mut report = false;
+  let mut filter = None;
+
+  let mut has_filter = false;
   for arg in std::env::args() {
+    if has_filter {
+      filter = Some(arg.as_str().to_string());
+      has_filter = false;
+    }
+
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
       "--report" => report = true,
+      "--filter" => {
+        has_filter = true;
+      }
       _ => {}
     }
   }
@@ -238,6 +256,7 @@ fn parse_cli_args() -> CliArgs {
     inspect_brk,
     inspect_wait,
     report,
+    filter,
   }
 }
 
@@ -260,43 +279,110 @@ fn collect_tests_from_config(
   wrap_in_category(children)
 }
 
+// Directories that don't contain runnable tests
+// from https://github.com/denoland/std/pull/2787#discussion_r1001237016
+const IGNORED_TEST_DIRS: &[&str] = &[
+  "addons",
+  "async-hooks",
+  "benchmark",
+  "cctest",
+  "common",
+  "doctool",
+  "embedding",
+  "fixtures",
+  "fuzzers",
+  "js-native-api",
+  "known_issues",
+  "node-api",
+  "overlapped-checker",
+  "report",
+  "testpy",
+  "tick-processor",
+  "tools",
+  "v8-updates",
+  "wasi",
+  "wpt",
+];
+
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
-  for subdir in ["parallel", "sequential"] {
-    let dir_path = suite_dir.join(subdir);
-    let entries = match std::fs::read_dir(&dir_path) {
-      Ok(entries) => entries,
-      Err(_) => continue,
+  // Scan all subdirectories in the test suite
+  for subdir_entry in std::fs::read_dir(&suite_dir).unwrap().flatten() {
+    let subdir_name = match subdir_entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
     };
 
-    for entry in entries.flatten() {
-      let path = entry.path();
-      if !path.is_file() {
-        continue;
-      }
-
-      let file_name = match path.file_name().and_then(|n| n.to_str()) {
-        Some(name) => name,
-        None => continue,
-      };
-
-      // Only include test-*.js and test-*.mjs files
-      if !file_name.starts_with("test-") {
-        continue;
-      }
-      if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
-        continue;
-      }
-
-      let test_name = format!("{}/{}", subdir, file_name);
-      children.push(create_collected_test(&test_name));
+    // Skip hidden directories (includes .tmp*)
+    if subdir_name.starts_with('.') {
+      continue;
     }
+
+    // Skip directories that don't contain runnable tests
+    if IGNORED_TEST_DIRS.contains(&subdir_name.as_str()) {
+      continue;
+    }
+
+    if !subdir_entry.file_type().is_ok_and(|t| t.is_dir()) {
+      continue;
+    }
+
+    // Recursively collect test files from this subdirectory
+    collect_test_files_recursive(
+      &subdir_entry.path(),
+      &subdir_name,
+      &mut children,
+    );
   }
 
   wrap_in_category(children)
+}
+
+fn collect_test_files_recursive(
+  dir: &std::path::Path,
+  relative_prefix: &str,
+  children: &mut Vec<CollectedCategoryOrTest<NodeCompatTestData>>,
+) {
+  for entry in std::fs::read_dir(dir).unwrap().flatten() {
+    let file_name = match entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
+    };
+
+    // Skip hidden files/directories
+    if file_name.starts_with('.') {
+      continue;
+    }
+
+    let file_type = match entry.file_type() {
+      Ok(ft) => ft,
+      Err(_) => continue,
+    };
+
+    if file_type.is_dir() {
+      // Recurse into subdirectory
+      let new_prefix = format!("{}/{}", relative_prefix, file_name);
+      collect_test_files_recursive(&entry.path(), &new_prefix, children);
+    } else {
+      // Only include test-*.{js,mjs,cjs,ts} files
+      if !file_name.starts_with("test-") {
+        continue;
+      }
+      if !file_name.ends_with(".js")
+        && !file_name.ends_with(".mjs")
+        && !file_name.ends_with(".cjs")
+        && !file_name.ends_with(".ts")
+      {
+        continue;
+      }
+
+      let test_name = format!("{}/{}", relative_prefix, file_name);
+      children.push(create_collected_test(&test_name));
+    }
+  }
 }
 
 fn suite_test_dir() -> std::path::PathBuf {
@@ -403,22 +489,9 @@ fn wait_with_timeout(
   child: test_util::DenoChild,
   timeout: Duration,
 ) -> TestOutput {
-  use std::sync::mpsc;
-  use std::thread;
-
-  let (tx, rx) = mpsc::channel();
-
-  // Spawn thread to wait for child
-  thread::spawn(move || {
-    let result = child.wait_with_output();
-    let _ = tx.send(result);
-  });
-
-  match rx.recv_timeout(timeout) {
-    Ok(Ok(output)) => TestOutput::Completed(output),
-    Ok(Err(_)) => TestOutput::TimedOut, // IO error treated as timeout
-    Err(mpsc::RecvTimeoutError::Timeout) => TestOutput::TimedOut,
-    Err(mpsc::RecvTimeoutError::Disconnected) => TestOutput::TimedOut,
+  match child.wait_with_output_and_timeout(timeout) {
+    Ok(output) => TestOutput::Completed(output),
+    Err(_) => TestOutput::TimedOut,
   }
 }
 

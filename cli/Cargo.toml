@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.6.4"
+version = "2.6.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -172,7 +172,7 @@ shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
-sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
+sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "serde_json", "real", "strip_unc", "winapi"] }
 tar.workspace = true
 tempfile.workspace = true
 text-size.workspace = true

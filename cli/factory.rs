@@ -97,6 +97,7 @@ use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
@@ -741,6 +742,13 @@ impl CliFactory {
     self.resolver_factory()?.node_resolver()
   }
 
+  pub async fn npm_req_resolver(
+    &self,
+  ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
+    self.initialize_npm_resolution_if_managed().await?;
+    self.resolver_factory()?.npm_req_resolver()
+  }
+
   async fn initialize_npm_resolution_if_managed(&self) -> Result<(), AnyError> {
     self
       .npm_installer_factory()?
@@ -1116,8 +1124,8 @@ impl CliFactory {
       has_node_modules_dir: workspace_factory
         .node_modules_dir_path()?
         .is_some(),
-      inspect_brk: cli_options.inspect_brk().is_some(),
-      inspect_wait: cli_options.inspect_wait().is_some(),
+      inspect_brk: cli_options.inspect_brk(),
+      inspect_wait: cli_options.inspect_wait(),
       trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
