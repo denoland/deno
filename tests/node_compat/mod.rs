@@ -49,6 +49,7 @@ const TEST_ARGS: &[&str] = &[
 struct TestConfig {
   #[serde(default)]
   flaky: bool,
+  ignore: Option<bool>,
   windows: Option<bool>,
   darwin: Option<bool>,
   linux: Option<bool>,
@@ -419,6 +420,11 @@ fn wrap_in_category(
 
 fn should_ignore(config: &TestConfig) -> Option<&str> {
   let os = std::env::consts::OS;
+
+  if config.ignore == Some(true) {
+    return Some(config.reason.as_deref().unwrap_or("disabled on all OSes"));
+  }
+
   match os {
     "windows" if config.windows == Some(false) => {
       Some(config.reason.as_deref().unwrap_or("disabled on windows"))

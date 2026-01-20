@@ -885,7 +885,6 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
 const features = {
-  // TODO(bartlomieju): change value of `inspector` to true
   inspector: true,
   // TODO(bartlomieju): not sure if it's worth getting actual value during build process
   debug: false,
