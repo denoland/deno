@@ -29,6 +29,7 @@ pub fn op_inspector_open(
   #[string] _host: Option<String>,
 ) -> Result<(), JsErrorBox> {
   // TODO: hook up to InspectorServer
+
   /*
   let server = state.borrow_mut::<InspectorServer>();
   if let Some(host) = host {

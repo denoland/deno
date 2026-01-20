@@ -40,7 +40,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::inspector_server::MainInspectorSessionChannel;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -370,7 +369,6 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
-  maybe_inspector_server: Option<Arc<InspectorServer>>,
   main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
@@ -417,8 +415,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   ) -> Arc<CreateWebWorkerCb> {
     let shared = self.clone();
     Arc::new(move |args| {
-      let maybe_inspector_server = shared.maybe_inspector_server.clone();
-
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
@@ -459,7 +455,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         compiled_wasm_module_store: Some(
           shared.compiled_wasm_module_store.clone(),
         ),
-        maybe_inspector_server,
         main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
@@ -542,7 +537,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_coverage_dir: Option<PathBuf>,
-    maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
       NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>,
@@ -566,7 +560,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         feature_checker,
         fs,
         maybe_coverage_dir,
-        maybe_inspector_server,
         main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
@@ -713,7 +706,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         format_js_error(e, maybe_initial_cwd.as_ref())
       })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
-      maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       trace_ops: shared.options.trace_ops.clone(),

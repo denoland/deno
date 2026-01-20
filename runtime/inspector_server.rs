@@ -51,11 +51,12 @@ pub struct InspectorServer {
   thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
-static GLOBAL_INSPECTOR_SERVER: OnceLock<InspectorServer> = OnceLock::new();
+static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
+  OnceLock::new();
 
 /// Returns the global inspector server if it has been created.
-pub fn get_inspector_server() -> Option<&'static InspectorServer> {
-  GLOBAL_INSPECTOR_SERVER.get()
+pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
+  GLOBAL_INSPECTOR_SERVER.get().cloned()
 }
 
 /// Creates a global inspector server at the given address with the given name.
@@ -64,17 +65,17 @@ pub fn get_inspector_server() -> Option<&'static InspectorServer> {
 pub fn create_inspector_server(
   host: SocketAddr,
   name: &'static str,
-) -> Result<&'static InspectorServer, InspectorServerError> {
+) -> Result<Arc<InspectorServer>, InspectorServerError> {
   // Return existing server if already created
   if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
-    return Ok(server);
+    return Ok(server.clone());
   }
 
-  let server = InspectorServer::new(host, name)?;
+  let server = Arc::new(InspectorServer::new(host, name)?);
   // If another thread created the server between our check and now,
   // just return the existing one
   let _ = GLOBAL_INSPECTOR_SERVER.set(server);
-  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap())
+  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap().clone())
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
