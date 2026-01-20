@@ -6,7 +6,6 @@
 //! and translates them to Deno CLI arguments.
 
 use deno_core::op2;
-use serde::Serialize;
 pub use node_shim::DebugOptions;
 pub use node_shim::EnvironmentOptions;
 pub use node_shim::HostPort;
@@ -17,9 +16,14 @@ pub use node_shim::OptionsParser;
 pub use node_shim::ParseResult;
 pub use node_shim::PerIsolateOptions;
 pub use node_shim::PerProcessOptions;
+pub use node_shim::TranslateOptions;
+pub use node_shim::TranslatedArgs as NodeShimTranslatedArgs;
 // Re-export types from node_shim for use elsewhere in Deno
 pub use node_shim::parse_args;
 pub use node_shim::parse_node_options_env_var;
+pub use node_shim::translate_to_deno_args as translate_to_deno_args_impl;
+pub use node_shim::wrap_eval_code;
+use serde::Serialize;
 
 /// Result of translating Node.js CLI args to Deno args
 #[derive(Debug, Clone, Serialize)]
@@ -38,197 +42,13 @@ pub fn translate_to_deno_args(
   parsed_args: ParseResult,
   script_in_npm_package: bool,
 ) -> TranslatedArgs {
-  let mut deno_args: Vec<String> = Vec::new();
-  let mut node_options: Vec<String> = Vec::new();
-  let needs_npm_process_state = script_in_npm_package;
-
-  let opts = &parsed_args.options;
-  let env_opts = &opts.per_isolate.per_env;
-
-  // Handle -e/--eval or -p/--print
-  if env_opts.has_eval_string {
-    deno_args.push("eval".to_string());
-    if env_opts.print_eval {
-      deno_args.push("-p".to_string());
-    }
-    if !parsed_args.v8_args.is_empty() {
-      deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
-    }
-    deno_args.push(env_opts.eval_string.clone());
-    deno_args.extend(parsed_args.remaining_args);
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --v8-options flag (print V8 help and exit)
-  if opts.print_v8_help {
-    deno_args.push("--v8-flags=--help".to_string());
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --help flag (pass through to Deno)
-  if opts.print_help {
-    deno_args.push("--help".to_string());
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --version flag (pass through to Deno)
-  if opts.print_version {
-    deno_args.push("--version".to_string());
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --completion-bash flag (translate to Deno completions)
-  if opts.print_bash_completion {
-    deno_args.push("completions".to_string());
-    deno_args.push("bash".to_string());
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --run flag (run package.json script via deno task)
-  if !opts.run.is_empty() {
-    deno_args.push("task".to_string());
-    deno_args.push(opts.run.clone());
-    deno_args.extend(parsed_args.remaining_args);
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle --test flag (run tests via deno test)
-  if env_opts.test_runner {
-    deno_args.push("test".to_string());
-    deno_args.push("-A".to_string());
-
-    // Add watch mode if enabled
-    if env_opts.watch_mode {
-      deno_args.push("--watch".to_string());
-    }
-
-    // Add V8 flags
-    if !parsed_args.v8_args.is_empty() {
-      deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
-    }
-
-    deno_args.extend(parsed_args.remaining_args);
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle REPL (no arguments)
-  if parsed_args.remaining_args.is_empty() || env_opts.force_repl {
-    // Return empty args to trigger REPL behavior
-    if !parsed_args.v8_args.is_empty() {
-      deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
-    }
-    return TranslatedArgs {
-      deno_args,
-      node_options,
-      needs_npm_process_state,
-    };
-  }
-
-  // Handle running a script
-  deno_args.push("run".to_string());
-  deno_args.push("-A".to_string());
-
-  // Add watch mode if enabled
-  if env_opts.watch_mode {
-    if env_opts.watch_mode_paths.is_empty() {
-      deno_args.push("--watch".to_string());
-    } else {
-      deno_args.push(format!(
-        "--watch={}",
-        env_opts
-          .watch_mode_paths
-          .iter()
-          .map(|p| p.replace(',', ",,"))
-          .collect::<Vec<String>>()
-          .join(",")
-      ));
-    }
-  }
-
-  // Add env file if specified
-  if env_opts.has_env_file_string {
-    if env_opts.env_file.is_empty() {
-      deno_args.push("--env-file".to_string());
-    } else {
-      deno_args.push(format!("--env-file={}", env_opts.env_file));
-    }
-  }
-
-  // Add V8 flags
-  if !parsed_args.v8_args.is_empty() {
-    deno_args.push(format!("--v8-flags={}", parsed_args.v8_args.join(",")));
-  }
-
-  // Add conditions
-  if !env_opts.conditions.is_empty() {
-    for condition in &env_opts.conditions {
-      deno_args.push(format!("--conditions={}", condition));
-    }
-  }
-
-  // Add inspector flags
-  if env_opts.debug_options.inspector_enabled {
-    let arg = if env_opts.debug_options.break_first_line {
-      "--inspect-brk"
-    } else if env_opts.debug_options.inspect_wait {
-      "--inspect-wait"
-    } else {
-      "--inspect"
-    };
-    deno_args.push(format!(
-      "{}={}:{}",
-      arg,
-      env_opts.debug_options.host_port.host,
-      env_opts.debug_options.host_port.port
-    ));
-  }
-
-  // Handle --no-warnings -> --quiet
-  if !env_opts.warnings {
-    deno_args.push("--quiet".to_string());
-    node_options.push("--no-warnings".to_string());
-  }
-
-  // Handle --pending-deprecation (pass to NODE_OPTIONS)
-  if env_opts.pending_deprecation {
-    node_options.push("--pending-deprecation".to_string());
-  }
-
-  // Add the script and remaining args
-  deno_args.extend(parsed_args.remaining_args);
+  let options = TranslateOptions::for_child_process();
+  let result = translate_to_deno_args_impl(parsed_args, &options);
 
   TranslatedArgs {
-    deno_args,
-    node_options,
-    needs_npm_process_state,
+    deno_args: result.deno_args,
+    node_options: result.node_options,
+    needs_npm_process_state: script_in_npm_package,
   }
 }
 
@@ -353,97 +173,6 @@ mod tests {
     );
   }
 
-  // Tests for incompatible argument combinations
-  #[test]
-  fn test_check_eval_incompatible() {
-    let result = parse_args(svec!["--check", "--eval", "console.log(42)"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(
-      errors
-        .iter()
-        .any(|e| e.contains("either --check or --eval can be used, not both"))
-    );
-  }
-
-  #[test]
-  fn test_test_check_incompatible() {
-    let result = parse_args(svec!["--test", "--check"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(
-      errors
-        .iter()
-        .any(|e| e.contains("either --test or --check can be used, not both"))
-    );
-  }
-
-  #[test]
-  fn test_test_eval_incompatible() {
-    let result = parse_args(svec!["--test", "--eval", "console.log(42)"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(
-      errors
-        .iter()
-        .any(|e| e.contains("either --test or --eval can be used, not both"))
-    );
-  }
-
-  #[test]
-  fn test_test_interactive_incompatible() {
-    let result = parse_args(svec!["--test", "--interactive"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| {
-      e.contains("either --test or --interactive can be used, not both")
-    }));
-  }
-
-  #[test]
-  fn test_test_watch_path_incompatible() {
-    let result = parse_args(svec!["--test", "--watch-path", "."]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| {
-      e.contains("--watch-path cannot be used in combination with --test")
-    }));
-  }
-
-  #[test]
-  fn test_watch_check_incompatible() {
-    let result = parse_args(svec!["--watch", "--check"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(
-      errors
-        .iter()
-        .any(|e| e.contains("either --watch or --check can be used, not both"))
-    );
-  }
-
-  #[test]
-  fn test_watch_eval_incompatible() {
-    let result = parse_args(svec!["--watch", "--eval", "console.log(42)"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(
-      errors
-        .iter()
-        .any(|e| e.contains("either --watch or --eval can be used, not both"))
-    );
-  }
-
-  #[test]
-  fn test_watch_interactive_incompatible() {
-    let result = parse_args(svec!["--watch", "--interactive"]);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| {
-      e.contains("either --watch or --interactive can be used, not both")
-    }));
-  }
-
   #[test]
   fn test_translate_basic_script() {
     let parsed = parse_args(svec!["script.js"]).unwrap();
@@ -471,7 +200,16 @@ mod tests {
   fn test_translate_eval() {
     let parsed = parse_args(svec!["--eval", "console.log(42)"]).unwrap();
     let result = translate_to_deno_args(parsed, false);
-    assert_eq!(result.deno_args, svec!["eval", "console.log(42)"]);
+    // Eval code should be wrapped for child_process
+    assert!(result.deno_args.contains(&"eval".to_string()));
+    // Note: deno eval has implicit permissions, so -A is not added
+    // The wrapped code should contain vm.runInThisContext
+    assert!(
+      result
+        .deno_args
+        .iter()
+        .any(|a| a.contains("vm.runInThisContext"))
+    );
   }
 
   #[test]
@@ -525,6 +263,30 @@ mod tests {
   }
 
   #[test]
+  fn test_translate_conditions_equals_format() {
+    // Test the --conditions=custom format (with equals sign)
+    let parsed = parse_args(svec!["--conditions=custom", "script.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, false);
+    assert!(
+      result
+        .deno_args
+        .contains(&"--conditions=custom".to_string()),
+    );
+  }
+
+  #[test]
+  fn test_translate_conditions_short_alias() {
+    // Test -C custom format (short alias)
+    let parsed = parse_args(svec!["-C", "custom", "script.js"]).unwrap();
+    let result = translate_to_deno_args(parsed, false);
+    assert!(
+      result
+        .deno_args
+        .contains(&"--conditions=custom".to_string()),
+    );
+  }
+
+  #[test]
   fn test_translate_v8_flags() {
     let parsed =
       parse_args(svec!["--max-old-space-size=4096", "script.js"]).unwrap();
@@ -569,5 +331,13 @@ mod tests {
     let result = translate_to_deno_args(parsed, false);
     assert!(result.deno_args.contains(&"test".to_string()));
     assert!(result.deno_args.contains(&"--watch".to_string()));
+  }
+
+  #[test]
+  fn test_wrap_eval_code() {
+    let wrapped = wrap_eval_code("console.log(42)");
+    assert!(wrapped.contains("vm.runInThisContext"));
+    assert!(wrapped.contains("process.getBuiltinModule"));
+    assert!(wrapped.contains("\"console.log(42)\""));
   }
 }

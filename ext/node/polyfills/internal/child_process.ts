@@ -1165,67 +1165,6 @@ function findFirstNonFlagArg(args: string[]): string | null {
 }
 
 /**
- * Handle Node.js -e/--eval and -p/--print arguments.
- * These need special wrapping for Node compatibility (builtin modules, vm.runInThisContext).
- * Returns the Deno args if eval is detected, null otherwise.
- */
-function handleNodeEvalArgs(args: string[]): string[] | null {
-  let evalString: string | null = null;
-  let isPrint = false;
-  const remainingArgs: string[] = [];
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg === "-e" || arg === "--eval") {
-      if (i + 1 < args.length) {
-        evalString = args[++i];
-      }
-    } else if (arg === "-p" || arg === "--print") {
-      isPrint = true;
-      if (i + 1 < args.length) {
-        evalString = args[++i];
-      }
-    } else if (arg === "-pe" || arg === "-ep") {
-      isPrint = true;
-      if (i + 1 < args.length) {
-        evalString = args[++i];
-      }
-    } else if (arg.startsWith("-e=") || arg.startsWith("--eval=")) {
-      evalString = arg.includes("=") ? arg.split("=").slice(1).join("=") : "";
-    } else if (arg.startsWith("-p=") || arg.startsWith("--print=")) {
-      isPrint = true;
-      evalString = arg.includes("=") ? arg.split("=").slice(1).join("=") : "";
-    } else if (arg === "--") {
-      remainingArgs.push(...args.slice(i + 1));
-      break;
-    } else if (!arg.startsWith("-")) {
-      if (evalString === null) {
-        return null; // Not an eval case
-      }
-      remainingArgs.push(arg);
-    }
-  }
-
-  if (evalString === null) {
-    return null;
-  }
-
-  const wrappedCode = wrapScriptForEval(evalString);
-
-  const denoArgs = ["eval"];
-  if (isPrint) {
-    denoArgs.push("-p");
-  }
-  denoArgs.push(wrappedCode);
-  if (remainingArgs.length > 0) {
-    denoArgs.push(...remainingArgs);
-  }
-
-  return denoArgs;
-}
-
-/**
  * This function is based on https://github.com/nodejs/node/blob/fc6426ccc4b4cb73076356fb6dbf46a28953af01/lib/child_process.js#L504-L528.
  * Copyright Joyent, Inc. and other Node contributors. All rights reserved. MIT license.
  */
@@ -1245,29 +1184,23 @@ function buildCommand(
     if (firstNonFlagArg !== null && kDenoSubcommands.has(firstNonFlagArg)) {
       // This is a Deno command, not Node compat mode - pass through unchanged
     } else {
-      // Check for eval flags that need special handling
-      const evalResult = handleNodeEvalArgs(args);
-      if (evalResult !== null) {
-        // Eval case - use the specially wrapped result
-        args = evalResult;
-      } else {
-        // Regular script case - use the Rust parser
-        const scriptInNpmPackage = firstNonFlagArg !== null
-          ? op_node_in_npm_package(firstNonFlagArg)
-          : false;
+      // Use the Rust parser to translate Node.js args to Deno args
+      // This handles all cases including eval, test, run, etc.
+      const scriptInNpmPackage = firstNonFlagArg !== null
+        ? op_node_in_npm_package(firstNonFlagArg)
+        : false;
 
-        const result = op_node_translate_cli_args(args, scriptInNpmPackage);
-        args = result.deno_args;
-        includeNpmProcessState = result.needs_npm_process_state;
+      const result = op_node_translate_cli_args(args, scriptInNpmPackage);
+      args = result.deno_args;
+      includeNpmProcessState = result.needs_npm_process_state;
 
-        // Update NODE_OPTIONS if needed
-        if (result.node_options.length > 0) {
-          const options = result.node_options.join(" ");
-          if (env.NODE_OPTIONS) {
-            env.NODE_OPTIONS += " " + options;
-          } else {
-            env.NODE_OPTIONS = options;
-          }
+      // Update NODE_OPTIONS if needed
+      if (result.node_options.length > 0) {
+        const options = result.node_options.join(" ");
+        if (env.NODE_OPTIONS) {
+          env.NODE_OPTIONS += " " + options;
+        } else {
+          env.NODE_OPTIONS = options;
         }
       }
     }
@@ -1476,22 +1409,6 @@ const kDenoSubcommands = new Set([
   "upgrade",
   "vendor",
 ]);
-
-/** Wraps the script for (Node.js) --eval / --print argument
- * Note: Builtin modules are available as global variables */
-function wrapScriptForEval(sourceCode: string): string {
-  // Note: We need vm.runInThisContext call here to get the last evaluated
-  // value of the source with multiple statements. `deno eval -p` surrounds
-  // the source code like `console.log(${source})`, and it only allows a
-  // single expression. The outer parentheses ensure the comma expression
-  // is parsed as a single argument, not multiple arguments to console.log.
-  return `(
-    process.getBuiltinModule("module").builtinModules
-      .filter((m) => !/\\/|crypto|process/.test(m))
-      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
-    vm.runInThisContext(${JSON.stringify(sourceCode)})
-  )`;
-}
 
 const kControlDisconnect = Symbol("kControlDisconnect");
 const kPendingMessages = Symbol("kPendingMessages");
