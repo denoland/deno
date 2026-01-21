@@ -1,6 +1,9 @@
 name: Build dav1d
 
 on:
+  push:
+    branches:
+      - add-avif
   workflow_dispatch:
 
 jobs:
@@ -121,14 +124,6 @@ jobs:
           fi
 
           ls -lh dav1d/build/src/libdav1d.a
-
-          # strip symbols for Linux (ELF)
-          if [[ "${{ matrix.os-name }}" == "linux" ]]; then
-            strip dist/${{ env.FILE_PATH_PREFIX }}/libdav1d.a
-
-            # show size after stripping
-            ls -lh dist/${{ env.FILE_PATH_PREFIX }}/libdav1d.a
-          fi
 
       - name: Generate Attestations
         uses: actions/attest-build-provenance@6865550d0380db508fc599a58cc87c50c0bba5c5 # v3
