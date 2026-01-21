@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --include . main.ts",
+      "output": "compile.out"
+    }
+  ]
+}
