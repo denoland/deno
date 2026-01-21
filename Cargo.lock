@@ -964,6 +964,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
+ "jsonc-parser",
  "lazy-regex",
  "nix 0.27.1",
  "once_cell",

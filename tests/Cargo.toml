@@ -58,6 +58,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+jsonc-parser.workspace = true
 lazy-regex.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
