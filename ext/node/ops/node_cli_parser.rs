@@ -6,6 +6,16 @@
 //! and translates them to Deno CLI arguments.
 
 use deno_core::op2;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+pub enum CliParserError {
+  #[error(
+    "Failed to parse Node.js CLI arguments: {message}. If you believe this is a valid Node.js flag, please report it at https://github.com/denoland/deno/issues"
+  )]
+  ParseError { message: String },
+}
+
 pub use node_shim::DebugOptions;
 pub use node_shim::EnvironmentOptions;
 pub use node_shim::HostPort;
@@ -54,36 +64,29 @@ fn translate_to_deno_args(
 
 /// Op that parses Node.js CLI arguments and translates them to Deno CLI arguments.
 /// Returns an object with deno_args, node_options, and needs_npm_process_state.
-/// If parsing fails, returns the original args unchanged.
+/// Throws an error if parsing fails - this helps identify unsupported flags
+/// so they can be added to node_shim.
 #[op2]
 #[serde]
 pub fn op_node_translate_cli_args(
   #[serde] args: Vec<String>,
   script_in_npm_package: bool,
-) -> TranslatedArgs {
+) -> Result<TranslatedArgs, CliParserError> {
   // If no args, return early with run -A
   if args.is_empty() {
-    return TranslatedArgs {
+    return Ok(TranslatedArgs {
       deno_args: vec!["run".to_string(), "-A".to_string()],
       node_options: vec![],
       needs_npm_process_state: script_in_npm_package,
-    };
+    });
   }
 
   // Parse the args
   match parse_args(args.clone()) {
-    Ok(parsed) => translate_to_deno_args(parsed, script_in_npm_package),
-    Err(_) => {
-      // If parsing fails, fall back to simple behavior:
-      // just prepend "run -A" and return original args
-      let mut deno_args = vec!["run".to_string(), "-A".to_string()];
-      deno_args.extend(args);
-      TranslatedArgs {
-        deno_args,
-        node_options: vec![],
-        needs_npm_process_state: script_in_npm_package,
-      }
-    }
+    Ok(parsed) => Ok(translate_to_deno_args(parsed, script_in_npm_package)),
+    Err(unknown_flags) => Err(CliParserError::ParseError {
+      message: unknown_flags.join(", "),
+    }),
   }
 }
 
