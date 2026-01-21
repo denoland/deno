@@ -12,7 +12,6 @@ use sha2::Digest;
 
 use super::tsgo_version;
 use crate::cache::DenoDir;
-use crate::colors;
 use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
