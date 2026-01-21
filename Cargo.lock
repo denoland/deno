@@ -4222,9 +4222,9 @@ dependencies = [
 
 [[package]]
 name = "fqdn"
-version = "0.4.6"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0f5d7f7b3eed2f771fc7f6fcb651f9560d7b0c483d75876082acb4649d266b3"
+checksum = "886ac788f62d16d6b0f26b2fa762b34ef16ebfb4b624c2c15fbcadc9173c0f72"
 
 [[package]]
 name = "from_variant"
