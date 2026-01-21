@@ -313,7 +313,6 @@ impl PublishPreparer {
         validate_graph: true,
       })
       .await?;
-    eprintln!("GRAPH: {}", serde_json::json!(graph));
 
     // todo(dsherret): move to lint rule
     self
