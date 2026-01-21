@@ -261,10 +261,13 @@ fn parse_cli_args() -> CliArgs {
 }
 
 fn load_config() -> NodeCompatConfig {
-  let config_path = tests_path().join("node_compat").join("config.json");
-  let config_content =
-    std::fs::read_to_string(&config_path).expect("Failed to read config.json");
-  serde_json::from_str(&config_content).expect("Failed to parse config.json")
+  let config_path = tests_path().join("node_compat").join("config.jsonc");
+  let config_content = std::fs::read_to_string(&config_path).unwrap();
+  let value =
+    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+      .unwrap()
+      .unwrap();
+  serde_json::from_value(value).unwrap()
 }
 
 fn collect_tests_from_config(
