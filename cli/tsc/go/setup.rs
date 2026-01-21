@@ -7,14 +7,15 @@ use std::sync::OnceLock;
 
 use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
+use http::HeaderMap;
 use sha2::Digest;
 
 use super::tsgo_version;
 use crate::cache::DenoDir;
 use crate::colors;
 use crate::http_util::HttpClientProvider;
-use crate::util::progress_bar::{ProgressBar, ProgressBarStyle};
-use http::HeaderMap;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 fn get_download_url(platform: &str) -> String {
   format!(
