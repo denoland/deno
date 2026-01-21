@@ -38,7 +38,7 @@ pub struct TranslatedArgs {
 
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 /// This is used by child_process when spawning a Deno process as Node.js.
-pub fn translate_to_deno_args(
+fn translate_to_deno_args(
   parsed_args: ParseResult,
   script_in_npm_package: bool,
 ) -> TranslatedArgs {
