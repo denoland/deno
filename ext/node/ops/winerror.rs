@@ -30,7 +30,6 @@ use deno_core::op2;
 #[string]
 pub fn op_node_sys_to_uv_error(err: i32) -> String {
   let uv_err = match err {
-    ERROR_ACCESS_DENIED => "EACCES",
     ERROR_NOACCESS => "EACCES",
     WSAEACCES => "EACCES",
     ERROR_CANT_ACCESS_FILE => "EACCES",
@@ -115,6 +114,7 @@ pub fn op_node_sys_to_uv_error(err: i32) -> String {
     WSAENOTSOCK => "ENOTSOCK",
     ERROR_NOT_SUPPORTED => "ENOTSUP",
     ERROR_BROKEN_PIPE => "EOF",
+    ERROR_ACCESS_DENIED => "EPERM",
     ERROR_PRIVILEGE_NOT_HELD => "EPERM",
     ERROR_BAD_PIPE => "EPIPE",
     ERROR_NO_DATA => "EPIPE",
