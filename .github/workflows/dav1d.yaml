@@ -70,7 +70,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@4f41a90a1f38628c7ccc608d05fbafe701bc20ae # v6
         with:
-          python-version: "3.x"
+          python-version: '3.x'
 
       - name: Install pip packages
         run: |

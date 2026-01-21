@@ -11,13 +11,13 @@ rustflags = [
   "-C",
   "symbol-mangling-version=v0",
   "-L",
-  "ext/image/dav1d/x86_64-pc-windows-msvc"
+  "ext/image/dav1d/x86_64-pc-windows-msvc",
 ]
 
 [target.aarch64-pc-windows-msvc]
 rustflags = [
   "-L",
-  "ext/image/dav1d/aarch64-pc-windows-msvc"
+  "ext/image/dav1d/aarch64-pc-windows-msvc",
 ]
 
 [target.'cfg(all(windows, debug_assertions))']
@@ -35,7 +35,7 @@ rustflags = [
   "-C",
   "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
   "-L",
-  "ext/image/dav1d/x86_64-apple-darwin"
+  "ext/image/dav1d/x86_64-apple-darwin",
 ]
 
 [target.aarch64-apple-darwin]
@@ -43,7 +43,7 @@ rustflags = [
   "-C",
   "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
   "-L",
-  "ext/image/dav1d/aarch64-apple-darwin"
+  "ext/image/dav1d/aarch64-apple-darwin",
 ]
 
 [target.'cfg(all())']
