@@ -74,15 +74,9 @@ pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
 /// This abruptly closes all pending connections and deregisters all inspectors.
 /// The server continues to run and can accept new connections/registrations.
 pub fn stop_inspector_server() {
-  if let Some(server) = global_server().lock().as_ref() {
+  if let Some(server) = global_server().lock().take() {
     server.stop();
   }
-}
-
-/// Closes the global inspector server, removing it from the global state.
-/// After calling this, a new server can be created with `create_inspector_server`.
-pub fn close_inspector_server() {
-  *global_server().lock() = None;
 }
 
 /// Creates a global inspector server at the given address with the given name.
@@ -202,7 +196,6 @@ impl InspectorServer {
 
   /// Stop the inspector server by resetting IO.
   /// This abruptly closes all pending connections and deregisters all inspectors.
-  /// The server continues to run and can accept new connections/registrations.
   pub fn stop(&self) {
     let _ = self.reset_tx.send(());
   }
@@ -361,7 +354,7 @@ async fn server(
     if let Ok(()) = reset_rx_deregister.try_recv() {
       // Clear all registered inspectors
       inspector_map.borrow_mut().clear();
-      log::info!("Inspector server reset: all inspectors deregistered");
+      // log::info!("Inspector server reset: all inspectors deregistered");
     }
     inspector_map
       .borrow_mut()
@@ -472,7 +465,7 @@ async fn server(
           },
           _ = &mut reset_rx => {
             // Abruptly close the connection without graceful shutdown
-            log::info!("Inspector connection abruptly closed due to reset");
+            // log::info!("Inspector connection abruptly closed due to reset");
           }
         }
       });
@@ -485,7 +478,7 @@ async fn server(
     _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => {},
     _ = reset_rx_server.recv() => {
-      log::info!("Inspector server reset");
+      return;
     },
   }
 }
