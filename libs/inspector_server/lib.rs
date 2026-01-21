@@ -477,9 +477,7 @@ async fn server(
     _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => {},
-    _ = reset_rx_server.recv() => {
-      return;
-    },
+    _ = reset_rx_server.recv() => {},
   }
 }
 
