@@ -13,6 +13,8 @@ use super::tsgo_version;
 use crate::cache::DenoDir;
 use crate::colors;
 use crate::http_util::HttpClientProvider;
+use crate::util::progress_bar::{ProgressBar, ProgressBarStyle};
+use http::HeaderMap;
 
 fn get_download_url(platform: &str) -> String {
   format!(
@@ -127,9 +129,9 @@ pub async fn ensure_tsgo(
   std::fs::create_dir_all(&folder_path)
     .map_err(DownloadError::CreateTempDirFailed)?;
 
-  // Show user feedback that download is starting
-  log::info!("{}", colors::gray("Downloading TypeScript Go compiler..."));
-
+  // Show a progress bar for the download
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+  let progress = progress_bar.update("TypeScript Go compiler");
   let client = http_client_provider
     .get_or_create()
     .map_err(DownloadError::HttpClient)?;
@@ -139,9 +141,11 @@ pub async fn ensure_tsgo(
   let path = temp.path().join("tsgo.zip");
   log::debug!("Downloading tsgo to {}", path.display());
   let data = client
-    .download(
+    .download_with_progress_and_retries(
       deno_core::url::Url::parse(&download_url)
         .map_err(|e| DownloadError::InvalidDownloadUrl(download_url, e))?,
+      &HeaderMap::new(),
+      &progress,
     )
     .await
     .map_err(DownloadError::DownloadFailed)?;
