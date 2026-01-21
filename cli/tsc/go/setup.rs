@@ -131,7 +131,7 @@ pub async fn ensure_tsgo(
 
   // Show a progress bar for the download
   let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
-  let progress = progress_bar.update("TypeScript Go compiler");
+  let progress = progress_bar.update("");
   let client = http_client_provider
     .get_or_create()
     .map_err(DownloadError::HttpClient)?;
@@ -140,6 +140,7 @@ pub async fn ensure_tsgo(
   let temp = tempfile::tempdir().map_err(DownloadError::CreateTempDirFailed)?;
   let path = temp.path().join("tsgo.zip");
   log::debug!("Downloading tsgo to {}", path.display());
+
   let data = client
     .download_with_progress_and_retries(
       deno_core::url::Url::parse(&download_url)
@@ -150,9 +151,10 @@ pub async fn ensure_tsgo(
     .await
     .map_err(DownloadError::DownloadFailed)?;
 
-  verify_hash(platform, &data)?;
+  let bytes = data.into_bytes().map_err(DownloadError::DownloadFailed)?;
+  verify_hash(platform, &bytes)?;
 
-  std::fs::write(&path, &data).map_err(|e| {
+  std::fs::write(&path, &bytes).map_err(|e| {
     DownloadError::WriteZipFailed(path.display().to_string(), e)
   })?;
 
@@ -165,7 +167,7 @@ pub async fn ensure_tsgo(
     crate::util::archive::unpack_into_dir(crate::util::archive::UnpackArgs {
       exe_name: "tsgo",
       archive_name: "tsgo.zip",
-      archive_data: &data,
+      archive_data: &bytes,
       is_windows: cfg!(windows),
       dest_path: temp.path(),
     })
