@@ -980,6 +980,43 @@ impl CliOptions {
     }
   }
 
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => {
+        if let Some(dir) = &flags.cpu_prof_dir {
+          Some(self.initial_cwd.join(dir))
+        } else if flags.cpu_prof {
+          // --cpu-prof without --cpu-prof-dir uses current directory
+          Some(self.initial_cwd.clone())
+        } else {
+          None
+        }
+      }
+      _ => None,
+    }
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => flags.cpu_prof_name.clone(),
+      _ => None,
+    }
+  }
+
+  pub fn cpu_prof_interval(&self) -> i32 {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => flags.cpu_prof_interval.unwrap_or(1000),
+      _ => 1000,
+    }
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => flags.cpu_prof_md,
+      _ => false,
+    }
+  }
+
   pub fn enable_op_summary_metrics(&self) -> bool {
     self.flags.enable_op_summary_metrics
       || matches!(

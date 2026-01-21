@@ -112,6 +112,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::worker::CpuProfConfig;
 
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,
@@ -1170,6 +1171,13 @@ impl CliFactory {
       None
     };
     let maybe_coverage_dir = cli_options.coverage_dir();
+    let maybe_cpu_prof_config =
+      cli_options.cpu_prof_dir().map(|dir| CpuProfConfig {
+        dir,
+        name: cli_options.cpu_prof_name(),
+        interval: cli_options.cpu_prof_interval(),
+        md: cli_options.cpu_prof_md(),
+      });
 
     let initial_cwd =
       deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
@@ -1178,6 +1186,7 @@ impl CliFactory {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
       maybe_coverage_dir,
+      maybe_cpu_prof_config,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
       maybe_initial_cwd: Some(Arc::new(initial_cwd)),
     })
