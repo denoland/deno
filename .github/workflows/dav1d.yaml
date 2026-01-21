@@ -1,9 +1,6 @@
 name: Build dav1d
 
 on:
-  push:
-    branches:
-      - add-avif
   workflow_dispatch:
 
 jobs:
