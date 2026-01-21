@@ -73,6 +73,7 @@ async fn resolve_local_bins(
 
 fn run_js_file(
   main_module: &deno_core::url::Url,
+  permission_args: &[String],
   argv: &[String],
   npm_process_state: Option<String>,
   npm: bool,
@@ -83,8 +84,9 @@ fn run_js_file(
     .and_then(|p| p.canonicalize())
     .context("Failed to get current executable path")?;
 
-  let mut args: Vec<std::ffi::OsString> =
-    vec!["run".into(), "-A".into(), main_module.as_str().into()];
+  let mut args: Vec<std::ffi::OsString> = vec!["run".into()];
+  args.extend(permission_args.iter().map(|s| s.into()));
+  args.push(main_module.as_str().into());
   args.extend(argv.iter().map(|s| s.into()));
 
   let mut command = std::process::Command::new(deno_exe);
@@ -107,9 +109,6 @@ fn run_js_file(
 
   if npm {
     crate::tools::run::set_npm_user_agent();
-    if let Some(agent) = std::env::var_os("NPM_CONFIG_USER_AGENT") {
-      command.env("NPM_CONFIG_USER_AGENT", agent);
-    }
   }
 
   let mut child = command.spawn().context("Failed to spawn deno subprocess")?;
@@ -157,7 +156,15 @@ async fn maybe_run_local_npm_bin(
   match bin_value {
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
-      run_js_file(&path, &flags.argv, npm_process_state, true).map(Some)
+      let permission_args = flags.to_permission_args();
+      run_js_file(
+        &path,
+        &permission_args,
+        &flags.argv,
+        npm_process_state,
+        true,
+      )
+      .map(Some)
     }
     BinValue::Executable(mut path_buf) => {
       if cfg!(windows) && path_buf.extension().is_none() {
@@ -463,11 +470,21 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         deno_resolver::npm::NpmResolver::Byonm(_) => None,
       };
 
+      let permission_args = flags.to_permission_args();
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
-      run_js_file(&url, &flags.argv, npm_process_state, false)
+      run_js_file(
+        &url,
+        &permission_args,
+        &flags.argv,
+        npm_process_state,
+        false,
+      )
     }
-    ReqRefOrUrl::Url(url) => run_js_file(&url, &flags.argv, None, false),
+    ReqRefOrUrl::Url(url) => {
+      let permission_args = flags.to_permission_args();
+      run_js_file(&url, &permission_args, &flags.argv, None, false)
+    }
   }
 }
 
