@@ -9,6 +9,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
+/// Configuration for CPU profiling that can be passed to workers.
+#[derive(Clone, Debug)]
+pub struct CpuProfilerConfig {
+  pub dir: PathBuf,
+  pub name: Option<String>,
+  pub interval: i32,
+  pub md: bool,
+}
+
 use deno_core::InspectorSessionKind;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
@@ -230,6 +239,7 @@ struct CpuProfile {
   #[serde(default)]
   samples: Vec<i32>,
   #[serde(default)]
+  #[allow(dead_code)]
   time_deltas: Vec<i32>,
 }
 
@@ -357,7 +367,7 @@ fn generate_markdown_report(
   md.push_str("# CPU Profile\n\n");
 
   // Summary
-  md.push_str(&format!("| Duration | Samples | Interval | Functions |\n"));
+  md.push_str("| Duration | Samples | Interval | Functions |\n");
   md.push_str("| --- | --- | --- | --- |\n");
   md.push_str(&format!(
     "| {:.2}ms | {} | {}us | {} |\n\n",

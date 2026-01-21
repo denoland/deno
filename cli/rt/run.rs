@@ -1070,8 +1070,9 @@ pub async fn run(
     Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
-    None,
-    None,
+    None, // maybe_coverage_dir
+    None, // maybe_cpu_prof_config
+    None, // maybe_inspector_server
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),

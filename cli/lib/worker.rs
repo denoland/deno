@@ -14,6 +14,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
 use deno_runtime::UNSTABLE_FEATURES;
 use deno_runtime::WorkerExecutionMode;
@@ -370,6 +371,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
@@ -520,6 +522,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
+        maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
@@ -542,6 +545,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_coverage_dir: Option<PathBuf>,
+    maybe_cpu_prof_config: Option<CpuProfilerConfig>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
@@ -566,6 +570,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         feature_checker,
         fs,
         maybe_coverage_dir,
+        maybe_cpu_prof_config,
         maybe_inspector_server,
         main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,

@@ -45,6 +45,7 @@ use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
@@ -1069,6 +1070,14 @@ impl CliFactory {
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
 
+    let maybe_cpu_prof_config_for_workers =
+      cli_options.cpu_prof_dir().map(|dir| CpuProfilerConfig {
+        dir,
+        name: cli_options.cpu_prof_name(),
+        interval: cli_options.cpu_prof_interval(),
+        md: cli_options.cpu_prof_md(),
+      });
+
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
       if cli_options.code_cache_enabled() {
@@ -1080,6 +1089,7 @@ impl CliFactory {
       self.feature_checker()?.clone(),
       fs.clone(),
       cli_options.coverage_dir(),
+      maybe_cpu_prof_config_for_workers,
       self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
