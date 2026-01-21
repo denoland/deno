@@ -111,9 +111,18 @@ fn run_js_file(
     crate::tools::run::set_npm_user_agent();
   }
 
-  let mut child = command.spawn().context("Failed to spawn deno subprocess")?;
-  let status = child.wait().context("Failed to wait for deno subprocess")?;
-  Ok(status.code().unwrap_or(1))
+  #[cfg(unix)]
+  {
+    use std::os::unix::process::CommandExt;
+    Err(command.exec().into())
+  }
+  #[cfg(not(unix))]
+  {
+    let mut child =
+      command.spawn().context("Failed to spawn deno subprocess")?;
+    let status = child.wait().context("Failed to wait for deno subprocess")?;
+    Ok(status.code().unwrap_or(1))
+  }
 }
 
 async fn maybe_run_local_npm_bin(
