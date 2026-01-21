@@ -58,21 +58,31 @@ pub struct InspectorServer {
   thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
-static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
+static GLOBAL_INSPECTOR_SERVER: OnceLock<Mutex<Option<Arc<InspectorServer>>>> =
   OnceLock::new();
+
+fn global_server() -> &'static Mutex<Option<Arc<InspectorServer>>> {
+  GLOBAL_INSPECTOR_SERVER.get_or_init(|| Mutex::new(None))
+}
 
 /// Returns the global inspector server if it has been created.
 pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
-  GLOBAL_INSPECTOR_SERVER.get().cloned()
+  global_server().lock().clone()
 }
 
 /// Stops the global inspector server if it exists.
 /// This abruptly closes all pending connections and deregisters all inspectors.
 /// The server continues to run and can accept new connections/registrations.
 pub fn stop_inspector_server() {
-  if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
+  if let Some(server) = global_server().lock().as_ref() {
     server.stop();
   }
+}
+
+/// Closes the global inspector server, removing it from the global state.
+/// After calling this, a new server can be created with `create_inspector_server`.
+pub fn close_inspector_server() {
+  *global_server().lock() = None;
 }
 
 /// Creates a global inspector server at the given address with the given name.
@@ -82,16 +92,15 @@ pub fn create_inspector_server(
   host: SocketAddr,
   name: &'static str,
 ) -> Result<Arc<InspectorServer>, InspectorServerError> {
+  let mut guard = global_server().lock();
   // Return existing server if already created
-  if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
+  if let Some(server) = guard.as_ref() {
     return Ok(server.clone());
   }
 
   let server = Arc::new(InspectorServer::new(host, name)?);
-  // If another thread created the server between our check and now,
-  // just return the existing one
-  let _ = GLOBAL_INSPECTOR_SERVER.set(server);
-  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap().clone())
+  *guard = Some(server.clone());
+  Ok(server)
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
