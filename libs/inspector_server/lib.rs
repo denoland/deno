@@ -67,7 +67,7 @@ fn get_restart_notifier() -> broadcast::Sender<()> {
     .clone()
 }
 
-/// Notifies all connected /ws_deno clients that a restart is about to occur.
+/// Notifies all connected /ws/events clients that a restart is about to occur.
 pub fn notify_restart() {
   let sender = get_restart_notifier();
   let _ = sender.send(()); // Ignore error if no receivers
@@ -344,9 +344,9 @@ fn handle_ws_events_request(
   else {
     return http::Response::builder()
       .status(http::StatusCode::BAD_REQUEST)
-      .body(Box::new(
-        Bytes::from("Not a valid Websocket Request").into(),
-      ));
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not a valid Websocket Request",
+      ))));
   };
 
   let restart_rx = get_restart_notifier().subscribe();
@@ -365,7 +365,7 @@ fn handle_ws_events_request(
     };
 
     log::debug!("Deno event session started.");
-    pump_restart_notifications(websocket, restart_rx).await;
+    pump_event_notifications(websocket, restart_rx).await;
   });
 
   let (parts, _body) = resp.into_parts();
@@ -376,7 +376,7 @@ fn handle_ws_events_request(
   Ok(resp)
 }
 
-async fn pump_restart_notifications(
+async fn pump_event_notifications(
   mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
   mut restart_rx: broadcast::Receiver<()>,
 ) {
