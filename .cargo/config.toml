@@ -6,8 +6,6 @@ rustflags = [
   "symbol-mangling-version=v0",
 ]
 
-
-
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [
   "-C",
