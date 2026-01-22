@@ -1,5 +1,5 @@
 module.exports = {
-  sayHi: () => 'Hi from node-lifecycle-scripts!'
+  sayHi: () => "Hi from node-lifecycle-scripts!",
 };
 
-console.log('install.js', module.exports.sayHi());
+console.log("install.js", module.exports.sayHi());

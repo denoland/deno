@@ -1,3 +1,3 @@
 export default {
-  hello: "default export"
-}
+  hello: "default export",
+};

@@ -17,10 +17,7 @@ html {
   height: 100%;
 }
 body {
-  font-family:
-    Helvetica Neue,
-    Helvetica,
-    Arial;
+  font-family: Helvetica Neue, Helvetica, Arial;
   font-size: 14px;
   color: light-dark(#333, #ddd);
   background-color: light-dark(white, #111);
@@ -41,12 +38,7 @@ h2 {
   font-size: 14px;
 }
 pre {
-  font:
-    12px/1.4 Consolas,
-    "Liberation Mono",
-    Menlo,
-    Courier,
-    monospace;
+  font: 12px/1.4 Consolas, "Liberation Mono", Menlo, Courier, monospace;
   margin: 0;
   padding: 0;
   tab-size: 2;
@@ -191,20 +183,20 @@ table.coverage td span.cline-any {
   width: 100%;
 }
 .coverage-summary tr {
-  border-bottom: 1px solid light-dark(#bbb, #7E7E7E);
+  border-bottom: 1px solid light-dark(#bbb, #7e7e7e);
 }
 .keyline-all {
-  border: 1px solid light-dark(#ddd, #7E7E7E);
+  border: 1px solid light-dark(#ddd, #7e7e7e);
 }
 .coverage-summary td,
 .coverage-summary th {
   padding: 10px;
 }
 .coverage-summary tbody {
-  border: 1px solid light-dark(#bbb, #7E7E7E);
+  border: 1px solid light-dark(#bbb, #7e7e7e);
 }
 .coverage-summary td {
-  border-right: 1px solid light-dark(#bbb, #7E7E7E);
+  border-right: 1px solid light-dark(#bbb, #7e7e7e);
 }
 .coverage-summary td:last-child {
   border-right: none;

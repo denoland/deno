@@ -7,8 +7,12 @@ import "./lossy.ts";
 import invalidUtf8Bytes from "./lossy.ts" with { type: "bytes" };
 import invalidUtf8Text from "./lossy.ts" with { type: "text" };
 import "http://localhost:4545/run/invalid_utf8.ts";
-import remoteInvalidUtf8Bytes from "http://localhost:4545/run/invalid_utf8.ts" with { type: "bytes" };
-import removeInvalidUtf8Text from "http://localhost:4545/run/invalid_utf8.ts" with { type: "text" };
+import remoteInvalidUtf8Bytes from "http://localhost:4545/run/invalid_utf8.ts" with {
+  type: "bytes",
+};
+import removeInvalidUtf8Text from "http://localhost:4545/run/invalid_utf8.ts" with {
+  type: "text",
+};
 
 console.log(hello, hello.length);
 console.log(helloBytes, helloBytes.length);

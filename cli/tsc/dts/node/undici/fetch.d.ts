@@ -1,19 +1,19 @@
 // based on https://github.com/Ethan-Arrowood/undici-fetch/blob/249269714db874351589d2d364a0645d5160ae71/index.d.ts (MIT license)
 // and https://github.com/node-fetch/node-fetch/blob/914ce6be5ec67a8bab63d68510aabf07cb818b6d/index.d.ts (MIT license)
 
-import { Blob } from 'buffer'
-import { URL, URLSearchParams } from 'url'
-import { ReadableStream } from 'stream/web'
-import { FormData } from './formdata.d.ts'
-import { HeaderRecord } from './header.d.ts'
-import Dispatcher from './dispatcher.d.ts'
+import { Blob } from "buffer";
+import { URL, URLSearchParams } from "url";
+import { ReadableStream } from "stream/web";
+import { FormData } from "./formdata.d.ts";
+import { HeaderRecord } from "./header.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
 
-export type RequestInfo = string | URL | Request
+export type RequestInfo = string | URL | Request;
 
-export declare function fetch (
+export declare function fetch(
   input: RequestInfo,
-  init?: RequestInit
-): Promise<Response>
+  init?: RequestInit,
+): Promise<Response>;
 
 export type BodyInit =
   | ArrayBuffer
@@ -24,14 +24,14 @@ export type BodyInit =
   | NodeJS.ArrayBufferView
   | URLSearchParams
   | null
-  | string
+  | string;
 
 export class BodyMixin {
-  readonly body: ReadableStream | null
-  readonly bodyUsed: boolean
+  readonly body: ReadableStream | null;
+  readonly bodyUsed: boolean;
 
-  readonly arrayBuffer: () => Promise<ArrayBuffer>
-  readonly blob: () => Promise<Blob>
+  readonly arrayBuffer: () => Promise<ArrayBuffer>;
+  readonly blob: () => Promise<Blob>;
   /**
    * @deprecated This method is not recommended for parsing multipart/form-data bodies in server environments.
    * It is recommended to use a library such as [@fastify/busboy](https://www.npmjs.com/package/@fastify/busboy) as follows:
@@ -49,9 +49,9 @@ export class BodyMixin {
    * Readable.fromWeb(response.body).pipe(busboy)
    * ```
    */
-  readonly formData: () => Promise<FormData>
-  readonly json: () => Promise<unknown>
-  readonly text: () => Promise<string>
+  readonly formData: () => Promise<FormData>;
+  readonly json: () => Promise<unknown>;
+  readonly text: () => Promise<string>;
 }
 
 export interface SpecIterator<T, TReturn = any, TNext = undefined> {
@@ -66,144 +66,144 @@ export interface SpecIterable<T> {
   [Symbol.iterator](): SpecIterator<T>;
 }
 
-export type HeadersInit = [string, string][] | HeaderRecord | Headers
+export type HeadersInit = [string, string][] | HeaderRecord | Headers;
 
 export declare class Headers implements SpecIterable<[string, string]> {
-  constructor (init?: HeadersInit)
-  readonly append: (name: string, value: string) => void
-  readonly delete: (name: string) => void
-  readonly get: (name: string) => string | null
-  readonly has: (name: string) => boolean
-  readonly set: (name: string, value: string) => void
-  readonly getSetCookie: () => string[]
+  constructor(init?: HeadersInit);
+  readonly append: (name: string, value: string) => void;
+  readonly delete: (name: string) => void;
+  readonly get: (name: string) => string | null;
+  readonly has: (name: string) => boolean;
+  readonly set: (name: string, value: string) => void;
+  readonly getSetCookie: () => string[];
   readonly forEach: (
     callbackfn: (value: string, key: string, iterable: Headers) => void,
-    thisArg?: unknown
-  ) => void
+    thisArg?: unknown,
+  ) => void;
 
-  readonly keys: () => SpecIterableIterator<string>
-  readonly values: () => SpecIterableIterator<string>
-  readonly entries: () => SpecIterableIterator<[string, string]>
-  readonly [Symbol.iterator]: () => SpecIterableIterator<[string, string]>
+  readonly keys: () => SpecIterableIterator<string>;
+  readonly values: () => SpecIterableIterator<string>;
+  readonly entries: () => SpecIterableIterator<[string, string]>;
+  readonly [Symbol.iterator]: () => SpecIterableIterator<[string, string]>;
 }
 
 export type RequestCache =
-  | 'default'
-  | 'force-cache'
-  | 'no-cache'
-  | 'no-store'
-  | 'only-if-cached'
-  | 'reload'
+  | "default"
+  | "force-cache"
+  | "no-cache"
+  | "no-store"
+  | "only-if-cached"
+  | "reload";
 
-export type RequestCredentials = 'omit' | 'include' | 'same-origin'
+export type RequestCredentials = "omit" | "include" | "same-origin";
 
 type RequestDestination =
-  | ''
-  | 'audio'
-  | 'audioworklet'
-  | 'document'
-  | 'embed'
-  | 'font'
-  | 'image'
-  | 'manifest'
-  | 'object'
-  | 'paintworklet'
-  | 'report'
-  | 'script'
-  | 'sharedworker'
-  | 'style'
-  | 'track'
-  | 'video'
-  | 'worker'
-  | 'xslt'
+  | ""
+  | "audio"
+  | "audioworklet"
+  | "document"
+  | "embed"
+  | "font"
+  | "image"
+  | "manifest"
+  | "object"
+  | "paintworklet"
+  | "report"
+  | "script"
+  | "sharedworker"
+  | "style"
+  | "track"
+  | "video"
+  | "worker"
+  | "xslt";
 
 export interface RequestInit {
-  body?: BodyInit | null
-  cache?: RequestCache
-  credentials?: RequestCredentials
-  dispatcher?: Dispatcher
-  duplex?: RequestDuplex
-  headers?: HeadersInit
-  integrity?: string
-  keepalive?: boolean
-  method?: string
-  mode?: RequestMode
-  redirect?: RequestRedirect
-  referrer?: string
-  referrerPolicy?: ReferrerPolicy
-  signal?: AbortSignal | null
-  window?: null
+  body?: BodyInit | null;
+  cache?: RequestCache;
+  credentials?: RequestCredentials;
+  dispatcher?: Dispatcher;
+  duplex?: RequestDuplex;
+  headers?: HeadersInit;
+  integrity?: string;
+  keepalive?: boolean;
+  method?: string;
+  mode?: RequestMode;
+  redirect?: RequestRedirect;
+  referrer?: string;
+  referrerPolicy?: ReferrerPolicy;
+  signal?: AbortSignal | null;
+  window?: null;
 }
 
 export type ReferrerPolicy =
-  | ''
-  | 'no-referrer'
-  | 'no-referrer-when-downgrade'
-  | 'origin'
-  | 'origin-when-cross-origin'
-  | 'same-origin'
-  | 'strict-origin'
-  | 'strict-origin-when-cross-origin'
-  | 'unsafe-url'
+  | ""
+  | "no-referrer"
+  | "no-referrer-when-downgrade"
+  | "origin"
+  | "origin-when-cross-origin"
+  | "same-origin"
+  | "strict-origin"
+  | "strict-origin-when-cross-origin"
+  | "unsafe-url";
 
-export type RequestMode = 'cors' | 'navigate' | 'no-cors' | 'same-origin'
+export type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 
-export type RequestRedirect = 'error' | 'follow' | 'manual'
+export type RequestRedirect = "error" | "follow" | "manual";
 
-export type RequestDuplex = 'half'
+export type RequestDuplex = "half";
 
 export declare class Request extends BodyMixin {
-  constructor (input: RequestInfo, init?: RequestInit)
+  constructor(input: RequestInfo, init?: RequestInit);
 
-  readonly cache: RequestCache
-  readonly credentials: RequestCredentials
-  readonly destination: RequestDestination
-  readonly headers: Headers
-  readonly integrity: string
-  readonly method: string
-  readonly mode: RequestMode
-  readonly redirect: RequestRedirect
-  readonly referrer: string
-  readonly referrerPolicy: ReferrerPolicy
-  readonly url: string
+  readonly cache: RequestCache;
+  readonly credentials: RequestCredentials;
+  readonly destination: RequestDestination;
+  readonly headers: Headers;
+  readonly integrity: string;
+  readonly method: string;
+  readonly mode: RequestMode;
+  readonly redirect: RequestRedirect;
+  readonly referrer: string;
+  readonly referrerPolicy: ReferrerPolicy;
+  readonly url: string;
 
-  readonly keepalive: boolean
-  readonly signal: AbortSignal
-  readonly duplex: RequestDuplex
+  readonly keepalive: boolean;
+  readonly signal: AbortSignal;
+  readonly duplex: RequestDuplex;
 
-  readonly clone: () => Request
+  readonly clone: () => Request;
 }
 
 export interface ResponseInit {
-  readonly status?: number
-  readonly statusText?: string
-  readonly headers?: HeadersInit
+  readonly status?: number;
+  readonly statusText?: string;
+  readonly headers?: HeadersInit;
 }
 
 export type ResponseType =
-  | 'basic'
-  | 'cors'
-  | 'default'
-  | 'error'
-  | 'opaque'
-  | 'opaqueredirect'
+  | "basic"
+  | "cors"
+  | "default"
+  | "error"
+  | "opaque"
+  | "opaqueredirect";
 
-export type ResponseRedirectStatus = 301 | 302 | 303 | 307 | 308
+export type ResponseRedirectStatus = 301 | 302 | 303 | 307 | 308;
 
 export declare class Response extends BodyMixin {
-  constructor (body?: BodyInit, init?: ResponseInit)
+  constructor(body?: BodyInit, init?: ResponseInit);
 
-  readonly headers: Headers
-  readonly ok: boolean
-  readonly status: number
-  readonly statusText: string
-  readonly type: ResponseType
-  readonly url: string
-  readonly redirected: boolean
+  readonly headers: Headers;
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly type: ResponseType;
+  readonly url: string;
+  readonly redirected: boolean;
 
-  readonly clone: () => Response
+  readonly clone: () => Response;
 
-  static error (): Response
-  static json (data: any, init?: ResponseInit): Response
-  static redirect (url: string | URL, status: ResponseRedirectStatus): Response
+  static error(): Response;
+  static json(data: any, init?: ResponseInit): Response;
+  static redirect(url: string | URL, status: ResponseRedirectStatus): Response;
 }

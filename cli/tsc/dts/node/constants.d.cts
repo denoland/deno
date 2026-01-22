@@ -5,17 +5,17 @@
  * `require('node:fs').constants` and `require('node:os').constants`.
  */
 declare module "constants" {
-    const constants:
-        & typeof import("node:os").constants.dlopen
-        & typeof import("node:os").constants.errno
-        & typeof import("node:os").constants.priority
-        & typeof import("node:os").constants.signals
-        & typeof import("node:fs").constants
-        & typeof import("node:crypto").constants;
-    export = constants;
+  const constants:
+    & typeof import("node:os").constants.dlopen
+    & typeof import("node:os").constants.errno
+    & typeof import("node:os").constants.priority
+    & typeof import("node:os").constants.signals
+    & typeof import("node:fs").constants
+    & typeof import("node:crypto").constants;
+  export = constants;
 }
 
 declare module "node:constants" {
-    import constants = require("constants");
-    export = constants;
+  import constants = require("constants");
+  export = constants;
 }

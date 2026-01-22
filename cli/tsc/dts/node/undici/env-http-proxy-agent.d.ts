@@ -1,12 +1,15 @@
-import Agent from './agent.d.ts'
-import Dispatcher from './dispatcher.d.ts'
+import Agent from "./agent.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
 
-export default EnvHttpProxyAgent
+export default EnvHttpProxyAgent;
 
 declare class EnvHttpProxyAgent extends Dispatcher {
-  constructor (opts?: EnvHttpProxyAgent.Options)
+  constructor(opts?: EnvHttpProxyAgent.Options);
 
-  dispatch (options: Agent.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean
+  dispatch(
+    options: Agent.DispatchOptions,
+    handler: Dispatcher.DispatchHandler,
+  ): boolean;
 }
 
 declare namespace EnvHttpProxyAgent {

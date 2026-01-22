@@ -1,5 +1,5 @@
-const inspect = require('util').inspect;
+const inspect = require("util").inspect;
 
 inspect({
-  "preinstall": "script"
+  "preinstall": "script",
 });

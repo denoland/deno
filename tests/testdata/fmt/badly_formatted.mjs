@@ -1,4 +1,2 @@
 // Deliberately using .mjs to avoid triggering dprint
-console.log("Hello World"
-
-)
+console.log("Hello World");

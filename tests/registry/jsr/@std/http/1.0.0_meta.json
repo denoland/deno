@@ -1,5 +1,5 @@
 {
-    "exports": {
-        ".": "./mod.ts"
-    }
+  "exports": {
+    ".": "./mod.ts"
+  }
 }

@@ -1,110 +1,114 @@
-
-import type { Blob } from 'buffer'
-import type { ReadableStream, WritableStream } from 'stream/web'
-import type { MessagePort } from 'worker_threads'
+import type { Blob } from "buffer";
+import type { ReadableStream, WritableStream } from "stream/web";
+import type { MessagePort } from "worker_threads";
 import {
+  AddEventListenerOptions,
   EventInit,
   EventListenerOptions,
-  AddEventListenerOptions,
-  EventListenerOrEventListenerObject
-} from './patch.d.ts'
-import Dispatcher from './dispatcher.d.ts'
-import { HeadersInit } from './fetch.d.ts'
+  EventListenerOrEventListenerObject,
+} from "./patch.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
+import { HeadersInit } from "./fetch.d.ts";
 
-export type BinaryType = 'blob' | 'arraybuffer'
+export type BinaryType = "blob" | "arraybuffer";
 
 interface WebSocketEventMap {
-  close: CloseEvent
-  error: ErrorEvent
-  message: MessageEvent
-  open: Event
+  close: CloseEvent;
+  error: ErrorEvent;
+  message: MessageEvent;
+  open: Event;
 }
 
 interface WebSocket extends EventTarget {
-  binaryType: BinaryType
+  binaryType: BinaryType;
 
-  readonly bufferedAmount: number
-  readonly extensions: string
+  readonly bufferedAmount: number;
+  readonly extensions: string;
 
-  onclose: ((this: WebSocket, ev: WebSocketEventMap['close']) => any) | null
-  onerror: ((this: WebSocket, ev: WebSocketEventMap['error']) => any) | null
-  onmessage: ((this: WebSocket, ev: WebSocketEventMap['message']) => any) | null
-  onopen: ((this: WebSocket, ev: WebSocketEventMap['open']) => any) | null
+  onclose: ((this: WebSocket, ev: WebSocketEventMap["close"]) => any) | null;
+  onerror: ((this: WebSocket, ev: WebSocketEventMap["error"]) => any) | null;
+  onmessage:
+    | ((this: WebSocket, ev: WebSocketEventMap["message"]) => any)
+    | null;
+  onopen: ((this: WebSocket, ev: WebSocketEventMap["open"]) => any) | null;
 
-  readonly protocol: string
-  readonly readyState: number
-  readonly url: string
+  readonly protocol: string;
+  readonly readyState: number;
+  readonly url: string;
 
-  close(code?: number, reason?: string): void
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void
+  close(code?: number, reason?: string): void;
+  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
 
-  readonly CLOSED: number
-  readonly CLOSING: number
-  readonly CONNECTING: number
-  readonly OPEN: number
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
 
   addEventListener<K extends keyof WebSocketEventMap>(
     type: K,
     listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
-  ): void
+    options?: boolean | AddEventListenerOptions,
+  ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions
-  ): void
+    options?: boolean | AddEventListenerOptions,
+  ): void;
   removeEventListener<K extends keyof WebSocketEventMap>(
     type: K,
     listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
-  ): void
+    options?: boolean | EventListenerOptions,
+  ): void;
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions
-  ): void
+    options?: boolean | EventListenerOptions,
+  ): void;
 }
 
 export declare const WebSocket: {
-  prototype: WebSocket
-  new (url: string | URL, protocols?: string | string[] | WebSocketInit): WebSocket
-  readonly CLOSED: number
-  readonly CLOSING: number
-  readonly CONNECTING: number
-  readonly OPEN: number
-}
+  prototype: WebSocket;
+  new (
+    url: string | URL,
+    protocols?: string | string[] | WebSocketInit,
+  ): WebSocket;
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+};
 
 interface CloseEventInit extends EventInit {
-  code?: number
-  reason?: string
-  wasClean?: boolean
+  code?: number;
+  reason?: string;
+  wasClean?: boolean;
 }
 
 interface CloseEvent extends Event {
-  readonly code: number
-  readonly reason: string
-  readonly wasClean: boolean
+  readonly code: number;
+  readonly reason: string;
+  readonly wasClean: boolean;
 }
 
 export declare const CloseEvent: {
-  prototype: CloseEvent
-  new (type: string, eventInitDict?: CloseEventInit): CloseEvent
-}
+  prototype: CloseEvent;
+  new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
+};
 
 interface MessageEventInit<T = any> extends EventInit {
-  data?: T
-  lastEventId?: string
-  origin?: string
-  ports?: (typeof MessagePort)[]
-  source?: typeof MessagePort | null
+  data?: T;
+  lastEventId?: string;
+  origin?: string;
+  ports?: (typeof MessagePort)[];
+  source?: typeof MessagePort | null;
 }
 
 interface MessageEvent<T = any> extends Event {
-  readonly data: T
-  readonly lastEventId: string
-  readonly origin: string
-  readonly ports: ReadonlyArray<typeof MessagePort>
-  readonly source: typeof MessagePort | null
+  readonly data: T;
+  readonly lastEventId: string;
+  readonly origin: string;
+  readonly ports: ReadonlyArray<typeof MessagePort>;
+  readonly source: typeof MessagePort | null;
   initMessageEvent(
     type: string,
     bubbles?: boolean,
@@ -113,71 +117,71 @@ interface MessageEvent<T = any> extends Event {
     origin?: string,
     lastEventId?: string,
     source?: typeof MessagePort | null,
-    ports?: (typeof MessagePort)[]
+    ports?: (typeof MessagePort)[],
   ): void;
 }
 
 export declare const MessageEvent: {
-  prototype: MessageEvent
-  new<T>(type: string, eventInitDict?: MessageEventInit<T>): MessageEvent<T>
-}
+  prototype: MessageEvent;
+  new <T>(type: string, eventInitDict?: MessageEventInit<T>): MessageEvent<T>;
+};
 
 interface ErrorEventInit extends EventInit {
-  message?: string
-  filename?: string
-  lineno?: number
-  colno?: number
-  error?: any
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: any;
 }
 
 interface ErrorEvent extends Event {
-  readonly message: string
-  readonly filename: string
-  readonly lineno: number
-  readonly colno: number
-  readonly error: any
+  readonly message: string;
+  readonly filename: string;
+  readonly lineno: number;
+  readonly colno: number;
+  readonly error: any;
 }
 
 export declare const ErrorEvent: {
-  prototype: ErrorEvent
-  new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent
-}
+  prototype: ErrorEvent;
+  new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
+};
 
 interface WebSocketInit {
-  protocols?: string | string[],
-  dispatcher?: Dispatcher,
-  headers?: HeadersInit
+  protocols?: string | string[];
+  dispatcher?: Dispatcher;
+  headers?: HeadersInit;
 }
 
 interface WebSocketStreamOptions {
-  protocols?: string | string[]
-  signal?: AbortSignal
+  protocols?: string | string[];
+  signal?: AbortSignal;
 }
 
 interface WebSocketCloseInfo {
-  closeCode: number
-  reason: string
+  closeCode: number;
+  reason: string;
 }
 
 interface WebSocketStream {
-  closed: Promise<WebSocketCloseInfo>
+  closed: Promise<WebSocketCloseInfo>;
   opened: Promise<{
-    extensions: string
-    protocol: string
-    readable: ReadableStream
-    writable: WritableStream
-  }>
-  url: string
+    extensions: string;
+    protocol: string;
+    readable: ReadableStream;
+    writable: WritableStream;
+  }>;
+  url: string;
 }
 
 export declare const WebSocketStream: {
-  prototype: WebSocketStream
-  new (url: string | URL, options?: WebSocketStreamOptions): WebSocketStream
-}
+  prototype: WebSocketStream;
+  new (url: string | URL, options?: WebSocketStreamOptions): WebSocketStream;
+};
 
 interface WebSocketError extends Event, WebSocketCloseInfo {}
 
 export declare const WebSocketError: {
-  prototype: WebSocketError
-  new (type: string, init?: WebSocketCloseInfo): WebSocketError
-}
+  prototype: WebSocketError;
+  new (type: string, init?: WebSocketCloseInfo): WebSocketError;
+};

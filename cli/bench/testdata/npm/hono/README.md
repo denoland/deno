@@ -22,24 +22,27 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/honojs/hono)](https://github.com/honojs/hono/commits/main)
 [![Deno badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fdeno-visualizer.danopia.net%2Fshields%2Flatest-version%2Fx%2Fhono%2Fmod.ts)](https://doc.deno.land/https/deno.land/x/hono/mod.ts)
 
-Hono - _**[炎] means flame🔥 in Japanese**_ - is a small, simple, and ultrafast web framework for Cloudflare Workers, Deno, Bun, and others.
+Hono - _**[炎] means flame🔥 in Japanese**_ - is a small, simple, and ultrafast
+web framework for Cloudflare Workers, Deno, Bun, and others.
 
 ```ts
-import { Hono } from 'hono'
-const app = new Hono()
+import { Hono } from "hono";
+const app = new Hono();
 
-app.get('/', (c) => c.text('Hono!!'))
+app.get("/", (c) => c.text("Hono!!"));
 
-export default app
+export default app;
 ```
 
 ## Features
 
 - **Ultrafast** - the router does not use linear loops.
 - **Zero-dependencies** - using only Service Worker and Web Standard API.
-- **Middleware** - built-in middleware, custom middleware, and third-party middleware.
+- **Middleware** - built-in middleware, custom middleware, and third-party
+  middleware.
 - **TypeScript** - first-class TypeScript support.
-- **Multi-platform** - works on Cloudflare Workers, Fastly Compute@Edge, Deno, or Bun.
+- **Multi-platform** - works on Cloudflare Workers, Fastly Compute@Edge, Deno,
+  or Bun.
 
 ## Benchmarks
 
@@ -77,7 +80,10 @@ For more details, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## Contributors
 
-Thanks to [all contributors](https://github.com/honojs/hono/graphs/contributors)! Especially, [@metrue](https://github.com/metrue) and [@usualoma](https://github.com/usualoma)!
+Thanks to
+[all contributors](https://github.com/honojs/hono/graphs/contributors)!
+Especially, [@metrue](https://github.com/metrue) and
+[@usualoma](https://github.com/usualoma)!
 
 ## Author
 

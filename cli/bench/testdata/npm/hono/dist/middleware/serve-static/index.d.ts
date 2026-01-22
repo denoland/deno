@@ -1,1 +1,1 @@
-export { serveStatic } from './serve-static';
+export { serveStatic } from "./serve-static";

@@ -12,6 +12,6 @@ console.log(localNamespaceImport);
 console.log("===========================");
 console.log(MyClass.someStaticMethod());
 
-export default function() {
+export default function () {
   return defaultImport.default() * 5;
 }

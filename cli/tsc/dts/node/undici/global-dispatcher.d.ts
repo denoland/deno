@@ -1,9 +1,8 @@
-import Dispatcher from './dispatcher.d.ts'
+import Dispatcher from "./dispatcher.d.ts";
 
-declare function setGlobalDispatcher<DispatcherImplementation extends Dispatcher> (dispatcher: DispatcherImplementation): void
-declare function getGlobalDispatcher (): Dispatcher
+declare function setGlobalDispatcher<
+  DispatcherImplementation extends Dispatcher,
+>(dispatcher: DispatcherImplementation): void;
+declare function getGlobalDispatcher(): Dispatcher;
 
-export {
-  getGlobalDispatcher,
-  setGlobalDispatcher
-}
+export { getGlobalDispatcher, setGlobalDispatcher };

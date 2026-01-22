@@ -11,5 +11,5 @@ function childProcessFork(path) {
 module.exports = {
   run() {
     childProcessFork(path.join(__dirname, "forked_path.js"));
-  }
+  },
 };

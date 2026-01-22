@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       releaseKind:
-        description: 'Kind of release'
-        default: 'patch'
+        description: "Kind of release"
+        default: "patch"
         type: choice
         options:
           - patch

@@ -1,3 +1,3 @@
 module.exports = {
-    hello: "from node"
+  hello: "from node",
 };

@@ -1,3 +1,3 @@
 export default {
-    hello: "from esm client",
-}
+  hello: "from esm client",
+};

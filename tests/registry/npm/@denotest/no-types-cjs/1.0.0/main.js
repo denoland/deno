@@ -1,6 +1,6 @@
 /**
  * @return {number}
  */
- module.exports = function () {
+module.exports = function () {
   return 5;
 };

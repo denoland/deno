@@ -1,29 +1,29 @@
-import Pool from './pool.d.ts'
-import Dispatcher from './dispatcher.d.ts'
-import { URL } from 'url'
+import Pool from "./pool.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
+import { URL } from "url";
 
-export default BalancedPool
+export default BalancedPool;
 
-type BalancedPoolConnectOptions = Omit<Dispatcher.ConnectOptions, 'origin'>
+type BalancedPoolConnectOptions = Omit<Dispatcher.ConnectOptions, "origin">;
 
 declare class BalancedPool extends Dispatcher {
-  constructor (url: string | string[] | URL | URL[], options?: Pool.Options)
+  constructor(url: string | string[] | URL | URL[], options?: Pool.Options);
 
-  addUpstream (upstream: string | URL): BalancedPool
-  removeUpstream (upstream: string | URL): BalancedPool
-  upstreams: Array<string>
+  addUpstream(upstream: string | URL): BalancedPool;
+  removeUpstream(upstream: string | URL): BalancedPool;
+  upstreams: Array<string>;
 
   /** `true` after `pool.close()` has been called. */
-  closed: boolean
+  closed: boolean;
   /** `true` after `pool.destroyed()` has been called or `pool.close()` has been called and the pool shutdown has completed. */
-  destroyed: boolean
+  destroyed: boolean;
 
   // Override dispatcher APIs.
-  override connect (
-    options: BalancedPoolConnectOptions
-  ): Promise<Dispatcher.ConnectData>
-  override connect (
+  override connect(
     options: BalancedPoolConnectOptions,
-    callback: (err: Error | null, data: Dispatcher.ConnectData) => void
-  ): void
+  ): Promise<Dispatcher.ConnectData>;
+  override connect(
+    options: BalancedPoolConnectOptions,
+    callback: (err: Error | null, data: Dispatcher.ConnectData) => void,
+  ): void;
 }

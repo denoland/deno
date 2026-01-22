@@ -1,1 +1,1 @@
-module.exports = require('node:crypto').webcrypto;
+module.exports = require("node:crypto").webcrypto;

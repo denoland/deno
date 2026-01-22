@@ -2,8 +2,8 @@ declare const tempGlobalThis: typeof globalThis;
 declare const tempGlobal: typeof global;
 declare const tempProcess: typeof process;
 export {
-  tempGlobalThis as globalThis,
   tempGlobal as global,
+  tempGlobalThis as globalThis,
   tempProcess as process,
 };
 

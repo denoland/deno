@@ -1,1 +1,1 @@
-export { TrieRouter } from './router';
+export { TrieRouter } from "./router";

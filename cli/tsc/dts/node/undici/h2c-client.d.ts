@@ -1,29 +1,29 @@
-import { URL } from 'url'
-import Dispatcher from './dispatcher.d.ts'
-import buildConnector from './connector.d.ts'
+import { URL } from "url";
+import Dispatcher from "./dispatcher.d.ts";
+import buildConnector from "./connector.d.ts";
 
-type H2ClientOptions = Omit<Dispatcher.ConnectOptions, 'origin'>
+type H2ClientOptions = Omit<Dispatcher.ConnectOptions, "origin">;
 
 /**
  * A basic H2C client, mapped on top a single TCP connection. Pipelining is disabled by default.
  */
 export class H2CClient extends Dispatcher {
-  constructor (url: string | URL, options?: H2CClient.Options)
+  constructor(url: string | URL, options?: H2CClient.Options);
   /** Property to get and set the pipelining factor. */
-  pipelining: number
+  pipelining: number;
   /** `true` after `client.close()` has been called. */
-  closed: boolean
+  closed: boolean;
   /** `true` after `client.destroyed()` has been called or `client.close()` has been called and the client shutdown has completed. */
-  destroyed: boolean
+  destroyed: boolean;
 
   // Override dispatcher APIs.
-  override connect (
-    options: H2ClientOptions
-  ): Promise<Dispatcher.ConnectData>
-  override connect (
+  override connect(
     options: H2ClientOptions,
-    callback: (err: Error | null, data: Dispatcher.ConnectData) => void
-  ): void
+  ): Promise<Dispatcher.ConnectData>;
+  override connect(
+    options: H2ClientOptions,
+    callback: (err: Error | null, data: Dispatcher.ConnectData) => void,
+  ): void;
 }
 
 export declare namespace H2CClient {
@@ -53,7 +53,9 @@ export declare namespace H2CClient {
     /** TODO */
     maxRedirections?: number;
     /** TODO */
-    connect?: Omit<Partial<buildConnector.BuildOptions>, 'allowH2'> | buildConnector.connector;
+    connect?:
+      | Omit<Partial<buildConnector.BuildOptions>, "allowH2">
+      | buildConnector.connector;
     /** TODO */
     maxRequestsPerClient?: number;
     /** TODO */
@@ -67,9 +69,9 @@ export declare namespace H2CClient {
     /**
      * @description Dictates the maximum number of concurrent streams for a single H2 session. It can be overridden by a SETTINGS remote frame.
      * @default 100
-    */
-    maxConcurrentStreams?: number
+     */
+    maxConcurrentStreams?: number;
   }
 }
 
-export default H2CClient
+export default H2CClient;

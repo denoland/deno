@@ -6,72 +6,74 @@ export {};
 
 type __Event = typeof globalThis extends { onmessage: any } ? {} : Event;
 interface Event {
-    readonly bubbles: boolean;
-    cancelBubble: boolean;
-    readonly cancelable: boolean;
-    readonly composed: boolean;
-    composedPath(): [EventTarget?];
-    readonly currentTarget: EventTarget | null;
-    readonly defaultPrevented: boolean;
-    readonly eventPhase: 0 | 2;
-    initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
-    readonly isTrusted: boolean;
-    preventDefault(): void;
-    readonly returnValue: boolean;
-    readonly srcElement: EventTarget | null;
-    stopImmediatePropagation(): void;
-    stopPropagation(): void;
-    readonly target: EventTarget | null;
-    readonly timeStamp: number;
-    readonly type: string;
+  readonly bubbles: boolean;
+  cancelBubble: boolean;
+  readonly cancelable: boolean;
+  readonly composed: boolean;
+  composedPath(): [EventTarget?];
+  readonly currentTarget: EventTarget | null;
+  readonly defaultPrevented: boolean;
+  readonly eventPhase: 0 | 2;
+  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
+  readonly isTrusted: boolean;
+  preventDefault(): void;
+  readonly returnValue: boolean;
+  readonly srcElement: EventTarget | null;
+  stopImmediatePropagation(): void;
+  stopPropagation(): void;
+  readonly target: EventTarget | null;
+  readonly timeStamp: number;
+  readonly type: string;
 }
 
-type __CustomEvent<T = any> = typeof globalThis extends { onmessage: any } ? {} : CustomEvent<T>;
+type __CustomEvent<T = any> = typeof globalThis extends { onmessage: any } ? {}
+  : CustomEvent<T>;
 interface CustomEvent<T = any> extends Event {
-    readonly detail: T;
+  readonly detail: T;
 }
 
-type __EventTarget = typeof globalThis extends { onmessage: any } ? {} : EventTarget;
+type __EventTarget = typeof globalThis extends { onmessage: any } ? {}
+  : EventTarget;
 interface EventTarget {
-    addEventListener(
-        type: string,
-        listener: EventListener | EventListenerObject,
-        options?: AddEventListenerOptions | boolean,
-    ): void;
-    dispatchEvent(event: Event): boolean;
-    removeEventListener(
-        type: string,
-        listener: EventListener | EventListenerObject,
-        options?: EventListenerOptions | boolean,
-    ): void;
+  addEventListener(
+    type: string,
+    listener: EventListener | EventListenerObject,
+    options?: AddEventListenerOptions | boolean,
+  ): void;
+  dispatchEvent(event: Event): boolean;
+  removeEventListener(
+    type: string,
+    listener: EventListener | EventListenerObject,
+    options?: EventListenerOptions | boolean,
+  ): void;
 }
 
 interface EventInit {
-    bubbles?: boolean;
-    cancelable?: boolean;
-    composed?: boolean;
+  bubbles?: boolean;
+  cancelable?: boolean;
+  composed?: boolean;
 }
 
 interface CustomEventInit<T = any> extends EventInit {
-    detail?: T;
+  detail?: T;
 }
 
 interface EventListenerOptions {
-    capture?: boolean;
+  capture?: boolean;
 }
 
 interface AddEventListenerOptions extends EventListenerOptions {
-    once?: boolean;
-    passive?: boolean;
-    signal?: AbortSignal;
+  once?: boolean;
+  passive?: boolean;
+  signal?: AbortSignal;
 }
 
 interface EventListener {
-    (evt: Event): void;
+  (evt: Event): void;
 }
 
 interface EventListenerObject {
-    handleEvent(object: Event): void;
+  handleEvent(object: Event): void;
 }
 
 // Merge conditional interfaces into global scope, and conditionally declare global constructors.

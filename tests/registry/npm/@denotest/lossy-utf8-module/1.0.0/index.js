@@ -1,1 +1,1 @@
-export default 'þþÿÿ';
+export default "ï¿½ï¿½ï¿½ï¿½";

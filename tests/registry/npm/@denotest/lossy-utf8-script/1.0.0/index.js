@@ -1,1 +1,1 @@
-module.exports = 'þþÿÿ';
+module.exports = "ï¿½ï¿½ï¿½ï¿½";

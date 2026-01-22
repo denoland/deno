@@ -1,27 +1,27 @@
-import Dispatcher from './dispatcher.d.ts'
+import Dispatcher from "./dispatcher.d.ts";
 
-export default RetryHandler
+export default RetryHandler;
 
 declare class RetryHandler implements Dispatcher.DispatchHandler {
-  constructor (
+  constructor(
     options: Dispatcher.DispatchOptions & {
       retryOptions?: RetryHandler.RetryOptions;
     },
-    retryHandlers: RetryHandler.RetryHandlers
-  )
+    retryHandlers: RetryHandler.RetryHandlers,
+  );
 }
 
 declare namespace RetryHandler {
-  export type RetryState = { counter: number; }
+  export type RetryState = { counter: number };
 
   export type RetryContext = {
     state: RetryState;
     opts: Dispatcher.DispatchOptions & {
       retryOptions?: RetryHandler.RetryOptions;
     };
-  }
+  };
 
-  export type OnRetryCallback = (result?: Error | null) => void
+  export type OnRetryCallback = (result?: Error | null) => void;
 
   export type RetryCallback = (
     err: Error,
@@ -31,8 +31,8 @@ declare namespace RetryHandler {
         retryOptions?: RetryHandler.RetryOptions;
       };
     },
-    callback: OnRetryCallback
-  ) => void
+    callback: OnRetryCallback,
+  ) => void;
 
   export interface RetryOptions {
     /**
@@ -110,7 +110,7 @@ declare namespace RetryHandler {
   }
 
   export interface RetryHandlers {
-    dispatch: Dispatcher['dispatch'];
+    dispatch: Dispatcher["dispatch"];
     handler: Dispatcher.DispatchHandler;
   }
 }

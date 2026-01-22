@@ -1,10 +1,10 @@
 Object.defineProperty(module.exports, "__esModule", {
-  value: true
+  value: true,
 });
-module.exports["default"] = function() {
+module.exports["default"] = function () {
   return 1;
 };
-module.exports["named"] = function() {
+module.exports["named"] = function () {
   return 2;
 };
 

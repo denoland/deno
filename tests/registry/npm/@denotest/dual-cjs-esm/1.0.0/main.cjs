@@ -1,3 +1,3 @@
-exports.getKind = function() {
+exports.getKind = function () {
   return "cjs";
 };

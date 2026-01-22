@@ -1,3 +1,3 @@
 module.exports = {
-    hello: "from cjs"
+  hello: "from cjs",
 };

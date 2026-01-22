@@ -1,4 +1,4 @@
-export declare type Pattern = readonly [string, string, RegExp | true] | '*';
+export declare type Pattern = readonly [string, string, RegExp | true] | "*";
 export declare const splitPath: (path: string) => string[];
 export declare const getPattern: (label: string) => Pattern | null;
 export declare const getPathFromURL: (url: string, strict?: boolean) => string;

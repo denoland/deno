@@ -4,13 +4,17 @@
 // Run this to trim the registry.json files
 
 for (const dirPath of getPackageDirs()) {
-  if (dirPath.includes("@denotest") || dirPath.includes("@types/denotest__")
-    || dirPath.includes("denotest-packagejson-missing-info")) {
+  if (
+    dirPath.includes("@denotest") || dirPath.includes("@types/denotest__") ||
+    dirPath.includes("denotest-packagejson-missing-info")
+  ) {
     continue;
   }
-  const versions = Array.from(Deno.readDirSync(dirPath)
-    .map(e => extractVersion(e.name)))
-    .filter(e => e != null);
+  const versions = Array.from(
+    Deno.readDirSync(dirPath)
+      .map((e) => extractVersion(e.name)),
+  )
+    .filter((e) => e != null);
 
   const registryPath = dirPath + "/registry.json";
   const data = JSON.parse(Deno.readTextFileSync(registryPath));
@@ -54,9 +58,10 @@ for (const dirPath of getPackageDirs()) {
 }
 
 function extractVersion(name) {
-  const index = name.lastIndexOf('-');
-  if (index === -1)
+  const index = name.lastIndexOf("-");
+  if (index === -1) {
     return undefined;
+  }
   return name.substring(index + 1).replace(/\.tgz$/, "");
 }
 

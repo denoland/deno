@@ -1,1 +1,1 @@
-export { RegExpRouter } from './router';
+export { RegExpRouter } from "./router";

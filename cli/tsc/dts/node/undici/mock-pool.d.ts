@@ -1,19 +1,22 @@
-import Pool from './pool.d.ts'
-import MockAgent from './mock-agent.d.ts'
-import { Interceptable, MockInterceptor } from './mock-interceptor.d.ts'
-import Dispatcher from './dispatcher.d.ts'
+import Pool from "./pool.d.ts";
+import MockAgent from "./mock-agent.d.ts";
+import { Interceptable, MockInterceptor } from "./mock-interceptor.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
 
-export default MockPool
+export default MockPool;
 
 /** MockPool extends the Pool API and allows one to mock requests. */
 declare class MockPool extends Pool implements Interceptable {
-  constructor (origin: string, options: MockPool.Options)
+  constructor(origin: string, options: MockPool.Options);
   /** Intercepts any matching requests that use the same origin as this mock pool. */
-  intercept (options: MockInterceptor.Options): MockInterceptor
+  intercept(options: MockInterceptor.Options): MockInterceptor;
   /** Dispatches a mocked request. */
-  dispatch (options: Dispatcher.DispatchOptions, handlers: Dispatcher.DispatchHandler): boolean
+  dispatch(
+    options: Dispatcher.DispatchOptions,
+    handlers: Dispatcher.DispatchHandler,
+  ): boolean;
   /** Closes the mock pool and gracefully waits for enqueued requests to complete. */
-  close (): Promise<void>
+  close(): Promise<void>;
 }
 
 declare namespace MockPool {

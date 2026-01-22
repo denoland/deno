@@ -1,9 +1,8 @@
 {
-    "name": "@denotest/deprecated-package",
-    "version": "1.0.0",
-    "type": "module",
-    "main": "main.mjs",
-    "types": "main.d.mts",
-    "deprecated": "Deprecated version"
-  }
-  
+  "name": "@denotest/deprecated-package",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.mjs",
+  "types": "main.d.mts",
+  "deprecated": "Deprecated version"
+}

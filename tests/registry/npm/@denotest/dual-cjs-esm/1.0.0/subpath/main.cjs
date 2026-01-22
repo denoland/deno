@@ -1,3 +1,3 @@
-exports.getSubPathKind = function() {
+exports.getSubPathKind = function () {
   return "cjs";
 };

@@ -2,7 +2,7 @@ const packageByOs = {
   "darwin": "@denotest/binary-package-mac",
   "linux": "@denotest/binary-package-linux",
   "win32": "@denotest/binary-package-windows",
-}
+};
 
 const selectedPackage = packageByOs[process.platform];
 

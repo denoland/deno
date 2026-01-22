@@ -1,15 +1,15 @@
-import Client from './client.d.ts'
+import Client from "./client.d.ts";
 
-export default ClientStats
+export default ClientStats;
 
 declare class ClientStats {
-  constructor (pool: Client)
+  constructor(pool: Client);
   /** If socket has open connection. */
-  connected: boolean
+  connected: boolean;
   /** Number of open socket connections in this client that do not have an active request. */
-  pending: number
+  pending: number;
   /** Number of currently active requests of this client. */
-  running: number
+  running: number;
   /** Number of active, pending, or queued requests of this client. */
-  size: number
+  size: number;
 }

@@ -1,6 +1,6 @@
-export {}
+export {};
 declare global {
   interface Array<T> {
-    augmented(): void
+    augmented(): void;
   }
 }

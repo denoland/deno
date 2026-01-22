@@ -1,3 +1,3 @@
 module.exports = {
-    __exportStar: function(mod) {}
+  __exportStar: function (mod) {},
 };

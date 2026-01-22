@@ -1,9 +1,8 @@
-
 interface MIMEType {
-  type: string
-  subtype: string
-  parameters: Map<string, string>
-  essence: string
+  type: string;
+  subtype: string;
+  parameters: Map<string, string>;
+  essence: string;
 }
 
 /**
@@ -11,10 +10,10 @@ interface MIMEType {
  * couldn't be parsed.
  * @see https://mimesniff.spec.whatwg.org/#parse-a-mime-type
  */
-export function parseMIMEType (input: string): 'failure' | MIMEType
+export function parseMIMEType(input: string): "failure" | MIMEType;
 
 /**
  * Convert a MIMEType object to a string.
  * @see https://mimesniff.spec.whatwg.org/#serialize-a-mime-type
  */
-export function serializeAMimeType (mimeType: MIMEType): string
+export function serializeAMimeType(mimeType: MIMEType): string;

@@ -1,3 +1,3 @@
 module.exports = () => {
-  require("non-existent")
+  require("non-existent");
 };

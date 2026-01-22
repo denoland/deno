@@ -13,13 +13,12 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
 /// <reference no-default-lib="true"/>
 
 interface RegExp {
-    /**
-     * Returns a Boolean value indicating the state of the unicodeSets flag (v) used with a regular expression.
-     * Default is false. Read-only.
-     */
-    readonly unicodeSets: boolean;
+  /**
+   * Returns a Boolean value indicating the state of the unicodeSets flag (v) used with a regular expression.
+   * Default is false. Read-only.
+   */
+  readonly unicodeSets: boolean;
 }

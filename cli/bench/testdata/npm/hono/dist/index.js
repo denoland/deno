@@ -5,9 +5,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Hono = void 0;
 const hono_1 = require("./hono");
-Object.defineProperty(exports, "Hono", { enumerable: true, get: function () { return hono_1.Hono; } });
+Object.defineProperty(exports, "Hono", {
+  enumerable: true,
+  get: function () {
+    return hono_1.Hono;
+  },
+});
 hono_1.Hono.prototype.fire = function () {
-    addEventListener('fetch', (event) => {
-        void event.respondWith(this.handleEvent(event));
-    });
+  addEventListener("fetch", (event) => {
+    void event.respondWith(this.handleEvent(event));
+  });
 };

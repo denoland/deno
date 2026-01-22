@@ -1,3 +1,3 @@
 module.exports = {
-  value: 42
+  value: 42,
 };

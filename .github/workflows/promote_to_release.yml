@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       releaseKind:
-        description: 'Kind of release'
+        description: "Kind of release"
         type: choice
         options:
           - rc
@@ -136,8 +136,8 @@ jobs:
 
       - name: Promote to Release (non-Windows)
         env:
-          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
-          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
+          APPLE_CODESIGN_KEY: "${{ secrets.APPLE_CODESIGN_KEY }}"
+          APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}"
         run: |
           deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}
 

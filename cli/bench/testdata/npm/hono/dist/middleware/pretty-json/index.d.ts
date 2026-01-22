@@ -1,7 +1,9 @@
-import type { Context } from '../../context';
-import type { Next } from '../../hono';
+import type { Context } from "../../context";
+import type { Next } from "../../hono";
 declare type prettyOptions = {
-    space: number;
+  space: number;
 };
-export declare const prettyJSON: (options?: prettyOptions) => (c: Context, next: Next) => Promise<void>;
+export declare const prettyJSON: (
+  options?: prettyOptions,
+) => (c: Context, next: Next) => Promise<void>;
 export {};

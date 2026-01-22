@@ -1,3 +1,3 @@
 export function doThing() {
-    return "thing";
+  return "thing";
 }

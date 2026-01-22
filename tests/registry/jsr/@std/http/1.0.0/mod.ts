@@ -111,6 +111,9 @@ interface ServeDirOptions {
 }
 
 // NOTE(bartlomieju): not important, just for testing
-export async function serveDir(req: Request, opts: ServeDirOptions = {}): Response | Promise<Response> {
-  return new Response("hello world")
+export async function serveDir(
+  req: Request,
+  opts: ServeDirOptions = {},
+): Response | Promise<Response> {
+  return new Response("hello world");
 }

@@ -1,32 +1,32 @@
-import { URL } from 'url'
-import Dispatcher from './dispatcher.d.ts'
-import buildConnector from './connector.d.ts'
-import TClientStats from './client-stats.d.ts'
+import { URL } from "url";
+import Dispatcher from "./dispatcher.d.ts";
+import buildConnector from "./connector.d.ts";
+import TClientStats from "./client-stats.d.ts";
 
-type ClientConnectOptions = Omit<Dispatcher.ConnectOptions, 'origin'>
+type ClientConnectOptions = Omit<Dispatcher.ConnectOptions, "origin">;
 
 /**
  * A basic HTTP/1.1 client, mapped on top a single TCP/TLS connection. Pipelining is disabled by default.
  */
 export class Client extends Dispatcher {
-  constructor (url: string | URL, options?: Client.Options)
+  constructor(url: string | URL, options?: Client.Options);
   /** Property to get and set the pipelining factor. */
-  pipelining: number
+  pipelining: number;
   /** `true` after `client.close()` has been called. */
-  closed: boolean
+  closed: boolean;
   /** `true` after `client.destroyed()` has been called or `client.close()` has been called and the client shutdown has completed. */
-  destroyed: boolean
+  destroyed: boolean;
   /** Aggregate stats for a Client. */
-  readonly stats: TClientStats
+  readonly stats: TClientStats;
 
   // Override dispatcher APIs.
-  override connect (
-    options: ClientConnectOptions
-  ): Promise<Dispatcher.ConnectData>
-  override connect (
+  override connect(
     options: ClientConnectOptions,
-    callback: (err: Error | null, data: Dispatcher.ConnectData) => void
-  ): void
+  ): Promise<Dispatcher.ConnectData>;
+  override connect(
+    options: ClientConnectOptions,
+    callback: (err: Error | null, data: Dispatcher.ConnectData) => void,
+  ): void;
 }
 
 export declare namespace Client {
@@ -96,15 +96,15 @@ export declare namespace Client {
     maxConcurrentStreams?: number;
   }
   export interface SocketInfo {
-    localAddress?: string
-    localPort?: number
-    remoteAddress?: string
-    remotePort?: number
-    remoteFamily?: string
-    timeout?: number
-    bytesWritten?: number
-    bytesRead?: number
+    localAddress?: string;
+    localPort?: number;
+    remoteAddress?: string;
+    remotePort?: number;
+    remoteFamily?: string;
+    timeout?: number;
+    bytesWritten?: number;
+    bytesRead?: number;
   }
 }
 
-export default Client
+export default Client;

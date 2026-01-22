@@ -1,1 +1,1 @@
-module.exports = () => 'hi_private2';
+module.exports = () => "hi_private2";

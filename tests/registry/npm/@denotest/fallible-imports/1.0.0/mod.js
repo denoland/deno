@@ -6,4 +6,4 @@ try {
 
 module.exports = {
   foo: "bar",
-}
+};

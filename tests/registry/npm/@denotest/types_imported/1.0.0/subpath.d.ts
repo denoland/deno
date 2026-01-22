@@ -1,4 +1,4 @@
 export interface Foobar {
-    foo: string;
-    bar: string;
+  foo: string;
+  bar: string;
 }

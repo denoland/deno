@@ -1,21 +1,24 @@
-import { URL } from 'url'
-import Pool from './pool.d.ts'
-import Dispatcher from './dispatcher.d.ts'
-import TClientStats from './client-stats.d.ts'
-import TPoolStats from './pool-stats.d.ts'
+import { URL } from "url";
+import Pool from "./pool.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
+import TClientStats from "./client-stats.d.ts";
+import TPoolStats from "./pool-stats.d.ts";
 
-export default Agent
+export default Agent;
 
 declare class Agent extends Dispatcher {
-  constructor (opts?: Agent.Options)
+  constructor(opts?: Agent.Options);
   /** `true` after `dispatcher.close()` has been called. */
-  closed: boolean
+  closed: boolean;
   /** `true` after `dispatcher.destroyed()` has been called or `dispatcher.close()` has been called and the dispatcher shutdown has completed. */
-  destroyed: boolean
+  destroyed: boolean;
   /** Dispatches a request. */
-  dispatch (options: Agent.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean
+  dispatch(
+    options: Agent.DispatchOptions,
+    handler: Dispatcher.DispatchHandler,
+  ): boolean;
   /** Aggregate stats for a Agent by origin. */
-  readonly stats: Record<string, TClientStats | TPoolStats>
+  readonly stats: Record<string, TClientStats | TPoolStats>;
 }
 
 declare namespace Agent {
@@ -25,7 +28,9 @@ declare namespace Agent {
     /** Integer. Default: `0` */
     maxRedirections?: number;
 
-    interceptors?: { Agent?: readonly Dispatcher.DispatchInterceptor[] } & Pool.Options['interceptors']
+    interceptors?:
+      & { Agent?: readonly Dispatcher.DispatchInterceptor[] }
+      & Pool.Options["interceptors"];
   }
 
   export interface DispatchOptions extends Dispatcher.DispatchOptions {

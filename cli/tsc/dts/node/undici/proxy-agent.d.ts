@@ -1,15 +1,18 @@
-import Agent from './agent.d.ts'
-import buildConnector from './connector.d.ts'
-import Dispatcher from './dispatcher.d.ts'
-import { IncomingHttpHeaders } from './header.d.ts'
+import Agent from "./agent.d.ts";
+import buildConnector from "./connector.d.ts";
+import Dispatcher from "./dispatcher.d.ts";
+import { IncomingHttpHeaders } from "./header.d.ts";
 
-export default ProxyAgent
+export default ProxyAgent;
 
 declare class ProxyAgent extends Dispatcher {
-  constructor (options: ProxyAgent.Options | string)
+  constructor(options: ProxyAgent.Options | string);
 
-  dispatch (options: Agent.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean
-  close (): Promise<void>
+  dispatch(
+    options: Agent.DispatchOptions,
+    handler: Dispatcher.DispatchHandler,
+  ): boolean;
+  close(): Promise<void>;
 }
 
 declare namespace ProxyAgent {

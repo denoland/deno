@@ -2,12 +2,12 @@ name: node_compat_test
 
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 jobs:
   test:
-    runs-on: '${{ matrix.runner }}'
+    runs-on: "${{ matrix.runner }}"
     strategy:
       matrix:
         include:
@@ -37,7 +37,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
@@ -48,7 +48,7 @@ jobs:
       - name: Run tests
         env:
           # override using ldl in .cargo/config.toml
-          CARGO_ENCODED_RUSTFLAGS: ''
+          CARGO_ENCODED_RUSTFLAGS: ""
         run: deno task --cwd tests/node_compat/runner test --report
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
@@ -75,7 +75,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud

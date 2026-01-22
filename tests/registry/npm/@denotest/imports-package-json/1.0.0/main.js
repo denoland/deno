@@ -5,7 +5,7 @@ import path from "#path";
 import fs2 from "#fs2";
 
 export default {
-  hi, 
+  hi,
   bye,
   fs,
   path,
