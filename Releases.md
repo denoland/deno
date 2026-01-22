@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 2.5.6 / 2025.10.29
+### 2.5.6 / 2025.10.30
 
 - Revert "chore: update urlpattern (#31054)" (#31117)
 - fix(ext/node): implement StatementSync#columns() method (#31119)
