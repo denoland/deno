@@ -70,6 +70,7 @@ pub struct StatementSync {
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
+  pub return_arrays: Cell<bool>,
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
   pub allow_unknown_named_params: Cell<bool>,
