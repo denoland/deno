@@ -757,7 +757,7 @@
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
     // "parallel/test-inspect-address-in-use.js": {},
-    "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
+    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
     // "parallel/test-inspect-publish-uid.js": {},
     // "parallel/test-inspect-support-for-node_options.js": {},
     // "parallel/test-inspector-already-activated-cli.js": {},
