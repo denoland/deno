@@ -164,8 +164,14 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let scope_names =
-      ["@denotest", "@denotest2", "@denotest3", "@jsr", "@esbuild"];
+    let scope_names = [
+      "@denotest",
+      "@denotest2",
+      "@denotest3",
+      "@jsr",
+      "@esbuild",
+      "@types",
+    ];
     for scope_name in scope_names {
       let prefix1 = format!("/{}/", scope_name);
       let prefix2 = format!("/{}%2f", scope_name);
