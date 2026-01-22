@@ -242,7 +242,9 @@ pub fn npm_registry_url(sys: &impl EnvVar) -> Url {
 }
 
 pub fn npm_jsr_registry_url(sys: &impl EnvVar) -> Url {
-  parse_env_var_to_url(sys, "NPM_CONFIG_JSR_REGISTRY", "https://npm.jsr.io")
+  // unfortunately we can't use NPM_CONFIG_JSR_REGISTRY because npm
+  // will complain about an unknown configuration value
+  parse_env_var_to_url(sys, "JSR_NPM_URL", "https://npm.jsr.io")
 }
 
 fn parse_env_var_to_url(

@@ -66,10 +66,7 @@ pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
-    (
-      "NPM_CONFIG_JSR_REGISTRY".to_string(),
-      npm_jsr_registry_url(),
-    ),
+    ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
     ("SOCKET_DEV_URL".to_string(), socket_dev_api_url()),
@@ -143,10 +140,7 @@ pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
 pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
-    (
-      "NPM_CONFIG_JSR_REGISTRY".to_string(),
-      npm_jsr_registry_url(),
-    ),
+    ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("JSR_URL".to_string(), jsr_registry_url()),
     (
       "DENO_TESTING_DISABLE_GIT_CHECK".to_string(),
@@ -215,7 +209,7 @@ pub fn npm_jsr_registry_url() -> String {
 }
 
 pub fn npm_jsr_registry_unset_url() -> String {
-  "http://NPM_CONFIG_JSR_REGISTRY.is.unset".to_string()
+  "http://JSR_NPM_URL.is.unset".to_string()
 }
 
 pub fn nodejs_org_mirror_url() -> String {
@@ -618,7 +612,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
-    .env("NPM_CONFIG_JSR_REGISTRY", npm_jsr_registry_unset_url())
+    .env("JSR_NPM_URL", npm_jsr_registry_unset_url())
     .env("NODEJS_ORG_MIRROR", nodejs_org_mirror_unset_url())
     .env("JSR_URL", jsr_registry_unset_url())
 }
