@@ -112,7 +112,7 @@ export const unrefParentPort = Symbol("unrefParentPort");
  */
 function createMessagePort(id) {
   const port = webidl.createBranded(MessagePort);
-  port[core.hostObjectBrand] = "MessagePort";
+  port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
   port[_enabled] = false;
@@ -343,18 +343,6 @@ defineEventHandler(MessagePort.prototype, "messageerror");
 webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
-core.registerTransferableResource("MessagePort", (port) => {
-  const id = port[_id];
-  port[_id] = null;
-  if (id === null) {
-    throw new DOMException(
-      "Can not transfer disentangled message port",
-      "DataCloneError",
-    );
-  }
-  return id;
-}, (id) => createMessagePort(id));
-
 /**
  * @returns {[number, number]}
  */
@@ -378,11 +366,10 @@ function deserializeJsMessageData(messageData) {
     for (let i = 0; i < messageData.transferables.length; ++i) {
       const transferable = messageData.transferables[i];
       switch (transferable.kind) {
-        case "resource": {
-          const { 0: type, 1: rid } = transferable.data;
-          const hostObj = core.getTransferableResource(type).receive(rid);
-          ArrayPrototypePush(transferables, hostObj);
-          ArrayPrototypePush(hostObjects, hostObj);
+        case "messagePort": {
+          const port = createMessagePort(transferable.data);
+          ArrayPrototypePush(transferables, port);
+          ArrayPrototypePush(hostObjects, port);
           break;
         }
         case "arrayBuffer": {
@@ -436,7 +423,7 @@ function serializeJsMessageData(data, transferables) {
         }
         j++;
         ArrayPrototypePush(transferredArrayBuffers, t);
-      } else if (t[core.hostObjectBrand]) {
+      } else if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
         ArrayPrototypePush(hostObjects, t);
       }
     }
@@ -457,12 +444,19 @@ function serializeJsMessageData(data, transferables) {
   let arrayBufferI = 0;
   for (let i = 0; i < transferables.length; ++i) {
     const transferable = transferables[i];
-    if (transferable[core.hostObjectBrand]) {
-      const type = transferable[core.hostObjectBrand];
-      const rid = core.getTransferableResource(type).send(transferable);
+    if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
+      webidl.assertBranded(transferable, MessagePortPrototype);
+      const id = transferable[_id];
+      if (id === null) {
+        throw new DOMException(
+          "Can not transfer disentangled message port",
+          "DataCloneError",
+        );
+      }
+      transferable[_id] = null;
       ArrayPrototypePush(serializedTransferables, {
-        kind: "resource",
-        data: [type, rid],
+        kind: "messagePort",
+        data: id,
       });
     } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
