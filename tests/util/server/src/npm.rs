@@ -180,7 +180,10 @@ impl TestNpmRegistry {
         .strip_prefix(&prefix1)
         .or_else(|| uri_path.strip_prefix(&prefix2));
 
-      if let Some(package_name_with_path) = maybe_package_name_with_path {
+      if let Some(package_name_with_path) = maybe_package_name_with_path
+        && (scope_name != "@types"
+          || package_name_with_path.starts_with("denotest"))
+      {
         return Some((scope_name, package_name_with_path));
       }
     }
