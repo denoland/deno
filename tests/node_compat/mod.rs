@@ -600,6 +600,13 @@ fn run_test(
     10_000
   });
 
+  // Format v8_flags for reuse in both PTY and non-PTY paths
+  let v8_flags_arg = if !v8_flags.is_empty() {
+    Some(format!("--v8-flags={}", v8_flags.join(",")))
+  } else {
+    None
+  };
+
   let (success, collected, output_for_error) = if is_pseudo_tty_test {
     // Run in PTY for pseudo-tty tests (PTY support was already verified above)
     let deno_exe = util::deno_exe_path();
@@ -608,6 +615,20 @@ fn run_test(
     } else {
       RUN_ARGS.to_vec()
     };
+
+    // Add V8 flags
+    if let Some(ref flags) = v8_flags_arg {
+      args.push(flags);
+    }
+
+    // Add inspect flags
+    if cli_args.inspect_brk {
+      args.push("--inspect-brk");
+    }
+    if cli_args.inspect_wait {
+      args.push("--inspect-wait");
+    }
+
     args.push(&test_path);
 
     let mut env_vars = std::collections::HashMap::new();

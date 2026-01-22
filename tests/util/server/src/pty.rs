@@ -358,12 +358,23 @@ fn run_in_pty_impl(
 ) -> PtyOutput {
   use std::os::unix::process::CommandExt;
 
+  // RAII guard for file descriptors to prevent leaks on panic
+  struct FdGuard(i32);
+  impl Drop for FdGuard {
+    fn drop(&mut self) {
+      // SAFETY: Closing an owned file descriptor
+      unsafe { libc::close(self.0) };
+    }
+  }
+
   // SAFETY: Posix APIs
-  let (fdm, fds) = unsafe {
+  let (fdm_guard, fds_guard) = unsafe {
     let fdm = libc::posix_openpt(libc::O_RDWR);
     if fdm < 0 {
       panic!("posix_openpt failed");
     }
+    let fdm_guard = FdGuard(fdm);
+
     let res = libc::grantpt(fdm);
     if res != 0 {
       panic!("grantpt failed");
@@ -376,8 +387,13 @@ fn run_in_pty_impl(
     if fds < 0 {
       panic!("open(ptsname) failed");
     }
-    (fdm, fds)
+    let fds_guard = FdGuard(fds);
+
+    (fdm_guard, fds_guard)
   };
+
+  let fdm = fdm_guard.0;
+  let fds = fds_guard.0;
 
   // SAFETY: Posix APIs
   let mut child = unsafe {
@@ -387,15 +403,26 @@ fn run_in_pty_impl(
       .envs(env_vars.unwrap_or_default())
       .pre_exec(move || {
         // Create a new session
-        libc::setsid();
+        if libc::setsid() == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
         // Set the controlling terminal
-        libc::ioctl(fds, libc::TIOCSCTTY as libc::c_ulong, 0);
+        if libc::ioctl(fds, libc::TIOCSCTTY as libc::c_ulong, 0) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
         set_winsize(fds, PTY_ROWS_COLS.0, PTY_ROWS_COLS.1)?;
         // Close parent's main handle
         libc::close(fdm);
-        libc::dup2(fds, 0);
-        libc::dup2(fds, 1);
-        libc::dup2(fds, 2);
+        // Redirect stdin/stdout/stderr to the PTY
+        if libc::dup2(fds, 0) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        if libc::dup2(fds, 1) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        if libc::dup2(fds, 2) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
         libc::close(fds);
         Ok(())
       })
@@ -403,11 +430,10 @@ fn run_in_pty_impl(
       .unwrap()
   };
 
-  // SAFETY: fds is a valid file descriptor obtained from posix_openpt/ptsname.
-  // We're closing it in the parent process after the child has been spawned.
-  unsafe {
-    libc::close(fds);
-  }
+  // Child spawned successfully, close fds in parent (fdm will be used for reading)
+  drop(fds_guard);
+  // Forget fdm_guard since we'll transfer ownership to File below
+  std::mem::forget(fdm_guard);
 
   // Set non-blocking mode for reading
   use nix::fcntl::FcntlArg;
