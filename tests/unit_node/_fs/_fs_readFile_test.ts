@@ -123,6 +123,50 @@ Deno.test("fs.promises.readFile with no arg call rejects with error correctly", 
   await promises.readFile().catch((_e) => {});
 });
 
+Deno.test("fs.readFile with undefined path throws TypeError", () => {
+  let cbCalled = false;
+  try {
+    // @ts-ignore
+    readFile(undefined, () => {
+      cbCalled = true;
+    });
+    throw new Error("did not throw");
+  } catch (err) {
+    assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+  }
+  assertEquals(cbCalled, false);
+});
+
+Deno.test("fs.readFile with fd.name (undefined) throws TypeError", async () => {
+  const fh = await promises.open(testData, "r");
+  try {
+    let cbCalled = false;
+    try {
+      // Pass the FileHandle.name (which is undefined) like the reported scenario
+      // @ts-ignore
+      readFile((fh as any).name, () => {
+        cbCalled = true;
+      });
+      throw new Error("did not throw");
+    } catch (err) {
+      assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+    }
+  } finally {
+    await fh.close();
+  }
+});
+
+Deno.test("fs.readFileSync with no arg throws TypeError", () => {
+  // @ts-ignore
+  try {
+    // @ts-ignore
+    readFileSync();
+    throw new Error("did not throw");
+  } catch (err) {
+    assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+  }
+});
+
 Deno.test("fs.readFile error message contains path + syscall", async () => {
   const path = "/does/not/exist";
   const err = await new Promise((resolve) => {
