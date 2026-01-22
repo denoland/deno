@@ -207,10 +207,7 @@ function open(port, host, wait) {
     );
   }
 
-  op_inspector_open(port, host);
-  if (wait) {
-    op_inspector_wait();
-  }
+  op_inspector_open(port, host, !!wait);
 
   return {
     __proto__: null,
