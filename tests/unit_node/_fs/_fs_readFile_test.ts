@@ -2,7 +2,13 @@
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { existsSync, promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
-import { assert, assertEquals, assertMatch, assertThrows, assertRejects } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  assertRejects,
+  assertThrows,
+} from "@std/assert";
 import { open, readFile as readFilePromise } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 

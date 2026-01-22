@@ -21,8 +21,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import {
   getOptions,
-  stringToFlags,
   getValidatedPathToString,
+  stringToFlags,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
