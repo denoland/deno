@@ -162,7 +162,6 @@ function run({
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
-export const kSerialization = Symbol("serialization");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -179,7 +178,6 @@ function spawnChildInner(command, apiName, {
   stderr = "piped",
   windowsRawArguments = false,
   detached = false,
-  [kSerialization]: serialization = "json",
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
@@ -197,7 +195,6 @@ function spawnChildInner(command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
-    serialization,
     extraStdio,
     detached,
     needsNpmProcessState,

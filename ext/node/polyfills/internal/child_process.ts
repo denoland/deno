@@ -9,13 +9,10 @@
 import { core, internals } from "ext:core/mod.js";
 import {
   op_node_in_npm_package,
-  op_node_ipc_buffer_constructor,
-  op_node_ipc_read_advanced,
-  op_node_ipc_read_json,
+  op_node_ipc_read,
   op_node_ipc_ref,
   op_node_ipc_unref,
-  op_node_ipc_write_advanced,
-  op_node_ipc_write_json,
+  op_node_ipc_write,
 } from "ext:core/ops";
 import {
   ArrayIsArray,
@@ -44,7 +41,6 @@ import {
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
-import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -52,7 +48,6 @@ import {
   isInt32,
   validateBoolean,
   validateObject,
-  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -67,7 +62,6 @@ import {
   kInputOption,
   kIpc,
   kNeedsNpmProcessState,
-  kSerialization,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -254,8 +248,6 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
     } = options || {};
-
-    const serialization = options?.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
@@ -295,7 +287,6 @@ export class ChildProcess extends EventEmitter {
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
         detached,
-        [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kNeedsNpmProcessState]:
@@ -395,7 +386,7 @@ export class ChildProcess extends EventEmitter {
 
       const pipeRid = internals.getIpcPipeRid(this.#process);
       if (typeof pipeRid == "number") {
-        setupChannel(this, pipeRid, serialization);
+        setupChannel(this, pipeRid);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
           maybeClose(this);
@@ -772,12 +763,6 @@ export function normalizeSpawnArguments(
     );
   }
 
-  validateOneOf(options.serialization, "options.serialization", [
-    undefined,
-    "json",
-    "advanced",
-  ]);
-
   if (options.shell) {
     const command = ArrayPrototypeJoin([file, ...args], " ");
     // Set the shell, switches, and commands.
@@ -864,7 +849,6 @@ export function normalizeSpawnArguments(
     file,
     windowsHide: !!options.windowsHide,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
-    serialization: options.serialization || "json",
   };
 }
 
@@ -1348,22 +1332,20 @@ class Control extends EventEmitter {
   #refExplicitlySet = false;
   #connected = true;
   [kPendingMessages] = [];
-  #serialization: "json" | "advanced";
-  constructor(channel: number, serialization: "json" | "advanced") {
+  constructor(channel: number) {
     super();
     this.#channel = channel;
-    this.#serialization = serialization;
   }
 
   #ref() {
     if (this.#connected) {
-      op_node_ipc_ref(this.#channel, this.#serialization === "json");
+      op_node_ipc_ref(this.#channel);
     }
   }
 
   #unref() {
     if (this.#connected) {
-      op_node_ipc_unref(this.#channel, this.#serialization === "json");
+      op_node_ipc_unref(this.#channel);
     }
   }
 
@@ -1415,28 +1397,10 @@ function internalCmdName(msg: InternalMessage): string {
   return StringPrototypeSlice(msg.cmd, 5);
 }
 
-let hasSetBufferConstructor = false;
-
-export function setupChannel(
-  // deno-lint-ignore no-explicit-any
-  target: any,
-  ipc: number,
-  serialization: "json" | "advanced",
-) {
-  const control = new Control(ipc, serialization);
+// deno-lint-ignore no-explicit-any
+export function setupChannel(target: any, ipc: number) {
+  const control = new Control(ipc);
   target.channel = control;
-
-  if (!hasSetBufferConstructor) {
-    op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
-    hasSetBufferConstructor = true;
-  }
-
-  const writeFn = serialization === "json"
-    ? op_node_ipc_write_json
-    : op_node_ipc_write_advanced;
-  const readFn = serialization === "json"
-    ? op_node_ipc_read_json
-    : op_node_ipc_read_advanced;
 
   async function readLoop() {
     try {
@@ -1444,8 +1408,7 @@ export function setupChannel(
         if (!target.connected || target.killed) {
           return;
         }
-        // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
-        const prom = readFn(ipc);
+        const prom = op_node_ipc_read(ipc);
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
@@ -1537,7 +1500,7 @@ export function setupChannel(
     // this acts as a backpressure mechanism.
     const queueOk = [true];
     control.refCounted();
-    writeFn(ipc, message, queueOk)
+    op_node_ipc_write(ipc, message, queueOk)
       .then(() => {
         control.unrefCounted();
         if (callback) {

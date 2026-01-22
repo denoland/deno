@@ -32,7 +32,6 @@ import { primordials } from "ext:core/mod.js";
 const {
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypePropertyIsEnumerable,
-  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 enum valueType {
@@ -146,6 +145,23 @@ function innerDeepEqual(
       return false;
     }
   } else if (isArrayBufferView(val1)) {
+    const TypedArrayPrototypeGetSymbolToStringTag = (
+      val:
+        | BigInt64Array
+        | BigUint64Array
+        | Float32Array
+        | Float64Array
+        | Int8Array
+        | Int16Array
+        | Int32Array
+        | Uint8Array
+        | Uint8ClampedArray
+        | Uint16Array
+        | Uint32Array,
+    ) =>
+      Object.getOwnPropertySymbols(val)
+        .map((item) => item.toString())
+        .toString();
     if (
       isTypedArray(val1) &&
       isTypedArray(val2) &&

@@ -8,7 +8,6 @@ use std::sync::Arc;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
-use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -346,7 +345,7 @@ pub struct LibMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
-  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
+  pub node_ipc: Option<i64>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
@@ -488,7 +487,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
-          node_ipc_init: None,
+          node_ipc_fd: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
@@ -680,7 +679,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_init: shared.options.node_ipc_init,
+        node_ipc_fd: shared.options.node_ipc,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
