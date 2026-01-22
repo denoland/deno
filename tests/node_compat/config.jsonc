@@ -1498,6 +1498,7 @@
     "pseudo-tty/test-tty-stdin-call-end.js": {},
     "pseudo-tty/test-tty-stdin-end.js": {},
     "pseudo-tty/test-tty-stdout-end.js": {},
+    "pseudo-tty/test-tty-isatty.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
     "pummel/test-dh-regr.js": {},
