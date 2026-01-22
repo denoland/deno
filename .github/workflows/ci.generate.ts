@@ -12,6 +12,7 @@ const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
 const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
+const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
@@ -60,6 +61,11 @@ const Runners = {
     arch: "x86_64",
     runner:
       `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+  },
+  windowsArm: {
+    os: "windows",
+    arch: "aarch64",
+    runner: windowsArmRunner,
   },
 } as const;
 
@@ -208,7 +214,7 @@ const installPythonSteps = [{
 const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v4",
-  with: { "node-version": 18 },
+  with: { "node-version": 22 },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -463,6 +469,15 @@ const ci = {
             profile: "release",
             skip_pr: true,
           }, {
+            ...Runners.windowsArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.windowsArm,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
             ...Runners.linuxX86Xl,
             job: "test",
             profile: "release",
@@ -546,7 +561,8 @@ const ci = {
           run: "sudo modprobe vsock_loopback",
         },
         {
-          if: "matrix.job == 'test' || matrix.job == 'bench'",
+          if:
+            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -987,7 +1003,8 @@ const ci = {
           if: [
             "always() &&",
             "matrix.job == 'test' &&",
-            "!startsWith(github.ref, 'refs/tags/')",
+            "!startsWith(github.ref, 'refs/tags/') &&",
+            "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ].join("\n"),
           run: "deno run -RWN ./tools/combine_test_results.js",
         },
@@ -997,7 +1014,8 @@ const ci = {
           if: [
             "always() &&",
             "matrix.job == 'test' &&",
-            "!startsWith(github.ref, 'refs/tags/')",
+            "!startsWith(github.ref, 'refs/tags/') &&",
+            "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ].join("\n"),
           with: {
             name:
@@ -1185,6 +1203,10 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
               "target/release/denort-x86_64-pc-windows-msvc.zip",
               "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
+              "target/release/deno-aarch64-pc-windows-msvc.zip",
+              "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
+              "target/release/denort-aarch64-pc-windows-msvc.zip",
+              "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
               "target/release/denort-x86_64-unknown-linux-gnu.zip",

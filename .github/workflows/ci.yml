@@ -91,6 +91,17 @@ jobs:
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: windows
+            arch: aarch64
+            runner: windows-11-arm
+            job: test
+            profile: debug
+          - os: windows
+            arch: aarch64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
+            job: test
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: linux
             arch: x86_64
             runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -181,7 +192,7 @@ jobs:
       - if: '!(matrix.skip) && (matrix.os == ''linux'' && matrix.arch == ''aarch64'')'
         name: Load 'vsock_loopback; kernel module
         run: sudo modprobe vsock_loopback
-      - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''bench'') && !(matrix.os == ''windows'' && matrix.arch == ''aarch64''))'
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
@@ -203,7 +214,7 @@ jobs:
         name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -587,14 +598,16 @@ jobs:
         if: |-
           !(matrix.skip) && (always() &&
           matrix.job == 'test' &&
-          !startsWith(github.ref, 'refs/tags/'))
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: |-
           !(matrix.skip) && (always() &&
           matrix.job == 'test' &&
-          !startsWith(github.ref, 'refs/tags/'))
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
         with:
           name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
           path: target/test_results.json
@@ -729,6 +742,10 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/deno-aarch64-pc-windows-msvc.zip
+            target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/denort-aarch64-pc-windows-msvc.zip
+            target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip

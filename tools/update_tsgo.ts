@@ -89,6 +89,7 @@ function findHashes(
   release: GitHubRelease,
 ): {
   windowsX64: string;
+  windowsArm64: string;
   macosX64: string;
   macosArm64: string;
   linuxX64: string;
@@ -96,6 +97,7 @@ function findHashes(
 } {
   const hashes = {
     windowsX64: "",
+    windowsArm64: "",
     macosX64: "",
     macosArm64: "",
     linuxX64: "",
@@ -108,6 +110,8 @@ function findHashes(
     const arch = archAndExtension.split(".")[0];
     if (os === "windows" && arch === "x64") {
       hashes.windowsX64 = asset.digest;
+    } else if (os === "windows" && arch === "arm64") {
+      hashes.windowsArm64 = asset.digest;
     } else if (os === "macos" && arch === "x64") {
       hashes.macosX64 = asset.digest;
     } else if (os === "macos" && arch === "arm64") {
@@ -136,16 +140,18 @@ const newContent = unindent`
 
   pub struct Hashes {
     pub windows_x64: &'static str,
+    pub windows_arm64: &'static str,
     pub macos_x64: &'static str,
     pub macos_arm64: &'static str,
     pub linux_x64: &'static str,
     pub linux_arm64: &'static str,
   }
-  
+
   impl Hashes {
-    pub const fn all(&self) -> [&'static str; 5] {
+    pub const fn all(&self) -> [&'static str; 6] {
       [
         self.windows_x64,
+        self.windows_arm64,
         self.macos_x64,
         self.macos_arm64,
         self.linux_x64,
@@ -155,16 +161,17 @@ const newContent = unindent`
   }
 
   pub const VERSION: &str = "${versionNoV}";
-  pub const DOWNLOAD_BASE_URL: &str = 
+  pub const DOWNLOAD_BASE_URL: &str =
     "https://github.com/${repo}/releases/download/${version}";
   pub const HASHES: Hashes = Hashes {
     windows_x64: "${hashes.windowsX64}",
+    windows_arm64: "${hashes.windowsArm64}",
     macos_x64: "${hashes.macosX64}",
     macos_arm64: "${hashes.macosArm64}",
     linux_x64: "${hashes.linuxX64}",
     linux_arm64: "${hashes.linuxArm64}",
   };
-  
+
   const _: () = {
     let sha256 = "sha256".as_bytes();
 

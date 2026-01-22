@@ -1496,6 +1496,7 @@ const fn tsgo_platform() -> &'static str {
     std::env::consts::ARCH.as_bytes(),
   ) {
     (b"windows", b"x86_64") => "windows-x64",
+    (b"windows", b"aarch64") => "windows-arm64",
     (b"macos", b"x86_64") => "macos-x64",
     (b"macos", b"aarch64") => "macos-arm64",
     (b"linux", b"x86_64") => "linux-x64",
