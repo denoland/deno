@@ -2,6 +2,17 @@
   "tests": {
     "basic": {
       "args": "run -A main.ts basic.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "output": "basic.out"
+    },
+    "basic_grpc": {
+      "args": "run -A main.ts basic.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
       "output": "basic.out"
     },
     "basic_vsock": {
@@ -26,6 +37,16 @@
     },
     "metric": {
       "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "args": "run -A main.ts metric.ts",
+      "output": "metric.out"
+    },
+    "metric_grpc": {
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
         "OTEL_METRIC_EXPORT_INTERVAL": "1000"
       },
       "args": "run -A main.ts metric.ts",
@@ -33,44 +54,104 @@
     },
     "fetch": {
       "args": "run -A main.ts fetch.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
       "output": "fetch.out"
     },
     "http_metric": {
       "envs": {
-        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
       },
       "args": "run -A main.ts http_metric.ts",
       "output": "http_metric.out"
     },
     "http_propagators": {
       "args": "run -A main.ts http_propagators.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
       "output": "http_propagators.out"
     },
     "node_http_metric": {
       "envs": {
-        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
       },
       "args": "run -A main.ts node_http_metric.ts",
       "output": "node_http_metric.out"
     },
     "links": {
       "args": "run -A main.ts links.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "output": "links.out"
+    },
+    "links_grpc": {
+      "args": "run -A main.ts links.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
       "output": "links.out"
     },
     "start_active_span": {
       "args": "run -A main.ts start_active_span.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "output": "start_active_span.out"
+    },
+    "start_active_span_grpc": {
+      "args": "run -A main.ts start_active_span.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
       "output": "start_active_span.out"
     },
     "node_http_request": {
       "args": "run -A main.ts node_http_request.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
       "output": "node_http_request.out"
     },
     "events": {
       "args": "run -A main.ts events.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "output": "events.out"
+    },
+    "events_grpc": {
+      "args": "run -A main.ts events.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
       "output": "events.out"
     },
     "metric_temporality_delta": {
       "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_delta.out"
+    },
+    "metric_temporality_delta_grpc": {
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
         "OTEL_METRIC_EXPORT_INTERVAL": "1000",
         "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta"
       },
@@ -79,6 +160,17 @@
     },
     "metric_temporality_cumulative": {
       "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_EXPORTER_OTLP_CERTIFICATE": "../../../testdata/tls/RootCA.crt"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_cumulative.out"
+    },
+    "metric_temporality_cumulative_grpc": {
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
         "OTEL_METRIC_EXPORT_INTERVAL": "1000",
         "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative"
       },
