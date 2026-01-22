@@ -6356,6 +6356,7 @@ dependencies = [
 [[package]]
 name = "node_shim"
 version = "0.1.0"
+source = "git+ssh://git@github.com/denoland/node_shim?branch=wrap_eval_code_require#359c30016513a7e186979c1368e637f399db571d"
 dependencies = [
  "serde_json",
 ]
