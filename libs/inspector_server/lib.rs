@@ -354,7 +354,6 @@ async fn server(
     if let Ok(()) = reset_rx_deregister.try_recv() {
       // Clear all registered inspectors
       inspector_map.borrow_mut().clear();
-      // log::info!("Inspector server reset: all inspectors deregistered");
     }
     inspector_map
       .borrow_mut()
@@ -465,7 +464,6 @@ async fn server(
           },
           _ = &mut reset_rx => {
             // Abruptly close the connection without graceful shutdown
-            // log::info!("Inspector connection abruptly closed due to reset");
           }
         }
       });

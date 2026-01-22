@@ -559,7 +559,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -579,7 +579,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1885,8 +1885,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.380.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=fix_inspector_deregister#0e60e7c6074282a0bc0ce0a287933e8c88f6934c"
+version = "0.380.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9168bc280b6dfbebba5dc381909f25d2aafe7f9917fbe9a6548504eed250b362"
 dependencies = [
  "anyhow",
  "az",
@@ -2644,7 +2645,8 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.256.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=fix_inspector_deregister#0e60e7c6074282a0bc0ce0a287933e8c88f6934c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca88fda306cb23dc660f4740ca8be45b00ccfb78f09b178772c0b9a8cc49fbb1"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -7249,8 +7251,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
 dependencies = [
  "bytes",
- "heck 0.4.1",
- "itertools 0.12.1",
+ "heck 0.5.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -7270,7 +7272,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8300,7 +8302,8 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.289.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=fix_inspector_deregister#0e60e7c6074282a0bc0ce0a287933e8c88f6934c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781b7703bd6f995cc753c371b8ede9e0b09c0c47b3848d7d1cade89666520a92"
 dependencies = [
  "deno_error",
  "num-bigint",

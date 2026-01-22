@@ -65,7 +65,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.380.0" }
+deno_core = { version = "0.380.1" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.189.0"
@@ -545,6 +545,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core.git", branch = "fix_inspector_deregister" }
