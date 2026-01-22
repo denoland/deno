@@ -294,7 +294,7 @@ fn standalone_runtime_flags() {
     .split_output()
     .run()
     .assert_exit_code(1)
-    .assert_stdout_matches_text("0.1472050634010581\n")
+    .assert_stdout_matches_text("0.34158532233056826\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     );
@@ -1076,7 +1076,6 @@ fn granular_unstable_features() {
       "--output",
       &exe.to_string_lossy(),
       "--unstable-kv",
-      "--unstable-temporal",
       "./compile/unstable_features.ts",
     ])
     .run();

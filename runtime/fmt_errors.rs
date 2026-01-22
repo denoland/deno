@@ -425,13 +425,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
-    } else if msg.contains("Temporal is not defined") {
-      return vec![
-        FixSuggestion::info("Temporal is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-temporal` flag to enable this API.",
-        ),
-      ];
     } else if msg.contains("window is not defined") {
       return vec![
         FixSuggestion::info("window global is not available in Deno 2."),

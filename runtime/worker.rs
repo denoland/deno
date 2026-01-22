@@ -1129,7 +1129,6 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     validate_import_attributes_cb: Some(
       create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
-    import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
       .enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),
