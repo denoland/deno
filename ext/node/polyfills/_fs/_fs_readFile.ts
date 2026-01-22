@@ -12,16 +12,18 @@ import {
 import { Buffer } from "node:buffer";
 import { readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
   AbortError,
   denoErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
-  ERR_INVALID_ARG_TYPE,
 } from "ext:deno_node/internal/errors.ts";
-import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  getOptions,
+  stringToFlags,
+  getValidatedPathToString,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
@@ -180,21 +182,11 @@ export function readFile(
   optOrCallback?: FileOptionsArgument | Callback | null | undefined,
   callback?: Callback,
 ) {
-  path = path instanceof URL ? pathFromURL(path) : path;
-
-  // Validate path early to match Node.js behavior (throws on invalid argument types)
-  const isBuffer = Buffer && Buffer.isBuffer &&
-    Buffer.isBuffer(path as unknown);
-  const isFileHandle = path instanceof FileHandle;
-  if (
-    !(
-      typeof path === "string" ||
-      typeof path === "number" ||
-      isFileHandle ||
-      isBuffer
-    )
-  ) {
-    throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
+  // If path is not a FileHandle or numeric fd, validate/convert it to a string
+  // using the shared helper. That helper throws the appropriate
+  // ERR_INVALID_ARG_TYPE for invalid inputs (e.g. undefined).
+  if (!(path instanceof FileHandle) && typeof path !== "number") {
+    path = getValidatedPathToString(path as unknown as string);
   }
 
   let cb: Callback | undefined;
@@ -248,27 +240,16 @@ export function readFileSync(
   path: string | URL | number,
   opt?: FileOptionsArgument,
 ): string | Buffer {
-  path = path instanceof URL ? pathFromURL(path) : path;
   const options = getOptions<FileOptions>(opt, defaultOptions);
-
-  // Validate path early to match Node.js behavior
-  const isBufferSync = Buffer && Buffer.isBuffer &&
-    Buffer.isBuffer(path as unknown);
-  if (
-    !(
-      typeof path === "number" ||
-      typeof path === "string" ||
-      isBufferSync
-    )
-  ) {
-    throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
-  }
 
   let data;
   if (typeof path === "number") {
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     data = readAllSync(fsFile);
   } else {
+    // Validate/convert path to string (throws on invalid types)
+    path = getValidatedPathToString(path as unknown as string);
+
     const flagsNumber = stringToFlags(options?.flag, "options.flag");
     try {
       data = op_fs_read_file_sync(path, flagsNumber);
