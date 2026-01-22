@@ -515,8 +515,8 @@ pub(super) fn op_create_image_bitmap(
     ImageBitmapSource::Blob => {
       // Note: According to browser behavior and wpt results, if Exif contains image orientation,
       // it applies the rotation from it before following the value of imageOrientation.
-      // This is not stated in the spec but in MDN currently.
-      // https://github.com/mdn/content/pull/34366
+      // This is not stated in the spec currently.
+      // https://github.com/whatwg/html/issues/7210
 
       // SAFETY: The orientation is always Some if the image is from a Blob.
       let orientation = orientation.unwrap();
