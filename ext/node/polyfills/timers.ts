@@ -156,6 +156,67 @@ export function setImmediate(
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 
+function setImmediatePromise<T = void>(
+  value?: T,
+  options: TimerOptions = kEmptyObject,
+): Promise<T> {
+  try {
+    validateObject(options, "options");
+
+    if (typeof options?.signal !== "undefined") {
+      validateAbortSignal(options.signal, "options.signal");
+    }
+
+    if (typeof options?.ref !== "undefined") {
+      validateBoolean(options.ref, "options.ref");
+    }
+  } catch (err) {
+    return PromiseReject(err);
+  }
+
+  const { signal, ref = true } = options;
+
+  if (signal?.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
+  }
+
+  let oncancel: EventListenerOrEventListenerObject | undefined;
+  const { promise, resolve, reject } = PromiseWithResolvers();
+  const immediate = new Immediate(() => resolve(value));
+  if (!ref) {
+    immediate.unref();
+  }
+  if (signal) {
+    oncancel = FunctionPrototypeBind(
+      cancelListenerHandler,
+      immediate,
+      clearImmediate,
+      reject,
+      signal,
+    );
+
+    signal.addEventListener("abort", oncancel, {
+      __proto__: null,
+      [kResistStopPropagation]: true,
+    });
+  }
+
+  return oncancel !== undefined
+    ? SafePromisePrototypeFinally(
+      promise,
+      () => signal!.removeEventListener("abort", oncancel),
+    )
+    : promise;
+}
+
+ObjectDefineProperty(setImmediate, promisify.custom, {
+  __proto__: null,
+  enumerable: true,
+  get() {
+    return setImmediatePromise;
+  },
+});
+
 export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
@@ -254,7 +315,7 @@ async function* setIntervalAsync(
 
 export const promises = {
   setTimeout: setTimeoutPromise,
-  setImmediate: promisify(setImmediate),
+  setImmediate: setImmediatePromise,
   setInterval: setIntervalAsync,
 };
 
