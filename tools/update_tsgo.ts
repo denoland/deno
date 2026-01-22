@@ -52,17 +52,35 @@ interface GitHubAsset {
   digest: string; // sha256:...
 }
 
-const latestResponse = await fetch(
-  `https://api.github.com/repos/${repo}/releases/latest`,
-);
-if (!latestResponse.ok) {
-  throw new Error(
-    `Failed to fetch latest release: ${latestResponse.statusText}`,
-  );
-}
-const latest = await latestResponse.json() as GitHubRelease;
+const requestedVersion = Deno.args[0];
 
-const version = latest.tag_name;
+let release: GitHubRelease;
+if (requestedVersion) {
+  const tag = requestedVersion.startsWith("v")
+    ? requestedVersion
+    : `v${requestedVersion}`;
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch release ${tag}: ${response.statusText}`,
+    );
+  }
+  release = await response.json() as GitHubRelease;
+} else {
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/releases/latest`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch latest release: ${response.statusText}`,
+    );
+  }
+  release = await response.json() as GitHubRelease;
+}
+
+const version = release.tag_name;
 
 const versionNoV = version.replace(/^v/, "");
 
@@ -125,7 +143,7 @@ function findHashes(
   return hashes;
 }
 
-const hashes = findHashes(latest);
+const hashes = findHashes(release);
 for (const [platform, hash] of Object.entries(hashes)) {
   if (!hash) {
     console.error(`No hashes found for ${platform}`);
