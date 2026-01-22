@@ -1,5 +1,5 @@
 Download [WILDCARD]
-Check main.ts
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module 'node:unknown'.
     at file:///[WILDLINE]/main.ts:3:24
 
