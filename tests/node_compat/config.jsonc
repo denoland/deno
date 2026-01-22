@@ -260,117 +260,65 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    "parallel/test-debugger-address.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-auto-resume.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-address.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-auto-resume.mjs": {},
     "parallel/test-debugger-backtrace.js": {},
-    "parallel/test-debugger-break.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-breakpoint-exists.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-clear-breakpoints.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-exceptions.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-exec-scope.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-break.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-breakpoint-exists.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-clear-breakpoints.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-exceptions.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-exec-scope.mjs": {},
     "parallel/test-debugger-exec.js": {},
-    "parallel/test-debugger-extract-function-name.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-heap-profiler.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-help.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-extract-function-name.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-heap-profiler.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-help.mjs": {},
     "parallel/test-debugger-invalid-json.mjs": {},
-    "parallel/test-debugger-list.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-list.js": {},
     "parallel/test-debugger-low-level.js": {},
-    "parallel/test-debugger-object-type-remote-object.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-pid.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-object-type-remote-object.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-pid.js": {},
     "parallel/test-debugger-preserve-breaks.js": {},
-    "parallel/test-debugger-profile-command.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-profile.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-random-port-with-inspect-port.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-random-port.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-profile-command.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-profile.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-random-port-with-inspect-port.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-random-port.js": {},
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    "parallel/test-debugger-run-after-quit-restart.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-sb-before-load.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-scripts.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-set-context-line-number.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-unavailable-port.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-use-strict.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-watch-validation.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-watchers.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-debugger-websocket-secret-mismatch.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-run-after-quit-restart.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-sb-before-load.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-scripts.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-set-context-line-number.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-unavailable-port.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-use-strict.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-watch-validation.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-watchers.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-websocket-secret-mismatch.js": {},
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-address.js": {},
@@ -451,10 +399,8 @@
     "parallel/test-diagnostics-channel-tracing-channel-sync-run-stores.js": {},
     "parallel/test-diagnostics-channel-tracing-channel-sync.js": {},
     "parallel/test-diagnostics-channel-udp.js": {},
-    "parallel/test-disable-sigusr1.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-disable-sigusr1.js": {},
     "parallel/test-dns-default-order-ipv4.js": {},
     "parallel/test-dns-lookupService.js": {},
     "parallel/test-dns-lookupService-promises.js": {},
@@ -464,10 +410,8 @@
     "parallel/test-dns-setservers-type-check.js": {},
     "parallel/test-domain-add-remove.js": {},
     "parallel/test-domain-crypto.js": {},
-    "parallel/test-domain-dep0097.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-domain-dep0097.js": {},
     "parallel/test-domain-ee-error-listener.js": {},
     "parallel/test-domain-ee.js": {},
     "parallel/test-domain-nested-throw.js": {},
@@ -646,50 +590,28 @@
     "parallel/test-global-webcrypto.js": {},
     "parallel/test-global-webstreams.js": {},
     "parallel/test-handle-wrap-close-abort.js": {},
-    "parallel/test-heap-prof-basic.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-dir-absolute.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-dir-name.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-dir-relative.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-exec-argv.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-exit.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-interval.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-invalid-args.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-loop-drained.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-name.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-heap-prof-sigint.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-basic.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-absolute.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-name.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-relative.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-exec-argv.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-exit.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-interval.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-invalid-args.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-loop-drained.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-name.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-sigint.js": {},
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
     "parallel/test-http-agent-close.js": {},
