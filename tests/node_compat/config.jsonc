@@ -1052,14 +1052,10 @@
     "parallel/test-performanceobserver-gc.js": {},
     "parallel/test-performanceobserver.js": {},
     "parallel/test-performance-measure-detail.js": {},
-    "parallel/test-permission-inspector-brk.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-permission-inspector.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-permission-inspector-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-permission-inspector.js": {},
     "parallel/test-permission-no-addons.js": {},
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
@@ -1130,31 +1126,19 @@
     "parallel/test-readline.js": {},
     "parallel/test-ref-unref-return.js": {},
     "parallel/test-regression-object-prototype.js": {},
-    "parallel/test-repl-inspector.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-repl-preview-newlines.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-repl-preview-timeout.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-repl-preview.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-repl-strict-mode-previews.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-inspector.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview-newlines.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview-timeout.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-strict-mode-previews.js": {},
     "parallel/test-repl-syntax-error-handling.js": {},
-    "parallel/test-repl-top-level-await.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-top-level-await.js": {},
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
     "parallel/test-require-exceptions.js": {},
@@ -1164,41 +1148,27 @@
     "parallel/test-require-long-path.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
-    "parallel/test-runner-coverage-source-map.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-runner-coverage-thresholds.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-coverage-source-map.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-filter-warning.js": {},
-    "parallel/test-runner-inspect.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
-    "parallel/test-set-process-debug-port.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-set-process-debug-port.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
-    "parallel/test-snapshot-console.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-snapshot-coverage.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-snapshot-console.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
-    "parallel/test-source-map-enable.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
@@ -1497,10 +1467,8 @@
     "parallel/test-trace-events-async-hooks-dynamic.js": {},
     "parallel/test-trace-events-async-hooks-worker.js": {},
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
-    "parallel/test-trace-events-dynamic-enable.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-trace-events-dynamic-enable.js": {},
     "parallel/test-trace-events-get-category-enabled-buffer.js": {},
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
@@ -1536,25 +1504,17 @@
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
-    "parallel/test-v8-coverage.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-v8-coverage.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-global-setter.js": {},
-    "parallel/test-v8-stop-coverage.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-v8-take-coverage-noop.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "parallel/test-v8-take-coverage.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-v8-stop-coverage.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-v8-take-coverage-noop.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-v8-take-coverage.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1602,10 +1562,8 @@
     "parallel/test-vm-timeout-escape-promise.js": {},
     "parallel/test-vm-timeout.js": {},
     "parallel/test-vm-util-lazy-properties.js": {},
-    "parallel/test-warn-sigprof.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
     "parallel/test-websocket.js": {},
@@ -1636,10 +1594,8 @@
     "parallel/test-whatwg-url-override-hostname.js": {},
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
-    "parallel/test-worker-debug.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate-during-query.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
@@ -1650,10 +1606,8 @@
     "parallel/test-worker-message-port-receive-message.js": {},
     "parallel/test-worker-message-port-terminate-transfer-list.js": {},
     "parallel/test-worker-mjs-workerdata.js": {},
-    "parallel/test-worker-name.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
     "parallel/test-worker-ref-onexit.js": {},
@@ -1691,119 +1645,71 @@
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
     "pummel/test-dh-regr.js": {},
     "pummel/test-fs-watch-system-limit.js": {},
-    "pummel/test-heapdump-inspector.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "pummel/test-heapdump-inspector.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
-    "sequential/test-cluster-inspect-brk.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-default.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-dir-absolute.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-dir-and-name.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-dir-relative.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-dir-worker.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-drained.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-exit.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-invalid-options.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-kill.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-name.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-cpu-prof-worker-argv.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cluster-inspect-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-default.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-absolute.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-and-name.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-relative.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-worker.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-drained.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-exit.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-invalid-options.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-kill.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-name.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    "sequential/test-debugger-custom-port.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-debugger-debug-brk.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-debugger-invalid-args.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-debugger-launch.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-debugger-pid.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-diagnostic-dir-cpu-prof.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-diagnostic-dir-heap-prof.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-custom-port.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-debug-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-invalid-args.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-launch.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-pid.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-diagnostic-dir-cpu-prof.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
-    "sequential/test-inspector-open-dispose.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
-    "sequential/test-inspector-port-cluster.js": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-inspector-open-dispose.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-inspector-port-cluster.js": {},
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
-    "sequential/test-runner-run-inspect.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-runner-run-inspect.mjs": {},
     "sequential/test-stream2-fs.js": {},
     "sequential/test-tls-lookup.js": {},
     "sequential/test-tls-psk-client.js": {},
     "sequential/test-vm-timeout-rethrow.js": {},
-    "sequential/test-watch-mode-inspect.mjs": {
-      "ignore": true,
-      "reason": "https://github.com/denoland/deno/pull/31863"
-    },
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-watch-mode-inspect.mjs": {},
     "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
