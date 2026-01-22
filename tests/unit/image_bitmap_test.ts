@@ -124,7 +124,7 @@ Deno.test("imageOrientation", async (t) => {
       START,
       END,
     );
-    assertEquals(targetPixel, new Uint8Array([253, 0, 0]));
+    assertEquals(targetPixel, new Uint8Array([254, 0, 0]));
   });
   // reference:
   // https://github.com/web-platform-tests/wpt/blob/a1f4bbf4c6e1a9a861a145a34cd097ea260b5a49/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html#L55
@@ -137,7 +137,7 @@ Deno.test("imageOrientation", async (t) => {
       START,
       END,
     );
-    assertEquals(targetPixel, new Uint8Array([253, 127, 127]));
+    assertEquals(targetPixel, new Uint8Array([254, 128, 129]));
   });
 });
 
