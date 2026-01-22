@@ -4,11 +4,13 @@
 use core::convert::Infallible as Never;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::task::Poll;
 use std::thread;
 
@@ -30,7 +32,6 @@ use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_node::InspectorServerUrl;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -40,13 +41,60 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+/// URL of the inspector server for a runtime instance.
+/// This is used to check if the inspector is enabled and to get
+/// the WebSocket URL for connecting to the debugger.
+pub struct InspectorServerUrl(pub String);
+
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
   shutdown_server_tx: Option<broadcast::Sender<()>>,
-  thread_handle: Option<thread::JoinHandle<()>>,
+  // Wrapped in Mutex to make InspectorServer Sync (JoinHandle is Send but not Sync)
+  thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
+  OnceLock::new();
+
+static RESTART_NOTIFIER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
+
+fn get_restart_notifier() -> broadcast::Sender<()> {
+  RESTART_NOTIFIER
+    .get_or_init(|| broadcast::channel(16).0)
+    .clone()
+}
+
+/// Notifies all connected /ws/events clients that a restart is about to occur.
+pub fn notify_restart() {
+  let sender = get_restart_notifier();
+  let _ = sender.send(()); // Ignore error if no receivers
+}
+
+/// Returns the global inspector server if it has been created.
+pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
+  GLOBAL_INSPECTOR_SERVER.get().cloned()
+}
+
+/// Creates a global inspector server at the given address with the given name.
+/// Returns a reference to the server if created successfully, or the existing
+/// server if one was already created (ignoring the provided parameters).
+pub fn create_inspector_server(
+  host: SocketAddr,
+  name: &'static str,
+) -> Result<Arc<InspectorServer>, InspectorServerError> {
+  // Return existing server if already created
+  if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
+    return Ok(server.clone());
+  }
+
+  let server = Arc::new(InspectorServer::new(host, name)?);
+  // If another thread created the server between our check and now,
+  // just return the existing one
+  let _ = GLOBAL_INSPECTOR_SERVER.set(server);
+  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap().clone())
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -62,6 +110,23 @@ pub enum InspectorServerError {
     #[inherit]
     source: std::io::Error,
   },
+  #[class(inherit)]
+  #[error("Failed to get inspector server's assigned address")]
+  LocalAddr {
+    host: SocketAddr,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+}
+
+fn create_basic_runtime() -> tokio::runtime::Runtime {
+  tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .enable_time()
+    .max_blocking_threads(4)
+    .build()
+    .unwrap()
 }
 
 impl InspectorServer {
@@ -77,9 +142,13 @@ impl InspectorServer {
     let tcp_listener = std::net::TcpListener::bind(host)
       .map_err(|source| InspectorServerError::Connect { host, source })?;
     tcp_listener.set_nonblocking(true)?;
+    // TODO(bartlomieju): update process wide inspector server host
+    let host = tcp_listener
+      .local_addr()
+      .map_err(|source| InspectorServerError::LocalAddr { host, source })?;
 
     let thread_handle = thread::spawn(move || {
-      let rt = crate::tokio_util::create_basic_runtime();
+      let rt = create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
         &rt,
@@ -96,7 +165,7 @@ impl InspectorServer {
       host,
       register_inspector_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
-      thread_handle: Some(thread_handle),
+      thread_handle: Mutex::new(Some(thread_handle)),
     })
   }
 
@@ -131,7 +200,7 @@ impl Drop for InspectorServer {
         .expect("unable to send shutdown signal");
     }
 
-    if let Some(thread_handle) = self.thread_handle.take() {
+    if let Some(thread_handle) = self.thread_handle.lock().take() {
       thread_handle.join().expect("unable to join thread");
     }
   }
@@ -254,6 +323,108 @@ fn handle_json_version_request(
     .body(body)
 }
 
+fn handle_ws_events_request(
+  req: http::Request<hyper::body::Incoming>,
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
+  if std::env::var("UNSTABLE_INSPECTOR_WS_EVENTS").is_err() {
+    return http::Response::builder()
+      .status(http::StatusCode::NOT_FOUND)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not Found",
+      ))));
+  }
+
+  let (parts, body) = req.into_parts();
+  let req = http::Request::from_parts(parts, ());
+
+  let (parts, _) = req.into_parts();
+  let mut req = http::Request::from_parts(parts, body);
+
+  let Ok((resp, upgrade_fut)) = fastwebsockets::upgrade::upgrade(&mut req)
+  else {
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not a valid Websocket Request",
+      ))));
+  };
+
+  let restart_rx = get_restart_notifier().subscribe();
+
+  // spawn a task that will wait for websocket connection and then pump event notifications
+  spawn(async move {
+    let websocket = match upgrade_fut.await {
+      Ok(w) => w,
+      Err(err) => {
+        log::error!(
+          "Inspector server failed to upgrade to WS connection for /ws/events: {:?}",
+          err
+        );
+        return;
+      }
+    };
+
+    log::debug!("Deno event session started.");
+    pump_event_notifications(websocket, restart_rx).await;
+  });
+
+  let (parts, _body) = resp.into_parts();
+  let resp = http::Response::from_parts(
+    parts,
+    Box::new(http_body_util::Full::new(Bytes::new())),
+  );
+  Ok(resp)
+}
+
+async fn pump_event_notifications(
+  mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
+  mut restart_rx: broadcast::Receiver<()>,
+) {
+  loop {
+    tokio::select! {
+      result = restart_rx.recv() => {
+        match result {
+          Ok(()) => {
+            let timestamp = std::time::SystemTime::now()
+              .duration_since(std::time::UNIX_EPOCH)
+              .map(|d| d.as_millis() as u64)
+              .unwrap_or(0);
+            let msg = json!({
+              "type": "restart",
+              "timestamp": timestamp,
+            });
+            let frame = Frame::text(msg.to_string().into_bytes().into());
+            if websocket.write_frame(frame).await.is_err() {
+              break;
+            }
+          }
+          Err(broadcast::error::RecvError::Lagged(_)) => {
+            // Missed some messages, continue
+            continue;
+          }
+          Err(broadcast::error::RecvError::Closed) => {
+            break;
+          }
+        }
+      }
+      result = websocket.read_frame() => {
+        match result {
+          Ok(frame) => {
+            if frame.opcode == OpCode::Close {
+              log::debug!("Deno event session ended");
+              break;
+            }
+            // Ignore other messages
+          }
+          Err(_) => {
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
 async fn server(
   listener: std::net::TcpListener,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
@@ -334,6 +505,9 @@ async fn server(
                 _ => None,
               });
             match (req.method(), req.uri().path()) {
+              (&http::Method::GET, "/ws/events") => {
+                handle_ws_events_request(req)
+              }
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }

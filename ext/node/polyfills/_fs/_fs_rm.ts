@@ -1,14 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import {
   validateRmOptions,
   validateRmOptionsSync,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 type rmOptions = {
   force?: boolean;
@@ -47,18 +51,21 @@ export function rm(
       if (err) {
         return callback(err);
       }
-      Deno.remove(path, { recursive: options?.recursive })
-        .then((_) => callback(null), (err: unknown) => {
-          if (options?.force && err instanceof Deno.errors.NotFound) {
-            callback(null);
-          } else {
-            callback(
-              err instanceof Error
-                ? denoErrorToNodeError(err, { syscall: "rm" })
-                : err,
-            );
+
+      PromisePrototypeThen(
+        Deno.remove(path, { recursive: options?.recursive }),
+        () => callback(null),
+        (err) => {
+          if (
+            options?.force &&
+            ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+          ) {
+            return callback(null);
           }
-        });
+
+          callback(denoErrorToNodeError(err, { syscall: "rm" }));
+        },
+      );
     },
   );
 }
@@ -73,13 +80,12 @@ export function rmSync(path: string | URL, options?: rmOptions) {
   try {
     Deno.removeSync(path, { recursive: options?.recursive });
   } catch (err: unknown) {
-    if (options?.force && err instanceof Deno.errors.NotFound) {
+    if (
+      options?.force &&
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+    ) {
       return;
     }
-    if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
-    } else {
-      throw err;
-    }
+    throw denoErrorToNodeError(err, { syscall: "rm" });
   }
 }

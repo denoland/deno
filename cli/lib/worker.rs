@@ -30,6 +30,7 @@ use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_inspector_server::MainInspectorSessionChannel;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -41,8 +42,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::inspector_server::MainInspectorSessionChannel;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -419,8 +418,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   ) -> Arc<CreateWebWorkerCb> {
     let shared = self.clone();
     Arc::new(move |args| {
-      let maybe_inspector_server = shared.maybe_inspector_server.clone();
-
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
@@ -461,7 +458,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         compiled_wasm_module_store: Some(
           shared.compiled_wasm_module_store.clone(),
         ),
-        maybe_inspector_server,
         main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
@@ -718,7 +714,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         format_js_error(e, maybe_initial_cwd.as_ref())
       })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
-      maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       trace_ops: shared.options.trace_ops.clone(),

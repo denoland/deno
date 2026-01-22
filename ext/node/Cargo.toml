@@ -34,6 +34,7 @@ deno_crypto_provider.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
+deno_inspector_server.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
 deno_package_json.workspace = true
@@ -66,6 +67,7 @@ log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
+node_shim.workspace = true
 num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true

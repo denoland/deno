@@ -34,6 +34,7 @@ members = [
   "ext/webstorage",
   "libs/config",
   "libs/crypto",
+  "libs/inspector_server",
   "libs/maybe_sync",
   "libs/node_resolver",
   "libs/npm_cache",
@@ -67,7 +68,7 @@ deno_ast = { version = "=0.52.0", features = ["transpiling"] }
 deno_core = { version = "0.380.0" }
 
 deno_cache_dir = "=0.26.3"
-deno_doc = "=0.189.0"
+deno_doc = "=0.189.1"
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.106.0", default-features = false }
 deno_lint = "=0.82.0"
@@ -120,6 +121,7 @@ deno_bench_util = { version = "0.221.0", path = "./bench_util" }
 deno_config = { version = "0.77.0", features = ["workspace"], path = "./libs/config" }
 deno_crypto_provider = { version = "0.21.0", path = "./libs/crypto" }
 deno_features = { version = "0.24.0", path = "./runtime/features" }
+deno_inspector_server = { version = "0.1.0", path = "./libs/inspector_server" }
 deno_lib = { version = "0.45.0", path = "./cli/lib" }
 deno_maybe_sync = { version = "0.14.0", path = "./libs/maybe_sync" }
 deno_npm_cache = { version = "0.46.0", path = "./libs/npm_cache" }
@@ -175,7 +177,7 @@ fastwebsockets = { version = "^0.8.1", features = ["upgrade", "unstable-split"] 
 file_test_runner = "0.12.1"
 filetime = "0.2.16"
 flate2 = { version = "1.0.30", default-features = false }
-fqdn = "0.4.6"
+fqdn = "0.5"
 fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"
@@ -211,6 +213,7 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
+node_shim = "0.2.0"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
