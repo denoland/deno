@@ -61,8 +61,7 @@ idna.workspace = true
 ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
-# h2.workspace = true
-libnghttp2-sys = { git = "https://github.com/littledivy/nghttp2-rs", branch = "main" }
+libnghttp2 = { git = "https://github.com/littledivy/libnghttp2", branch = "main" }
 libz-sys.workspace = true
 log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }

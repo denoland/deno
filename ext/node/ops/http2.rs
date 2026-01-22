@@ -15,7 +15,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
-use libnghttp2_sys as ffi;
+use libnghttp2 as ffi;
 use serde::Serialize;
 
 use crate::ops::handle_wrap::AsyncWrap;
