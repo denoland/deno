@@ -1330,6 +1330,7 @@
     "parallel/test-timers-clear-timeout-interval-equivalent.js": {},
     "parallel/test-timers-clearImmediate-als.js": {},
     "parallel/test-timers-clearImmediate.js": {},
+    "parallel/test-timers-immediate-promisified.js": {},
     "parallel/test-timers-immediate-unref-nested-once.js": {},
     "parallel/test-timers-immediate-unref-simple.js": {},
     "parallel/test-timers-immediate-unref.js": {},
