@@ -213,7 +213,7 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
-node_shim = "0.2.0"
+node_shim = { path = "../node_shim/node_shim" }
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
