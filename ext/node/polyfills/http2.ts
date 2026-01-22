@@ -3565,6 +3565,18 @@ function initCallbacks() {
   _init = true;
 }
 
-export { connect, constants, createSecureServer, createServer, getDefaultSettings };
+export {
+  connect,
+  constants,
+  createSecureServer,
+  createServer,
+  getDefaultSettings,
+};
 
-export default { constants, connect, createServer, createSecureServer, getDefaultSettings };
+export default {
+  constants,
+  connect,
+  createServer,
+  createSecureServer,
+  getDefaultSettings,
+};
