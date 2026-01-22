@@ -313,71 +313,19 @@ function addCustomSettingsToObj() {
 }
 
 function getDefaultSettings() {
-  settingsBuffer[IDX_SETTINGS_FLAGS] = 0;
-  settingsBuffer[IDX_SETTINGS_FLAGS + 1] = 0; // Length of custom settings
-  binding.refreshDefaultSettings();
-  const holder = { __proto__: null };
-
-  const flags = settingsBuffer[IDX_SETTINGS_FLAGS];
-
-  if (
-    (flags & (1 << IDX_SETTINGS_HEADER_TABLE_SIZE)) ===
-      (1 << IDX_SETTINGS_HEADER_TABLE_SIZE)
-  ) {
-    holder.headerTableSize = settingsBuffer[IDX_SETTINGS_HEADER_TABLE_SIZE];
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_ENABLE_PUSH)) ===
-      (1 << IDX_SETTINGS_ENABLE_PUSH)
-  ) {
-    holder.enablePush = settingsBuffer[IDX_SETTINGS_ENABLE_PUSH] === 1;
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_INITIAL_WINDOW_SIZE)) ===
-      (1 << IDX_SETTINGS_INITIAL_WINDOW_SIZE)
-  ) {
-    holder.initialWindowSize = settingsBuffer[IDX_SETTINGS_INITIAL_WINDOW_SIZE];
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_MAX_FRAME_SIZE)) ===
-      (1 << IDX_SETTINGS_MAX_FRAME_SIZE)
-  ) {
-    holder.maxFrameSize = settingsBuffer[IDX_SETTINGS_MAX_FRAME_SIZE];
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_MAX_CONCURRENT_STREAMS)) ===
-      (1 << IDX_SETTINGS_MAX_CONCURRENT_STREAMS)
-  ) {
-    holder.maxConcurrentStreams =
-      settingsBuffer[IDX_SETTINGS_MAX_CONCURRENT_STREAMS];
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_MAX_HEADER_LIST_SIZE)) ===
-      (1 << IDX_SETTINGS_MAX_HEADER_LIST_SIZE)
-  ) {
-    holder.maxHeaderListSize =
-      holder.maxHeaderSize =
-        settingsBuffer[IDX_SETTINGS_MAX_HEADER_LIST_SIZE];
-  }
-
-  if (
-    (flags & (1 << IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL)) ===
-      (1 << IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL)
-  ) {
-    holder.enableConnectProtocol =
-      settingsBuffer[IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL] === 1;
-  }
-
-  if (settingsBuffer[IDX_SETTINGS_FLAGS + 1]) {
-    holder.customSettings = addCustomSettingsToObj();
-  }
-
-  return holder;
+  // Return HTTP/2 default settings as defined in RFC 7540
+  // https://httpwg.org/specs/rfc7540.html#SettingValues
+  return {
+    __proto__: null,
+    headerTableSize: 4096,
+    enablePush: true,
+    initialWindowSize: 65535, // 2^16 - 1
+    maxFrameSize: 16384, // 2^14
+    maxConcurrentStreams: 4294967295, // 2^32 - 1 (unlimited)
+    maxHeaderListSize: 65535, // 2^16 - 1
+    maxHeaderSize: 65535, // alias for maxHeaderListSize
+    enableConnectProtocol: false,
+  };
 }
 
 // Remote is a boolean. true to fetch remote settings, false to fetch local.
@@ -585,33 +533,33 @@ function remoteCustomSettingsToBuffer(remoteCustomSettings) {
 }
 
 function getSessionState(session) {
-  session.refreshState();
+  // Get state directly from session instead of using shared buffers
+  // to avoid thread-local storage issues with snapshot serialization
+  const state = session.getState();
   return {
-    effectiveLocalWindowSize:
-      sessionState[IDX_SESSION_STATE_EFFECTIVE_LOCAL_WINDOW_SIZE],
-    effectiveRecvDataLength:
-      sessionState[IDX_SESSION_STATE_EFFECTIVE_RECV_DATA_LENGTH],
-    nextStreamID: sessionState[IDX_SESSION_STATE_NEXT_STREAM_ID],
-    localWindowSize: sessionState[IDX_SESSION_STATE_LOCAL_WINDOW_SIZE],
-    lastProcStreamID: sessionState[IDX_SESSION_STATE_LAST_PROC_STREAM_ID],
-    remoteWindowSize: sessionState[IDX_SESSION_STATE_REMOTE_WINDOW_SIZE],
-    outboundQueueSize: sessionState[IDX_SESSION_STATE_OUTBOUND_QUEUE_SIZE],
-    deflateDynamicTableSize:
-      sessionState[IDX_SESSION_STATE_HD_DEFLATE_DYNAMIC_TABLE_SIZE],
-    inflateDynamicTableSize:
-      sessionState[IDX_SESSION_STATE_HD_INFLATE_DYNAMIC_TABLE_SIZE],
+    effectiveLocalWindowSize: state.effectiveLocalWindowSize,
+    effectiveRecvDataLength: state.effectiveRecvDataLength,
+    nextStreamID: state.nextStreamId,
+    localWindowSize: state.localWindowSize,
+    lastProcStreamID: state.lastProcStreamId,
+    remoteWindowSize: state.remoteWindowSize,
+    outboundQueueSize: state.outboundQueueSize,
+    deflateDynamicTableSize: state.hdDeflateDynamicTableSize,
+    inflateDynamicTableSize: state.hdInflateDynamicTableSize,
   };
 }
 
 function getStreamState(stream) {
-  stream.refreshState();
+  // Get state directly from stream instead of using shared buffers
+  // to avoid thread-local storage issues with snapshot serialization
+  const state = stream.getState();
   return {
-    state: streamState[IDX_STREAM_STATE],
-    weight: streamState[IDX_STREAM_STATE_WEIGHT],
-    sumDependencyWeight: streamState[IDX_STREAM_STATE_SUM_DEPENDENCY_WEIGHT],
-    localClose: streamState[IDX_STREAM_STATE_LOCAL_CLOSE],
-    remoteClose: streamState[IDX_STREAM_STATE_REMOTE_CLOSE],
-    localWindowSize: streamState[IDX_STREAM_STATE_LOCAL_WINDOW_SIZE],
+    state: state.state,
+    weight: state.weight,
+    sumDependencyWeight: state.sumDependencyWeight,
+    localClose: state.localClose,
+    remoteClose: state.remoteClose,
+    localWindowSize: state.localWindowSize,
   };
 }
 

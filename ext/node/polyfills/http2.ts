@@ -462,8 +462,10 @@ function onPing(payload) {
 // At this point the underlying node::http2:Http2Stream handle is no
 // longer usable so destroy it also.
 function onStreamClose(code) {
+  console.error("DEBUG JS: onStreamClose called with code:", code);
   const stream = this[kOwner];
   if (!stream || stream.destroyed) {
+    console.error("DEBUG JS: stream is null or destroyed");
     return false;
   }
 
@@ -3037,6 +3039,7 @@ class ServerHttp2Session extends Http2Session {
 // has been connected.
 class ClientHttp2Session extends Http2Session {
   constructor(options, socket) {
+    initCallbacks();
     super(NGHTTP2_SESSION_CLIENT, options, socket);
     this[kPendingRequestCalls] = null;
   }
@@ -3562,6 +3565,6 @@ function initCallbacks() {
   _init = true;
 }
 
-export { connect, constants, createSecureServer, createServer };
+export { connect, constants, createSecureServer, createServer, getDefaultSettings };
 
-export default { constants, connect, createServer, createSecureServer };
+export default { constants, connect, createServer, createSecureServer, getDefaultSettings };

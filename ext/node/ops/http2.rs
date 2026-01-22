@@ -299,6 +299,9 @@ struct Session {
   op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   padding_strategy: PaddingStrategy,
+
+  // Flag to indicate graceful close has been initiated
+  graceful_close_initiated: bool,
 }
 
 struct Http2Callbacks {
@@ -692,6 +695,31 @@ impl Session {
   }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Http2SessionState {
+  effective_local_window_size: f64,
+  effective_recv_data_length: f64,
+  next_stream_id: f64,
+  local_window_size: f64,
+  last_proc_stream_id: f64,
+  remote_window_size: f64,
+  outbound_queue_size: f64,
+  hd_deflate_dynamic_table_size: f64,
+  hd_inflate_dynamic_table_size: f64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Http2StreamState {
+  state: f64,
+  weight: f64,
+  sum_dependency_weight: f64,
+  local_close: f64,
+  remote_close: f64,
+  local_window_size: f64,
+}
+
 pub struct Http2Session {
   type_: SessionType,
   session: *mut ffi::nghttp2_session,
@@ -732,6 +760,7 @@ impl Http2SessionDriver {
       NetworkStream::Tcp(stream) => stream.clone().read(data).await?,
       NetworkStream::Tls(stream) => stream.clone().read(data).await?,
     };
+    eprintln!("DEBUG: Http2SessionDriver.read got {} bytes", nread);
 
     // SAFETY: self.session is a valid pointer to Session owned by Http2Session
     let session = unsafe { &*self.session };
@@ -994,6 +1023,7 @@ impl Http2Stream {
   }
 
   fn respond(&self, #[serde] headers: (String, usize), options: i32) {
+    eprintln!("DEBUG: Http2Stream.respond called for stream {}", self.id);
     let headers = Http2Headers::from(headers);
 
     // SAFETY: self.session is a valid pointer to Session
@@ -1099,55 +1129,180 @@ impl Http2Stream {
     }
   }
 
-  // TODO: this will fail if code is not a `u32`? This will behave differently than in Node
-  // which just returns
-  // TODO: validate this comment
   // Submits an RST_STREAM frame effectively closing the Http2Stream. Note that
   // this *WILL* alter the state of the stream, causing the OnStreamClose
-  // callback to the triggered.
+  // callback to be triggered.
   #[fast]
   fn rst_stream(&self, code: u32) {
-    log::debug!("sending rst_stream with code {}", code);
-    // TODO: call Self::submit_rst_stream
-    todo!()
+    log::debug!("sending rst_stream with code {} for stream {}", code, self.id);
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    // SAFETY: Calling nghttp2 FFI to submit RST_STREAM frame
+    unsafe {
+      ffi::nghttp2_submit_rst_stream(
+        session.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        self.id,
+        code,
+      );
+    }
   }
 
   #[fast]
   fn destroy(&self) {
-    todo!()
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &mut *self.session };
+
+    // Remove this stream from the session's stream map
+    session.streams.remove(&self.id);
+
+    log::debug!("destroyed stream {}", self.id);
   }
 
   #[fast]
-  fn priority(&self) {
-    todo!()
+  fn priority(
+    &self,
+    parent: i32,
+    weight: i32,
+    exclusive: bool,
+    silent: bool,
+  ) -> i32 {
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    let priority = Http2Priority::new(parent, weight, exclusive);
+
+    // SAFETY: Calling nghttp2 FFI to submit or change priority
+    let ret = unsafe {
+      if silent {
+        ffi::nghttp2_session_change_stream_priority(
+          session.session,
+          self.id,
+          &priority.spec,
+        )
+      } else {
+        ffi::nghttp2_submit_priority(
+          session.session,
+          ffi::NGHTTP2_FLAG_NONE as u8,
+          self.id,
+          &priority.spec,
+        )
+      }
+    };
+
+    ret
   }
 
-  #[fast]
-  fn push_promise(&self) {
-    todo!()
+  // Submit a push promise and return the new stream ID.
+  // Returns the stream ID (> 0) on success, or an error code (<= 0) on failure.
+  fn push_promise(&self, #[serde] headers: (String, usize), options: i32) -> i32 {
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    let http2_headers = Http2Headers::from(headers);
+
+    // SAFETY: Calling nghttp2 FFI to submit push promise
+    let ret = unsafe {
+      ffi::nghttp2_submit_push_promise(
+        session.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        self.id,
+        http2_headers.data(),
+        http2_headers.len(),
+        std::ptr::null_mut(),
+      )
+    };
+
+    // Note: The new stream creation is handled on the JS side when ret > 0
+    // The JS side will create the stream object using the returned stream ID
+    ret
   }
 
-  #[fast]
-  fn info(&self) {
-    todo!()
+  // Submit informational headers for a stream.
+  fn info(&self, #[serde] headers: (String, usize)) -> i32 {
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    let http2_headers = Http2Headers::from(headers);
+
+    // SAFETY: Calling nghttp2 FFI to submit informational headers
+    let ret = unsafe {
+      ffi::nghttp2_submit_headers(
+        session.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        self.id,
+        std::ptr::null(),
+        http2_headers.data(),
+        http2_headers.len(),
+        std::ptr::null_mut(),
+      )
+    };
+
+    ret
   }
 
+  // Switch the StreamBase into flowing mode to begin pushing chunks of data
+  // out to JS land. This is part of the StreamBase interface.
   #[fast]
-  fn refresh_state(&self) {
-    todo!()
+  fn read_start(&self) -> i32 {
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    // Tell nghttp2 about our consumption of the data
+    // SAFETY: Calling nghttp2 FFI to consume stream data
+    unsafe {
+      ffi::nghttp2_session_consume_stream(session.session, self.id, 0);
+    }
+
+    0
+  }
+
+  // Switch the StreamBase into paused mode.
+  #[fast]
+  fn read_stop(&self) -> i32 {
+    0
+  }
+
+  // Returns stream state as a struct instead of using shared buffers
+  // to avoid thread-local storage issues with snapshot serialization
+  #[serde]
+  fn get_state(&self) -> Http2StreamState {
+    // SAFETY: self.session is a valid pointer to Session
+    let session = unsafe { &*self.session };
+
+    // Get the nghttp2 stream handle
+    // SAFETY: Calling nghttp2 FFI to get stream state
+    let stream_ptr =
+      unsafe { ffi::nghttp2_session_find_stream(session.session, self.id) };
+
+    if stream_ptr.is_null() {
+      // Stream not found, return idle state
+      Http2StreamState {
+        state: ffi::NGHTTP2_STREAM_STATE_IDLE as f64,
+        weight: 0.0,
+        sum_dependency_weight: 0.0,
+        local_close: 0.0,
+        remote_close: 0.0,
+        local_window_size: 0.0,
+      }
+    } else {
+      // SAFETY: stream_ptr is valid, calling nghttp2 FFI functions
+      unsafe {
+        Http2StreamState {
+          state: ffi::nghttp2_stream_get_state(stream_ptr) as f64,
+          weight: ffi::nghttp2_stream_get_weight(stream_ptr) as f64,
+          sum_dependency_weight: ffi::nghttp2_stream_get_sum_dependency_weight(stream_ptr) as f64,
+          local_close: ffi::nghttp2_session_get_stream_local_close(session.session, self.id) as f64,
+          remote_close: ffi::nghttp2_session_get_stream_remote_close(session.session, self.id) as f64,
+          local_window_size: ffi::nghttp2_session_get_stream_local_window_size(session.session, self.id) as f64,
+        }
+      }
+    }
   }
 }
 
 impl Http2Stream {
-  fn submit_rst_stream(&self, code: u32) {
-    self.flush_rst_stream();
-  }
-
-  fn flush_rst_stream(&self) {
-    // TODO: call `ffi::nghttp2_submit_rst_stream`
-    todo!()
-  }
-
   fn add_header(&self, name: &[u8], value: &[u8], flags: u8) -> bool {
     let name_str = match std::str::from_utf8(name) {
       Ok(s) => s.to_string(),
@@ -1375,10 +1530,46 @@ unsafe extern "C" fn on_frame_recv_callback(
 
 unsafe extern "C" fn on_stream_close_callback(
   _session: *mut ffi::nghttp2_session,
-  _stream_id: i32,
-  _error_code: u32,
-  _data: *mut c_void,
+  stream_id: i32,
+  error_code: u32,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is a valid pointer to Session set during session creation
+  let session = Session::from_user_data(data);
+
+  eprintln!("DEBUG: on_stream_close_callback stream={} code={}", stream_id, error_code);
+
+  // Find the stream - intentionally ignore if stream does not exist
+  let stream_obj = match session.find_stream_obj(stream_id) {
+    Some(obj) => obj.clone(),
+    None => return 0,
+  };
+
+  // SAFETY: This method is called from nghttp2 callback context.
+  // The isolate is valid and we are on the same thread as the isolate.
+  let mut isolate = v8::Isolate::from_raw_isolate_ptr(session.isolate);
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let state = session.op_state.borrow();
+  let callbacks = state.borrow::<Http2Callbacks>();
+  let callback = v8::Local::new(scope, &callbacks.stream_close_cb);
+
+  drop(state);
+
+  let recv = v8::Local::new(scope, stream_obj);
+  let code = v8::Integer::new_from_unsigned(scope, error_code);
+
+  // Call the JS callback with the error code
+  // If the callback returns false or throws, the stream will be destroyed
+  let result = callback.call(scope, recv.into(), &[code.into()]);
+
+  if result.is_none() || result.map(|v| v.is_false()).unwrap_or(false) {
+    // Remove the stream from the session
+    session.streams.remove(&stream_id);
+  }
+
   0
 }
 
@@ -1648,6 +1839,7 @@ impl Http2Session {
       outgoing_buffers: Vec::with_capacity(32),
       outgoing_length: 0,
       padding_strategy: PaddingStrategy::None,
+      graceful_close_initiated: false,
     }));
 
     // SAFETY: inner is owned by Http2Session but
@@ -1729,6 +1921,7 @@ impl Http2Session {
     op_state: Rc<RefCell<OpState>>,
     #[smi] type_: i32,
   ) -> Http2Session {
+    eprintln!("DEBUG: Http2Session::new called with type={}", type_);
     Http2Session::create(
       this,
       isolate,
@@ -1745,6 +1938,7 @@ impl Http2Session {
   #[fast]
   #[smi]
   fn consume(&self, state: &mut OpState, rid: u32) -> u32 {
+    eprintln!("DEBUG: Http2Session::consume called with rid={}", rid);
     let stream =
       if let Ok(tcp) = state.resource_table.take::<TcpStreamResource>(rid) {
         NetworkStream::Tcp(tcp)
@@ -1754,10 +1948,12 @@ impl Http2Session {
         )
       };
 
-    state.resource_table.add(Http2SessionDriver {
+    let driver_rid = state.resource_table.add(Http2SessionDriver {
       stream,
       session: self.inner,
-    })
+    });
+    eprintln!("DEBUG: Http2Session::consume returning driver_rid={}", driver_rid);
+    driver_rid
   }
 
   #[fast]
@@ -1766,6 +1962,7 @@ impl Http2Session {
   // Submit SETTINGS frame for the Http2Session
   #[fast]
   fn settings(&self, _cb: v8::Local<v8::Function>) -> bool {
+    eprintln!("DEBUG: Http2Session::settings called");
     let settings = Http2Settings::init(self.inner);
     settings.send();
     true
@@ -1799,22 +1996,273 @@ impl Http2Session {
 
   #[fast]
   fn set_graceful_close(&self) {
-    todo!()
+    // SAFETY: self.inner is a valid pointer to Session
+    let session = unsafe { &mut *self.inner };
+    session.graceful_close_initiated = true;
+    log::debug!("Setting graceful close initiated flag");
   }
 
   #[fast]
   fn has_pending_data(&self) -> bool {
-    false
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      let want_write = ffi::nghttp2_session_want_write(self.session);
+      let want_read = ffi::nghttp2_session_want_read(self.session);
+      // It is expected that want_read will always be 0 if graceful
+      // session close is initiated and goaway frame is sent.
+      want_write != 0 || want_read != 0
+    }
   }
 
   #[fast]
   fn local_settings(&self) {
-    todo!()
+    // Update the settings buffer with the local settings from nghttp2
+    SETTINGS_BUFFER.with(|cell| {
+      // SAFETY: cell.get() returns a valid pointer to thread-local storage
+      let buffer = unsafe { &mut *cell.get() };
+
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      unsafe {
+        buffer[Http2SettingsIndex::IDX_SETTINGS_HEADER_TABLE_SIZE as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_ENABLE_PUSH as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_CONCURRENT_STREAMS as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_INITIAL_WINDOW_SIZE as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_FRAME_SIZE as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_HEADER_LIST_SIZE as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL as usize] =
+          ffi::nghttp2_session_get_local_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
+          ) as u32;
+      }
+    });
   }
 
   #[fast]
-  fn refresh_state(&self) {
-    todo!()
+  fn remote_settings(&self) {
+    // Update the settings buffer with the remote settings from nghttp2
+    SETTINGS_BUFFER.with(|cell| {
+      // SAFETY: cell.get() returns a valid pointer to thread-local storage
+      let buffer = unsafe { &mut *cell.get() };
+
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      unsafe {
+        buffer[Http2SettingsIndex::IDX_SETTINGS_HEADER_TABLE_SIZE as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_ENABLE_PUSH as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_CONCURRENT_STREAMS as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_INITIAL_WINDOW_SIZE as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_FRAME_SIZE as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_MAX_HEADER_LIST_SIZE as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+          ) as u32;
+        buffer[Http2SettingsIndex::IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL as usize] =
+          ffi::nghttp2_session_get_remote_settings(
+            self.session,
+            ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
+          ) as u32;
+      }
+    });
+  }
+
+  // Returns session state as a struct instead of using shared buffers
+  // to avoid thread-local storage issues with snapshot serialization
+  #[serde]
+  fn get_state(&self) -> Http2SessionState {
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      Http2SessionState {
+        effective_local_window_size: ffi::nghttp2_session_get_effective_local_window_size(self.session) as f64,
+        effective_recv_data_length: ffi::nghttp2_session_get_effective_recv_data_length(self.session) as f64,
+        next_stream_id: ffi::nghttp2_session_get_next_stream_id(self.session) as f64,
+        local_window_size: ffi::nghttp2_session_get_local_window_size(self.session) as f64,
+        last_proc_stream_id: ffi::nghttp2_session_get_last_proc_stream_id(self.session) as f64,
+        remote_window_size: ffi::nghttp2_session_get_remote_window_size(self.session) as f64,
+        outbound_queue_size: ffi::nghttp2_session_get_outbound_queue_size(self.session) as f64,
+        hd_deflate_dynamic_table_size: ffi::nghttp2_session_get_hd_deflate_dynamic_table_size(self.session) as f64,
+        hd_inflate_dynamic_table_size: ffi::nghttp2_session_get_hd_inflate_dynamic_table_size(self.session) as f64,
+      }
+    }
+  }
+
+  // Sets the next stream ID to be used by the session
+  #[fast]
+  fn set_next_stream_id(&self, id: i32) -> bool {
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    let ret = unsafe {
+      ffi::nghttp2_session_set_next_stream_id(self.session, id)
+    };
+    if ret < 0 {
+      log::debug!("failed to set next stream id to {}", id);
+      return false;
+    }
+    log::debug!("set next stream id to {}", id);
+    true
+  }
+
+  // Sets the local window size for flow control at session level
+  #[fast]
+  fn set_local_window_size(&self, window_size: i32) -> i32 {
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      ffi::nghttp2_session_set_local_window_size(
+        self.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        0, // stream_id = 0 for session level
+        window_size,
+      )
+    }
+  }
+
+  // Updates and returns the count of chunks sent since the last write
+  #[fast]
+  fn update_chunks_sent(&self) -> u32 {
+    // SAFETY: self.inner is a valid pointer to Session
+    let session = unsafe { &*self.inner };
+    // For now, return the outbound queue size as an approximation
+    // In a full implementation, we'd track chunks_sent_since_last_write separately
+    session.outgoing_buffers.len() as u32
+  }
+
+  // Submits an ORIGIN frame to the connected peer (RFC 8336)
+  #[fast]
+  fn origin(&self, #[string] origins: &str, count: i32) -> i32 {
+    // Parse the origins string into individual origin entries
+    // The format is a concatenated string of origins with their lengths
+    let mut ov: Vec<ffi::nghttp2_origin_entry> = Vec::with_capacity(count as usize);
+    let origins_bytes = origins.as_bytes();
+
+    let mut offset = 0;
+    for _ in 0..count {
+      if offset >= origins_bytes.len() {
+        break;
+      }
+      // Each origin entry is: 2-byte length (big-endian) followed by origin string
+      if offset + 2 > origins_bytes.len() {
+        break;
+      }
+      let len = ((origins_bytes[offset] as usize) << 8) | (origins_bytes[offset + 1] as usize);
+      offset += 2;
+
+      if offset + len > origins_bytes.len() {
+        break;
+      }
+
+      ov.push(ffi::nghttp2_origin_entry {
+        origin: origins_bytes[offset..].as_ptr() as *mut u8,
+        origin_len: len,
+      });
+      offset += len;
+    }
+
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      ffi::nghttp2_submit_origin(
+        self.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        ov.as_ptr(),
+        ov.len(),
+      )
+    }
+  }
+
+  // Submits an ALTSVC (Alternative Service) frame
+  #[fast]
+  fn altsvc(
+    &self,
+    stream_id: i32,
+    #[string] origin: &str,
+    #[string] value: &str,
+  ) -> i32 {
+    let origin_bytes = origin.as_bytes();
+    let value_bytes = value.as_bytes();
+
+    // Validate: origin_len + value_len must not exceed 16382
+    if origin_bytes.len() + value_bytes.len() > 16382 {
+      return -1;
+    }
+
+    // Validate: For stream_id 0, origin must be non-empty
+    // For stream_id > 0, origin must be empty
+    if (origin_bytes.is_empty() && stream_id == 0) || (!origin_bytes.is_empty() && stream_id != 0) {
+      return -1;
+    }
+
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      ffi::nghttp2_submit_altsvc(
+        self.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        stream_id,
+        origin_bytes.as_ptr(),
+        origin_bytes.len(),
+        value_bytes.as_ptr(),
+        value_bytes.len(),
+      )
+    }
+  }
+
+  // Submits a PING frame to the connected peer
+  #[fast]
+  fn ping(&self, #[buffer] payload: &[u8]) -> i32 {
+    // PING frame must have exactly 8 bytes of payload
+    if payload.len() != 8 {
+      return -1;
+    }
+
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      ffi::nghttp2_submit_ping(
+        self.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        payload.as_ptr(),
+      )
+    }
   }
 
   fn request<'s>(
