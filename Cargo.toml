@@ -68,7 +68,7 @@ deno_ast = { version = "=0.52.0", features = ["transpiling"] }
 deno_core = { version = "0.380.1" }
 
 deno_cache_dir = "=0.26.3"
-deno_doc = "=0.189.0"
+deno_doc = "=0.189.1"
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.106.0", default-features = false }
 deno_lint = "=0.82.0"
@@ -213,6 +213,7 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
+node_shim = "0.2.0"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
