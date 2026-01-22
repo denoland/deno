@@ -113,7 +113,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             .results
             .into_iter()
             .map(|r| {
-              r.map_err(|err| match err {
+              r.map(|_| ()).map_err(|err| match err {
                 NpmResolutionError::Registry(e) => {
                   NpmLoadError::RegistryInfo(Arc::new(e))
                 }

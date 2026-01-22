@@ -202,7 +202,7 @@ impl LspScopedResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(CliNpmResolver::new::<CliSys>(
+      factory.set_npm_resolver(CliNpmResolver::<CliSys>::new::<CliSys>(
         match npm_resolver {
           CliNpmResolver::Byonm(byonm_npm_resolver) => {
             CliNpmResolverCreateOptions::Byonm(
@@ -988,7 +988,7 @@ impl<'a> ResolverFactory<'a> {
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(CliNpmResolver::new(options));
+    self.set_npm_resolver(CliNpmResolver::<CliSys>::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {

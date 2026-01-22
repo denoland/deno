@@ -28,7 +28,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::sys::CliSys;
 use crate::util::fs::FsCleaner;
@@ -205,10 +204,10 @@ async fn clean_except(
   graph.packages = PackageSpecifiers::default();
   let graph_builder = factory.module_graph_builder().await?;
   graph_builder
-    .build_graph_with_npm_resolution(
+    .build_graph_roots_with_npm_resolution(
       graph,
+      roots.clone(),
       BuildGraphWithNpmOptions {
-        request: BuildGraphRequest::Roots(roots.clone()),
         loader: None,
         is_dynamic: false,
         npm_caching: NpmCachingStrategy::Manual,
@@ -248,12 +247,9 @@ async fn clean_except(
         }
         deno_graph::Module::Npm(npm_module) => {
           if let Some(managed) = npm_resolver.as_managed() {
-            // TODO(dsherret): ok to use for now, but we should use the req in the future
-            #[allow(deprecated)]
-            let nv = npm_module.nv_reference.nv();
             let id = managed
               .resolution()
-              .resolve_pkg_id_from_deno_module(nv)
+              .resolve_pkg_id_from_pkg_req(npm_module.pkg_req_ref.req())
               .unwrap();
             npm_reqs
               .extend(managed.resolution().resolve_pkg_reqs_from_pkg_id(&id));
