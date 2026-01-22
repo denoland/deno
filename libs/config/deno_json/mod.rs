@@ -34,7 +34,6 @@ use crate::glob::PathOrPatternSet;
 use crate::import_map::imports_values;
 use crate::import_map::scope_values;
 use crate::import_map::value_to_dep_req;
-use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
 mod permissions;
@@ -2259,10 +2258,10 @@ impl ConfigFile {
   }
 
   pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let values = imports_values(self.json.imports.as_ref())
-      .into_iter()
-      .chain(scope_values(self.json.scopes.as_ref()));
-    let mut set = values_to_set(values);
+    let mut set = imports_values(self.json.imports.as_ref())
+      .chain(scope_values(self.json.scopes.as_ref()))
+      .filter_map(value_to_dep_req)
+      .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
       &self.json.compiler_options

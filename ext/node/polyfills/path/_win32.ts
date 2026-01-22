@@ -22,7 +22,7 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";

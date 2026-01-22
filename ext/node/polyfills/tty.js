@@ -17,7 +17,7 @@ import * as io from "ext:deno_io/12_io.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
-  if (typeof fd !== "number") {
+  if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
   try {

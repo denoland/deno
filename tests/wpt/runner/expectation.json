@@ -5397,8 +5397,8 @@
   "user-timing": {
     "buffered-flag.any.html": false,
     "buffered-flag.any.worker.html": false,
-    "case-sensitivity.any.html": false,
-    "case-sensitivity.any.worker.html": false,
+    "case-sensitivity.any.html": true,
+    "case-sensitivity.any.worker.html": true,
     "clear_all_marks.any.html": true,
     "clear_all_marks.any.worker.html": true,
     "clear_all_measures.any.html": true,
@@ -5419,8 +5419,12 @@
     "mark-entry-constructor.any.worker.html": true,
     "mark-errors.any.html": true,
     "mark-errors.any.worker.html": true,
-    "mark-l3.any.html": false,
-    "mark-l3.any.worker.html": false,
+    "mark-l3.any.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
+    "mark-l3.any.worker.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
     "mark-measure-return-objects.any.html": true,
     "mark-measure-return-objects.any.worker.html": true,
     "mark.any.html": true,
@@ -5437,8 +5441,16 @@
     "measure_syntax_err.any.worker.html": true,
     "structured-serialize-detail.any.html": true,
     "structured-serialize-detail.any.worker.html": true,
-    "supported-usertiming-types.any.html": false,
-    "supported-usertiming-types.any.worker.html": false,
+    "supported-usertiming-types.any.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
+    "supported-usertiming-types.any.worker.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
     "user_timing_exists.any.html": true,
     "user_timing_exists.any.worker.html": true,
     "invoke_with_timing_attributes.worker.html": true,
@@ -5510,7 +5522,8 @@
     "measure.html": false,
     "measure_associated_with_navigation_timing.html": false,
     "measure_exception.html": [
-      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception."
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception.",
+      "Invocation of performance.measure(\"Exception8\", {\"detail\": \"non-empty\"}) should throw TypeError Exception."
     ],
     "measure_exceptions_navigation_timing.html": false,
     "measure_navigation_timing.html": false,

@@ -1125,12 +1125,24 @@ Deno.test("WebSocket close with reason but no code doesn't send 1005", async () 
   );
 
   const response = new Uint8Array(2048);
-  const n = await conn.read(response);
+  let totalRead = 0;
+
+  let n = await conn.read(response);
   assert(n !== null && n > 0);
-  const headerEnd = new TextDecoder().decode(response).indexOf("\r\n\r\n");
+  totalRead += n;
+  const headerEnd = new TextDecoder().decode(response.subarray(0, totalRead))
+    .indexOf("\r\n\r\n");
   assert(headerEnd > 0);
 
   const frameStart = headerEnd + 4;
+
+  // Keep reading until we have the WebSocket frame header and payload
+  while (totalRead < frameStart + 3) {
+    n = await conn.read(response.subarray(totalRead));
+    assert(n !== null && n > 0);
+    totalRead += n;
+  }
+
   // [FIN+opcode][length][payload]
   assertEquals(response[frameStart], 0x88);
   const payloadLength = response[frameStart + 1] & 0x7F;
