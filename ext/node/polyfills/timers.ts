@@ -209,6 +209,11 @@ function setImmediatePromise<T = void>(
     : promise;
 }
 
+ObjectDefineProperty(setImmediatePromise, "name", {
+  __proto__: null,
+  value: "setImmediate",
+});
+
 ObjectDefineProperty(setImmediate, promisify.custom, {
   __proto__: null,
   enumerable: true,
