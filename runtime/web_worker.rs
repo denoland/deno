@@ -64,8 +64,7 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
-use crate::inspector_server::InspectorServer;
-use crate::inspector_server::MainInspectorSessionChannel;
+use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -377,7 +376,6 @@ pub struct WebWorkerServiceOptions<
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<

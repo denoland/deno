@@ -16,6 +16,7 @@ import {
   op_node_ipc_unref,
   op_node_ipc_write_advanced,
   op_node_ipc_write_json,
+  op_node_translate_cli_args,
 } from "ext:core/ops";
 import {
   ArrayIsArray,
@@ -30,7 +31,7 @@ import {
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -1120,16 +1121,47 @@ function transformDenoShellCommand(command: string): string {
   // Transform Node.js -c/--check flag to Deno run subcommand
   // Node's -c does syntax checking (parse without execute). Deno doesn't have an exact equivalent,
   // but deno run will fail fast on syntax errors during parsing, achieving similar behavior.
-  // Pattern: -c "file" or --check "file" or -c file or --check file
   const checkFlagRegex = /^(-c|--check)\s+(.*)$/;
   const match = rest.match(checkFlagRegex);
 
   if (match) {
-    // Replace -c/--check with run subcommand (will catch syntax errors during parsing)
     return command.slice(0, denoPathLength) + " run " + match[2];
   }
 
   return command;
+}
+
+/**
+ * Find the first non-flag argument in a list of command line arguments.
+ * This is used to determine if the user is spawning a Deno subcommand
+ * or a script, and to check if the script is in an npm package.
+ */
+function findFirstNonFlagArg(args: string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    // Stop at '--' - everything after is positional
+    if (arg === "--") {
+      return i + 1 < args.length ? args[i + 1] : null;
+    }
+    // If it doesn't start with '-', it's a positional argument
+    if (!arg.startsWith("-")) {
+      return arg;
+    }
+    // Skip known flags that take a value
+    if (
+      arg === "-e" || arg === "--eval" ||
+      arg === "-p" || arg === "--print" ||
+      arg === "-r" || arg === "--require" ||
+      arg === "-C" || arg === "--conditions" ||
+      arg === "-c" || arg === "--check" ||
+      arg === "--import" ||
+      arg === "--loader" ||
+      arg === "--experimental-loader"
+    ) {
+      i++; // Skip the next arg (the value)
+    }
+  }
+  return null;
 }
 
 /**
@@ -1143,13 +1175,24 @@ function buildCommand(
 ): [string, string[], boolean] {
   let includeNpmProcessState = false;
   if (file === Deno.execPath()) {
-    let nodeOptions: string[];
-    // The user is trying to spawn another Deno process as Node.js.
-    [args, nodeOptions, includeNpmProcessState] = toDenoArgs(args);
+    // Ensure all args are strings (Node allows numbers in args array)
+    args = args.map((arg) => String(arg));
 
-    // Update NODE_OPTIONS if it exists
-    if (nodeOptions.length > 0) {
-      const options = nodeOptions.join(" ");
+    // Find script path to check if it's in an npm package
+    const firstNonFlagArg = findFirstNonFlagArg(args);
+    const scriptInNpmPackage = firstNonFlagArg !== null
+      ? op_node_in_npm_package(firstNonFlagArg)
+      : false;
+
+    // Use the Rust parser to translate Node.js args to Deno args
+    // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
+    const result = op_node_translate_cli_args(args, scriptInNpmPackage);
+    args = result.deno_args;
+    includeNpmProcessState = result.needs_npm_process_state;
+
+    // Update NODE_OPTIONS if needed
+    if (result.node_options.length > 0) {
+      const options = result.node_options.join(" ");
       if (env.NODE_OPTIONS) {
         env.NODE_OPTIONS += " " + options;
       } else {
@@ -1332,238 +1375,6 @@ export function spawnSync(
     }
   }
   return result;
-}
-
-// These are Node.js CLI flags that expect a value. It's necessary to
-// understand these flags in order to properly replace flags passed to the
-// child process. For example, -e is a Node flag for eval mode if it is part
-// of process.execArgv. However, -e could also be an application flag if it is
-// part of process.execv instead. We only want to process execArgv flags.
-const kLongArgType = 1;
-const kShortArgType = 2;
-const kLongArg = { type: kLongArgType };
-const kShortArg = { type: kShortArgType };
-const kNodeFlagsMap = new Map([
-  ["--build-snapshot", kLongArg],
-  ["-c", kShortArg],
-  ["--check", kLongArg],
-  ["-C", kShortArg],
-  ["--conditions", kLongArg],
-  ["--cpu-prof-dir", kLongArg],
-  ["--cpu-prof-interval", kLongArg],
-  ["--cpu-prof-name", kLongArg],
-  ["--diagnostic-dir", kLongArg],
-  ["--disable-proto", kLongArg],
-  ["--dns-result-order", kLongArg],
-  ["-e", kShortArg],
-  ["--eval", kLongArg],
-  ["--experimental-loader", kLongArg],
-  ["--experimental-policy", kLongArg],
-  ["--experimental-specifier-resolution", kLongArg],
-  ["--heapsnapshot-near-heap-limit", kLongArg],
-  ["--heapsnapshot-signal", kLongArg],
-  ["--heap-prof-dir", kLongArg],
-  ["--heap-prof-interval", kLongArg],
-  ["--heap-prof-name", kLongArg],
-  ["--icu-data-dir", kLongArg],
-  ["--input-type", kLongArg],
-  ["--inspect-publish-uid", kLongArg],
-  ["--max-http-header-size", kLongArg],
-  ["--openssl-config", kLongArg],
-  ["-p", kShortArg],
-  ["--print", kLongArg],
-  ["--policy-integrity", kLongArg],
-  ["--prof-process", kLongArg],
-  ["-r", kShortArg],
-  ["--require", kLongArg],
-  ["--redirect-warnings", kLongArg],
-  ["--report-dir", kLongArg],
-  ["--report-directory", kLongArg],
-  ["--report-filename", kLongArg],
-  ["--report-signal", kLongArg],
-  ["--secure-heap", kLongArg],
-  ["--secure-heap-min", kLongArg],
-  ["--snapshot-blob", kLongArg],
-  ["--title", kLongArg],
-  ["--tls-cipher-list", kLongArg],
-  ["--tls-keylog", kLongArg],
-  ["--unhandled-rejections", kLongArg],
-  ["--use-largepages", kLongArg],
-  ["--v8-pool-size", kLongArg],
-]);
-const kDenoSubcommands = new Set([
-  "add",
-  "bench",
-  "cache",
-  "check",
-  "compile",
-  "completions",
-  "coverage",
-  "doc",
-  "eval",
-  "fmt",
-  "help",
-  "info",
-  "init",
-  "install",
-  "lint",
-  "lsp",
-  "publish",
-  "repl",
-  "run",
-  "tasks",
-  "test",
-  "types",
-  "uninstall",
-  "upgrade",
-  "vendor",
-]);
-
-/** Wraps the script for (Node.js) --eval / --print argument
- * Note: Builtin modules are available as global variables */
-function wrapScriptForEval(sourceCode: string): string {
-  // Note: We need vm.runInThisContext call here to get the last evaluated
-  // value of the source with multiple statements. `deno eval -p` surrounds
-  // the source code like `console.log(${source})`, and it only allows a
-  // single expression.
-  return `
-    process.getBuiltinModule("module").builtinModules
-      .filter((m) => !/\\/|crypto|process/.test(m))
-      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
-    vm.runInThisContext(${JSON.stringify(sourceCode)})
-  `;
-}
-
-/** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
-function toDenoArgs(args: string[]): [string[], string[], boolean] {
-  if (args.length === 0) {
-    return [args, args, false];
-  }
-
-  // Update this logic as more CLI arguments are mapped from Node to Deno.
-  const denoArgs: string[] = [];
-  const nodeOptions: string[] = [];
-  let useRunArgs = true;
-  let needsNpmProcessState = false;
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg.charAt(0) !== "-" || arg === "--") {
-      // Not a flag or no more arguments.
-
-      // If the arg is a Deno subcommand, then the child process is being
-      // spawned as Deno, not Deno in Node compat mode. In this case, bail out
-      // and return the original args.
-      if (kDenoSubcommands.has(arg)) {
-        return [args, [], false];
-      }
-
-      // if the user is launching a script in the node_modules or
-      // global cache, include the process state
-      needsNpmProcessState = op_node_in_npm_package(arg);
-
-      // Copy of the rest of the arguments to the output.
-      for (let j = i; j < args.length; j++) {
-        denoArgs.push(args[j]);
-      }
-
-      break;
-    }
-
-    // Something that looks like a flag was passed.
-    let flag = arg;
-    let flagInfo = kNodeFlagsMap.get(arg);
-    let isLongWithValue = false;
-    let flagValue;
-
-    if (flag === "--v8-options") {
-      // If --v8-options is passed, it should be replaced with --v8-flags="--help".
-      denoArgs.push("--v8-flags=--help");
-      continue;
-    }
-
-    if (flagInfo === undefined) {
-      // If the flag was not found, it's either not a known flag or it's a long
-      // flag containing an '='.
-      const splitAt = arg.indexOf("=");
-
-      if (splitAt !== -1) {
-        flag = arg.slice(0, splitAt);
-        flagInfo = kNodeFlagsMap.get(flag);
-        flagValue = arg.slice(splitAt + 1);
-        isLongWithValue = true;
-      }
-    }
-
-    if (flagInfo === undefined) {
-      if (arg === "--no-warnings") {
-        denoArgs.push("--quiet");
-        nodeOptions.push(arg);
-      } else if (arg === "--expose-internals") {
-        // internals are always exposed in Deno.
-      } else if (arg === "--permission") {
-        // ignore --permission flag
-      } else if (arg === "--pending-deprecation") {
-        nodeOptions.push(arg);
-      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
-        // `--experimental-*` args are ignored, because most experimental Node features
-        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
-      } else if (arg === "--help" || arg === "-h") {
-        // --help should show Deno's help, not be wrapped with "run -A"
-        denoArgs.push("--help");
-        useRunArgs = false;
-      } else if (arg === "--version" || arg === "-v") {
-        // --version should show Deno's version, not be wrapped with "run -A"
-        denoArgs.push("--version");
-        useRunArgs = false;
-      } else {
-        // Not a known flag that expects a value. Just copy it to the output.
-        denoArgs.push(arg);
-      }
-      continue;
-    }
-
-    // This is a flag with a value. Get the value if we don't already have it.
-    if (flagValue === undefined) {
-      i++;
-
-      if (i >= args.length) {
-        // There was user error. There should be another arg for the value, but
-        // there isn't one. Just copy the arg to the output. It's not going
-        // to work anyway.
-        denoArgs.push(arg);
-        continue;
-      }
-
-      flagValue = args[i];
-    }
-
-    // Remap Node's eval flags to Deno.
-    if (flag === "-e" || flag === "--eval") {
-      denoArgs.push("eval", wrapScriptForEval(flagValue));
-      useRunArgs = false;
-    } else if (flag === "-p" || flag === "--print") {
-      denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
-      useRunArgs = false;
-    } else if (flag === "-c" || flag === "--check") {
-      // Node's -c/--check does syntax checking.
-      // Use `run` which catches syntax errors during parsing.
-      denoArgs.push("run", flagValue);
-      useRunArgs = false;
-    } else if (isLongWithValue) {
-      denoArgs.push(arg);
-    } else {
-      denoArgs.push(flag, flagValue);
-    }
-  }
-
-  if (useRunArgs) {
-    // -A is not ideal, but needed to propagate permissions.
-    denoArgs.unshift("run", "-A");
-  }
-
-  return [denoArgs, nodeOptions, needsNpmProcessState];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");
