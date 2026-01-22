@@ -1,10 +1,5 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = [
-  "-C",
-  "target-feature=+crt-static",
-  "-C",
-  "symbol-mangling-version=v0",
-]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "symbol-mangling-version=v0"]
 
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [
@@ -43,6 +38,7 @@ rustflags = [
 ]
 
 # common environment variables for building dav1d correctly
+# See details in: ext/image/build.rs
 [env]
 SYSTEM_DEPS_DAV1D_LIB = "dav1d"
 SYSTEM_DEPS_DAV1D_NO_PKG_CONFIG = "1"

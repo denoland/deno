@@ -279,10 +279,8 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
-    const firstPixel = Deno[Deno.internal].getBitmapData(imageBitmap).slice(
-      0,
-      4,
-    );
+    // deno-fmt-ignore
+    const firstPixel = Deno[Deno.internal].getBitmapData(imageBitmap).slice(0, 4);
     assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
   });
   await t.step("10-bit avif", async () => {
@@ -292,9 +290,8 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
-    const firstPixel = extractHighBytes(
-      Deno[Deno.internal].getBitmapData(imageBitmap),
-    ).slice(0, 4);
+    // deno-fmt-ignore
+    const firstPixel = extractHighBytes(Deno[Deno.internal].getBitmapData(imageBitmap)).slice(0, 4);
     assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
   });
   await t.step("12-bit avif", async () => {
@@ -304,9 +301,8 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
-    const firstPixel = extractHighBytes(
-      Deno[Deno.internal].getBitmapData(imageBitmap),
-    ).slice(0, 4);
+    // deno-fmt-ignore
+    const firstPixel = extractHighBytes(Deno[Deno.internal].getBitmapData(imageBitmap)).slice(0, 4);
     assertEquals(firstPixel, new Uint8Array([255, 25, 0, 255]));
   });
   await t.step("flotat-32-bit exr", async () => {
@@ -388,9 +384,8 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
-    const firstPixel = extractHighBytes(
-      Deno[Deno.internal].getBitmapData(imageBitmap),
-    ).slice(0, 4);
+    // deno-fmt-ignore
+    const firstPixel = extractHighBytes(Deno[Deno.internal].getBitmapData(imageBitmap)).slice(0, 4);
     assertEquals(firstPixel, new Uint8Array([255, 24, 0, 255]));
   });
 });
