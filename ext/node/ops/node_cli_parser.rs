@@ -206,13 +206,10 @@ mod tests {
     // Eval code should be wrapped for child_process
     assert!(result.deno_args.contains(&"eval".to_string()));
     // Note: deno eval has implicit permissions, so -A is not added
-    // The wrapped code should contain vm.runInThisContext
-    assert!(
-      result
-        .deno_args
-        .iter()
-        .any(|a| a.contains("vm.runInThisContext"))
-    );
+    // The wrapped code should contain process.getBuiltinModule("vm").runInThisContext
+    assert!(result.deno_args.iter().any(|a| {
+      a.contains(r#"process.getBuiltinModule("vm").runInThisContext"#)
+    }));
   }
 
   #[test]
@@ -339,7 +336,9 @@ mod tests {
   #[test]
   fn test_wrap_eval_code() {
     let wrapped = wrap_eval_code("console.log(42)");
-    assert!(wrapped.contains("vm.runInThisContext"));
+    assert!(
+      wrapped.contains(r#"process.getBuiltinModule("vm").runInThisContext"#)
+    );
     assert!(wrapped.contains("process.getBuiltinModule"));
     assert!(wrapped.contains("\"console.log(42)\""));
   }
