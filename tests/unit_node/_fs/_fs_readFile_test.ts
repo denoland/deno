@@ -119,20 +119,20 @@ Deno.test("[std/node/fs] readFile callback isn't called twice if error is thrown
 });
 
 Deno.test("fs.promises.readFile with no arg call rejects with error correctly", async () => {
-  // @ts-ignore no arg call needs to be supported
+  // @ts-ignore: intentionally calling without args to test rejection behavior
   await promises.readFile().catch((_e) => {});
 });
 
 Deno.test("fs.readFile with undefined path throws TypeError", () => {
   let cbCalled = false;
   try {
-    // @ts-ignore
+    // @ts-ignore: intentionally pass undefined to validate argument handling
     readFile(undefined, () => {
       cbCalled = true;
     });
     throw new Error("did not throw");
   } catch (err) {
-    assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+    assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
   }
   assertEquals(cbCalled, false);
 });
@@ -143,27 +143,29 @@ Deno.test("fs.readFile with fd.name (undefined) throws TypeError", async () => {
     let cbCalled = false;
     try {
       // Pass the FileHandle.name (which is undefined) like the reported scenario
-      // @ts-ignore
-      readFile((fh as any).name, () => {
+      // @ts-ignore: FileHandle.name is not part of the type; testing undefined case
+      readFile((fh as unknown as { name?: string }).name, () => {
         cbCalled = true;
       });
       throw new Error("did not throw");
     } catch (err) {
-      assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
     }
+    // Ensure callback was not invoked when the call threw synchronously
+    assertEquals(cbCalled, false);
   } finally {
     await fh.close();
   }
 });
 
 Deno.test("fs.readFileSync with no arg throws TypeError", () => {
-  // @ts-ignore
+  // @ts-ignore: intentionally call without args to test sync validation
   try {
-    // @ts-ignore
+    // @ts-ignore: intentionally call without args to test sync validation
     readFileSync();
     throw new Error("did not throw");
   } catch (err) {
-    assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+    assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
   }
 });
 
