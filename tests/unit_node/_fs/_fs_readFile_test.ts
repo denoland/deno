@@ -2,7 +2,7 @@
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { existsSync, promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
-import { assert, assertEquals, assertMatch } from "@std/assert";
+import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
 import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
@@ -203,6 +203,40 @@ Deno.test("fs.readFile creates new file when passed 'w+' flag", async () => {
   assert(existsSync(filePath));
   Deno.removeSync(tmpDir, { recursive: true });
 });
+
+Deno.test(
+  "fs.readFile throws ERR_INVALID_ARG_TYPE when path is undefined (e.g. fd.name)",
+  async () => {
+    const { open } = await import("node:fs/promises");
+    const fh = await open(testData, "r");
+
+    try {
+      // Simulate user code that passes `fd.name` (which is undefined) into readFile
+      const name = (fh as { name?: unknown }).name;
+
+      let threw = false;
+      try {
+        // readFile should throw synchronously for invalid path types
+        // we cast through unknown to avoid using `any` while still passing
+        // an invalid value (undefined) into the API
+        readFile(name as unknown as string, () => {});
+      } catch (err) {
+        threw = true;
+        // Ensure it's the node-style error
+        assert(err instanceof Error);
+        // The internal error class sets the code to ERR_INVALID_ARG_TYPE
+        // deno-lint-ignore no-explicit-any
+        assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+      }
+      assert(threw, "readFile did not throw for undefined path");
+
+      // Also check sync variant
+      assertThrows(() => readFileSync(name as unknown as string), TypeError);
+    } finally {
+      await fh.close();
+    }
+  },
+);
 
 Deno.test("fs.readFileSync creates new file when passed 'w+' flag", () => {
   const tmpDir = Deno.makeTempDirSync();

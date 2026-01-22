@@ -19,6 +19,7 @@ import {
   AbortError,
   denoErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
+  ERR_INVALID_ARG_TYPE,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
@@ -180,6 +181,19 @@ export function readFile(
   callback?: Callback,
 ) {
   path = path instanceof URL ? pathFromURL(path) : path;
+
+  // Validate path early to match Node.js behavior (throws on invalid argument types)
+  const isBuffer = Buffer && Buffer.isBuffer && Buffer.isBuffer(path as unknown);
+  const isFileHandle = path instanceof FileHandle;
+  if (!(
+    typeof path === "string" ||
+    typeof path === "number" ||
+    isFileHandle ||
+    isBuffer
+  )) {
+    throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
+  }
+
   let cb: Callback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -233,6 +247,17 @@ export function readFileSync(
 ): string | Buffer {
   path = path instanceof URL ? pathFromURL(path) : path;
   const options = getOptions<FileOptions>(opt, defaultOptions);
+
+  // Validate path early to match Node.js behavior
+  const isBufferSync = Buffer && Buffer.isBuffer && Buffer.isBuffer(path as unknown);
+  if (!(
+    typeof path === "number" ||
+    typeof path === "string" ||
+    isBufferSync
+  )) {
+    throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
+  }
+
   let data;
   if (typeof path === "number") {
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
