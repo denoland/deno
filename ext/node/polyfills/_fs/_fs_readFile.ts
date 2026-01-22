@@ -183,14 +183,17 @@ export function readFile(
   path = path instanceof URL ? pathFromURL(path) : path;
 
   // Validate path early to match Node.js behavior (throws on invalid argument types)
-  const isBuffer = Buffer && Buffer.isBuffer && Buffer.isBuffer(path as unknown);
+  const isBuffer = Buffer && Buffer.isBuffer &&
+    Buffer.isBuffer(path as unknown);
   const isFileHandle = path instanceof FileHandle;
-  if (!(
-    typeof path === "string" ||
-    typeof path === "number" ||
-    isFileHandle ||
-    isBuffer
-  )) {
+  if (
+    !(
+      typeof path === "string" ||
+      typeof path === "number" ||
+      isFileHandle ||
+      isBuffer
+    )
+  ) {
     throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
   }
 
@@ -249,12 +252,15 @@ export function readFileSync(
   const options = getOptions<FileOptions>(opt, defaultOptions);
 
   // Validate path early to match Node.js behavior
-  const isBufferSync = Buffer && Buffer.isBuffer && Buffer.isBuffer(path as unknown);
-  if (!(
-    typeof path === "number" ||
-    typeof path === "string" ||
-    isBufferSync
-  )) {
+  const isBufferSync = Buffer && Buffer.isBuffer &&
+    Buffer.isBuffer(path as unknown);
+  if (
+    !(
+      typeof path === "number" ||
+      typeof path === "string" ||
+      isBufferSync
+    )
+  ) {
     throw new ERR_INVALID_ARG_TYPE("path", ["string", "Buffer", "URL"], path);
   }
 
