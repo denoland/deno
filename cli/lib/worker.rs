@@ -371,7 +371,6 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
   maybe_cpu_prof_config: Option<CpuProfilerConfig>,
-  maybe_inspector_server: Option<Arc<InspectorServer>>,
   main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
@@ -542,7 +541,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_coverage_dir: Option<PathBuf>,
     maybe_cpu_prof_config: Option<CpuProfilerConfig>,
-    maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
       NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>,
@@ -567,7 +565,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         fs,
         maybe_coverage_dir,
         maybe_cpu_prof_config,
-        maybe_inspector_server,
         main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,

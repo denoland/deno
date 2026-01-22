@@ -1085,7 +1085,6 @@ impl CliFactory {
       fs.clone(),
       cli_options.coverage_dir(),
       maybe_cpu_prof_config_for_workers,
-      self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
       create_npm_process_state_provider(npm_resolver),
