@@ -59,6 +59,20 @@ pub struct InspectorServer {
 static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
   OnceLock::new();
 
+static RESTART_NOTIFIER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
+
+fn get_restart_notifier() -> broadcast::Sender<()> {
+  RESTART_NOTIFIER
+    .get_or_init(|| broadcast::channel(16).0)
+    .clone()
+}
+
+/// Notifies all connected /ws/events clients that a restart is about to occur.
+pub fn notify_restart() {
+  let sender = get_restart_notifier();
+  let _ = sender.send(()); // Ignore error if no receivers
+}
+
 /// Returns the global inspector server if it has been created.
 pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
   GLOBAL_INSPECTOR_SERVER.get().cloned()
@@ -309,6 +323,108 @@ fn handle_json_version_request(
     .body(body)
 }
 
+fn handle_ws_events_request(
+  req: http::Request<hyper::body::Incoming>,
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
+  if std::env::var("UNSTABLE_INSPECTOR_WS_EVENTS").is_err() {
+    return http::Response::builder()
+      .status(http::StatusCode::NOT_FOUND)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not Found",
+      ))));
+  }
+
+  let (parts, body) = req.into_parts();
+  let req = http::Request::from_parts(parts, ());
+
+  let (parts, _) = req.into_parts();
+  let mut req = http::Request::from_parts(parts, body);
+
+  let Ok((resp, upgrade_fut)) = fastwebsockets::upgrade::upgrade(&mut req)
+  else {
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not a valid Websocket Request",
+      ))));
+  };
+
+  let restart_rx = get_restart_notifier().subscribe();
+
+  // spawn a task that will wait for websocket connection and then pump event notifications
+  spawn(async move {
+    let websocket = match upgrade_fut.await {
+      Ok(w) => w,
+      Err(err) => {
+        log::error!(
+          "Inspector server failed to upgrade to WS connection for /ws/events: {:?}",
+          err
+        );
+        return;
+      }
+    };
+
+    log::debug!("Deno event session started.");
+    pump_event_notifications(websocket, restart_rx).await;
+  });
+
+  let (parts, _body) = resp.into_parts();
+  let resp = http::Response::from_parts(
+    parts,
+    Box::new(http_body_util::Full::new(Bytes::new())),
+  );
+  Ok(resp)
+}
+
+async fn pump_event_notifications(
+  mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
+  mut restart_rx: broadcast::Receiver<()>,
+) {
+  loop {
+    tokio::select! {
+      result = restart_rx.recv() => {
+        match result {
+          Ok(()) => {
+            let timestamp = std::time::SystemTime::now()
+              .duration_since(std::time::UNIX_EPOCH)
+              .map(|d| d.as_millis() as u64)
+              .unwrap_or(0);
+            let msg = json!({
+              "type": "restart",
+              "timestamp": timestamp,
+            });
+            let frame = Frame::text(msg.to_string().into_bytes().into());
+            if websocket.write_frame(frame).await.is_err() {
+              break;
+            }
+          }
+          Err(broadcast::error::RecvError::Lagged(_)) => {
+            // Missed some messages, continue
+            continue;
+          }
+          Err(broadcast::error::RecvError::Closed) => {
+            break;
+          }
+        }
+      }
+      result = websocket.read_frame() => {
+        match result {
+          Ok(frame) => {
+            if frame.opcode == OpCode::Close {
+              log::debug!("Deno event session ended");
+              break;
+            }
+            // Ignore other messages
+          }
+          Err(_) => {
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
 async fn server(
   listener: std::net::TcpListener,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
@@ -389,6 +505,9 @@ async fn server(
                 _ => None,
               });
             match (req.method(), req.uri().path()) {
+              (&http::Method::GET, "/ws/events") => {
+                handle_ws_events_request(req)
+              }
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
