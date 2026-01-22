@@ -1,24 +1,12 @@
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))']
-rustflags = ["-L", "ext/image/dav1d/x86_64-unknown-linux-gnu"]
-
-[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))']
-rustflags = ["-L", "ext/image/dav1d/aarch64-unknown-linux-gnu"]
-
 [target.x86_64-pc-windows-msvc]
 rustflags = [
   "-C",
   "target-feature=+crt-static",
   "-C",
   "symbol-mangling-version=v0",
-  "-L",
-  "ext/image/dav1d/x86_64-pc-windows-msvc",
 ]
 
-[target.aarch64-pc-windows-msvc]
-rustflags = [
-  "-L",
-  "ext/image/dav1d/aarch64-pc-windows-msvc",
-]
+
 
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [
@@ -34,16 +22,12 @@ rustflags = [
 rustflags = [
   "-C",
   "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
-  "-L",
-  "ext/image/dav1d/x86_64-apple-darwin",
 ]
 
 [target.aarch64-apple-darwin]
 rustflags = [
   "-C",
   "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
-  "-L",
-  "ext/image/dav1d/aarch64-apple-darwin",
 ]
 
 [target.'cfg(all())']
@@ -60,7 +44,7 @@ rustflags = [
   "tokio_unstable",
 ]
 
-# common environment variables for dav1d
+# common environment variables for building dav1d correctly
 [env]
 SYSTEM_DEPS_DAV1D_LIB = "dav1d"
 SYSTEM_DEPS_DAV1D_NO_PKG_CONFIG = "1"
