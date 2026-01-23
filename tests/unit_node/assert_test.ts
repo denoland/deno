@@ -62,3 +62,73 @@ Deno.test("[node/assert] deepStrictEqual passes for equal Number objects", () =>
     assert.deepStrictEqual(new Number(1), new Number(1));
   });
 });
+
+Deno.test("[node/assert] throws with 2 parameters", () => {
+  assert.throws(
+    () => {
+      throw new Error("test error");
+    },
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] throws with 3 parameters", () => {
+  assert.throws(
+    () => {
+      throw new TypeError("test error");
+    },
+    TypeError,
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] doesNotThrow with 2 parameters", () => {
+  assert.doesNotThrow(
+    () => {},
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] doesNotThrow with 3 parameters", () => {
+  assert.doesNotThrow(
+    () => {},
+    TypeError,
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] rejects with 2 parameters", async () => {
+  await assert.rejects(
+    // deno-lint-ignore require-await
+    async () => {
+      throw new Error("async error");
+    },
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] rejects with 3 parameters", async () => {
+  await assert.rejects(
+    // deno-lint-ignore require-await
+    async () => {
+      throw new TypeError("async error");
+    },
+    TypeError,
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] doesNotReject with 2 parameters", async () => {
+  await assert.doesNotReject(
+    async () => {},
+    "custom message",
+  );
+});
+
+Deno.test("[node/assert] doesNotReject with 3 parameters", async () => {
+  await assert.doesNotReject(
+    async () => {},
+    TypeError,
+    "custom message",
+  );
+});
