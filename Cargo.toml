@@ -75,14 +75,14 @@ deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.3"
+deno_npm = "=0.43.0"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.107.0"
+eszip = "=0.108.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
