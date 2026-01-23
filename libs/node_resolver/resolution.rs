@@ -860,12 +860,12 @@ impl<
   /// Resolves an npm package folder path from the specified referrer.
   pub fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    package_name: &str,
     referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, errors::PackageFolderResolveError> {
     self
       .npm_pkg_folder_resolver
-      .resolve_package_folder_from_package(specifier, referrer)
+      .resolve_package_folder_from_package(package_name, referrer)
   }
 
   fn maybe_resolve_types(
@@ -1652,7 +1652,6 @@ impl<
       .resolve_package_folder_from_package(package_name, referrer)
       .map_err(|err| err.into())
       .and_then(|package_dir| resolve(&package_dir).map_err(|e| e.into()));
-
     if resolution_kind.is_types() && result.is_err() {
       // try to resolve with the @types package based on the package name
       let maybe_types_package_dir = self
@@ -2558,7 +2557,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 
 /// Gets the corresponding @types package for the provided package name
 /// returning `None` when the package is already a @types package.
-fn types_package_name(package_name: &str) -> Option<String> {
+pub fn types_package_name(package_name: &str) -> Option<String> {
   if package_name.starts_with("@types/") {
     return None;
   }

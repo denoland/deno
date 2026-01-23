@@ -1199,9 +1199,11 @@ pub fn op_print(
 ) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    file
-      .write_all_sync(msg.as_bytes())
-      .map_err(JsErrorBox::from_err)
+    match file.write_all_sync(msg.as_bytes()) {
+      Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
+      other => other,
+    }
+    .map_err(JsErrorBox::from_err)
   })
 }
 

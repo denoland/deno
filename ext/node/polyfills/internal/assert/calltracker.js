@@ -21,7 +21,7 @@ const {
   ERR_INVALID_ARG_VALUE,
   ERR_UNAVAILABLE_DURING_EXIT,
 } = codes;
-import { AssertionError } from "ext:deno_node/assertion_error.ts";
+import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
 import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
 
 const noop = FunctionPrototype;

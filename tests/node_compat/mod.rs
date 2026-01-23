@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use test_util as util;
+use test_util::IS_CI;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
@@ -121,6 +122,10 @@ fn main() {
   let config = load_config();
   let mut category = if cli_args.report {
     collect_all_tests()
+  } else if let Some(filter) = cli_args.filter.as_ref() {
+    let mut category = collect_all_tests();
+    category.filter_children(filter);
+    category
   } else {
     collect_tests_from_config(&config)
   };
@@ -151,6 +156,7 @@ fn main() {
   );
 
   let config = Arc::new(config);
+  let all_tests_flaky = *IS_CI && !cli_args.report;
 
   // Run sequential tests with parallelism=1
   let summary = file_test_runner::run_tests_summary(
@@ -168,7 +174,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky),
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           None,
           || run_test(&cli_args, test, test_config, &results),
@@ -196,7 +202,7 @@ fn main() {
         let test_config = config.tests.get(&test.data.test_path);
         run_maybe_flaky_test(
           &test.name,
-          test_config.is_some_and(|c| c.flaky),
+          test_config.is_some_and(|c| c.flaky) || all_tests_flaky,
           &flaky_test_tracker,
           Some(&parallelism),
           || run_test(&cli_args, test, test_config, &results),
@@ -217,6 +223,7 @@ struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
   report: bool,
+  filter: Option<String>,
 }
 
 // You need to run with `--test node_compat` for this to work.
@@ -225,11 +232,22 @@ fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
   let mut report = false;
+  let mut filter = None;
+
+  let mut has_filter = false;
   for arg in std::env::args() {
+    if has_filter {
+      filter = Some(arg.as_str().to_string());
+      has_filter = false;
+    }
+
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
       "--report" => report = true,
+      "--filter" => {
+        has_filter = true;
+      }
       _ => {}
     }
   }
@@ -238,14 +256,18 @@ fn parse_cli_args() -> CliArgs {
     inspect_brk,
     inspect_wait,
     report,
+    filter,
   }
 }
 
 fn load_config() -> NodeCompatConfig {
-  let config_path = tests_path().join("node_compat").join("config.json");
-  let config_content =
-    std::fs::read_to_string(&config_path).expect("Failed to read config.json");
-  serde_json::from_str(&config_content).expect("Failed to parse config.json")
+  let config_path = tests_path().join("node_compat").join("config.jsonc");
+  let config_content = std::fs::read_to_string(&config_path).unwrap();
+  let value =
+    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+      .unwrap()
+      .unwrap();
+  serde_json::from_value(value).unwrap()
 }
 
 fn collect_tests_from_config(
@@ -260,43 +282,110 @@ fn collect_tests_from_config(
   wrap_in_category(children)
 }
 
+// Directories that don't contain runnable tests
+// from https://github.com/denoland/std/pull/2787#discussion_r1001237016
+const IGNORED_TEST_DIRS: &[&str] = &[
+  "addons",
+  "async-hooks",
+  "benchmark",
+  "cctest",
+  "common",
+  "doctool",
+  "embedding",
+  "fixtures",
+  "fuzzers",
+  "js-native-api",
+  "known_issues",
+  "node-api",
+  "overlapped-checker",
+  "report",
+  "testpy",
+  "tick-processor",
+  "tools",
+  "v8-updates",
+  "wasi",
+  "wpt",
+];
+
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
-  for subdir in ["parallel", "sequential"] {
-    let dir_path = suite_dir.join(subdir);
-    let entries = match std::fs::read_dir(&dir_path) {
-      Ok(entries) => entries,
-      Err(_) => continue,
+  // Scan all subdirectories in the test suite
+  for subdir_entry in std::fs::read_dir(&suite_dir).unwrap().flatten() {
+    let subdir_name = match subdir_entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
     };
 
-    for entry in entries.flatten() {
-      let path = entry.path();
-      if !path.is_file() {
-        continue;
-      }
-
-      let file_name = match path.file_name().and_then(|n| n.to_str()) {
-        Some(name) => name,
-        None => continue,
-      };
-
-      // Only include test-*.js and test-*.mjs files
-      if !file_name.starts_with("test-") {
-        continue;
-      }
-      if !file_name.ends_with(".js") && !file_name.ends_with(".mjs") {
-        continue;
-      }
-
-      let test_name = format!("{}/{}", subdir, file_name);
-      children.push(create_collected_test(&test_name));
+    // Skip hidden directories (includes .tmp*)
+    if subdir_name.starts_with('.') {
+      continue;
     }
+
+    // Skip directories that don't contain runnable tests
+    if IGNORED_TEST_DIRS.contains(&subdir_name.as_str()) {
+      continue;
+    }
+
+    if !subdir_entry.file_type().is_ok_and(|t| t.is_dir()) {
+      continue;
+    }
+
+    // Recursively collect test files from this subdirectory
+    collect_test_files_recursive(
+      &subdir_entry.path(),
+      &subdir_name,
+      &mut children,
+    );
   }
 
   wrap_in_category(children)
+}
+
+fn collect_test_files_recursive(
+  dir: &std::path::Path,
+  relative_prefix: &str,
+  children: &mut Vec<CollectedCategoryOrTest<NodeCompatTestData>>,
+) {
+  for entry in std::fs::read_dir(dir).unwrap().flatten() {
+    let file_name = match entry.file_name().to_str() {
+      Some(name) => name.to_string(),
+      None => continue,
+    };
+
+    // Skip hidden files/directories
+    if file_name.starts_with('.') {
+      continue;
+    }
+
+    let file_type = match entry.file_type() {
+      Ok(ft) => ft,
+      Err(_) => continue,
+    };
+
+    if file_type.is_dir() {
+      // Recurse into subdirectory
+      let new_prefix = format!("{}/{}", relative_prefix, file_name);
+      collect_test_files_recursive(&entry.path(), &new_prefix, children);
+    } else {
+      // Only include test-*.{js,mjs,cjs,ts} files
+      if !file_name.starts_with("test-") {
+        continue;
+      }
+      if !file_name.ends_with(".js")
+        && !file_name.ends_with(".mjs")
+        && !file_name.ends_with(".cjs")
+        && !file_name.ends_with(".ts")
+      {
+        continue;
+      }
+
+      let test_name = format!("{}/{}", relative_prefix, file_name);
+      children.push(create_collected_test(&test_name));
+    }
+  }
 }
 
 fn suite_test_dir() -> std::path::PathBuf {
@@ -403,22 +492,9 @@ fn wait_with_timeout(
   child: test_util::DenoChild,
   timeout: Duration,
 ) -> TestOutput {
-  use std::sync::mpsc;
-  use std::thread;
-
-  let (tx, rx) = mpsc::channel();
-
-  // Spawn thread to wait for child
-  thread::spawn(move || {
-    let result = child.wait_with_output();
-    let _ = tx.send(result);
-  });
-
-  match rx.recv_timeout(timeout) {
-    Ok(Ok(output)) => TestOutput::Completed(output),
-    Ok(Err(_)) => TestOutput::TimedOut, // IO error treated as timeout
-    Err(mpsc::RecvTimeoutError::Timeout) => TestOutput::TimedOut,
-    Err(mpsc::RecvTimeoutError::Disconnected) => TestOutput::TimedOut,
+  match child.wait_with_output_and_timeout(timeout) {
+    Ok(output) => TestOutput::Completed(output),
+    Err(_) => TestOutput::TimedOut,
   }
 }
 
@@ -439,6 +515,21 @@ fn run_test(
         error: None,
         uses_node_test: false,
         ignore_reason: Some(reason.to_string()),
+      },
+    );
+    return TestResult::Ignored;
+  }
+
+  // Skip pseudo-tty tests when PTY is not supported (e.g., Windows CI)
+  let is_pseudo_tty_test = data.test_path.starts_with("pseudo-tty/");
+  if is_pseudo_tty_test && !util::pty::Pty::is_supported() {
+    results.lock().unwrap().insert(
+      data.test_path.clone(),
+      CollectedResult {
+        passed: None,
+        error: None,
+        uses_node_test: false,
+        ignore_reason: Some("PTY not supported on this platform".to_string()),
       },
     );
     return TestResult::Ignored;
@@ -508,58 +599,141 @@ fn run_test(
   } else {
     10_000
   });
-  let child = cmd.piped_output().spawn().unwrap();
-  let test_output = wait_with_timeout(child, timeout);
 
-  let (success, collected, output_for_error) = match test_output {
-    TestOutput::Completed(output) => {
-      let success = output.status.success();
-      let stderr = String::from_utf8_lossy(&output.stderr);
-      let stdout = String::from_utf8_lossy(&output.stdout);
-      let output_text = if uses_node_test {
-        stdout.to_string()
-      } else {
-        stderr.to_string()
-      };
+  // Format v8_flags for reuse in both PTY and non-PTY paths
+  let v8_flags_arg = if !v8_flags.is_empty() {
+    Some(format!("--v8-flags={}", v8_flags.join(",")))
+  } else {
+    None
+  };
 
-      let collected = if success {
-        CollectedResult {
-          passed: Some(true),
-          error: None,
-          uses_node_test,
-          ignore_reason: None,
-        }
-      } else {
-        CollectedResult {
-          passed: Some(false),
-          error: Some(ErrorInfo {
-            code: output.status.code(),
-            stderr: Some(truncate_output(&output_text, 2000)),
-            timeout: None,
-            message: None,
-          }),
-          uses_node_test,
-          ignore_reason: None,
-        }
-      };
-      let output_str = format!("{}\n{}", stdout, stderr);
-      (success, collected, output_str)
+  let (success, collected, output_for_error) = if is_pseudo_tty_test {
+    // Run in PTY for pseudo-tty tests (PTY support was already verified above)
+    let deno_exe = util::deno_exe_path();
+    let mut args: Vec<&str> = if uses_node_test {
+      TEST_ARGS.to_vec()
+    } else {
+      RUN_ARGS.to_vec()
+    };
+
+    // Add V8 flags
+    if let Some(ref flags) = v8_flags_arg {
+      args.push(flags);
     }
-    TestOutput::TimedOut => {
-      let collected = CollectedResult {
+
+    // Add inspect flags
+    if cli_args.inspect_brk {
+      args.push("--inspect-brk");
+    }
+    if cli_args.inspect_wait {
+      args.push("--inspect-wait");
+    }
+
+    args.push(&test_path);
+
+    let mut env_vars = std::collections::HashMap::new();
+    env_vars.insert("NODE_TEST_KNOWN_GLOBALS".to_string(), "0".to_string());
+    env_vars.insert("NODE_SKIP_FLAG_CHECK".to_string(), "1".to_string());
+    env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
+    env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+    env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
+    // Inherit current environment
+    for (key, value) in std::env::vars() {
+      env_vars.entry(key).or_insert(value);
+    }
+
+    let pty_output = util::pty::run_in_pty(
+      deno_exe.as_path(),
+      &args,
+      test_suite_path.as_path(),
+      Some(env_vars),
+      timeout,
+    );
+
+    let output_text = String::from_utf8_lossy(&pty_output.output).to_string();
+    let success = pty_output.exit_code == Some(0);
+
+    let collected = if success {
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      }
+    } else {
+      CollectedResult {
         passed: Some(false),
         error: Some(ErrorInfo {
-          code: None,
-          stderr: None,
-          timeout: Some(timeout.as_millis() as u64),
+          code: pty_output.exit_code,
+          stderr: Some(truncate_output(&output_text, 2000)),
+          timeout: if pty_output.exit_code.is_none() {
+            Some(timeout.as_millis() as u64)
+          } else {
+            None
+          },
           message: None,
         }),
         uses_node_test,
         ignore_reason: None,
-      };
-      let output_str =
-        format!("Test timed out after {}ms", timeout.as_millis());
-      (false, collected, output_str)
+      }
+    };
+
+    (success, collected, output_text)
+  } else {
+    // Run normally with piped output
+    let child = cmd.piped_output().spawn().unwrap();
+    let test_output = wait_with_timeout(child, timeout);
+
+    match test_output {
+      TestOutput::Completed(output) => {
+        let success = output.status.success();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let output_text = if uses_node_test {
+          stdout.to_string()
+        } else {
+          stderr.to_string()
+        };
+
+        let collected = if success {
+          CollectedResult {
+            passed: Some(true),
+            error: None,
+            uses_node_test,
+            ignore_reason: None,
+          }
+        } else {
+          CollectedResult {
+            passed: Some(false),
+            error: Some(ErrorInfo {
+              code: output.status.code(),
+              stderr: Some(truncate_output(&output_text, 2000)),
+              timeout: None,
+              message: None,
+            }),
+            uses_node_test,
+            ignore_reason: None,
+          }
+        };
+        let output_str = format!("{}\n{}", stdout, stderr);
+        (success, collected, output_str)
+      }
+      TestOutput::TimedOut => {
+        let collected = CollectedResult {
+          passed: Some(false),
+          error: Some(ErrorInfo {
+            code: None,
+            stderr: None,
+            timeout: Some(timeout.as_millis() as u64),
+            message: None,
+          }),
+          uses_node_test,
+          ignore_reason: None,
+        };
+        let output_str =
+          format!("Test timed out after {}ms", timeout.as_millis());
+        (false, collected, output_str)
+      }
     }
   };
 

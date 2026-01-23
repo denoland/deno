@@ -88,6 +88,14 @@
     "propagators_api": {
       "args": "run -A main.ts propagators_api.ts",
       "output": "propagators_api.out"
+    },
+    "cron": {
+      "args": "run -A main.ts cron.ts",
+      "output": "cron.out"
+    },
+    "cron_error": {
+      "args": "run -A main.ts cron_error.ts",
+      "output": "cron_error.out"
     }
   }
 }

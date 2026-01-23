@@ -42,6 +42,14 @@ pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   })
 }
 
+pub fn public_npm_jsr_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(port, "npm jsr registry server error", {
+    move |req| async move {
+      handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_JSR_REGISTRY).await
+    }
+  })
+}
+
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
 const PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN: &str = "private-reg-token2";
 

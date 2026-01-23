@@ -6,6 +6,75 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.6.6 / 2026.01.22
+
+- feat(cli/tsc): show progress bar for TSGO downloads (#31893)
+- feat(inspector): accept bare host and bare port for --inspect flag (#31881)
+- feat(inspector/unstable): add /ws/events endpoint in inspector server, notify
+  watcher restart event in it (#31901)
+- feat(task): `globstar`, `failglob`, `nullglob`, and `pipefail` support
+  (#31913)
+- feat: instrument cron with OTEL (#31916)
+- fix(check): improve `@types/` package resolution for the global resolver
+  (#31868)
+- fix(doc): non-determinism in `deno doc --lint` (#31911)
+- fix(dx): always spawn subprocess for dx (#31897)
+- fix(ext/crypto): add support for SHA3 (#31668)
+- fix(ext/node): `assert` compatibility (#31821)
+- fix(ext/node): fix deadline resolution for queued timers (#31860)
+- fix(ext/node): implement PerformanceObserver (#31875)
+- fix(ext/node): implement getValidStdio for child_process (#31850)
+- fix(ext/node): improve child_process CLI argument parsing (#31825)
+- fix(ext/node): inspector.open() and inspector.close() (#31898)
+- fix(ext/node): prevent derefencing symlinks on `fs.rm` (#31886)
+- fix(ext/node): properly implement process.features (#31864)
+- fix(ext/node): validate fd in tty.isatty and enable pseudo-tty tests (#31892)
+- fix(ext/sqlite): double free of Session after database closed (#31830)
+- fix(ext/web): export PerformanceObserver and PerformanceObserverEntryList
+  (#31887)
+- fix(publish): do not include tsconfig imports in publish graph (#31907)
+- fix(publish): include `npm:@types/` package resolution in published packages
+  (#31855)
+- fix: don't ever set 1005 outbound close code (#31845)
+
+### 2.6.5 / 2026.01.15
+
+- feat(ext/canvas): support gif, webp for `createImageBitmap` (#31402)
+- feat(ext/web): add performance.clearResourceTimings() and
+  setResourceTimingBufferSize() (#31603)
+- feat(node/fs): implement FileHandle.readableWebStream() (#31745)
+- fix(audit): respect --level flag for exit code (#31721)
+- fix(ci): rename `trusted-signing-action` to `artifact-signing-action` (#31849)
+- fix(cli/test): close Node HTTP connections before sanitizer check (#31782)
+- fix(ext/fetch): read file urls via vfs (#31814)
+- fix(ext/fetch): support ipv6 destination host with http and socks proxy
+  (#31683)
+- fix(ext/node): `DatabaseSync` garbage collection invalidating associated
+  resources (#31737)
+- fix(ext/node): add tls.setDefaultCACertificates support (#31522)
+- fix(ext/node): emit deprecation warning for SlowBuffer (#31772)
+- fix(ext/node): fix use-after-free in StatementSync JS iterator (#31770)
+- fix(ext/node): use correct block sizes for HMAC algorithms (#31775)
+- fix(ext/web): handle empty TextDecoder input when stream is true (#31691)
+- fix(io): ignore `BrokenPipe` error in `op_print` (#31844)
+- fix(node/child_process): ChildProcess constructor without args (#31838)
+- fix(node/child_process): improve arg type validation for execFile and fork
+  (#31829)
+- fix(node/child_process): reject null bytes in arguments (#31828)
+- fix(node/child_process): use correct syscall name in spawn error (#31836)
+- fix(npm): deduplication pass for initially partially resolved graphs (#31787)
+- fix(runtime): handle `options` parameter in `Deno.errors.*` constructors
+  (#31510)
+- fix(task): preserve signal-based exit codes for child processes (#31789)
+- fix(tsgo): nil deref for exported symbols (#31786)
+- fix(webgpu): correctly expose `GPUCompilationInfo` & `GPUCompilationMessage`
+  (#31780)
+- fix: add more details when panicking getting dir path from deno.json (#31805)
+- fix: allow multiple --allow-all args (#31833)
+- fix: queue dynamic imports for modules with pending TLA (#31670)
+- fix: update config schema for read permission to include ignore property
+  (#31785)
+
 ### 2.6.4 / 2026.01.05
 
 - fix(compile): make compile work with `--unstable-npm-lazy-caching` (#31704)

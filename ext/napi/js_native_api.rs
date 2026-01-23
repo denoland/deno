@@ -2131,12 +2131,8 @@ fn napi_get_value_string_latin1(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied = value.write_one_byte(
-      scope,
-      buffer,
-      0,
-      v8::WriteOptions::NO_NULL_TERMINATION,
-    );
+    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::empty());
+    let copied = buffer.len();
     unsafe {
       buf.add(copied).write(0);
     }
@@ -2181,13 +2177,14 @@ fn napi_get_value_string_utf8(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied = value.write_utf8(
+    let mut nchars = 0;
+    value.write_utf8_v2(
       scope,
       buffer,
-      None,
-      v8::WriteOptions::REPLACE_INVALID_UTF8
-        | v8::WriteOptions::NO_NULL_TERMINATION,
+      v8::WriteFlags::kReplaceInvalidUtf8,
+      Some(&mut nchars),
     );
+    let copied = nchars;
     unsafe {
       buf.add(copied).write(0);
     }
@@ -2232,8 +2229,8 @@ fn napi_get_value_string_utf16(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied =
-      value.write(scope, buffer, 0, v8::WriteOptions::NO_NULL_TERMINATION);
+    value.write_v2(scope, 0, buffer, v8::WriteFlags::empty());
+    let copied = buffer.len();
     unsafe {
       buf.add(copied).write(0);
     }

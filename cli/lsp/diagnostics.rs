@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_error::JsErrorClass;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -876,7 +877,9 @@ fn maybe_ambient_specifier_resolution_err(
           Some(specifier.to_string())
         }
       },
-      ResolveError::ImportMap(import_map_error) => {
+      ResolveError::Other(err) => {
+        let import_map_error =
+          err.get_ref().downcast_ref::<import_map::ImportMapError>()?;
         match import_map_error.as_kind() {
           ImportMapErrorKind::UnmappedBareSpecifier(spec, _) => {
             Some(spec.clone())
@@ -891,7 +894,6 @@ fn maybe_ambient_specifier_resolution_err(
           | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
         }
       }
-      ResolveError::Other(..) => None,
     },
   }
 }

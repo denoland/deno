@@ -12,6 +12,7 @@ pub mod http2;
 pub mod idna;
 pub mod inspector;
 pub mod ipc;
+pub mod node_cli_parser;
 pub mod os;
 pub mod perf_hooks;
 pub mod process;

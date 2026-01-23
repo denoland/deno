@@ -27,7 +27,7 @@ jobs:
       name: build
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: false
@@ -58,7 +58,7 @@ jobs:
           enable-AzPSSession: true
 
       - name: Code sign deno.exe
-        uses: azure/trusted-signing-action@v0
+        uses: Azure/artifact-signing-action@v0
         with:
           cache-dependencies: false
           trace: true
@@ -91,7 +91,7 @@ jobs:
           Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force
 
       - name: Upload Windows archives
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-binaries
           path: |
@@ -106,13 +106,13 @@ jobs:
     needs: promote-to-release-windows
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -120,7 +120,7 @@ jobs:
           create_credentials_file: true
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
 
@@ -142,7 +142,7 @@ jobs:
           deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}
 
       - name: Download Windows binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: windows-binaries
           path: .
