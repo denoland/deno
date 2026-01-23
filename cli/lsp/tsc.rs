@@ -464,7 +464,14 @@ impl TsServer {
             .ok()
         })
         .map(|addr| {
-          Arc::new(InspectorServer::new(addr, "deno-lsp-tsc", InspectPublishUid::default()).unwrap())
+          Arc::new(
+            InspectorServer::new(
+              addr,
+              "deno-lsp-tsc",
+              InspectPublishUid::default(),
+            )
+            .unwrap(),
+          )
         });
       self
         .inspector_server
