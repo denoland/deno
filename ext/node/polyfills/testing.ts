@@ -2,17 +2,21 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
-  PromisePrototypeThen,
-  ArrayPrototypePush,
   ArrayPrototypeForEach,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
   ArrayPrototypeSplice,
-  SafePromiseAll,
-  TypeError,
-  SafeArrayIterator,
-  SafePromisePrototypeFinally,
-  Symbol,
+  Error,
   ObjectDefineProperty,
+  Promise,
+  PromisePrototypeThen,
   ReflectApply,
+  SafeArrayIterator,
+  SafePromiseAll,
+  SafePromisePrototypeFinally,
+  String,
+  Symbol,
+  TypeError,
 } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import assert from "node:assert";
@@ -488,7 +492,7 @@ class MockFunctionContext {
       this.#restore = undefined;
     }
     // Remove from active mocks
-    const idx = activeMocks.indexOf(this);
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
     if (idx !== -1) {
       ArrayPrototypeSplice(activeMocks, idx, 1);
     }
@@ -548,6 +552,7 @@ function createMockFunction(
 
   // Attach the mock context to the function
   ObjectDefineProperty(mockFn, "mock", {
+    __proto__: null,
     value: ctx,
     writable: false,
     enumerable: false,
