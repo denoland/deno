@@ -388,14 +388,14 @@ async fn download_npm_registry_file(
   Ok(())
 }
 
-const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/de0d517e6f703fb4735b7aa5806f69fbdbb1d907/prebuilt/";
+const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/2ff7438e3838ed8109e4e99b6d197cf03b548ebb/prebuilt/";
 
 async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
   let bin_name = match (std::env::consts::ARCH, std::env::consts::OS) {
     ("x86_64", "linux" | "macos" | "apple") => "esbuild-x64",
     ("aarch64", "linux" | "macos" | "apple") => "esbuild-aarch64",
     ("x86_64", "windows") => "esbuild-x64.exe",
-    ("aarch64", "windows") => "esbuild-arm64.exe",
+    ("aarch64", "windows") => "esbuild-aarch64.exe",
     _ => return Err(anyhow::anyhow!("unsupported platform")),
   };
 
