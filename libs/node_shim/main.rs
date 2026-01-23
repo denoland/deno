@@ -1,4 +1,7 @@
-// Copyright the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
 
 use std::env;
 use std::process::Stdio;
@@ -39,6 +42,7 @@ fn main() {
 
   // Set DENO_TLS_CA_STORE if needed
   if result.use_system_ca {
+    // SAFETY: This is set before any threads are spawned.
     unsafe { std::env::set_var("DENO_TLS_CA_STORE", "system") };
   }
 
@@ -98,11 +102,10 @@ fn resolve_entrypoint(entrypoint: &str) -> String {
   if !output.status.success() {
     std::process::exit(output.status.code().unwrap_or(1));
   }
-  let resolved_path = String::from_utf8(output.stdout)
+  String::from_utf8(output.stdout)
     .expect("Failed to parse deno resolve output")
     .trim()
-    .to_string();
-  resolved_path
+    .to_string()
 }
 
 #[cfg(test)]

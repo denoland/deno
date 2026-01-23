@@ -1,4 +1,4 @@
-// Copyright the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /*!
  * Node.js CLI Argument Parser - Rust Implementation
@@ -758,6 +758,7 @@ fn split_host_port(arg: &str, errors: &mut Vec<String>) -> HostPort {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct OptionInfo {
   option_type: OptionType,
   env_setting: OptionEnvvarSettings,
@@ -769,6 +770,12 @@ pub struct OptionsParser {
   options: HashMap<String, OptionInfo>,
   aliases: HashMap<String, Vec<String>>,
   implications: HashMap<String, Vec<String>>,
+}
+
+impl Default for OptionsParser {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl OptionsParser {
