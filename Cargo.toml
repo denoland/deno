@@ -37,6 +37,7 @@ members = [
   "libs/inspector_server",
   "libs/maybe_sync",
   "libs/node_resolver",
+  "libs/node_shim",
   "libs/npm_cache",
   "libs/npm_installer",
   "libs/package_json",
@@ -65,7 +66,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.380.1" }
+deno_core = { version = "0.381.1" }
 
 deno_cache_dir = "=0.26.3"
 deno_doc = "=0.189.1"
@@ -75,14 +76,14 @@ deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.3"
+deno_npm = "=0.43.0"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
 deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.107.0"
+eszip = "=0.108.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -135,6 +136,7 @@ deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.
 deno_typescript_go_client_rust = { version = "0.10.0", path = "./libs/typescript_go_client" }
 napi_sym = { version = "0.158.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.66.0", path = "./libs/node_resolver" }
+node_shim = { version = "0.3.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
@@ -213,7 +215,6 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
-node_shim = "0.3.0"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
