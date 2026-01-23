@@ -1086,43 +1086,41 @@ function waitForStreamToClose(stream: Stream) {
   return deferred.promise;
 }
 
-// Deno subcommands - used to check if we need to add "run -A"
-const kDenoSubcommandSet = new Set([
-  "add",
-  "bench",
-  "cache",
-  "check",
-  "compile",
-  "completions",
-  "coverage",
-  "doc",
-  "eval",
-  "fmt",
-  "help",
-  "info",
-  "init",
-  "install",
-  "jupyter",
-  "lint",
-  "lsp",
-  "publish",
-  "repl",
-  "run",
-  "serve",
-  "task",
-  "test",
-  "types",
-  "uninstall",
-  "upgrade",
-  "vendor",
-]);
+/**
+ * Simple shell argument splitter that handles double and single quotes.
+ * Used to parse the arguments portion of a shell command string.
+ */
+function splitShellArgs(str: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let inDouble = false;
+  let inSingle = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === " " && !inDouble && !inSingle) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current.length > 0) {
+    args.push(current);
+  }
+  return args;
+}
 
 /**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Handles cases like:
- * - `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
- * - `"/path/to/deno" "script.js" args` -> `"/path/to/deno" run -A "script.js" args`
- * - `"${VAR}" "script.js" args` -> if VAR=deno path, adds run -A
+ * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
+ * including subcommand detection, -c/--check flag handling, and adding "run -A".
  */
 function transformDenoShellCommand(
   command: string,
@@ -1172,32 +1170,21 @@ function transformDenoShellCommand(
   // Extract the rest of the command after the Deno path
   const rest = command.slice(denoPathLength).trimStart();
 
-  // Transform Node.js -c/--check flag to Deno run subcommand
-  const checkFlagRegex = /^(-c|--check)\s+(.*)$/;
-  const checkMatch = rest.match(checkFlagRegex);
-
-  if (checkMatch) {
-    return command.slice(0, denoPathLength) + " run " + checkMatch[2];
+  if (rest.length === 0) {
+    return command;
   }
 
-  // Check if the next argument looks like a script file (not a Deno subcommand)
-  // Pattern: "path" or 'path' or ${VAR} or path (starting with /, ./, or alphanumeric)
-  const scriptPattern =
-    /^(?:"([^"]*)"|'([^']*)'|\$\{[^}]+\}|([a-zA-Z0-9_./-][^\s]*))/;
-  const scriptMatch = rest.match(scriptPattern);
+  // Split the remaining args and use the Rust parser to translate them
+  const args = splitShellArgs(rest);
 
-  if (scriptMatch) {
-    // Get the unquoted value to check if it's a subcommand
-    const unquotedScript = scriptMatch[1] || scriptMatch[2] ||
-      scriptMatch[3] || "";
-    if (!kDenoSubcommandSet.has(unquotedScript)) {
-      // It's not a subcommand, so add "run -A"
-      const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-      return prefix + " run -A " + rest;
-    }
+  try {
+    const result = op_node_translate_cli_args(args, false);
+    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
+    return prefix + " " + result.deno_args.join(" ");
+  } catch {
+    // If the Rust parser fails (unknown flags), return the original command
+    return command;
   }
-
-  return command;
 }
 
 /**
