@@ -1179,6 +1179,13 @@ function transformDenoShellCommand(
 
   try {
     const result = op_node_translate_cli_args(args, false);
+    // Check if any translated arg contains shell metacharacters (e.g. from eval
+    // wrapping). If so, the result can't be safely used in a shell command.
+    for (let i = 0; i < result.deno_args.length; i++) {
+      if (/[();&|<>`!]/.test(result.deno_args[i])) {
+        return command;
+      }
+    }
     const prefix = shellVarPrefix || command.slice(0, denoPathLength);
     return prefix + " " + result.deno_args.join(" ");
   } catch {
