@@ -942,7 +942,6 @@ impl<'a> ResolverFactory<'a> {
         None,
       ));
       let npm_version_resolver = Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
       });

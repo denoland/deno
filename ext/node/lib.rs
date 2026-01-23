@@ -34,7 +34,6 @@ use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
-pub use ops::inspector::InspectorServerUrl;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -389,6 +388,7 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setgid,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
+    ops::node_cli_parser::op_node_translate_cli_args,
     ops::tls::op_get_root_certificates,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,

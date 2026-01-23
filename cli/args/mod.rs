@@ -6,6 +6,7 @@ mod flags_net;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -51,7 +52,6 @@ use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
@@ -832,23 +832,16 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_inspector_server(
+  pub fn resolve_inspector_server_options(
     &self,
-  ) -> Result<Option<InspectorServer>, AnyError> {
-    let maybe_inspect_host = self
+  ) -> Option<(SocketAddr, &'static str)> {
+    let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
-      .or(self.flags.inspect_wait);
+      .or(self.flags.inspect_wait)?;
 
-    let Some(host) = maybe_inspect_host else {
-      return Ok(None);
-    };
-
-    Ok(Some(InspectorServer::new(
-      host,
-      DENO_VERSION_INFO.user_agent,
-    )?))
+    Some((host, DENO_VERSION_INFO.user_agent))
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -1510,12 +1503,7 @@ pub fn config_to_deno_graph_workspace_member(
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
-    "--js-explicit-resource-management".to_string(),
-    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-    // and its settings.
-    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-    "--no-harmony-import-assertions".to_string(),
+    "--inspector-live-edit".to_string(),
   ]
 }
 
