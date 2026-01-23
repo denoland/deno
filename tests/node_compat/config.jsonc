@@ -418,6 +418,7 @@
     "parallel/test-domain-nested.js": {},
     "parallel/test-domain-stack.js": {},
     "parallel/test-domain-top-level-error-handler-clears-stack.js": {},
+    "parallel/test-domexception-cause.js": {},
     "parallel/test-dsa-fips-invalid-key.js": {},
     "parallel/test-env-newprotomethod-remove-unnecessary-prototypes.js": {},
     "parallel/test-error-format-list.js": {},
