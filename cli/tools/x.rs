@@ -125,6 +125,93 @@ fn run_js_file(
   }
 }
 
+fn get_npm_process_state(npm_resolver: &CliNpmResolver) -> Option<String> {
+  match npm_resolver {
+    deno_resolver::npm::NpmResolver::Managed(managed) => Some(
+      deno_npm_installer::process_state::NpmProcessState::new_managed(
+        managed.resolution().serialized_valid_snapshot(),
+        managed.root_node_modules_path(),
+      )
+      .as_serialized(),
+    ),
+    deno_resolver::npm::NpmResolver::Byonm(_) => None,
+  }
+}
+
+fn run_bin_value(
+  factory: &CliFactory,
+  flags: &Flags,
+  bin_value: BinValue,
+  npm_process_state: Option<String>,
+) -> Result<i32, AnyError> {
+  match bin_value {
+    BinValue::JsFile(path_buf) => {
+      let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
+      let permission_args = flags.to_permission_args();
+      run_js_file(
+        &path,
+        &permission_args,
+        &flags.argv,
+        npm_process_state,
+        true,
+      )
+    }
+    BinValue::Executable(mut path_buf) => {
+      if cfg!(windows) && path_buf.extension().is_none() {
+        // prefer cmd shim over sh
+        path_buf.set_extension("cmd");
+        if !path_buf.exists() {
+          //  just fall back to original path
+          path_buf.set_extension("");
+        }
+      }
+      let permissions = factory.root_permissions_container()?;
+      permissions.check_run(
+        &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
+          PathQueryDescriptor::new(
+            &factory.sys(),
+            std::borrow::Cow::Borrowed(path_buf.as_ref()),
+          )?,
+        ),
+        "entrypoint",
+      )?;
+      let mut child = std::process::Command::new(path_buf)
+        .args(&flags.argv)
+        .spawn()
+        .context("Failed to spawn command")?;
+      let status = child.wait()?;
+      Ok(status.code().unwrap_or(1))
+    }
+  }
+}
+
+/// Try to find a bin value from a map of bins, with fallbacks for scoped package names
+/// and single-bin packages.
+fn find_bin_value(
+  bins: &BTreeMap<String, BinValue>,
+  bin_name: &str,
+) -> Option<BinValue> {
+  bins
+    .get(bin_name)
+    .or_else(|| {
+      // Try the package name without scope as fallback
+      if bin_name.starts_with('@') && bin_name.contains('/') {
+        bin_name.split('/').last().and_then(|name| bins.get(name))
+      } else {
+        None
+      }
+    })
+    .or_else(|| {
+      // If there's only one bin, use it
+      if bins.len() == 1 {
+        bins.values().next()
+      } else {
+        None
+      }
+    })
+    .cloned()
+}
+
 async fn maybe_run_local_npm_bin(
   factory: &CliFactory,
   flags: &Flags,
@@ -132,8 +219,6 @@ async fn maybe_run_local_npm_bin(
   npm_resolver: &CliNpmResolver,
   command: &str,
 ) -> Result<Option<i32>, AnyError> {
-  let permissions = factory.root_permissions_container()?;
-
   let mut bins =
     resolve_local_bins(node_resolver, npm_resolver, factory).await?;
   let bin_value = if let Some(bin_value) = bins.remove(command) {
@@ -151,56 +236,8 @@ async fn maybe_run_local_npm_bin(
     return Ok(None);
   };
 
-  let npm_process_state = match npm_resolver {
-    deno_resolver::npm::NpmResolver::Managed(managed) => Some(
-      deno_npm_installer::process_state::NpmProcessState::new_managed(
-        managed.resolution().serialized_valid_snapshot(),
-        managed.root_node_modules_path(),
-      )
-      .as_serialized(),
-    ),
-    deno_resolver::npm::NpmResolver::Byonm(_) => None,
-  };
-
-  match bin_value {
-    BinValue::JsFile(path_buf) => {
-      let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
-      let permission_args = flags.to_permission_args();
-      run_js_file(
-        &path,
-        &permission_args,
-        &flags.argv,
-        npm_process_state,
-        true,
-      )
-      .map(Some)
-    }
-    BinValue::Executable(mut path_buf) => {
-      if cfg!(windows) && path_buf.extension().is_none() {
-        // prefer cmd shim over sh
-        path_buf.set_extension("cmd");
-        if !path_buf.exists() {
-          //  just fall back to original path
-          path_buf.set_extension("");
-        }
-      }
-      permissions.check_run(
-        &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
-          PathQueryDescriptor::new(
-            &factory.sys(),
-            std::borrow::Cow::Borrowed(path_buf.as_ref()),
-          )?,
-        ),
-        "entrypoint",
-      )?;
-      let mut child = std::process::Command::new(path_buf)
-        .args(&flags.argv)
-        .spawn()
-        .context("Failed to spawn command")?;
-      let status = child.wait()?;
-      Ok(Some(status.code().unwrap_or(1)))
-    }
-  }
+  let npm_process_state = get_npm_process_state(npm_resolver);
+  run_bin_value(factory, flags, bin_value, npm_process_state).map(Some)
 }
 
 enum XTempDir {
@@ -386,6 +423,30 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
   let reload = matches!(cache_setting, CacheSetting::ReloadAll);
   match thing_to_run {
     ReqRefOrUrl::Npm(npm_package_req_reference) => {
+      // First try to resolve from the local project
+      if let Ok(package_folder) = npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(
+          npm_package_req_reference.req(),
+          &deno_path_util::url_from_directory_path(cli_options.initial_cwd())
+            .unwrap(),
+        )
+      {
+        let bin_name =
+          if let Some(sub_path) = npm_package_req_reference.sub_path() {
+            sub_path
+          } else {
+            npm_package_req_reference.req().name.as_str()
+          };
+
+        let bins = node_resolver
+          .resolve_npm_binary_commands_for_package(&package_folder)?;
+        if let Some(bin_value) = find_bin_value(&bins, bin_name) {
+          let npm_process_state = get_npm_process_state(npm_resolver);
+          return run_bin_value(&factory, &flags, bin_value, npm_process_state);
+        }
+      }
+
+      // Fall back to autoinstall
       let (managed_flags, managed_factory) = autoinstall_package(
         ReqRef::Npm(&npm_package_req_reference),
         &flags,
@@ -468,16 +529,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       .await?;
 
       let npm_resolver = new_factory.npm_resolver().await?;
-      let npm_process_state = match npm_resolver {
-        deno_resolver::npm::NpmResolver::Managed(managed) => Some(
-          deno_npm_installer::process_state::NpmProcessState::new_managed(
-            managed.resolution().serialized_valid_snapshot(),
-            managed.root_node_modules_path(),
-          )
-          .as_serialized(),
-        ),
-        deno_resolver::npm::NpmResolver::Byonm(_) => None,
-      };
+      let npm_process_state = get_npm_process_state(npm_resolver);
 
       let permission_args = flags.to_permission_args();
       let url =
