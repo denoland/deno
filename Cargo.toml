@@ -37,6 +37,7 @@ members = [
   "libs/inspector_server",
   "libs/maybe_sync",
   "libs/node_resolver",
+  "libs/node_shim",
   "libs/npm_cache",
   "libs/npm_installer",
   "libs/package_json",
@@ -135,6 +136,7 @@ deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.
 deno_typescript_go_client_rust = { version = "0.10.0", path = "./libs/typescript_go_client" }
 napi_sym = { version = "0.158.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.66.0", path = "./libs/node_resolver" }
+node_shim = { version = "0.3.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
@@ -213,7 +215,6 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
 netif = "0.1.6"
-node_shim = "0.3.0"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
