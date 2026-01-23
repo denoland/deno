@@ -1395,7 +1395,7 @@ export type * from "./c.d.ts";
   "#;
       let unfurled_source = unfurl_text(
         &cwd.join("publish").join("mod.ts"),
-        &source_code,
+        source_code,
         &unfurler,
       );
       // it will inline the version
@@ -1716,7 +1716,7 @@ export * from "@std/fs";
 export * from "semver";
 "#;
     let unfurled_source =
-      unfurl_text(&cwd.join("mod.ts"), &source_code, &unfurler);
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
     // these will be unfurled to jsr: specifiers because they're jsr packages
     let expected_source = r#"export * from "jsr:@std/path@1";
 export * from "jsr:@std/fs@^1";
