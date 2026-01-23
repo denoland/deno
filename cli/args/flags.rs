@@ -840,7 +840,7 @@ impl InspectPublishUid {
           return Err(format!(
             "--inspect-publish-uid destination can be stderr or http, got '{}'",
             part
-          ))
+          ));
         }
       }
     }
@@ -14399,7 +14399,8 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     );
 
     // Test without the flag (should be None)
-    let flags = flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
     assert_eq!(flags.inspect_publish_uid, None);
   }
 }
