@@ -124,9 +124,9 @@ pub fn run_maybe_flaky_test(
   }
   for i in 0..2 {
     let result = action();
-    // if result.is_failed() {
-    return result;
-    // }
+    if !result.is_failed() || cfg!(windows) {
+      return result;
+    }
     flaky_test_tracker.record_flaky(test_name);
     #[allow(clippy::print_stderr)]
     if *IS_CI {
