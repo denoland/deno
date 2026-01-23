@@ -756,8 +756,6 @@
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
-
-    // TODO(bartlomieju): requires for VSCode integration
     "parallel/test-inspect-publish-uid.js": {},
 
     // TODO(bartlomieju):
