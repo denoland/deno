@@ -169,7 +169,6 @@ impl InspectorServer {
     name: &'static str,
     publish_uid: InspectPublishUid,
   ) -> Result<Self, InspectorServerError> {
-
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
@@ -486,7 +485,7 @@ async fn server(
   let register_inspector_handler = listen_for_new_inspectors(
     register_inspector_rx,
     inspector_map.clone(),
-    publish_uid.console,
+    publish_uid,
   )
   .boxed_local();
 
@@ -549,7 +548,6 @@ async fn server(
       let json_version_response = json_version_response.clone();
       let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
       let mut reset_rx_conn = reset_rx.resubscribe();
-      let publish_http = publish_uid.http;
 
       let service = hyper::service::service_fn(
         move |req: http::Request<hyper::body::Incoming>| {
@@ -572,13 +570,13 @@ async fn server(
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
-              (&http::Method::GET, "/json/version") if publish_http => {
+              (&http::Method::GET, "/json/version") if publish_uid.http => {
                 handle_json_version_request(json_version_response.clone())
               }
-              (&http::Method::GET, "/json") if publish_http => {
+              (&http::Method::GET, "/json") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
-              (&http::Method::GET, "/json/list") if publish_http => {
+              (&http::Method::GET, "/json/list") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
               _ => http::Response::builder()
@@ -629,10 +627,10 @@ async fn server(
 async fn listen_for_new_inspectors(
   mut register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
-  publish_console: bool,
+  publish_uid: InspectPublishUid,
 ) {
   while let Some(info) = register_inspector_rx.next().await {
-    if publish_console {
+    if publish_uid.console {
       log::info!(
         "Debugger listening on {}",
         info.get_websocket_debugger_url(&info.host.to_string())

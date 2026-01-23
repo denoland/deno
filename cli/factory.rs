@@ -885,7 +885,7 @@ impl CliFactory {
       deno_runtime::deno_inspector_server::create_inspector_server(
         host,
         name,
-        publish_uid.copied().unwrap_or_default(),
+        publish_uid,
       )?;
     }
     Ok(())

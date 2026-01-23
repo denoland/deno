@@ -834,7 +834,7 @@ impl CliOptions {
 
   pub fn resolve_inspector_server_options(
     &self,
-  ) -> Option<(SocketAddr, &'static str, Option<&InspectPublishUid>)> {
+  ) -> Option<(SocketAddr, &'static str, InspectPublishUid)> {
     let host = self
       .flags
       .inspect
@@ -844,7 +844,7 @@ impl CliOptions {
     Some((
       host,
       DENO_VERSION_INFO.user_agent,
-      self.flags.inspect_publish_uid.as_ref(),
+      self.flags.inspect_publish_uid.unwrap_or_default(),
     ))
   }
 
