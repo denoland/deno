@@ -2368,7 +2368,7 @@
       "event.any.html": true,
       "event.any.worker.html": true,
       "abort-signal-any.any.html": true,
-      "abort-signal-any.any.worker.html": true,
+      "abort-signal-any.any.worker.html": false,
       "abort-signal-timeout.html": false,
       "reason-constructor.html": false
     },
@@ -5537,12 +5537,8 @@
         "compile.any.worker.html": true,
         "instantiate-bad-imports.any.html": true,
         "instantiate-bad-imports.any.worker.html": true,
-        "instantiate.any.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
-        "instantiate.any.worker.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
+        "instantiate.any.html": true,
+        "instantiate.any.worker.html": true,
         "multi-value.any.html": true,
         "multi-value.any.worker.html": true,
         "toStringTag.any.html": true,
@@ -5564,19 +5560,11 @@
       },
       "idlharness.any.html": [
         "Module interface: existence and properties of interface object",
-        "Module interface: existence and properties of interface prototype object",
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface prototype object"
       ],
       "idlharness.any.worker.html": [
         "Module interface: existence and properties of interface object",
-        "Module interface: existence and properties of interface prototype object",
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface prototype object"
       ],
       "instance": {
         "constructor-bad-imports.any.html": true,
@@ -5607,14 +5595,26 @@
         "constructor-shared.tentative.any.worker.html": true,
         "constructor-types.tentative.any.html": false,
         "constructor-types.tentative.any.worker.html": false,
-        "to-fixed-length-buffer-shared.any.html": false,
-        "to-fixed-length-buffer-shared.any.worker.html": false,
-        "to-fixed-length-buffer.any.html": false,
-        "to-fixed-length-buffer.any.worker.html": false,
-        "to-resizable-buffer-shared.any.html": false,
-        "to-resizable-buffer-shared.any.worker.html": false,
-        "to-resizable-buffer.any.html": false,
-        "to-resizable-buffer.any.worker.html": false
+        "to-fixed-length-buffer-shared.any.html": true,
+        "to-fixed-length-buffer-shared.any.worker.html": true,
+        "to-fixed-length-buffer.any.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-fixed-length-buffer.any.worker.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-resizable-buffer-shared.any.html": true,
+        "to-resizable-buffer-shared.any.worker.html": true,
+        "to-resizable-buffer.any.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ],
+        "to-resizable-buffer.any.worker.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ]
       },
       "module": {
         "constructor.any.html": true,

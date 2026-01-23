@@ -646,7 +646,6 @@ impl WebWorker {
           options.enable_raw_imports,
         ))),
       ),
-      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),
