@@ -879,8 +879,22 @@ impl CliFactory {
 
   pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
     let cli_options = self.cli_options()?;
-    if let Some((host, name)) = cli_options.resolve_inspector_server_options() {
-      deno_runtime::deno_inspector_server::create_inspector_server(host, name)?;
+    if let Some((host, name, publish_uid)) =
+      cli_options.resolve_inspector_server_options()
+    {
+      eprintln!("publish uid config {:?}", publish_uid);
+      let publish_uid = publish_uid.map(|uid| {
+        deno_runtime::deno_inspector_server::InspectPublishUid {
+          console: uid.console,
+          http: uid.http,
+        }
+      });
+      eprintln!("publish 2uid config {:?}", publish_uid);
+      deno_runtime::deno_inspector_server::create_inspector_server(
+        host,
+        name,
+        publish_uid,
+      )?;
     }
     Ok(())
   }

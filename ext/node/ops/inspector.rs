@@ -52,7 +52,7 @@ pub fn op_inspector_open(
     .borrow_mut::<PermissionsContainer>()
     .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
 
-  let server = create_inspector_server(addr, "deno")?;
+  let server = create_inspector_server(addr, "deno", None)?;
 
   let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
   let main_module = state.borrow::<ModuleSpecifier>().to_string();

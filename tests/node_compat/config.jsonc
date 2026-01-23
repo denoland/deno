@@ -758,7 +758,7 @@
     "parallel/test-icu-transcode.js": {},
 
     // TODO(bartlomieju): requires for VSCode integration
-    // "parallel/test-inspect-publish-uid.js": {},
+    "parallel/test-inspect-publish-uid.js": {},
 
     // TODO(bartlomieju):
     // "parallel/test-inspector-async-hook-after-done.js": {},
