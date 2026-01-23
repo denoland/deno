@@ -756,10 +756,9 @@
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
-    "parallel/test-inspect-address-in-use.js": {},
-    "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
-    "parallel/test-inspect-publish-uid.js": {},
-    "parallel/test-inspect-support-for-node_options.js": {},
+
+    // TODO(bartlomieju): requires for VSCode integration
+    // "parallel/test-inspect-publish-uid.js": {},
 
     // TODO(bartlomieju):
     // "parallel/test-inspector-async-hook-after-done.js": {},
@@ -774,9 +773,14 @@
     // "parallel/test-inspector-tracing-domain.js": {},
     // "parallel/test-inspector-ip-detection.js": {},
     // "parallel/test-inspector-already-activated-cli.js": {},
-    //
+    // "parallel/test-v8-coverage.js": {},
+    // "parallel/test-v8-stop-coverage.js": {},
+    // "parallel/test-v8-take-coverage-noop.js": {},
+    // "parallel/test-v8-take-coverage.js": {},
+    // "parallel/test-inspect-address-in-use.js": {},
+    // "parallel/test-inspector-inspect-brk-node.js": {},
+    // "parallel/test-inspector-invalid-args.js": {},
 
-    "parallel/test-inspector-break-when-eval.js": {},
     "parallel/test-inspector-close-worker.js": {},
 
     // TODO(bartlomieju): times out
@@ -784,12 +788,17 @@
     // "parallel/test-inspector-multisession-js.js": {},
     // "parallel/test-inspector-bindings.js": {},
     // "parallel/test-inspector-async-context-brk.js": {},
+    // "parallel/test-inspector-wait-for-connection.js": {},
 
     "parallel/test-inspector-connect-to-main-thread.js": {},
 
     // TODO(bartlomieju): mismatch in name of the default context,
     // requires changes to `deno_core`.
     // "parallel/test-inspector-contexts.js": {},
+
+    // TODO(bartlomieju): mismatch in name of the eval context,
+    // requires changes to `deno_core`.
+    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
 
     // TODO(bartlomieju): depends on internal APIs from Node like `process.bindings()`
     // or `process._debugEnd`
@@ -799,17 +808,12 @@
     "parallel/test-inspector-has-idle.js": {},
 
     "parallel/test-inspector-heapdump.js": {},
-    // TODO(bartlomieju):
-    // "parallel/test-inspector-inspect-brk-node.js": {},
-    "parallel/test-inspector-invalid-args.js": {},
     "parallel/test-inspector-module.js": {},
 
     // TODO(bartlomieju): depends on `Network` CDP domain
     // "parallel/test-inspector-network-http.js": {},
     // "parallel/test-inspector-network-arbitrary-data.js": {},
     // "parallel/test-inspector-emit-protocol-event.js": {},
-
-    "parallel/test-inspector-stop-profile-after-done.js": {},
 
     // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
     // "parallel/test-inspector-esm.js": {},
@@ -825,6 +829,8 @@
     // "parallel/test-inspector-worker-target.js"
     // "parallel/test-inspector-debug-brk-flag.js": {},
     // "parallel/test-inspector-wait.mjs": {},
+    // "parallel/test-inspector-stop-profile-after-done.js": {},
+    // "parallel/test-inspector-break-when-eval.js": {},
 
     // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
     // "parallel/test-inspector-network-fetch.js": {},
@@ -835,6 +841,7 @@
 
     // TODO(bartlomieju): requires `cluster.fork` module
     // "parallel/test-inspector-port-zero-cluster.js": {},
+    // "parallel/test-inspect-support-for-node_options.js": {},
 
     // TODO(bartlomieju):: easy, `--inspect` flag doesn't support `localhost`
     // "parallel/test-inspector-port-zero.js": {},
@@ -850,7 +857,6 @@
     "parallel/test-inspector-strip-types.js": {},
     "parallel/test-inspector-vm-global-accessors-getter-sideeffect.js": {},
     "parallel/test-inspector-vm-global-accessors-sideeffects.js": {},
-    "parallel/test-inspector-wait-for-connection.js": {},
 
     "parallel/test-inspector-workers-flat-list.js": {},
     "parallel/test-instanceof.js": {},
@@ -1456,17 +1462,9 @@
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-v8-coverage.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-v8-stop-coverage.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-v8-take-coverage-noop.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-v8-take-coverage.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1547,7 +1545,7 @@
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-worker-debug.js": {},
+    // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate-during-query.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
@@ -1559,7 +1557,7 @@
     "parallel/test-worker-message-port-terminate-transfer-list.js": {},
     "parallel/test-worker-mjs-workerdata.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    "parallel/test-worker-name.js": {},
+    // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
     "parallel/test-worker-ref-onexit.js": {},
