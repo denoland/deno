@@ -478,15 +478,33 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               PackageJsonDepValue::Req(pkg_req) => {
                 // todo(#24612): consider warning or error when this is an npm workspace
                 // member that's also a jsr package?
-                ModuleSpecifier::parse(&format!(
-                  "npm:{}{}",
-                  pkg_req,
-                  sub_path
-                    .as_ref()
-                    .map(|s| format!("/{}", s))
-                    .unwrap_or_default()
-                ))
-                .ok()
+                if let Some((scope, name)) = pkg_req
+                  .name
+                  .strip_prefix("@jsr/")
+                  .and_then(|name| name.split_once("__"))
+                {
+                  ModuleSpecifier::parse(&format!(
+                    "jsr:@{}/{}@{}{}",
+                    scope,
+                    name,
+                    pkg_req.version_req,
+                    sub_path
+                      .as_ref()
+                      .map(|s| format!("/{}", s))
+                      .unwrap_or_default()
+                  ))
+                  .ok()
+                } else {
+                  ModuleSpecifier::parse(&format!(
+                    "npm:{}{}",
+                    pkg_req,
+                    sub_path
+                      .as_ref()
+                      .map(|s| format!("/{}", s))
+                      .unwrap_or_default()
+                  ))
+                  .ok()
+                }
               }
               PackageJsonDepValue::Workspace(workspace_version_req) => {
                 let version_req = match workspace_version_req {
@@ -1375,15 +1393,11 @@ export type * from "./c.d.ts";
 
   console.log(add, subtract);
   "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("publish").join("mod.ts"))
-          .unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
-      assert_eq!(d.len(), 0);
+      let unfurled_source = unfurl_text(
+        &cwd.join("publish").join("mod.ts"),
+        &source_code,
+        &unfurler,
+      );
       // it will inline the version
       let expected_source = r#"import add from "npm:add@~0.1.0";
   import subtract from "npm:subtract@^0.2.0";
@@ -1674,6 +1688,39 @@ export { data, helper };
     let expected_source = r#"import { data } from "npm:package@^1.2.3";
 /* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
 export { data, helper };
+"#;
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  #[tokio::test]
+  async fn test_unfurling_package_json_jsr_dep() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({
+        "name": "add",
+        "version": "0.1.0",
+        "dependencies": {
+          "path": "jsr:@std/path@1",
+          "@std/fs": "jsr:^1",
+          "semver": "npm:@jsr/std__semver@1",
+        },
+        "exports": "./mod.ts"
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"export * from "path";
+export * from "@std/fs";
+export * from "semver";
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), &source_code, &unfurler);
+    // these will be unfurled to jsr: specifiers because they're jsr packages
+    let expected_source = r#"export * from "jsr:@std/path@1";
+export * from "jsr:@std/fs@^1";
+export * from "jsr:@std/semver@1";
 "#;
     assert_eq!(unfurled_source, expected_source);
   }
