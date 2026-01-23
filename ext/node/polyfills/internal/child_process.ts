@@ -17,6 +17,7 @@ import {
   op_node_ipc_write_advanced,
   op_node_ipc_write_json,
   op_node_translate_cli_args,
+  op_node_translate_shell_command,
 } from "ext:core/ops";
 import {
   ArrayIsArray,
@@ -1087,104 +1088,22 @@ function waitForStreamToClose(stream: Stream) {
 }
 
 /**
- * Simple shell argument splitter that handles double and single quotes.
- * Used to parse the arguments portion of a shell command string.
- */
-function splitShellArgs(str: string): string[] {
-  const args: string[] = [];
-  let current = "";
-  let inDouble = false;
-  let inSingle = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (ch === " " && !inDouble && !inSingle) {
-      if (current.length > 0) {
-        args.push(current);
-        current = "";
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current.length > 0) {
-    args.push(current);
-  }
-  return args;
-}
-
-/**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
- * including subcommand detection, -c/--check flag handling, and adding "run -A".
+ * Delegates to the Rust implementation which handles executable path detection (including
+ * shell variable references like "${VAR}"), argument parsing, and translation.
  */
 function transformDenoShellCommand(
   command: string,
   env?: Record<string, string | number | boolean>,
 ): string {
-  const denoPath = Deno.execPath();
-
-  // Check if the command starts with the Deno executable (possibly quoted)
-  const quotedDenoPath = `"${denoPath}"`;
-  const singleQuotedDenoPath = `'${denoPath}'`;
-
-  let startsWithDeno = false;
-  let denoPathLength = 0;
-  let shellVarPrefix = "";
-
-  if (command.startsWith(quotedDenoPath)) {
-    startsWithDeno = true;
-    denoPathLength = quotedDenoPath.length;
-  } else if (command.startsWith(singleQuotedDenoPath)) {
-    startsWithDeno = true;
-    denoPathLength = singleQuotedDenoPath.length;
-  } else if (command.startsWith(denoPath)) {
-    startsWithDeno = true;
-    denoPathLength = denoPath.length;
-  } else if (env) {
-    // Check for shell variable that references the Deno path
-    // Pattern: "${VARNAME}" or $VARNAME at start of command
-    const shellVarMatch = command.match(
-      /^(?:"\$\{([^}]+)\}"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
-    );
-    if (shellVarMatch) {
-      const varName = shellVarMatch[1] || shellVarMatch[2] ||
-        shellVarMatch[3];
-      const varValue = env[varName];
-      if (varValue !== undefined && String(varValue) === denoPath) {
-        startsWithDeno = true;
-        shellVarPrefix = shellVarMatch[0];
-        denoPathLength = shellVarMatch[0].length;
-      }
+  // Convert env values to strings for the Rust op
+  const strEnv: Record<string, string> = {};
+  if (env) {
+    for (const key of Object.keys(env)) {
+      strEnv[key] = String(env[key]);
     }
   }
-
-  if (!startsWithDeno) {
-    return command;
-  }
-
-  // Extract the rest of the command after the Deno path
-  const rest = command.slice(denoPathLength).trimStart();
-
-  if (rest.length === 0) {
-    return command;
-  }
-
-  // Split the remaining args and use the Rust parser to translate them
-  const args = splitShellArgs(rest);
-
-  try {
-    const result = op_node_translate_cli_args(args, false);
-    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-    return prefix + " " + result.deno_args.join(" ");
-  } catch {
-    // If the Rust parser fails (unknown flags), return the original command
-    return command;
-  }
+  return op_node_translate_shell_command(command, Deno.execPath(), strEnv);
 }
 
 /**

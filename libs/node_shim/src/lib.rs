@@ -3514,6 +3514,156 @@ fn add_inspector_flags(
   }
 }
 
+/// Split a shell command string into arguments, respecting double and single quotes.
+fn split_shell_args(s: &str) -> Vec<String> {
+  let mut args = Vec::new();
+  let mut current = String::new();
+  let mut in_double = false;
+  let mut in_single = false;
+
+  for ch in s.chars() {
+    match ch {
+      '"' if !in_single => in_double = !in_double,
+      '\'' if !in_double => in_single = !in_single,
+      ' ' if !in_double && !in_single => {
+        if !current.is_empty() {
+          args.push(std::mem::take(&mut current));
+        }
+      }
+      _ => current.push(ch),
+    }
+  }
+  if !current.is_empty() {
+    args.push(current);
+  }
+  args
+}
+
+/// Extract a shell variable name and its prefix length from the start of a command string.
+/// Handles patterns: `"${VAR}"`, `${VAR}`, `$VAR`
+/// Returns (variable_name, prefix_length) if found.
+fn extract_shell_var_prefix(command: &str) -> Option<(&str, usize)> {
+  let bytes = command.as_bytes();
+
+  if bytes.starts_with(b"\"${") {
+    // Pattern: "${VAR}"
+    if let Some(close_brace) = command[3..].find('}') {
+      let end = 3 + close_brace;
+      // Check for closing quote after }
+      if end + 1 < bytes.len() && bytes[end + 1] == b'"' {
+        let var_name = &command[3..end];
+        if is_valid_var_name(var_name) {
+          return Some((var_name, end + 2)); // includes closing "
+        }
+      }
+    }
+  } else if bytes.starts_with(b"${") {
+    // Pattern: ${VAR}
+    if let Some(close_brace) = command[2..].find('}') {
+      let end = 2 + close_brace;
+      let var_name = &command[2..end];
+      if is_valid_var_name(var_name) {
+        return Some((var_name, end + 1)); // includes }
+      }
+    }
+  } else if bytes.starts_with(b"$") && bytes.len() > 1 {
+    // Pattern: $VAR
+    let start = 1;
+    if is_var_start_char(bytes[start]) {
+      let end = command[start..]
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .map(|i| start + i)
+        .unwrap_or(command.len());
+      let var_name = &command[start..end];
+      if !var_name.is_empty() {
+        return Some((var_name, end));
+      }
+    }
+  }
+
+  None
+}
+
+fn is_valid_var_name(s: &str) -> bool {
+  let bytes = s.as_bytes();
+  !bytes.is_empty()
+    && is_var_start_char(bytes[0])
+    && bytes[1..]
+      .iter()
+      .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+fn is_var_start_char(b: u8) -> bool {
+  b.is_ascii_alphabetic() || b == b'_'
+}
+
+/// Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
+///
+/// Handles detection of the Deno executable at the start of the command via:
+/// - Literal path (quoted or unquoted)
+/// - Shell variable references (`"${VAR}"`, `${VAR}`, `$VAR`) resolved via env
+///
+/// Then uses the CLI parser to translate Node.js args to Deno args.
+pub fn translate_shell_command(
+  command: &str,
+  deno_exec_path: &str,
+  env: &HashMap<String, String>,
+) -> String {
+  let quoted = format!("\"{}\"", deno_exec_path);
+  let single_quoted = format!("'{}'", deno_exec_path);
+
+  let mut starts_with_deno = false;
+  let mut deno_path_len: usize = 0;
+  let mut shell_var_prefix = String::new();
+
+  if command.starts_with(&quoted) {
+    starts_with_deno = true;
+    deno_path_len = quoted.len();
+  } else if command.starts_with(&single_quoted) {
+    starts_with_deno = true;
+    deno_path_len = single_quoted.len();
+  } else if command.starts_with(deno_exec_path) {
+    starts_with_deno = true;
+    deno_path_len = deno_exec_path.len();
+  } else if let Some((var_name, prefix_len)) = extract_shell_var_prefix(command)
+    && let Some(var_value) = env.get(var_name)
+    && var_value == deno_exec_path
+  {
+    starts_with_deno = true;
+    shell_var_prefix = command[..prefix_len].to_string();
+    deno_path_len = prefix_len;
+  }
+
+  if !starts_with_deno {
+    return command.to_string();
+  }
+
+  let rest = command[deno_path_len..].trim_start();
+  if rest.is_empty() {
+    return command.to_string();
+  }
+
+  // Split the remaining args and translate using the CLI parser
+  let args = split_shell_args(rest);
+
+  match parse_args(args) {
+    Ok(parsed) => {
+      let options = TranslateOptions::for_child_process();
+      let result = translate_to_deno_args(parsed, &options);
+      let prefix = if shell_var_prefix.is_empty() {
+        &command[..deno_path_len]
+      } else {
+        shell_var_prefix.as_str()
+      };
+      format!("{} {}", prefix, result.deno_args.join(" "))
+    }
+    Err(_) => {
+      // If parsing fails (unknown flags), return the original command
+      command.to_string()
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -4944,5 +5094,123 @@ mod tests {
       svec!["development"]
     );
     assert_eq!(result.remaining_args, svec!["script.js"]);
+  }
+
+  #[test]
+  fn test_split_shell_args_basic() {
+    assert_eq!(split_shell_args("a b c"), svec!["a", "b", "c"]);
+  }
+
+  #[test]
+  fn test_split_shell_args_quoted() {
+    assert_eq!(
+      split_shell_args(r#""hello world" foo"#),
+      svec!["hello world", "foo"]
+    );
+  }
+
+  #[test]
+  fn test_split_shell_args_single_quoted() {
+    assert_eq!(
+      split_shell_args("'hello world' foo"),
+      svec!["hello world", "foo"]
+    );
+  }
+
+  #[test]
+  fn test_extract_shell_var_prefix_double_quoted() {
+    let (name, len) = extract_shell_var_prefix(r#""${MY_VAR}" rest"#).unwrap();
+    assert_eq!(name, "MY_VAR");
+    assert_eq!(len, r#""${MY_VAR}""#.len());
+  }
+
+  #[test]
+  fn test_extract_shell_var_prefix_bare_braces() {
+    let (name, len) = extract_shell_var_prefix("${FOO} rest").unwrap();
+    assert_eq!(name, "FOO");
+    assert_eq!(len, "${FOO}".len());
+  }
+
+  #[test]
+  fn test_extract_shell_var_prefix_dollar_sign() {
+    let (name, len) = extract_shell_var_prefix("$BAR rest").unwrap();
+    assert_eq!(name, "BAR");
+    assert_eq!(len, "$BAR".len());
+  }
+
+  #[test]
+  fn test_extract_shell_var_prefix_none() {
+    assert!(extract_shell_var_prefix("/usr/bin/node script.js").is_none());
+    assert!(extract_shell_var_prefix("echo hello").is_none());
+  }
+
+  #[test]
+  fn test_translate_shell_command_literal_path() {
+    let env = HashMap::new();
+    let result = translate_shell_command(
+      r#""/usr/bin/deno" script.js"#,
+      "/usr/bin/deno",
+      &env,
+    );
+    assert_eq!(result, r#""/usr/bin/deno" run -A script.js"#);
+  }
+
+  #[test]
+  fn test_translate_shell_command_unquoted_path() {
+    let env = HashMap::new();
+    let result =
+      translate_shell_command("/usr/bin/deno script.js", "/usr/bin/deno", &env);
+    assert_eq!(result, "/usr/bin/deno run -A script.js");
+  }
+
+  #[test]
+  fn test_translate_shell_command_shell_var() {
+    let mut env = HashMap::new();
+    env.insert("DENO_BIN".to_string(), "/usr/bin/deno".to_string());
+    let result = translate_shell_command(
+      r#""${DENO_BIN}" "test.js" arg1"#,
+      "/usr/bin/deno",
+      &env,
+    );
+    assert_eq!(result, r#""${DENO_BIN}" run -A test.js arg1"#);
+  }
+
+  #[test]
+  fn test_translate_shell_command_check_flag() {
+    let env = HashMap::new();
+    let result = translate_shell_command(
+      r#""/usr/bin/deno" -c "file.js""#,
+      "/usr/bin/deno",
+      &env,
+    );
+    assert_eq!(result, r#""/usr/bin/deno" run -A file.js"#);
+  }
+
+  #[test]
+  fn test_translate_shell_command_subcommand_passthrough() {
+    let env = HashMap::new();
+    let result = translate_shell_command(
+      "/usr/bin/deno run -A script.js",
+      "/usr/bin/deno",
+      &env,
+    );
+    assert_eq!(result, "/usr/bin/deno run -A script.js");
+  }
+
+  #[test]
+  fn test_translate_shell_command_not_deno() {
+    let env = HashMap::new();
+    let result = translate_shell_command("echo hello", "/usr/bin/deno", &env);
+    assert_eq!(result, "echo hello");
+  }
+
+  #[test]
+  fn test_translate_shell_command_unmatched_var() {
+    let mut env = HashMap::new();
+    env.insert("OTHER".to_string(), "/usr/bin/other".to_string());
+    let result =
+      translate_shell_command(r#""${OTHER}" script.js"#, "/usr/bin/deno", &env);
+    // Var doesn't match deno path, so unchanged
+    assert_eq!(result, r#""${OTHER}" script.js"#);
   }
 }

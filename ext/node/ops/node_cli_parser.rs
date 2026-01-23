@@ -90,6 +90,20 @@ pub fn op_node_translate_cli_args(
   }
 }
 
+/// Op that transforms a shell command string that invokes Deno with Node.js flags.
+/// Detects the Deno executable at the start of the command (via literal path or shell
+/// variable references) and translates the args using the Rust CLI parser.
+/// Returns the transformed command string, or the original if no transformation needed.
+#[op2]
+#[string]
+pub fn op_node_translate_shell_command(
+  #[string] command: String,
+  #[string] deno_exec_path: String,
+  #[serde] env: std::collections::HashMap<String, String>,
+) -> String {
+  node_shim::translate_shell_command(&command, &deno_exec_path, &env)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
