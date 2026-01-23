@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -57,7 +57,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::inspector_server::InspectorServer;
+use crate::deno_inspector_server::get_inspector_server;
 use crate::ops;
 use crate::shared::runtime;
 
@@ -108,9 +108,7 @@ pub fn create_validate_import_attributes_callback(
       for (key, value) in attributes {
         let msg = if key != "type" {
           Some(format!("\"{key}\" attribute is not supported."))
-        } else if !valid_attribute(value.as_str())
-          && value != "$$deno-core-internal-wasm-module"
-        {
+        } else if !valid_attribute(value.as_str()) {
           Some(format!("\"{value}\" is not a valid module type."))
         } else {
           None
@@ -246,7 +244,6 @@ pub struct WorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
   // `should_wait_for_inspector_session`.
@@ -278,7 +275,6 @@ impl Default for WorkerOptions {
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
       trace_ops: Default::default(),
-      maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
@@ -446,10 +442,12 @@ impl MainWorker {
     }
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
@@ -618,13 +616,14 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
+    if let Some(server) = get_inspector_server() {
+      let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
+      js_runtime.op_state().borrow_mut().put(inspector_url);
     }
 
     let (
@@ -1045,7 +1044,7 @@ fn common_extensions<
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
+    deno_image::deno_image::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
@@ -1122,6 +1121,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     extension_transpiler: None,
     inspector: true,
     is_main: true,
+    worker_id: None,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
@@ -1129,7 +1129,6 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     validate_import_attributes_cb: Some(
       create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
-    import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
       .enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),

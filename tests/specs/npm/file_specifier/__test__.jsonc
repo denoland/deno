@@ -23,11 +23,9 @@
     "exitCode": 1,
     "output": "node_modules_dir.out"
   }, {
-    "if": "notMacIntel",
     "args": "compile --allow-read --output exec package-a/index.mjs",
     "output": "compile.out"
   }, {
-    "if": "notMacIntel",
     "commandName": "./exec",
     "args": [],
     "output": "output.out"

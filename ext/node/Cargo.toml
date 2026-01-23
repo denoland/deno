@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_node"
-version = "0.159.0"
+version = "0.166.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -34,6 +34,7 @@ deno_crypto_provider.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
+deno_inspector_server.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
 deno_package_json.workspace = true
@@ -66,6 +67,7 @@ log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
+node_shim.workspace = true
 num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true
@@ -108,6 +110,6 @@ errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock"] }
 winapi = { workspace = true, features = ["consoleapi"] }
 deno_subprocess_windows.workspace = true

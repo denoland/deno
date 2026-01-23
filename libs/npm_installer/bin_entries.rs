@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod windows_shim;
 
@@ -389,6 +389,8 @@ pub fn set_up_bin_entry<'a>(
   if sys_traits::impls::is_windows() {
     windows_shim::set_up_bin_shim(
       sys,
+      package,
+      extra,
       bin_name,
       bin_script,
       package_path,

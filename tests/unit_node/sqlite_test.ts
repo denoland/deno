@@ -1,9 +1,21 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import * as nodeAssert from "node:assert";
+import { Buffer } from "node:buffer";
+import { writeFileSync } from "node:fs";
 
 const tempDir = Deno.makeTempDirSync();
+
+const populate = (db: DatabaseSync, rows: number) => {
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  let values = "";
+  for (let i = 0; i < rows; i++) {
+    values += `(${i}, 'Name ${i}'),`;
+  }
+  values = values.slice(0, -1); // Remove trailing comma
+  db.exec(`INSERT INTO test (id, name) VALUES ${values}`);
+};
 
 Deno.test("[node/sqlite] sqlite-type symbol", () => {
   const db = new DatabaseSync(":memory:");
@@ -440,15 +452,18 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
-Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
+  const errMessageClosed = "database is not open";
 
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE test (value INTEGER)");
   const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  const sess = db.createSession();
   stmt.run(1, 2);
   db.close();
 
+  assertThrows(() => stmt.run(), Error, errMessageClosed);
   assertThrows(() => stmt.all(), Error, errMessage);
   assertThrows(() => stmt.expandedSQL, Error, errMessage);
   assertThrows(() => stmt.get(), Error, errMessage);
@@ -461,6 +476,9 @@ Deno.test("[node/sqlite] calling StatementSync methods after connection has clos
   );
   assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
   assertThrows(() => stmt.sourceSQL, Error, errMessage);
+
+  assertThrows(() => sess.changeset(), Error, errMessageClosed);
+  assertThrows(() => sess.patchset(), Error, errMessageClosed);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144
@@ -836,4 +854,216 @@ Deno.test("[node/sqlite] DatabaseSync.aggregate: throws an error when trying to 
     code: "ERR_SQLITE_ERROR",
     message: "sumint() may not be used as a window function",
   });
+});
+
+Deno.test("[node/sqlite] accept Buffer paths", () => {
+  const dbPath = `${tempDir}/buffer_path.db`;
+  const backupPath = `${tempDir}/buffer_path_backup.db`;
+  const dbPathBuffer = Buffer.from(dbPath);
+  const backupPathBuffer = Buffer.from(backupPath);
+  const db = new DatabaseSync(dbPathBuffer);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, backupPathBuffer);
+  db.close();
+
+  Deno.removeSync(dbPath);
+  Deno.removeSync(backupPath);
+});
+
+Deno.test("[node/sqlite] accept URL paths", () => {
+  const dbPath = `file://${tempDir}/url_path.db`;
+  const backupPath = `file://${tempDir}/url_path_backup.db`;
+  const dbPathUrl = new URL(dbPath);
+  const backupPathUrl = new URL(backupPath);
+  const db = new DatabaseSync(dbPathUrl);
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('Deno')");
+
+  backup(db, backupPathUrl);
+  db.close();
+
+  Deno.removeSync(dbPathUrl);
+  Deno.removeSync(backupPathUrl);
+});
+
+Deno.test("[node/sqlite] database backup fails when dest file is not writable", async () => {
+  const readonlyDestDb = `${tempDir}/readonly_backup.db`;
+  using db = new DatabaseSync(":memory:");
+  writeFileSync(readonlyDestDb, "", { mode: 0o444 });
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, readonlyDestDb);
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: "attempt to write a readonly database",
+  });
+
+  Deno.removeSync(readonlyDestDb);
+});
+
+Deno.test("[node/sqlite] progress function to have been called at least once", async () => {
+  const destDb = `${tempDir}/backup_progress.db`;
+  using db = new DatabaseSync(":memory:");
+  populate(db, 100);
+
+  let totalPages: number | undefined;
+  let remainingPages: number | undefined;
+  await backup(db, destDb, {
+    rate: 1,
+    progress: (progress) => {
+      totalPages ??= progress.totalPages;
+      remainingPages ??= progress.remainingPages;
+    },
+  });
+
+  assertEquals(typeof totalPages, "number");
+  assertEquals(typeof remainingPages, "number");
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when progress function throws", async () => {
+  const destDb = `${tempDir}/backup_progress.db`;
+  using db = new DatabaseSync(":memory:");
+  populate(db, 100);
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, destDb, {
+      rate: 1,
+      progress: () => {
+        throw new Error("progress error");
+      },
+    });
+  }, {
+    message: "progress error",
+  });
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when source db is invalid", async () => {
+  using database = new DatabaseSync(":memory:");
+  const destDb = `${tempDir}/other_backup_progress.db`;
+
+  await nodeAssert.rejects(async () => {
+    await backup(database, destDb, {
+      rate: 1,
+      source: "invalid",
+    });
+  }, {
+    message: "unknown database invalid",
+  });
+
+  Deno.removeSync(destDb);
+});
+
+Deno.test("[node/sqlite] backup fails when path cannot be opened", async () => {
+  using db = new DatabaseSync(":memory:");
+
+  await nodeAssert.rejects(async () => {
+    await backup(db, `${tempDir}/invalid/backup.db`);
+  }, {
+    message: "unable to open database file",
+  });
+});
+
+// https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/test/parallel/test-sqlite-backup.mjs#L311-L314
+Deno.test("[node/sqlite] backup has correct name and length", () => {
+  assertEquals(backup.name, "backup");
+  assertEquals(backup.length, 2);
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered positional parameters (?1, ?2) should work", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL
+    )
+  `);
+
+  // Test basic numbered parameters
+  const stmt = db.prepare("INSERT INTO users (name, email) VALUES (?1, ?2)");
+  const result = stmt.run("Alice", "alice@example.com");
+  assertEquals(result.changes, 1);
+
+  // Verify the data was inserted correctly
+  const row = db.prepare("SELECT name, email FROM users WHERE id = 1").get();
+  assertEquals(row, {
+    name: "Alice",
+    email: "alice@example.com",
+    __proto__: null,
+  });
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered parameters can be reused (?1 appearing multiple times)", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE nodes (
+      id INTEGER PRIMARY KEY,
+      parent_id INTEGER
+    )
+  `);
+  db.exec(
+    "INSERT INTO nodes (id, parent_id) VALUES (1, NULL), (2, 1), (3, 1), (4, 2)",
+  );
+
+  // Use same parameter twice - important use case for SQLite
+  const stmt = db.prepare(
+    "SELECT * FROM nodes WHERE id = ?1 OR parent_id = ?1 ORDER BY id",
+  );
+  const rows = stmt.all(1);
+
+  assertEquals(rows.length, 3); // id=1, and two nodes with parent_id=1
+  assertEquals(rows[0], { id: 1, parent_id: null, __proto__: null });
+  assertEquals(rows[1], { id: 2, parent_id: 1, __proto__: null });
+  assertEquals(rows[2], { id: 3, parent_id: 1, __proto__: null });
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered parameters in different order (?2, ?1)", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (a TEXT, b TEXT)");
+
+  // Parameters appear as ?2, ?1 in SQL but binding should still work positionally
+  const stmt = db.prepare("INSERT INTO test (a, b) VALUES (?2, ?1)");
+  stmt.run("first_arg", "second_arg");
+
+  const row = db.prepare("SELECT a, b FROM test").get();
+  // first_arg binds to ?1, second_arg binds to ?2
+  // SQL puts ?2 in column a, ?1 in column b
+  assertEquals(row, { a: "second_arg", b: "first_arg", __proto__: null });
+});
+
+Deno.test("[node/sqlite] Database GC should not invalidate statements and sessions", () => {
+  const db = new DatabaseSync(":memory:");
+  const stmt = db.prepare("SELECT 1");
+  const sess = db.createSession();
+  const a = [];
+  for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000000; i++) a.push(0); // Try to trigger GC
+    stmt.run();
+    sess.changeset();
+  }
+});
+
+// https://github.com/denoland/deno/issues/31744
+Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("create table if not exists t1(id integer primary key)");
+  const p = db.prepare(`insert into t1(id) values (?)`);
+  for (let id = 1; id <= 1_000_000; id++) {
+    p.run(id);
+  }
+  const iter = db.prepare(`select id from t1`).iterate();
+  for (const { id } of iter) {
+    assertEquals(typeof id, "number");
+  }
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 "use strict";
 
@@ -72,7 +72,6 @@ const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
 import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
@@ -995,7 +994,7 @@ export const validateRmOptions = hideStackFrames(
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
-    stat(path, (err, stats) => {
+    lstat(path, (err, stats) => {
       if (err) {
         if (options.force && err.code === "ENOENT") {
           return cb(null, options);
@@ -1029,7 +1028,7 @@ export const validateRmOptionsSync = hideStackFrames(
     validateBoolean(options.force, "options.force");
 
     if (!options.force || expectDir || !options.recursive) {
-      const isDirectory = statSync(path, { throwIfNoEntry: !options.force })
+      const isDirectory = lstatSync(path, { throwIfNoEntry: !options.force })
         ?.isDirectory();
 
       if (expectDir && !isDirectory) {

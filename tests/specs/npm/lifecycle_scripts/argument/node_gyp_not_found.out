@@ -5,8 +5,4 @@ Initialize @denotest/node-addon-implicit-node-gyp@1.0.0
 Initialize @denotest/node-addon-implicit-node-gyp@1.0.0: running 'install' script
 [UNORDERED_END]
 Warning node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)
-error: script 'install' in '@denotest/node-addon-implicit-node-gyp@1.0.0' failed with exit code 1
-stderr:
-Error launching 'node-gyp': [WILDCARD]
-
-error: failed to run scripts for packages: @denotest/node-addon-implicit-node-gyp@1.0.0
+Installed 1 package in [WILDCARD]

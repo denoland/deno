@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::fs;
@@ -18,10 +18,7 @@ use crate::PathRef;
 use crate::root_path;
 use crate::tests_path;
 
-pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
-pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
-pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
-pub const ESBUILD_VERSION: &str = "0.25.5";
+pub static ESBUILD_VERSION: &str = "0.25.5";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -67,6 +64,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
       ),
       "npm-private3",
+    )
+  });
+
+pub static PUBLIC_TEST_NPM_JSR_REGISTRY: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Public,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PUBLIC_NPM_JSR_REGISTRY_PORT
+      ),
+      "npm-jsr",
     )
   });
 
@@ -155,57 +164,28 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
+    let scope_names = [
+      "@denotest",
+      "@denotest2",
+      "@denotest3",
+      "@jsr",
+      "@esbuild",
+      "@types",
+    ];
+    for scope_name in scope_names {
+      let prefix1 = format!("/{}/", scope_name);
+      let prefix2 = format!("/{}%2f", scope_name);
 
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
+      let maybe_package_name_with_path = uri_path
+        .strip_prefix(&prefix1)
+        .or_else(|| uri_path.strip_prefix(&prefix2));
 
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", DENOTEST2_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST2_SCOPE_NAME);
-
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
-
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", "@types");
-    let prefix2 = format!("/{}%2f", "@types");
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-    if let Some(package_name_with_path) = maybe_package_name_with_path
-      && package_name_with_path.starts_with("denotest")
-    {
-      return Some(("@types", package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", "@esbuild");
-    let prefix2 = format!("/{}%2f", "@esbuild");
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some(("@esbuild", package_name_with_path));
+      if let Some(package_name_with_path) = maybe_package_name_with_path
+        && (scope_name != "@types"
+          || package_name_with_path.starts_with("denotest"))
+      {
+        return Some((scope_name, package_name_with_path));
+      }
     }
 
     None

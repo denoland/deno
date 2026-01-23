@@ -14,13 +14,15 @@ a
 [wgpu trace](https://github.com/gfx-rs/wgpu/wiki/Debugging-wgpu-Applications#tracing-infrastructure)
 to the specified directory.
 
-For testing this op crate will make use of the WebGPU conformance tests suite,
-running through our WPT runner. This will be used to validate implementation
-conformance.
+This op crate is tested primarily by running the
+[WebGPU conformance test suite](https://github.com/gpuweb/cts) using `wgpu`'s
+[`cts_runner`](https://github.com/gfx-rs/wgpu/blob/trunk/README.md#webgpu-conformance-test-suite).
+`cts_runner` also has a few
+[directed tests](https://github.com/gfx-rs/wgpu/tree/trunk/cts_runner/tests) to
+fill in missing coverage.
 
-GitHub CI doesn't run with GPUs, so testing relies on software like DX WARP &
-Vulkan lavapipe. Currently, only using DX WARP works, so tests are only run on
-Windows.
+GPU availability in GitHub CI is limited, so some configurations rely on
+software like DX WARP & Vulkan lavapipe.
 
 ## Links
 

@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --no-check=remote main.ts",
+  "output": "12\n"
+}

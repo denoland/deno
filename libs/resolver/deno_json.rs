@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -225,6 +225,12 @@ pub struct JsxImportSourceConfig {
   pub module: String,
   pub import_source: Option<JsxImportSourceSpecifierConfig>,
   pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
+}
+
+impl JsxImportSourceConfig {
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
+  }
 }
 
 #[allow(clippy::disallowed_types)]
@@ -1154,6 +1160,7 @@ impl<
         warn(e)
       }
     })?;
+    log::debug!("tsconfig.json file found at '{}'", path.display());
     let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
       .inspect_err(|e| warn(e))
       .ok()
@@ -1529,6 +1536,37 @@ impl CompilerOptionsResolver {
       ts_configs: ts_config_collector.collect(),
     }
   }
+
+  #[cfg(feature = "graph")]
+  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
+    // Resolve all the imports from every config file. These can be separated
+    // them later based on the folder we're type checking.
+    let mut imports_by_referrer =
+      IndexMap::<_, Vec<_>>::with_capacity(self.size());
+    for (_, compiler_options_data, maybe_files) in self.entries() {
+      if let Some((referrer, files)) = maybe_files {
+        imports_by_referrer
+          .entry(referrer.as_ref())
+          .or_default()
+          .extend(files.iter().map(|f| f.relative_specifier.clone()));
+      }
+      for (referrer, types) in
+        compiler_options_data.compiler_options_types().as_ref()
+      {
+        imports_by_referrer
+          .entry(referrer)
+          .or_default()
+          .extend(types.iter().cloned());
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer: referrer.clone(),
+        imports,
+      })
+      .collect()
+  }
 }
 
 #[cfg(feature = "graph")]
@@ -1544,7 +1582,7 @@ pub type CompilerOptionsResolverRc =
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
     FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,

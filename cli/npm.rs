@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -52,7 +52,7 @@ pub type CliNpmInstaller =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
+pub type CliNpmResolver<TSys = CliSys> = deno_resolver::npm::NpmResolver<TSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;

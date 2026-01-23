@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod blob;
 
@@ -396,13 +396,13 @@ fn op_encoding_encode_into(
   let s = v8::Local::<v8::String>::try_from(input)?;
 
   let mut nchars = 0;
-  out_buf[1] = s.write_utf8(
+  let len = s.write_utf8_v2(
     scope,
     buffer,
+    v8::WriteFlags::kReplaceInvalidUtf8,
     Some(&mut nchars),
-    v8::WriteOptions::NO_NULL_TERMINATION
-      | v8::WriteOptions::REPLACE_INVALID_UTF8,
-  ) as u32;
+  );
+  out_buf[1] = len as u32;
   out_buf[0] = nchars as u32;
   Ok(())
 }

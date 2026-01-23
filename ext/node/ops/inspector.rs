@@ -1,57 +1,89 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
 use deno_core::JsRuntimeInspector;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_error::JsErrorBox;
+use deno_inspector_server::InspectorServerUrl;
+use deno_inspector_server::create_inspector_server;
+use deno_inspector_server::stop_inspector_server;
 use deno_permissions::PermissionsContainer;
 
 #[op2(fast)]
-pub fn op_inspector_enabled() -> bool {
-  // TODO: hook up to InspectorServer
-  false
+pub fn op_inspector_enabled(state: &OpState) -> bool {
+  // If there's `InspectorServerUrl` then inspector is enabled, this
+  // will change once `op_inspector_open` will be implemented
+  state.try_borrow::<InspectorServerUrl>().is_some()
 }
 
 #[op2(stack_trace)]
 pub fn op_inspector_open(
-  _state: &mut OpState,
-  _port: Option<u16>,
-  #[string] _host: Option<String>,
-) -> Result<(), JsErrorBox> {
-  // TODO: hook up to InspectorServer
-  /*
-  let server = state.borrow_mut::<InspectorServer>();
-  if let Some(host) = host {
-    server.set_host(host);
-  }
-  if let Some(port) = port {
-    server.set_port(port);
-  }
+  state: &mut OpState,
+  port: Option<u16>,
+  #[string] host: Option<String>,
+  wait_for_session: bool,
+) -> Result<(), InspectorOpenError> {
+  const DEFAULT_HOST: IpAddr =
+    IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+  const DEFAULT_PORT: u16 = 9229;
+
+  let host_ip: IpAddr = match &host {
+    Some(h) => h.parse().map_err(|e| {
+      InspectorOpenError::InvalidHost(format!(
+        "Invalid inspector host '{}': {}",
+        h, e
+      ))
+    })?,
+    None => DEFAULT_HOST,
+  };
+  let port = port.unwrap_or(DEFAULT_PORT);
+  let addr = SocketAddr::new(host_ip, port);
+
   state
-    .borrow_mut::<P>()
-    .check_net((server.host(), Some(server.port())), "inspector.open")?;
-  */
+    .borrow_mut::<PermissionsContainer>()
+    .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+
+  let server = create_inspector_server(addr, "deno")?;
+
+  let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
+  let main_module = state.borrow::<ModuleSpecifier>().to_string();
+
+  let inspector_url =
+    server.register_inspector(main_module, inspector, wait_for_session);
+  state.put(inspector_url);
 
   Ok(())
 }
 
 #[op2(fast)]
-pub fn op_inspector_close() {
-  // TODO: hook up to InspectorServer
+pub fn op_inspector_close(state: &mut OpState) {
+  stop_inspector_server();
+  state.try_take::<InspectorServerUrl>();
 }
 
 #[op2]
 #[string]
-pub fn op_inspector_url() -> Option<String> {
-  // TODO: hook up to InspectorServer
-  None
+pub fn op_inspector_url(
+  state: &mut OpState,
+) -> Result<Option<String>, InspectorConnectError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "inspector.url")?;
+
+  Ok(
+    state
+      .try_borrow::<InspectorServerUrl>()
+      .map(|url| url.0.to_string()),
+  )
 }
 
 #[op2(fast)]
@@ -84,6 +116,27 @@ unsafe impl GarbageCollected for JSInspectorSession {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"JSInspectorSession"
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum InspectorOpenError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(
+    #[from]
+    #[inherit]
+    deno_permissions::PermissionCheckError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Server(
+    #[from]
+    #[inherit]
+    deno_inspector_server::InspectorServerError,
+  ),
+  #[class(generic)]
+  #[error("{0}")]
+  InvalidHost(String),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

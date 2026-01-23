@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 
@@ -91,6 +91,7 @@ impl GPUCanvasContext {
     self.canvas.clone()
   }
 
+  #[undefined]
   fn configure(
     &self,
     #[webidl] configuration: GPUCanvasConfiguration,
@@ -136,6 +137,7 @@ impl GPUCanvasContext {
   }
 
   #[fast]
+  #[undefined]
   fn unconfigure(&self) {
     *self.config.borrow_mut() = None;
   }
@@ -162,7 +164,7 @@ impl GPUCanvasContext {
 
     match output.status {
       SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
-        let id = output.texture_id.unwrap();
+        let id = output.texture.unwrap();
 
         let texture = GPUTexture {
           instance: config.device.instance.clone(),
@@ -170,6 +172,7 @@ impl GPUCanvasContext {
           id,
           device_id: config.device.id,
           queue_id: config.device.queue,
+          default_view_id: Default::default(),
           label: "".to_string(),
           size: wgpu_types::Extent3d {
             width: *self.width.borrow(),

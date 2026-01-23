@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -26,6 +26,7 @@ use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::ffi::sqlite3_create_window_function;
+use rusqlite::ffi::sqlite3_db_filename;
 use rusqlite::limits::Limit;
 
 use super::Session;
@@ -47,6 +48,11 @@ struct DatabaseSyncOptions {
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
+  use_big_int_arguments: bool,
+  allow_bare_named_params: bool,
+  return_arrays: bool,
+  allow_unknown_named_params: bool,
+  timeout: u64,
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -76,6 +82,11 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       READ_ONLY_STRING = "readOnly",
       ALLOW_EXTENSION_STRING = "allowExtension",
       ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
+      TIMEOUT_STRING = "timeout",
+      READ_BIG_INTS = "readBigInts",
+      RETURN_ARRAYS = "returnArrays",
+      ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
+      ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -155,6 +166,82 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
                 .is_true();
     }
 
+    let timeout_string = TIMEOUT_STRING.v8_string(scope).unwrap();
+    if let Some(timeout) = obj.get(scope, timeout_string.into())
+      && !timeout.is_undefined()
+    {
+      let timeout = v8::Local::<v8::Integer>::try_from(timeout)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.timeout\" argument must be an integer.",
+          )
+        })?
+        .value();
+
+      if timeout > 0 {
+        options.timeout = timeout as u64;
+      }
+    }
+
+    let read_big_ints_string = READ_BIG_INTS.v8_string(scope).unwrap();
+    if let Some(read_big_ints) = obj.get(scope, read_big_ints_string.into())
+      && !read_big_ints.is_undefined()
+    {
+      options.use_big_int_arguments =
+        v8::Local::<v8::Boolean>::try_from(read_big_ints)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.readBigInts\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let return_arrays_string = RETURN_ARRAYS.v8_string(scope).unwrap();
+    if let Some(return_arrays) = obj.get(scope, return_arrays_string.into())
+      && !return_arrays.is_undefined()
+    {
+      options.return_arrays = v8::Local::<v8::Boolean>::try_from(return_arrays)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.returnArrays\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
+    }
+
+    let allow_bare_named_params_string =
+      ALLOW_BARE_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_bare_named_params) =
+      obj.get(scope, allow_bare_named_params_string.into())
+      && !allow_bare_named_params.is_undefined()
+    {
+      options.allow_bare_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_bare_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowBareNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let allow_unknown_named_params_string =
+      ALLOW_UNKNOWN_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_unknown_named_params) =
+      obj.get(scope, allow_unknown_named_params_string.into())
+      && !allow_unknown_named_params.is_undefined()
+    {
+      options.allow_unknown_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_unknown_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowUnknownNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
     Ok(options)
   }
 }
@@ -167,6 +254,11 @@ impl Default for DatabaseSyncOptions {
       read_only: false,
       allow_extension: false,
       enable_double_quoted_string_literals: false,
+      use_big_int_arguments: false,
+      return_arrays: false,
+      allow_bare_named_params: true,
+      allow_unknown_named_params: false,
+      timeout: 0,
     }
   }
 }
@@ -442,9 +534,8 @@ fn set_db_config(
 
 fn open_db(
   state: &mut OpState,
-  readonly: bool,
   location: &str,
-  allow_extension: bool,
+  options: &DatabaseSyncOptions,
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
@@ -462,7 +553,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -478,7 +569,7 @@ fn open_db(
   let location = perms
     .check_open(
       Cow::Borrowed(Path::new(location)),
-      match readonly {
+      match options.read_only {
         true => OpenAccessKind::ReadNoFollow,
         false => OpenAccessKind::ReadWriteNoFollow,
       },
@@ -486,7 +577,7 @@ fn open_db(
     )?
     .into_path();
 
-  if readonly {
+  if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -500,7 +591,7 @@ fn open_db(
       conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     }
 
-    if allow_extension {
+    if options.allow_extension {
       perms.check_ffi_all()?;
     } else {
       assert!(set_db_config(
@@ -514,8 +605,9 @@ fn open_db(
   }
 
   let conn = rusqlite::Connection::open(location)?;
+  conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
-  if allow_extension {
+  if options.allow_extension {
     perms.check_ffi_all()?;
   } else {
     assert!(set_db_config(
@@ -530,18 +622,6 @@ fn open_db(
   }
 
   Ok(conn)
-}
-
-fn database_constructor(
-  _: &mut v8::PinScope<'_, '_>,
-  args: &v8::FunctionCallbackArguments,
-) -> Result<(), validators::Error> {
-  // TODO(littledivy): use `IsConstructCall()`
-  if args.new_target().is_undefined() {
-    return Err(validators::Error::ConstructCallRequired);
-  }
-
-  Ok(())
 }
 
 fn is_open(
@@ -570,18 +650,14 @@ impl DatabaseSync {
   // To use an in-memory database, the `location` should be special
   // name ":memory:".
   #[constructor]
-  #[validate(database_constructor)]
   #[cppgc]
   fn new(
     state: &mut OpState,
-    #[validate(validators::path_str)]
-    #[string]
-    location: String,
+    #[string] location: String,
     #[from_v8] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
-      let db =
-        open_db(state, options.read_only, &location, options.allow_extension)?;
+      let db = open_db(state, &location, &options)?;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -625,12 +701,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(
-      state,
-      self.options.read_only,
-      &self.location,
-      self.options.allow_extension,
-    )?;
+    let db = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
@@ -745,12 +816,15 @@ impl DatabaseSync {
 
     Ok(StatementSync {
       inner: stmt_cell,
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
-      use_big_ints: Cell::new(false),
-      allow_bare_named_params: Cell::new(true),
-      allow_unknown_named_params: Cell::new(false),
+      return_arrays: Cell::new(self.options.return_arrays),
+      use_big_ints: Cell::new(self.options.use_big_int_arguments),
+      allow_bare_named_params: Cell::new(self.options.allow_bare_named_params),
+      allow_unknown_named_params: Cell::new(
+        self.options.allow_unknown_named_params,
+      ),
       is_iter_finished: Cell::new(false),
     })
   }
@@ -963,6 +1037,7 @@ impl DatabaseSync {
       scope: &'a mut v8::PinScope<'b, 'c>,
       confict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
+      has_caught: bool,
     }
 
     // Conflict handler callback for `sqlite3changeset_apply()`.
@@ -1014,14 +1089,30 @@ impl DatabaseSync {
       unsafe {
         let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
+        // If we've already caught an exception, don't call the filter again
+        // to avoid overwriting the original exception.
+        if ctx.has_caught {
+          return 0;
+        }
+
         if let Some(filter) = &mut ctx.filter {
           let tab = CStr::from_ptr(z_tab).to_str().unwrap();
 
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::String::new(ctx.scope, tab).unwrap().into()];
 
-          let ret = filter.call(ctx.scope, recv, &args).unwrap();
-          return ret.boolean_value(ctx.scope) as i32;
+          v8::tc_scope!(tc_scope, ctx.scope);
+
+          let ret = filter
+            .call(tc_scope, recv, &args)
+            .unwrap_or_else(|| v8::undefined(tc_scope).into());
+          if tc_scope.has_caught() {
+            ctx.has_caught = true;
+            tc_scope.rethrow();
+            return 0;
+          }
+
+          return ret.boolean_value(tc_scope) as i32;
         }
 
         1
@@ -1037,6 +1128,7 @@ impl DatabaseSync {
       scope,
       confict: None,
       filter: None,
+      has_caught: false,
     };
 
     if let Some(options) = options {
@@ -1211,8 +1303,71 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
     })
+  }
+
+  fn location<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    name_value: v8::Local<'a, v8::Value>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let name = if !name_value.is_undefined() {
+      if !name_value.is_string() {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"dbName\" argument must be a string.",
+          ),
+        ));
+      }
+      name_value.to_rust_string_lossy(scope)
+    } else {
+      "main".to_string()
+    };
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { db.handle() };
+    let name_cstring = CString::new(name)?;
+
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer.
+    let db_filename =
+      unsafe { sqlite3_db_filename(raw_handle, name_cstring.as_ptr()) };
+    if db_filename.is_null() {
+      return Ok(v8::null(scope).into());
+    }
+
+    // SAFETY: `db_filename` is a valid C string pointer.
+    let filename_cstr = unsafe { CStr::from_ptr(db_filename).to_bytes() };
+    if filename_cstr.is_empty() {
+      return Ok(v8::null(scope).into());
+    }
+
+    let filename = v8::String::new_from_utf8(
+      scope,
+      filename_cstr,
+      v8::NewStringType::Normal,
+    )
+    .unwrap();
+
+    Ok(filename.into())
+  }
+
+  #[getter]
+  fn is_open(&self) -> bool {
+    self.conn.borrow().is_some()
+  }
+
+  #[getter]
+  fn is_transaction(&self) -> Result<bool, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let res = unsafe { libsqlite3_sys::sqlite3_get_autocommit(db.handle()) };
+    Ok(res == 0)
   }
 
   #[fast]

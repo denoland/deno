@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
@@ -56,7 +56,9 @@ use super::https::get_tls_listener_stream;
 use super::testdata_path;
 use crate::PathRef;
 use crate::TEST_SERVERS_COUNT;
+use crate::eprintln;
 use crate::prebuilt_path;
+use crate::println;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -99,6 +101,7 @@ pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
 pub(crate) const SOCKET_DEV_API_PORT: u16 = 4268;
+pub(crate) const PUBLIC_NPM_JSR_REGISTRY_PORT: u16 = 4269;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -154,6 +157,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+  let npm_jsr_registry_server_futs =
+    npm_registry::public_npm_jsr_registry(PUBLIC_NPM_JSR_REGISTRY_PORT);
   let socket_dev_api_futs = socket_dev::api(SOCKET_DEV_API_PORT);
 
   // for serving node header files to node-gyp in tests
@@ -161,10 +166,7 @@ pub async fn run_all_servers() {
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
   if let Err(e) = ensure_tsgo_prebuilt().await {
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!("failed to ensure tsgo prebuilt: {e}");
-    }
+    eprintln!("failed to ensure tsgo prebuilt: {e}");
   }
 
   let mut futures = vec![
@@ -199,6 +201,7 @@ pub async fn run_all_servers() {
   futures.extend(private_npm_registry_1_server_futs);
   futures.extend(private_npm_registry_2_server_futs);
   futures.extend(private_npm_registry_3_server_futs);
+  futures.extend(npm_jsr_registry_server_futs);
   futures.extend(socket_dev_api_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
@@ -362,10 +365,7 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  #[allow(clippy::print_stdout)]
-  {
-    println!("ready: {name} on {:?}", addresses);
-  }
+  println!("ready: {name} on {:?}", addresses);
 
   futures::stream::select_all(listeners)
 }
@@ -381,10 +381,7 @@ async fn run_tls_client_auth_server(port: u16) {
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
-        #[allow(clippy::print_stderr)]
-        {
-          eprintln!("Failed to handshake");
-        }
+        eprintln!("Failed to handshake");
         return;
       };
       // We only need to check for the presence of client certificates
@@ -1376,7 +1373,6 @@ async fn wrap_client_auth_https_server(port: u16) {
       // here. Rusttls ensures that they are valid and signed by the CA.
       match handshake.has_peer_certificates {
         true => { yield Ok(tls); },
-        #[allow(clippy::print_stderr)]
         false => { eprintln!("https_client_auth: no valid client certificate"); },
       };
     }

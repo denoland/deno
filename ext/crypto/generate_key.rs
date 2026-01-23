@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
@@ -39,6 +39,8 @@ pub enum GenerateKeyError {
   FailedECKeyGeneration,
   #[error("Failed to generate key")]
   FailedKeyGeneration,
+  #[error("Unsupported algorithm")]
+  UnsupportedAlgorithm,
 }
 
 // Allowlist for RSA public exponents.
@@ -159,6 +161,10 @@ fn generate_key_hmac(
     ShaHash::Sha256 => &aws_lc_rs::hmac::HMAC_SHA256,
     ShaHash::Sha384 => &aws_lc_rs::hmac::HMAC_SHA384,
     ShaHash::Sha512 => &aws_lc_rs::hmac::HMAC_SHA512,
+    // SHA3 is not supported by aws-lc-rs for HMAC
+    ShaHash::Sha3_256 | ShaHash::Sha3_384 | ShaHash::Sha3_512 => {
+      return Err(GenerateKeyError::UnsupportedAlgorithm);
+    }
   };
 
   let length = if let Some(length) = length {

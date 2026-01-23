@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
 use deno_lockfile::NpmPackageInfoProvider;
@@ -6,6 +6,8 @@ use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::println;
+use util::test;
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -199,7 +201,7 @@ impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
   }
 }
 
-#[tokio::test]
+#[test]
 async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -42,7 +42,7 @@ pub async fn approve_scripts(
 ) -> Result<(), AnyError> {
   let mut factory = CliFactory::from_flags(flags.clone());
   let mut options = factory.cli_options()?;
-  if options.start_dir.maybe_deno_json().is_none() {
+  if options.start_dir.member_or_root_deno_json().is_none() {
     factory = create_deno_json(&flags, options)?;
     options = factory.cli_options()?;
   }
