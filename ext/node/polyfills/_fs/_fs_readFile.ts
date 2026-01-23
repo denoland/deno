@@ -39,6 +39,7 @@ const {
 const {
   ArrayPrototypePush,
   MathMin,
+  ObjectPrototypeIsPrototypeOf,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
@@ -178,15 +179,14 @@ export function readFile(
 ): void;
 export function readFile(path: string | URL, callback: BinaryCallback): void;
 export function readFile(
-  path: Path,
+  pathOrRid: Path,
   optOrCallback?: FileOptionsArgument | Callback | null | undefined,
   callback?: Callback,
 ) {
-  // If path is not a FileHandle or numeric fd, validate/convert it to a string
-  // using the shared helper. That helper throws the appropriate
-  // ERR_INVALID_ARG_TYPE for invalid inputs (e.g. undefined).
-  if (!(path instanceof FileHandle) && typeof path !== "number") {
-    path = getValidatedPathToString(path as unknown as string);
+  if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  } else if (typeof pathOrRid !== "number") {
+    pathOrRid = getValidatedPathToString(pathOrRid as string);
   }
 
   let cb: Callback | undefined;
@@ -199,19 +199,28 @@ export function readFile(
   const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
 
   let p: Promise<Uint8Array>;
-  if (typeof path === "string") {
-    p = readFileAsync(path, options);
+  if (typeof pathOrRid === "string") {
+    p = readFileAsync(pathOrRid, options);
   } else {
-    const rid = path instanceof FileHandle ? path.fd : path;
-    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    const fsFile = new FsFile(pathOrRid, Symbol.for("Deno.internal.FsFile"));
     p = fsFileReadAll(fsFile, options);
   }
 
   if (cb) {
-    p.then((data: Uint8Array) => {
-      const textOrBuffer = maybeDecode(data, options?.encoding);
-      (cb as BinaryCallback)(null, textOrBuffer);
-    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
+    p.then(
+      (data: Uint8Array) => {
+        const textOrBuffer = maybeDecode(data, options?.encoding);
+        (cb as BinaryCallback)(null, textOrBuffer);
+      },
+      (err) =>
+        cb &&
+        cb(
+          denoErrorToNodeError(err, {
+            path: typeof pathOrRid === "string" ? pathOrRid : undefined,
+            syscall: "open",
+          }),
+        ),
+    );
   }
 }
 
