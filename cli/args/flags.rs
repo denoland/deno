@@ -53,6 +53,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
+pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -813,39 +814,27 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   }
 }
 
-/// Options for --inspect-publish-uid flag.
-/// Controls where the inspector WebSocket URL is published.
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct InspectPublishUid {
-  /// Publish to stderr (called "console" in the flag value).
-  pub console: bool,
-  /// Publish via HTTP endpoint.
-  pub http: bool,
-}
-
-impl InspectPublishUid {
-  /// Parse from a comma-separated string like "stderr,http".
-  pub fn parse(s: &str) -> Result<Self, String> {
-    let mut result = InspectPublishUid {
-      console: false,
-      http: false,
-    };
-    for part in s.split(',') {
-      let part = part.trim();
-      match part {
-        "stderr" => result.console = true,
-        "http" => result.http = true,
-        "" => {}
-        _ => {
-          return Err(format!(
-            "--inspect-publish-uid destination can be stderr or http, got '{}'",
-            part
-          ));
-        }
+/// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
+pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
+  let mut result = InspectPublishUid {
+    console: false,
+    http: false,
+  };
+  for part in s.split(',') {
+    let part = part.trim();
+    match part {
+      "stderr" => result.console = true,
+      "http" => result.http = true,
+      "" => {}
+      _ => {
+        return Err(format!(
+          "--inspect-publish-uid destination can be stderr or http, got '{}'",
+          part
+        ));
       }
     }
-    Ok(result)
   }
+  Ok(result)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -5073,7 +5062,7 @@ fn inspect_args(app: Command) -> Command {
 fn inspect_publish_uid_value_parser(
   value: &str,
 ) -> Result<InspectPublishUid, String> {
-  InspectPublishUid::parse(value)
+  parse_inspect_publish_uid(value)
 }
 
 fn import_map_arg() -> Arg {

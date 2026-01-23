@@ -48,12 +48,21 @@ pub struct InspectorServerUrl(pub String);
 
 /// Options for controlling where the inspector WebSocket URL is published.
 /// Mirrors Node.js --inspect-publish-uid behavior.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InspectPublishUid {
   /// Publish to stderr (console).
   pub console: bool,
   /// Publish via HTTP endpoint (/json, /json/list, /json/version).
   pub http: bool,
+}
+
+impl Default for InspectPublishUid {
+  fn default() -> Self {
+    Self {
+      console: true,
+      http: true,
+    }
+  }
 }
 
 /// Websocket server that is used to proxy connections from
@@ -95,7 +104,7 @@ pub fn stop_inspector_server() {
 pub fn create_inspector_server(
   host: SocketAddr,
   name: &'static str,
-  publish_uid: Option<InspectPublishUid>,
+  publish_uid: InspectPublishUid,
 ) -> Result<Arc<InspectorServer>, InspectorServerError> {
   let mut guard = global_server().lock();
   // Return existing server if already created
@@ -158,13 +167,8 @@ impl InspectorServer {
   pub fn new(
     host: SocketAddr,
     name: &'static str,
-    publish_uid: Option<InspectPublishUid>,
+    publish_uid: InspectPublishUid,
   ) -> Result<Self, InspectorServerError> {
-    // Default to publishing to both console (stderr) and HTTP if not specified
-    let publish_uid = publish_uid.unwrap_or(InspectPublishUid {
-      console: true,
-      http: true,
-    });
 
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();

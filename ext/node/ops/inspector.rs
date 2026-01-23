@@ -13,6 +13,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
+use deno_inspector_server::InspectPublishUid;
 use deno_inspector_server::InspectorServerUrl;
 use deno_inspector_server::create_inspector_server;
 use deno_inspector_server::stop_inspector_server;
@@ -52,7 +53,7 @@ pub fn op_inspector_open(
     .borrow_mut::<PermissionsContainer>()
     .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
 
-  let server = create_inspector_server(addr, "deno", None)?;
+  let server = create_inspector_server(addr, "deno", InspectPublishUid::default())?;
 
   let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
   let main_module = state.borrow::<ModuleSpecifier>().to_string();
