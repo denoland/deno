@@ -7,7 +7,6 @@ use std::env;
 use std::process::Stdio;
 use std::process::{self};
 
-use exec::execvp;
 use node_shim::TranslateOptions;
 use node_shim::translate_to_deno_args;
 
@@ -72,9 +71,21 @@ fn main() {
   }
 
   // Execute deno with the translated arguments
-  let err = execvp("deno", &deno_args);
-  eprintln!("Failed to execute deno: {}", err);
-  process::exit(1);
+  #[cfg(unix)]
+  {
+    let err = exec::execvp("deno", &deno_args);
+    eprintln!("Failed to execute deno: {}", err);
+    process::exit(1);
+  }
+
+  #[cfg(not(unix))]
+  {
+    let status = process::Command::new("deno")
+      .args(&deno_args[1..])
+      .status()
+      .expect("Failed to execute deno");
+    process::exit(status.code().unwrap_or(1));
+  }
 }
 
 fn resolve_entrypoint(entrypoint: &str) -> String {
