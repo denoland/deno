@@ -447,13 +447,6 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
-          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
-            return Err(
-              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
-                .into_box()
-                .into(),
-            );
-          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {

@@ -2684,6 +2684,7 @@ name = "deno_package_json"
 version = "0.30.0"
 dependencies = [
  "boxed_error",
+ "capacity_builder",
  "deno_error",
  "deno_maybe_sync",
  "deno_path_util",
