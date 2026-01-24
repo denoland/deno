@@ -98,9 +98,7 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidExpandedSql,
   #[class(range)]
-  #[error(
-    "Value is too large to be represented as a JavaScript number: {0}"
-  )]
+  #[error("Value is too large to be represented as a JavaScript number: {0}")]
   #[property("code" = self.code())]
   NumberTooLarge(i64),
   #[class(type)]

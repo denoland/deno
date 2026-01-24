@@ -713,10 +713,8 @@ impl StatementSync {
       ];
 
       if statement.is_iter_finished.get() {
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::null(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -728,10 +726,8 @@ impl StatementSync {
         let _ = statement.reset();
         statement.is_iter_finished.set(true);
 
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::null(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -761,10 +757,8 @@ impl StatementSync {
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
-      let values = &[
-        v8::Boolean::new(scope, true).into(),
-        v8::null(scope).into(),
-      ];
+      let values =
+        &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
 
       let null = v8::null(scope).into();
       let result =
