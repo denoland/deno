@@ -1320,6 +1320,16 @@ impl CliOptions {
     unstable_features
   }
 
+  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
+  /// This includes features from both CLI flags and config file.
+  pub fn unstable_args(&self) -> Vec<String> {
+    self
+      .unstable_features()
+      .into_iter()
+      .map(|f| format!("--unstable-{}", f))
+      .collect()
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }

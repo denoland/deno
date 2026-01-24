@@ -73,7 +73,7 @@ async fn resolve_local_bins(
 
 fn run_js_file(
   main_module: &deno_core::url::Url,
-  permission_args: &[String],
+  deno_args: &[String],
   argv: &[String],
   npm_process_state: Option<String>,
   npm: bool,
@@ -85,7 +85,7 @@ fn run_js_file(
     .context("Failed to get current executable path")?;
 
   let mut args: Vec<std::ffi::OsString> = vec!["run".into()];
-  args.extend(permission_args.iter().map(|s| s.into()));
+  args.extend(deno_args.iter().map(|s| s.into()));
   args.push(main_module.as_str().into());
   args.extend(argv.iter().map(|s| s.into()));
 
@@ -143,18 +143,15 @@ fn run_bin_value(
   flags: &Flags,
   bin_value: BinValue,
   npm_process_state: Option<String>,
+  unstable_args: &[String],
 ) -> Result<i32, AnyError> {
   match bin_value {
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
-      let permission_args = flags.to_permission_args();
-      run_js_file(
-        &path,
-        &permission_args,
-        &flags.argv,
-        npm_process_state,
-        true,
-      )
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
+
+      run_js_file(&path, &deno_args, &flags.argv, npm_process_state, true)
     }
     BinValue::Executable(mut path_buf) => {
       if cfg!(windows) && path_buf.extension().is_none() {
@@ -218,6 +215,7 @@ async fn maybe_run_local_npm_bin(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
   command: &str,
+  unstable_args: &[String],
 ) -> Result<Option<i32>, AnyError> {
   let mut bins =
     resolve_local_bins(node_resolver, npm_resolver, factory).await?;
@@ -237,7 +235,8 @@ async fn maybe_run_local_npm_bin(
   };
 
   let npm_process_state = get_npm_process_state(npm_resolver);
-  run_bin_value(factory, flags, bin_value, npm_process_state).map(Some)
+  run_bin_value(factory, flags, bin_value, npm_process_state, unstable_args)
+    .map(Some)
 }
 
 enum XTempDir {
@@ -370,6 +369,8 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     }
   };
   let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let unstable_args = cli_options.unstable_args();
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let result = maybe_run_local_npm_bin(
@@ -378,13 +379,12 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     node_resolver,
     npm_resolver,
     &command_flags.command,
+    &unstable_args,
   )
   .await?;
   if let Some(exit_code) = result {
     return Ok(exit_code);
   }
-
-  let cli_options = factory.cli_options()?;
 
   let is_file_like = command_flags.command.starts_with('.')
     || command_flags.command.starts_with('/')
@@ -442,7 +442,13 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
           .resolve_npm_binary_commands_for_package(&package_folder)?;
         if let Some(bin_value) = find_bin_value(&bins, bin_name) {
           let npm_process_state = get_npm_process_state(npm_resolver);
-          return run_bin_value(&factory, &flags, bin_value, npm_process_state);
+          return run_bin_value(
+            &factory,
+            &flags,
+            bin_value,
+            npm_process_state,
+            &unstable_args,
+          );
         }
       }
 
@@ -476,6 +482,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         runner_node_resolver,
         runner_npm_resolver,
         bin_name,
+        &unstable_args,
       )
       .await?;
       if let Some(exit_code) = res {
@@ -501,6 +508,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
             runner_node_resolver,
             runner_npm_resolver,
             fallback_name.as_ref(),
+            &unstable_args,
           )
           .await?
         {
