@@ -715,7 +715,7 @@ impl StatementSync {
       if statement.is_iter_finished.get() {
         let values = &[
           v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
+          v8::null(scope).into(),
         ];
         let null = v8::null(scope).into();
         let result =
@@ -730,7 +730,7 @@ impl StatementSync {
 
         let values = &[
           v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
+          v8::null(scope).into(),
         ];
         let null = v8::null(scope).into();
         let result =
@@ -763,7 +763,7 @@ impl StatementSync {
       ];
       let values = &[
         v8::Boolean::new(scope, true).into(),
-        v8::undefined(scope).into(),
+        v8::null(scope).into(),
       ];
 
       let null = v8::null(scope).into();
