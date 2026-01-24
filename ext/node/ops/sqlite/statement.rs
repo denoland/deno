@@ -273,7 +273,7 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            return Err(SqliteError::NumberTooLarge(value));
           }
         }
         ffi::SQLITE_FLOAT => {

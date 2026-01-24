@@ -99,10 +99,10 @@ pub enum SqliteError {
   InvalidExpandedSql,
   #[class(range)]
   #[error(
-    "The value of column {0} is too large to be represented as a JavaScript number: {1}"
+    "Value is too large to be represented as a JavaScript number: {0}"
   )]
   #[property("code" = self.code())]
-  NumberTooLarge(i32, i64),
+  NumberTooLarge(i64),
   #[class(type)]
   #[error("Invalid callback: {0}")]
   #[property("code" = self.code())]
@@ -183,7 +183,7 @@ impl SqliteError {
       | Self::InUse
       | Self::AlreadyOpen
       | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
-      Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
+      Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }
