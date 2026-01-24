@@ -193,7 +193,10 @@ fn find_bin_value(
     .or_else(|| {
       // Try the package name without scope as fallback
       if bin_name.starts_with('@') && bin_name.contains('/') {
-        bin_name.split('/').last().and_then(|name| bins.get(name))
+        bin_name
+          .split('/')
+          .next_back()
+          .and_then(|name| bins.get(name))
       } else {
         None
       }
