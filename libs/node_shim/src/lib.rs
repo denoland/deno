@@ -3511,6 +3511,10 @@ fn add_inspector_flags(
       env_opts.debug_options.host_port.host,
       env_opts.debug_options.host_port.port
     ));
+    deno_args.push(format!(
+      "--inspect-publish-uid={}",
+      env_opts.debug_options.inspect_publish_uid_string
+    ));
   }
 }
 

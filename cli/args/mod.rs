@@ -834,14 +834,18 @@ impl CliOptions {
 
   pub fn resolve_inspector_server_options(
     &self,
-  ) -> Option<(SocketAddr, &'static str)> {
+  ) -> Option<(SocketAddr, &'static str, InspectPublishUid)> {
     let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait)?;
 
-    Some((host, DENO_VERSION_INFO.user_agent))
+    Some((
+      host,
+      DENO_VERSION_INFO.user_agent,
+      self.flags.inspect_publish_uid.unwrap_or_default(),
+    ))
   }
 
   pub fn resolve_fmt_options_for_members(
