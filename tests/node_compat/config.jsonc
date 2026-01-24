@@ -1101,6 +1101,7 @@
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
