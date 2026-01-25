@@ -2,6 +2,7 @@
 
 mod backup;
 mod database;
+mod lru_cache;
 mod session;
 mod statement;
 mod validators;
