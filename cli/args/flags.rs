@@ -54,6 +54,7 @@ use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 pub use deno_runtime::deno_inspector_server::InspectPublishUid;
+use deno_runtime::deno_node::ops::node_cli_parser::parse_node_options_env_var;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -3943,8 +3944,10 @@ fn apply_node_options(flags: &mut Flags) {
 
   // Filter out unsupported flags, since they can consume the supported flags as
   // values.
-  let args = node_options
-    .split_whitespace()
+  let args = parse_node_options_env_var(&node_options).unwrap_or_default();
+  let args = args
+    .iter()
+    .map(String::as_str)
     .scan(false, |prev_was_require, word| {
       if word == "--require" || word == "-r" {
         *prev_was_require = true;
