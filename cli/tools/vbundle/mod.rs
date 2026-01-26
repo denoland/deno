@@ -58,6 +58,9 @@ use crate::factory::CliFactory;
 pub mod chunk_graph;
 pub mod emitter;
 pub mod environment;
+pub mod hmr_runtime;
+pub mod hmr_server;
+pub mod hmr_types;
 pub mod import_analyzer;
 pub mod plugins;
 pub mod source_graph;
@@ -75,6 +78,16 @@ pub use chunk_graph::ChunkId;
 pub use emitter::ChunkEmitter;
 pub use emitter::EmitterConfig;
 pub use environment::BundleEnvironment;
+pub use hmr_runtime::generate_hmr_runtime;
+pub use hmr_runtime::generate_module_hmr_wrapper;
+pub use hmr_server::HmrModuleGraph;
+pub use hmr_server::HmrServer;
+pub use hmr_server::SharedHmrGraph;
+pub use hmr_types::HmrBoundary;
+pub use hmr_types::HmrConfig;
+pub use hmr_types::HmrEvent;
+pub use hmr_types::HmrModuleInfo;
+pub use hmr_types::HmrUpdatePayload;
 pub use plugins::create_runner_and_load_plugins;
 pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
@@ -226,12 +239,25 @@ pub async fn vbundle(
     }
   }
 
+  // Configure HMR if enabled
+  let hmr_config = if vbundle_flags.hmr {
+    let mut hmr_config = hmr_types::HmrConfig::default();
+    if let Some(port) = vbundle_flags.hmr_port {
+      hmr_config = hmr_config.with_port(port);
+    }
+    Some(hmr_config)
+  } else {
+    None
+  };
+
   let emitter_config = EmitterConfig {
     source_maps: config.sourcemap,
     minify: config.minify,
     out_dir: config.out_dir.clone(),
     mode: build_mode,
     env_vars,
+    hmr: vbundle_flags.hmr,
+    hmr_config,
   };
 
   // Generate chunks for each environment

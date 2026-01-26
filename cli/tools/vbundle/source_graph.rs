@@ -292,6 +292,64 @@ impl SourceModuleGraph {
       .filter(move |m| m.is_in_environment(env))
   }
 
+  /// Get modules that import a given module (reverse dependencies).
+  ///
+  /// This is useful for HMR to determine which modules need to be updated
+  /// when a dependency changes.
+  pub fn get_importers(&self, specifier: &ModuleSpecifier) -> Vec<ModuleSpecifier> {
+    let mut importers = Vec::new();
+
+    for module in self.modules.values() {
+      // Check static imports
+      for import in &module.imports {
+        if &import.specifier == specifier {
+          importers.push(module.specifier.clone());
+          break;
+        }
+      }
+
+      // Check dynamic imports (if not already added)
+      if !importers.contains(&module.specifier) {
+        for import in &module.dynamic_imports {
+          if &import.specifier == specifier {
+            importers.push(module.specifier.clone());
+            break;
+          }
+        }
+      }
+    }
+
+    importers
+  }
+
+  /// Build a reverse dependency map for all modules.
+  ///
+  /// Returns a map where each key is a module and the value is a set of
+  /// modules that import it.
+  pub fn build_reverse_dependency_map(&self) -> HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> {
+    let mut reverse_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> = HashMap::new();
+
+    for module in self.modules.values() {
+      // Add static imports to reverse map
+      for import in &module.imports {
+        reverse_map
+          .entry(import.specifier.clone())
+          .or_default()
+          .insert(module.specifier.clone());
+      }
+
+      // Add dynamic imports to reverse map
+      for import in &module.dynamic_imports {
+        reverse_map
+          .entry(import.specifier.clone())
+          .or_default()
+          .insert(module.specifier.clone());
+      }
+    }
+
+    reverse_map
+  }
+
   /// Perform a topological sort of modules for an environment.
   ///
   /// Returns modules in dependency order (dependencies before dependents).
@@ -447,5 +505,129 @@ mod tests {
     let entries = graph.entrypoints(&BundleEnvironment::Server);
     assert!(entries.is_some());
     assert_eq!(entries.unwrap().len(), 1);
+  }
+
+  #[test]
+  fn test_get_importers() {
+    let mut graph = SourceModuleGraph::new();
+
+    let main_spec = ModuleSpecifier::parse("file:///main.ts").unwrap();
+    let dep_spec = ModuleSpecifier::parse("file:///dep.ts").unwrap();
+    let other_spec = ModuleSpecifier::parse("file:///other.ts").unwrap();
+
+    // Create main module that imports dep
+    let mut main_module = SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
+    main_module.imports.push(ImportInfo {
+      specifier: dep_spec.clone(),
+      original: "./dep.ts".to_string(),
+      named: vec![],
+      default_import: None,
+      namespace_import: None,
+      is_type_only: false,
+      range: (0, 0),
+    });
+    graph.add_module(main_module);
+
+    // Create dep module (no imports)
+    let dep_module = SourceModule::new(dep_spec.clone(), "".into(), MediaType::TypeScript);
+    graph.add_module(dep_module);
+
+    // Create other module (no imports)
+    let other_module = SourceModule::new(other_spec.clone(), "".into(), MediaType::TypeScript);
+    graph.add_module(other_module);
+
+    // Get importers of dep - should be main
+    let importers = graph.get_importers(&dep_spec);
+    assert_eq!(importers.len(), 1);
+    assert_eq!(importers[0], main_spec);
+
+    // Get importers of main - should be empty (no one imports main)
+    let importers = graph.get_importers(&main_spec);
+    assert!(importers.is_empty());
+
+    // Get importers of other - should be empty
+    let importers = graph.get_importers(&other_spec);
+    assert!(importers.is_empty());
+  }
+
+  #[test]
+  fn test_build_reverse_dependency_map() {
+    let mut graph = SourceModuleGraph::new();
+
+    let main_spec = ModuleSpecifier::parse("file:///main.ts").unwrap();
+    let dep1_spec = ModuleSpecifier::parse("file:///dep1.ts").unwrap();
+    let dep2_spec = ModuleSpecifier::parse("file:///dep2.ts").unwrap();
+    let shared_spec = ModuleSpecifier::parse("file:///shared.ts").unwrap();
+
+    // main imports dep1 and dep2
+    let mut main_module = SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
+    main_module.imports.push(ImportInfo {
+      specifier: dep1_spec.clone(),
+      original: "./dep1.ts".to_string(),
+      named: vec![],
+      default_import: None,
+      namespace_import: None,
+      is_type_only: false,
+      range: (0, 0),
+    });
+    main_module.imports.push(ImportInfo {
+      specifier: dep2_spec.clone(),
+      original: "./dep2.ts".to_string(),
+      named: vec![],
+      default_import: None,
+      namespace_import: None,
+      is_type_only: false,
+      range: (0, 0),
+    });
+    graph.add_module(main_module);
+
+    // dep1 imports shared
+    let mut dep1_module = SourceModule::new(dep1_spec.clone(), "".into(), MediaType::TypeScript);
+    dep1_module.imports.push(ImportInfo {
+      specifier: shared_spec.clone(),
+      original: "./shared.ts".to_string(),
+      named: vec![],
+      default_import: None,
+      namespace_import: None,
+      is_type_only: false,
+      range: (0, 0),
+    });
+    graph.add_module(dep1_module);
+
+    // dep2 imports shared (shared has multiple importers)
+    let mut dep2_module = SourceModule::new(dep2_spec.clone(), "".into(), MediaType::TypeScript);
+    dep2_module.imports.push(ImportInfo {
+      specifier: shared_spec.clone(),
+      original: "./shared.ts".to_string(),
+      named: vec![],
+      default_import: None,
+      namespace_import: None,
+      is_type_only: false,
+      range: (0, 0),
+    });
+    graph.add_module(dep2_module);
+
+    // shared has no imports
+    let shared_module = SourceModule::new(shared_spec.clone(), "".into(), MediaType::TypeScript);
+    graph.add_module(shared_module);
+
+    // Build reverse map
+    let reverse_map = graph.build_reverse_dependency_map();
+
+    // Check that shared is imported by both dep1 and dep2
+    let shared_importers = reverse_map.get(&shared_spec).unwrap();
+    assert_eq!(shared_importers.len(), 2);
+    assert!(shared_importers.contains(&dep1_spec));
+    assert!(shared_importers.contains(&dep2_spec));
+
+    // Check that dep1 is imported by main
+    let dep1_importers = reverse_map.get(&dep1_spec).unwrap();
+    assert_eq!(dep1_importers.len(), 1);
+    assert!(dep1_importers.contains(&main_spec));
+
+    // Check that dep2 is imported by main
+    let dep2_importers = reverse_map.get(&dep2_spec).unwrap();
+    assert_eq!(dep2_importers.len(), 1);
+    assert!(dep2_importers.contains(&main_spec));
   }
 }

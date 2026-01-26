@@ -27,6 +27,8 @@ use super::chunk_graph::Chunk;
 use super::chunk_graph::ChunkGraph;
 use super::chunk_graph::ChunkId;
 use super::environment::BundleEnvironment;
+use super::hmr_runtime;
+use super::hmr_types::HmrConfig;
 use super::source_graph::SharedSourceGraph;
 use super::splitter::determine_bundle_order;
 
@@ -47,6 +49,12 @@ pub struct EmitterConfig {
 
   /// The build mode (development or production).
   pub mode: BuildMode,
+
+  /// Whether to enable HMR (Hot Module Replacement).
+  pub hmr: bool,
+
+  /// HMR configuration (only used if hmr is true).
+  pub hmr_config: Option<HmrConfig>,
 }
 
 /// Build mode for environment-specific transforms.
@@ -65,6 +73,8 @@ impl Default for EmitterConfig {
       out_dir: std::path::PathBuf::from("dist"),
       env_vars: HashMap::new(),
       mode: BuildMode::Development,
+      hmr: false,
+      hmr_config: None,
     }
   }
 }
@@ -75,8 +85,24 @@ impl EmitterConfig {
     Self {
       mode: BuildMode::Production,
       minify: true,
+      hmr: false,
+      hmr_config: None,
       ..Default::default()
     }
+  }
+
+  /// Enable HMR with default configuration.
+  pub fn with_hmr(mut self) -> Self {
+    self.hmr = true;
+    self.hmr_config = Some(HmrConfig::default());
+    self
+  }
+
+  /// Enable HMR with custom configuration.
+  pub fn with_hmr_config(mut self, config: HmrConfig) -> Self {
+    self.hmr = true;
+    self.hmr_config = Some(config);
+    self
   }
 
   /// Set environment variables for import.meta.env.
@@ -172,7 +198,16 @@ impl<'a> ChunkEmitter<'a> {
     if chunk.is_entry {
       bundle_code.push_str(&self.generate_env_shim(environment));
       bundle_code.push('\n');
+
+      // Add HMR runtime preamble in development mode with HMR enabled
+      if self.config.hmr && self.config.mode == BuildMode::Development {
+        bundle_code.push_str(&self.generate_hmr_preamble(environment));
+        bundle_code.push('\n');
+      }
     }
+
+    // Check if HMR is enabled for module wrapping
+    let use_hmr = self.config.hmr && self.config.mode == BuildMode::Development;
 
     // Generate module wrapper for each module
     for (idx, specifier) in ordered_modules.iter().enumerate() {
@@ -190,8 +225,12 @@ impl<'a> ChunkEmitter<'a> {
         // Transpile if needed (TypeScript -> JavaScript)
         let js_code = self.transpile_module(specifier, &code)?;
 
-        // Wrap in module scope
-        let wrapped = self.wrap_module(&module_id, specifier, &js_code);
+        // Wrap in module scope (with HMR support if enabled)
+        let wrapped = if use_hmr {
+          self.wrap_module_with_hmr(&module_id, specifier, &js_code)
+        } else {
+          self.wrap_module(&module_id, specifier, &js_code)
+        };
         bundle_code.push_str(&wrapped);
         bundle_code.push('\n');
       }
@@ -277,6 +316,17 @@ return module.exports;
     )
   }
 
+  /// Wrap a module in a scope function with HMR support.
+  ///
+  /// This injects the `import.meta.hot` context for HMR-enabled modules.
+  fn wrap_module_with_hmr(&self, module_id: &str, specifier: &ModuleSpecifier, code: &str) -> String {
+    hmr_runtime::generate_module_hmr_wrapper(
+      &specifier.to_string(),
+      module_id,
+      code,
+    )
+  }
+
   /// Generate environment shim for import.meta.env support.
   fn generate_env_shim(&self, environment: &BundleEnvironment) -> String {
     let mode = match self.config.mode {
@@ -317,6 +367,14 @@ if (typeof globalThis !== "undefined") {{
 "#,
       env_entries.join("\n")
     )
+  }
+
+  /// Generate HMR runtime preamble for injection into entry chunks.
+  ///
+  /// This creates the `__VBUNDLE_HMR__` global object with the full HMR API.
+  fn generate_hmr_preamble(&self, environment: &BundleEnvironment) -> String {
+    let config = self.config.hmr_config.clone().unwrap_or_default();
+    hmr_runtime::generate_hmr_runtime(&config, environment)
   }
 
   /// Generate initialization code for the bundle.
@@ -506,5 +564,72 @@ mod tests {
 
     // Should escape quotes and newlines
     assert!(shim.contains(r#"MESSAGE: "Hello \"World\"\nNew line""#));
+  }
+
+  #[test]
+  fn test_emitter_config_with_hmr() {
+    let config = EmitterConfig::default().with_hmr();
+
+    assert!(config.hmr);
+    assert!(config.hmr_config.is_some());
+  }
+
+  #[test]
+  fn test_emitter_config_production_no_hmr() {
+    let config = EmitterConfig::production();
+
+    // HMR should be disabled in production
+    assert!(!config.hmr);
+    assert!(config.hmr_config.is_none());
+  }
+
+  #[test]
+  fn test_generate_hmr_preamble_browser() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::default().with_hmr();
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let preamble = emitter.generate_hmr_preamble(&BundleEnvironment::Browser);
+
+    // Should contain HMR runtime markers
+    assert!(preamble.contains("__VBUNDLE_HMR__"));
+    assert!(preamble.contains("ViteHotContext"));
+    assert!(preamble.contains("createHotContext"));
+    assert!(preamble.contains("applyUpdate"));
+    // Browser should have WebSocket and location.reload
+    assert!(preamble.contains("WebSocket"));
+    assert!(preamble.contains("location.reload"));
+  }
+
+  #[test]
+  fn test_generate_hmr_preamble_server() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::default().with_hmr();
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let preamble = emitter.generate_hmr_preamble(&BundleEnvironment::Server);
+
+    // Should contain HMR runtime markers
+    assert!(preamble.contains("__VBUNDLE_HMR__"));
+    assert!(preamble.contains("ViteHotContext"));
+    // Server should not use location.reload
+    assert!(!preamble.contains("location.reload()"));
+    assert!(preamble.contains("please restart the process"));
+  }
+
+  #[test]
+  fn test_wrap_module_with_hmr() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::default().with_hmr();
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let specifier = ModuleSpecifier::parse("file:///app/mod.ts").unwrap();
+    let wrapped = emitter.wrap_module_with_hmr("__module_0__", &specifier, "export const x = 1;");
+
+    // Should contain HMR context creation
+    assert!(wrapped.contains("__module_0__"));
+    assert!(wrapped.contains("import.meta.hot"));
+    assert!(wrapped.contains("__VBUNDLE_HMR__.createHotContext"));
+    assert!(wrapped.contains("file:///app/mod.ts"));
   }
 }

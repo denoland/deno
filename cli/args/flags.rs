@@ -403,6 +403,10 @@ pub struct VbundleFlags {
   pub mode: Option<String>,
   /// Custom environment variables for import.meta.env (KEY=VALUE format).
   pub define: Vec<String>,
+  /// Enable Hot Module Replacement (HMR).
+  pub hmr: bool,
+  /// HMR WebSocket port.
+  pub hmr_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -7022,6 +7026,19 @@ Bundle for multiple environments:
           .value_parser(value_parser!(String))
           .action(ArgAction::Append),
       )
+      .arg(
+        Arg::new("hmr")
+          .long("hmr")
+          .help("Enable Hot Module Replacement")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("hmr-port")
+          .long("hmr-port")
+          .help("HMR WebSocket port")
+          .value_parser(value_parser!(u16))
+          .default_value("24678"),
+      )
       .arg(watch_arg(false))
       .arg(no_clear_screen_arg())
       .arg(config_arg())
@@ -7078,6 +7095,8 @@ fn vbundle_parse(
     Some(d) => d.collect(),
     None => vec![],
   };
+  let hmr = matches.get_flag("hmr");
+  let hmr_port = matches.remove_one::<u16>("hmr-port");
 
   flags.subcommand = DenoSubcommand::Vbundle(VbundleFlags {
     files: FileFlags {
@@ -7092,6 +7111,8 @@ fn vbundle_parse(
     watch: watch_arg_parse(matches)?,
     mode,
     define,
+    hmr,
+    hmr_port,
   });
   Ok(())
 }
