@@ -399,6 +399,10 @@ pub struct VbundleFlags {
   pub minify: bool,
   pub no_sourcemap: bool,
   pub watch: Option<WatchFlags>,
+  /// Build mode (development or production).
+  pub mode: Option<String>,
+  /// Custom environment variables for import.meta.env (KEY=VALUE format).
+  pub define: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -7003,6 +7007,21 @@ Bundle for multiple environments:
           .help("Disable source map generation")
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("mode")
+          .long("mode")
+          .help("Build mode (development or production)")
+          .value_parser(["development", "production"])
+          .default_value("development"),
+      )
+      .arg(
+        Arg::new("define")
+          .long("define")
+          .short('d')
+          .help("Define environment variables (KEY=VALUE)")
+          .value_parser(value_parser!(String))
+          .action(ArgAction::Append),
+      )
       .arg(watch_arg(false))
       .arg(no_clear_screen_arg())
       .arg(config_arg())
@@ -7054,6 +7073,11 @@ fn vbundle_parse(
   };
   let minify = matches.get_flag("minify");
   let no_sourcemap = matches.get_flag("no-sourcemap");
+  let mode = matches.remove_one::<String>("mode");
+  let define = match matches.remove_many::<String>("define") {
+    Some(d) => d.collect(),
+    None => vec![],
+  };
 
   flags.subcommand = DenoSubcommand::Vbundle(VbundleFlags {
     files: FileFlags {
@@ -7066,6 +7090,8 @@ fn vbundle_parse(
     minify,
     no_sourcemap,
     watch: watch_arg_parse(matches)?,
+    mode,
+    define,
   });
   Ok(())
 }

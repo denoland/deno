@@ -212,11 +212,26 @@ pub async fn vbundle(
   let splitter_config = SplitterConfig::default();
   let splitter = CodeSplitter::new(&graph, splitter_config);
 
+  // Parse build mode
+  let build_mode = match vbundle_flags.mode.as_deref() {
+    Some("production") => emitter::BuildMode::Production,
+    _ => emitter::BuildMode::Development,
+  };
+
+  // Parse custom environment variables
+  let mut env_vars = std::collections::HashMap::new();
+  for define in &vbundle_flags.define {
+    if let Some((key, value)) = define.split_once('=') {
+      env_vars.insert(key.to_string(), value.to_string());
+    }
+  }
+
   let emitter_config = EmitterConfig {
     source_maps: config.sourcemap,
     minify: config.minify,
     out_dir: config.out_dir.clone(),
-    ..Default::default()
+    mode: build_mode,
+    env_vars,
   };
 
   // Generate chunks for each environment

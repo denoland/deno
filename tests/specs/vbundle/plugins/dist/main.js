@@ -1,9 +1,11 @@
 // Environment shim for import.meta.env
 var __env__ = {
-  MODE: "development",
-  DEV: true,
-  PROD: false,
-  SSR: false,
+  MODE: "production",
+  DEV: false,
+  PROD: true,
+  SSR: true,
+  VERSION: "2.0.0",
+  API_URL: "https://api.example.com",
 };
 if (typeof globalThis !== "undefined") {
   globalThis.__VBUNDLE_ENV__ = __env__;
