@@ -56,9 +56,12 @@ use crate::args::VbundleFlags;
 use crate::factory::CliFactory;
 
 pub mod environment;
+pub mod import_analyzer;
 pub mod plugins;
 pub mod source_graph;
+pub mod source_map;
 pub mod types;
+pub mod virtual_fs;
 
 pub use environment::BundleEnvironment;
 pub use plugins::create_runner_and_load_plugins;
@@ -66,8 +69,14 @@ pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
 pub use source_graph::SharedSourceGraph;
 pub use source_graph::SourceModule;
+pub use source_map::Position;
+pub use source_map::SourceMapCache;
+pub use source_map::SourceRange;
 pub use types::BuildConfig;
 pub use types::TransformedModule;
+pub use virtual_fs::BundlerVirtualFS;
+pub use virtual_fs::VfsBuilder;
+pub use virtual_fs::VfsConfig;
 
 /// Main entry point for the vbundle command.
 pub async fn vbundle(
@@ -132,8 +141,30 @@ pub async fn vbundle(
     None
   };
 
-  // Build the source module graph
-  let graph = build_source_graph(&config, maybe_plugin_host.as_ref()).await?;
+  // Create VFS with plugins
+  let vfs = {
+    let mut builder = VfsBuilder::new()
+      .enable_cache(true)
+      .source_maps(!vbundle_flags.no_sourcemap);
+
+    if let Some(host) = &maybe_plugin_host {
+      // Register extensions from plugins
+      for plugin_info in host.get_plugins() {
+        if !plugin_info.extensions.is_empty() {
+          builder = builder.register_extensions(&plugin_info.name, plugin_info.extensions.clone());
+        }
+      }
+      builder = builder.plugin_host(host.clone());
+    }
+
+    Arc::new(builder.build())
+  };
+
+  log::info!("VFS initialized with {} extension handlers",
+    vfs.extension_handler_count());
+
+  // Build the source module graph using VFS
+  let graph = build_source_graph(&config, &vfs).await?;
 
   if graph.read().has_errors() {
     for error in graph.read().errors() {
@@ -150,6 +181,14 @@ pub async fn vbundle(
   // TODO: Phase 4 - Code splitting and chunk generation
   // TODO: Phase 5 - Multi-environment chunk graphs
   // TODO: Code emission with deno_ast
+
+  // Report VFS cache stats
+  let stats = vfs.cache_stats();
+  log::info!(
+    "VFS cache: {} entries, {} source maps",
+    stats.entries,
+    stats.source_maps
+  );
 
   // For now, just report what we found
   for env in graph.read().environments() {
@@ -173,10 +212,10 @@ fn parse_environments(envs: &[String]) -> Vec<BundleEnvironment> {
   envs.iter().map(|s| BundleEnvironment::from_str(s)).collect()
 }
 
-/// Build the source module graph from entry points.
+/// Build the source module graph from entry points using the VFS.
 async fn build_source_graph(
   config: &BuildConfig,
-  maybe_plugin_host: Option<&Arc<PluginHostProxy>>,
+  vfs: &Arc<BundlerVirtualFS>,
 ) -> Result<SharedSourceGraph, AnyError> {
   let graph = SharedSourceGraph::new();
 
@@ -202,8 +241,8 @@ async fn build_source_graph(
     }
     processed.insert(specifier.clone());
 
-    // Try to load the module
-    match load_module(&specifier, referrer.as_ref(), maybe_plugin_host).await {
+    // Load the module through VFS
+    match load_module_via_vfs(&specifier, vfs).await {
       Ok(module) => {
         // Queue dependencies for processing
         for import in &module.imports {
@@ -243,73 +282,46 @@ async fn build_source_graph(
   Ok(graph)
 }
 
-/// Load a single module, using plugins if available.
-async fn load_module(
+/// Load a single module through the VFS.
+async fn load_module_via_vfs(
   specifier: &ModuleSpecifier,
-  _referrer: Option<&ModuleSpecifier>,
-  maybe_plugin_host: Option<&Arc<PluginHostProxy>>,
+  vfs: &Arc<BundlerVirtualFS>,
 ) -> Result<SourceModule, AnyError> {
-  let id = specifier.as_str();
+  // Use VFS to load (potentially transforming) the module
+  let transformed = vfs.load(specifier).await?;
 
-  // Try plugin load hook first
-  if let Some(host) = maybe_plugin_host {
-    if let Some(load_result) = host.load(id).await? {
-      let media_type = match load_result.loader.as_deref() {
-        Some("ts") | Some("typescript") => deno_ast::MediaType::TypeScript,
-        Some("tsx") => deno_ast::MediaType::Tsx,
-        Some("jsx") => deno_ast::MediaType::Jsx,
-        Some("json") => deno_ast::MediaType::Json,
-        _ => deno_ast::MediaType::JavaScript,
-      };
+  // Create source module from transformed result
+  let mut module = SourceModule::new(
+    specifier.clone(),
+    transformed.code.clone(),
+    transformed.media_type,
+  );
 
-      let source: Arc<str> = load_result.code.into();
-      let mut module = SourceModule::new(specifier.clone(), source, media_type);
-
-      // TODO: Parse imports from the loaded code
-      // For now, we return the module without analyzing imports
-
-      return Ok(module);
-    }
+  // Store the transformed module if it was actually transformed
+  if vfs.needs_transform(specifier) {
+    module.transformed = Some(transformed.clone());
   }
 
-  // Fall back to native loading
-  let source = load_native(specifier).await?;
-  let media_type = deno_ast::MediaType::from_specifier(specifier);
-  let mut module = SourceModule::new(specifier.clone(), source, media_type);
+  // Parse imports from the (potentially transformed) code
+  // We use the media type after transformation (always JS/TS for transformed files)
+  let analysis_media_type = if vfs.needs_transform(specifier) {
+    // After transformation, the code is JavaScript
+    deno_ast::MediaType::JavaScript
+  } else {
+    transformed.media_type
+  };
 
-  // Try plugin transform hook
-  if let Some(host) = maybe_plugin_host {
-    if let Some(transform_result) = host.transform(id, &module.source).await? {
-      let transformed = TransformedModule {
-        original_specifier: specifier.clone(),
-        code: transform_result.code.into(),
-        source_map: None, // TODO: Parse source map
-        media_type: deno_ast::MediaType::JavaScript,
-        declarations: None,
-      };
-      module.transformed = Some(transformed);
+  match import_analyzer::analyze_imports(specifier, &transformed.code, analysis_media_type) {
+    Ok(analysis) => {
+      module.imports = analysis.imports;
+      module.dynamic_imports = analysis.dynamic_imports;
+      module.re_exports = analysis.re_exports;
+    }
+    Err(e) => {
+      // Log parse errors but don't fail the entire build
+      log::warn!("Failed to analyze imports for {}: {}", specifier, e);
     }
   }
-
-  // TODO: Parse imports from the source code using deno_ast
 
   Ok(module)
-}
-
-/// Load a module from the file system or network.
-async fn load_native(specifier: &ModuleSpecifier) -> Result<Arc<str>, AnyError> {
-  if specifier.scheme() == "file" {
-    let path = specifier
-      .to_file_path()
-      .map_err(|_| deno_core::anyhow::anyhow!("Invalid file URL: {}", specifier))?;
-    let content = tokio::fs::read_to_string(&path).await?;
-    Ok(content.into())
-  } else {
-    // For remote modules, we would use the module loader
-    // For now, return an error
-    Err(deno_core::anyhow::anyhow!(
-      "Remote modules not yet supported: {}",
-      specifier
-    ))
-  }
 }
