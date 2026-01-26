@@ -3925,7 +3925,6 @@ thread_local! {
 /// Currently supports:
 /// - `--require` / `-r`
 /// - `--inspect-publish-uid`
-/// Add more as needed.
 fn apply_node_options(flags: &mut Flags) {
   let node_options = match std::env::var("NODE_OPTIONS") {
     Ok(val) if !val.is_empty() => val,
