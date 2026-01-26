@@ -954,6 +954,7 @@ pub struct NameServer {
 pub async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   #[serde] args: ResolveAddrArgs,
+  use_edns: bool,
 ) -> Result<Vec<DnsRecordWithTtl>, NetError> {
   let ResolveAddrArgs {
     query,
@@ -972,7 +973,9 @@ pub async fn op_dns_resolve(
     );
     (ResolverConfig::from_parts(None, vec![], group), {
       let mut opts = ResolverOpts::default();
-      opts.edns0 = true;
+      if use_edns {
+        opts.edns0 = true;
+      }
       opts
     })
   } else {
