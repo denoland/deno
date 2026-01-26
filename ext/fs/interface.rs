@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -14,7 +15,7 @@ use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
 
-#[derive(deno_core::FromV8, Default, Debug, Clone, Copy)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 pub struct OpenOptions {
   #[from_v8(default)]
   pub read: bool,

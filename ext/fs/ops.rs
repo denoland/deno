@@ -15,6 +15,7 @@ use boxed_error::Boxed;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::convert::Uint8Array;
@@ -144,7 +145,7 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[derive(deno_core::FromV8, Default, Debug, Clone, Copy)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 struct FsOpenOptions {
   #[from_v8(default)]
   read: bool,
