@@ -26,6 +26,7 @@ use deno_core::error::AnyError;
 use super::chunk_graph::Chunk;
 use super::chunk_graph::ChunkGraph;
 use super::chunk_graph::ChunkId;
+use super::environment::BundleEnvironment;
 use super::source_graph::SharedSourceGraph;
 use super::splitter::determine_bundle_order;
 
@@ -40,6 +41,20 @@ pub struct EmitterConfig {
 
   /// The output directory.
   pub out_dir: std::path::PathBuf,
+
+  /// Environment variables to inject (for import.meta.env).
+  pub env_vars: HashMap<String, String>,
+
+  /// The build mode (development or production).
+  pub mode: BuildMode,
+}
+
+/// Build mode for environment-specific transforms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuildMode {
+  #[default]
+  Development,
+  Production,
 }
 
 impl Default for EmitterConfig {
@@ -48,7 +63,32 @@ impl Default for EmitterConfig {
       source_maps: true,
       minify: false,
       out_dir: std::path::PathBuf::from("dist"),
+      env_vars: HashMap::new(),
+      mode: BuildMode::Development,
     }
+  }
+}
+
+impl EmitterConfig {
+  /// Create a production config.
+  pub fn production() -> Self {
+    Self {
+      mode: BuildMode::Production,
+      minify: true,
+      ..Default::default()
+    }
+  }
+
+  /// Set environment variables for import.meta.env.
+  pub fn with_env_vars(mut self, vars: HashMap<String, String>) -> Self {
+    self.env_vars = vars;
+    self
+  }
+
+  /// Add a single environment variable.
+  pub fn with_env_var(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    self.env_vars.insert(key.into(), value.into());
+    self
   }
 }
 
@@ -90,9 +130,11 @@ impl<'a> ChunkEmitter<'a> {
     // Collect chunk IDs first to avoid borrow issues
     let chunk_ids: Vec<ChunkId> = chunk_graph.chunks().map(|c| c.id.clone()).collect();
 
+    let environment = chunk_graph.environment.clone();
+
     for chunk_id in chunk_ids {
       let chunk = chunk_graph.get_chunk(&chunk_id).unwrap();
-      let emitted = self.emit_chunk(chunk)?;
+      let emitted = self.emit_chunk_for_env(chunk, &environment)?;
 
       // Update the chunk with generated code
       if let Some(chunk) = chunk_graph.get_chunk_mut(&chunk_id) {
@@ -108,6 +150,15 @@ impl<'a> ChunkEmitter<'a> {
 
   /// Emit a single chunk.
   pub fn emit_chunk(&self, chunk: &Chunk) -> Result<EmittedChunk, AnyError> {
+    self.emit_chunk_for_env(chunk, &BundleEnvironment::Server)
+  }
+
+  /// Emit a single chunk for a specific environment.
+  pub fn emit_chunk_for_env(
+    &self,
+    chunk: &Chunk,
+    environment: &BundleEnvironment,
+  ) -> Result<EmittedChunk, AnyError> {
     let source = self.source_graph.read();
 
     // Determine module order within the chunk
@@ -116,6 +167,12 @@ impl<'a> ChunkEmitter<'a> {
     // Build the bundle content
     let mut bundle_code = String::new();
     let mut module_map: HashMap<String, String> = HashMap::new();
+
+    // Add environment shim at the start of entry chunks
+    if chunk.is_entry {
+      bundle_code.push_str(&self.generate_env_shim(environment));
+      bundle_code.push('\n');
+    }
 
     // Generate module wrapper for each module
     for (idx, specifier) in ordered_modules.iter().enumerate() {
@@ -217,6 +274,48 @@ return module.exports;
       specifier,
       module_id,
       indent_code(code, 2)
+    )
+  }
+
+  /// Generate environment shim for import.meta.env support.
+  fn generate_env_shim(&self, environment: &BundleEnvironment) -> String {
+    let mode = match self.config.mode {
+      BuildMode::Development => "development",
+      BuildMode::Production => "production",
+    };
+
+    let is_dev = matches!(self.config.mode, BuildMode::Development);
+    let is_prod = matches!(self.config.mode, BuildMode::Production);
+    let is_ssr = environment.is_server();
+
+    // Build env vars object
+    let mut env_entries = vec![
+      format!("  MODE: \"{}\",", mode),
+      format!("  DEV: {},", is_dev),
+      format!("  PROD: {},", is_prod),
+      format!("  SSR: {},", is_ssr),
+    ];
+
+    // Add custom env vars
+    for (key, value) in &self.config.env_vars {
+      // Escape the value for JavaScript string
+      let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+      env_entries.push(format!("  {}: \"{}\",", key, escaped));
+    }
+
+    format!(
+      r#"// Environment shim for import.meta.env
+var __env__ = {{
+{}
+}};
+if (typeof globalThis !== "undefined") {{
+  globalThis.__VBUNDLE_ENV__ = __env__;
+}}
+"#,
+      env_entries.join("\n")
     )
   }
 

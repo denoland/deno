@@ -64,6 +64,7 @@ pub mod source_graph;
 pub mod source_map;
 pub mod splitter;
 pub mod types;
+pub mod vfs_module_loader;
 pub mod virtual_fs;
 
 pub use chunk_graph::Chunk;
@@ -84,6 +85,9 @@ pub use splitter::CodeSplitter;
 pub use splitter::SplitterConfig;
 pub use types::BuildConfig;
 pub use types::TransformedModule;
+pub use vfs_module_loader::ErrorPositionMapper;
+pub use vfs_module_loader::VfsLoaderConfig;
+pub use vfs_module_loader::VfsModuleLoader;
 pub use virtual_fs::BundlerVirtualFS;
 pub use virtual_fs::VfsBuilder;
 pub use virtual_fs::VfsConfig;
@@ -204,6 +208,7 @@ pub async fn vbundle(
     source_maps: config.sourcemap,
     minify: config.minify,
     out_dir: config.out_dir.clone(),
+    ..Default::default()
   };
 
   // Generate chunks for each environment
