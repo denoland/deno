@@ -246,6 +246,14 @@ impl CronHandler for LocalCronHandler {
   }
 }
 
+impl Drop for LocalCronHandler {
+  fn drop(&mut self) {
+    if let Some(handle) = self.cron_loop_join_handle.take() {
+      handle.abort();
+    }
+  }
+}
+
 pub struct CronExecutionHandle {
   name: String,
   runtime_state: Weak<RefCell<RuntimeState>>,

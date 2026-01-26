@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod handler_impl;
 mod interface;
 pub mod local;
+mod socket;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -17,6 +19,10 @@ use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
 
 pub use crate::interface::*;
+pub use handler_impl::CronHandleImpl;
+pub use handler_impl::CronHandlerImpl;
+pub use socket::SocketCronHandle;
+pub use socket::SocketCronHandler;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
@@ -77,6 +83,9 @@ pub enum CronError {
   #[class(generic)]
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
+  #[class(generic)]
+  #[error("Socket error: {0}")]
+  SocketError(String),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -156,3 +165,4 @@ fn validate_cron_name(name: &str) -> Result<(), CronError> {
   }
   Ok(())
 }
+

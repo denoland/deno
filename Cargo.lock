@@ -1936,9 +1936,12 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_features",
+ "once_cell",
  "saffron",
+ "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-vsock",
 ]
 
 [[package]]
