@@ -1,3 +1,6 @@
 [WILDCARD]Loaded 1 plugins[WILDCARD]
 [transform-plugin] transforming:[WILDCARD]app.ts
-[WILDCARD]Built source graph with 1 modules[WILDCARD]
+[WILDCARD]Built source graph with 1 modules
+[WILDCARD]
+Emitted 1 files to dist
+[WILDCARD]

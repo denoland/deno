@@ -55,14 +55,22 @@ use crate::args::Flags;
 use crate::args::VbundleFlags;
 use crate::factory::CliFactory;
 
+pub mod chunk_graph;
+pub mod emitter;
 pub mod environment;
 pub mod import_analyzer;
 pub mod plugins;
 pub mod source_graph;
 pub mod source_map;
+pub mod splitter;
 pub mod types;
 pub mod virtual_fs;
 
+pub use chunk_graph::Chunk;
+pub use chunk_graph::ChunkGraph;
+pub use chunk_graph::ChunkId;
+pub use emitter::ChunkEmitter;
+pub use emitter::EmitterConfig;
 pub use environment::BundleEnvironment;
 pub use plugins::create_runner_and_load_plugins;
 pub use plugins::PluginHostProxy;
@@ -72,6 +80,8 @@ pub use source_graph::SourceModule;
 pub use source_map::Position;
 pub use source_map::SourceMapCache;
 pub use source_map::SourceRange;
+pub use splitter::CodeSplitter;
+pub use splitter::SplitterConfig;
 pub use types::BuildConfig;
 pub use types::TransformedModule;
 pub use virtual_fs::BundlerVirtualFS;
@@ -178,10 +188,6 @@ pub async fn vbundle(
     graph.read().module_count()
   );
 
-  // TODO: Phase 4 - Code splitting and chunk generation
-  // TODO: Phase 5 - Multi-environment chunk graphs
-  // TODO: Code emission with deno_ast
-
   // Report VFS cache stats
   let stats = vfs.cache_stats();
   log::info!(
@@ -190,10 +196,48 @@ pub async fn vbundle(
     stats.source_maps
   );
 
-  // For now, just report what we found
-  for env in graph.read().environments() {
-    let module_count = graph.read().modules_for_env(env).count();
-    log::info!("Environment '{}': {} modules", env, module_count);
+  // Phase 4: Code splitting and chunk generation
+  let splitter_config = SplitterConfig::default();
+  let splitter = CodeSplitter::new(&graph, splitter_config);
+
+  let emitter_config = EmitterConfig {
+    source_maps: config.sourcemap,
+    minify: config.minify,
+    out_dir: config.out_dir.clone(),
+  };
+
+  // Generate chunks for each environment
+  for env in &config.environments {
+    log::info!("Splitting modules for environment '{}'", env);
+
+    let mut chunk_graph = splitter.split(env);
+    log::info!(
+      "Created {} chunks for environment '{}'",
+      chunk_graph.chunk_count(),
+      env
+    );
+
+    // Emit the chunks
+    let emitter = ChunkEmitter::new(&graph, emitter_config.clone());
+    let emitted = emitter.emit_all(&mut chunk_graph)?;
+
+    // Write to disk
+    emitter.write_to_disk(&emitted)?;
+
+    log::info!(
+      "Emitted {} files to {}",
+      emitted.len(),
+      config.out_dir.display()
+    );
+
+    // Report what was generated
+    for chunk in emitted {
+      log::info!(
+        "  {} ({} bytes)",
+        chunk.file_name,
+        chunk.code.len()
+      );
+    }
   }
 
   // Shutdown plugin host
