@@ -456,6 +456,8 @@ impl CliMainWorkerFactory {
         // TODO(bartlomieju): probably shouldn't include these files here?
         "40_lint_selector.js",
         "40_lint.js",
+        // vbundle plugins must be loaded before main vbundle module
+        "41_vbundle_plugins.js",
         "40_vbundle.js"
       );
     }

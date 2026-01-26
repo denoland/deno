@@ -20,6 +20,11 @@ const { op_vbundle_emit_file } = core.ops;
  * @property {boolean} hasResolve
  * @property {boolean} hasLoad
  * @property {boolean} hasTransform
+ * @property {boolean} hasBuildStart
+ * @property {boolean} hasBuildEnd
+ * @property {boolean} hasRenderChunk
+ * @property {boolean} hasGenerateBundle
+ * @property {'pre' | 'post' | undefined} enforce
  */
 
 /**
@@ -44,25 +49,58 @@ const { op_vbundle_emit_file } = core.ops;
  */
 
 /**
+ * @typedef {Object} RenderChunkResult
+ * @property {string} code
+ * @property {string} [map]
+ */
+
+/**
  * @typedef {Object} ResolveOptions
  * @property {boolean} [isEntry]
  * @property {string} [kind]
  */
 
 /**
+ * @typedef {Object} ChunkInfo
+ * @property {string} fileName
+ * @property {string} name
+ * @property {string[]} modules
+ * @property {boolean} isEntry
+ * @property {boolean} isDynamicEntry
+ */
+
+/**
  * @typedef {Object} Plugin
  * @property {string} name
  * @property {string[]} [extensions]
- * @property {(source: string, importer: string | null, options: ResolveOptions) => ResolveResult | null | undefined | Promise<ResolveResult | null | undefined>} [resolveId]
- * @property {(id: string) => LoadResult | null | undefined | Promise<LoadResult | null | undefined>} [load]
- * @property {(code: string, id: string) => TransformResult | null | undefined | Promise<TransformResult | null | undefined>} [transform]
+ * @property {'pre' | 'post'} [enforce]
+ * @property {() => void | Promise<void>} [buildStart]
+ * @property {() => void | Promise<void>} [buildEnd]
+ * @property {(source: string, importer: string | null, options: ResolveOptions) => ResolveResult | string | null | undefined | Promise<ResolveResult | string | null | undefined>} [resolveId]
+ * @property {(id: string) => LoadResult | string | null | undefined | Promise<LoadResult | string | null | undefined>} [load]
+ * @property {(code: string, id: string) => TransformResult | string | null | undefined | Promise<TransformResult | string | null | undefined>} [transform]
+ * @property {(code: string, chunk: ChunkInfo) => RenderChunkResult | string | null | undefined | Promise<RenderChunkResult | string | null | undefined>} [renderChunk]
+ * @property {(bundle: Record<string, ChunkInfo>) => void | Promise<void>} [generateBundle]
  */
 
 /** @type {Plugin[]} */
 const plugins = [];
 
+/** @type {Plugin[]} */
+let sortedPlugins = [];
+
 /** @type {Set<string>} */
 const installedPluginNames = new Set();
+
+/**
+ * Sort plugins by enforce order: pre -> normal -> post
+ */
+function sortPlugins() {
+  const pre = plugins.filter((p) => p.enforce === "pre");
+  const normal = plugins.filter((p) => !p.enforce);
+  const post = plugins.filter((p) => p.enforce === "post");
+  sortedPlugins = [...pre, ...normal, ...post];
+}
 
 /**
  * Install plugins from their default exports.
@@ -77,6 +115,8 @@ export function installPlugins(pluginExports) {
     const info = installPlugin(plugin);
     infos.push(info);
   }
+
+  sortPlugins();
 
   return infos;
 }
@@ -99,6 +139,17 @@ function installPlugin(plugin) {
     throw new Error(`Vbundle plugin '${plugin.name}' is already installed`);
   }
 
+  // Validate enforce option
+  if (
+    plugin.enforce !== undefined &&
+    plugin.enforce !== "pre" &&
+    plugin.enforce !== "post"
+  ) {
+    throw new Error(
+      `Vbundle plugin '${plugin.name}' has invalid 'enforce' value: ${plugin.enforce}`,
+    );
+  }
+
   plugins.push(plugin);
   installedPluginNames.add(plugin.name);
 
@@ -108,7 +159,52 @@ function installPlugin(plugin) {
     hasResolve: typeof plugin.resolveId === "function",
     hasLoad: typeof plugin.load === "function",
     hasTransform: typeof plugin.transform === "function",
+    hasBuildStart: typeof plugin.buildStart === "function",
+    hasBuildEnd: typeof plugin.buildEnd === "function",
+    hasRenderChunk: typeof plugin.renderChunk === "function",
+    hasGenerateBundle: typeof plugin.generateBundle === "function",
+    enforce: plugin.enforce,
   };
+}
+
+/**
+ * Call buildStart hooks on all plugins.
+ * @returns {Promise<void>}
+ */
+export async function buildStart() {
+  for (const plugin of sortedPlugins) {
+    if (typeof plugin.buildStart !== "function") {
+      continue;
+    }
+
+    try {
+      await plugin.buildStart();
+    } catch (err) {
+      throw new Error(`Plugin '${plugin.name}' buildStart hook failed`, {
+        cause: err,
+      });
+    }
+  }
+}
+
+/**
+ * Call buildEnd hooks on all plugins.
+ * @returns {Promise<void>}
+ */
+export async function buildEnd() {
+  for (const plugin of sortedPlugins) {
+    if (typeof plugin.buildEnd !== "function") {
+      continue;
+    }
+
+    try {
+      await plugin.buildEnd();
+    } catch (err) {
+      throw new Error(`Plugin '${plugin.name}' buildEnd hook failed`, {
+        cause: err,
+      });
+    }
+  }
 }
 
 /**
@@ -118,23 +214,20 @@ function installPlugin(plugin) {
  * @param {string} source - The import specifier to resolve
  * @param {string | null} importer - The module that is importing
  * @param {ResolveOptions} options - Resolution options
- * @returns {ResolveResult | null}
+ * @returns {Promise<ResolveResult | null>}
  */
-export function resolveId(source, importer, options) {
-  for (const plugin of plugins) {
+export async function resolveId(source, importer, options) {
+  for (const plugin of sortedPlugins) {
     if (typeof plugin.resolveId !== "function") {
       continue;
     }
 
     try {
-      const result = plugin.resolveId(source, importer, options);
+      let result = plugin.resolveId(source, importer, options);
 
-      // Handle promises synchronously for now
-      // TODO: Support async plugins
+      // Await if promise
       if (result && typeof result === "object" && "then" in result) {
-        throw new Error(
-          `Async resolveId hooks are not yet supported (plugin: ${plugin.name})`
-        );
+        result = await result;
       }
 
       if (result != null) {
@@ -159,22 +252,20 @@ export function resolveId(source, importer, options) {
  * Returns the first non-null result.
  *
  * @param {string} id - The resolved module id
- * @returns {LoadResult | null}
+ * @returns {Promise<LoadResult | null>}
  */
-export function load(id) {
-  for (const plugin of plugins) {
+export async function load(id) {
+  for (const plugin of sortedPlugins) {
     if (typeof plugin.load !== "function") {
       continue;
     }
 
     try {
-      const result = plugin.load(id);
+      let result = plugin.load(id);
 
-      // Handle promises synchronously for now
+      // Await if promise
       if (result && typeof result === "object" && "then" in result) {
-        throw new Error(
-          `Async load hooks are not yet supported (plugin: ${plugin.name})`
-        );
+        result = await result;
       }
 
       if (result != null) {
@@ -200,26 +291,24 @@ export function load(id) {
  *
  * @param {string} id - The module id
  * @param {string} code - The source code to transform
- * @returns {TransformResult | null}
+ * @returns {Promise<TransformResult | null>}
  */
-export function transform(id, code) {
+export async function transform(id, code) {
   let currentCode = code;
   let combinedMap = null;
   let hasTransformed = false;
 
-  for (const plugin of plugins) {
+  for (const plugin of sortedPlugins) {
     if (typeof plugin.transform !== "function") {
       continue;
     }
 
     try {
-      const result = plugin.transform(currentCode, id);
+      let result = plugin.transform(currentCode, id);
 
-      // Handle promises synchronously for now
+      // Await if promise
       if (result && typeof result === "object" && "then" in result) {
-        throw new Error(
-          `Async transform hooks are not yet supported (plugin: ${plugin.name})`
-        );
+        result = await result;
       }
 
       if (result != null) {
@@ -239,7 +328,7 @@ export function transform(id, code) {
     } catch (err) {
       throw new Error(
         `Plugin '${plugin.name}' transform hook failed for '${id}'`,
-        { cause: err }
+        { cause: err },
       );
     }
   }
@@ -252,6 +341,85 @@ export function transform(id, code) {
     code: currentCode,
     map: combinedMap ?? undefined,
   };
+}
+
+/**
+ * Call renderChunk hooks on all plugins.
+ * Each plugin can transform the chunk code, and transformations are chained.
+ *
+ * @param {string} code - The chunk code
+ * @param {ChunkInfo} chunk - Information about the chunk
+ * @returns {Promise<RenderChunkResult | null>}
+ */
+export async function renderChunk(code, chunk) {
+  let currentCode = code;
+  let combinedMap = null;
+  let hasTransformed = false;
+
+  for (const plugin of sortedPlugins) {
+    if (typeof plugin.renderChunk !== "function") {
+      continue;
+    }
+
+    try {
+      let result = plugin.renderChunk(currentCode, chunk);
+
+      // Await if promise
+      if (result && typeof result === "object" && "then" in result) {
+        result = await result;
+      }
+
+      if (result != null) {
+        hasTransformed = true;
+
+        // Normalize result
+        if (typeof result === "string") {
+          currentCode = result;
+        } else {
+          currentCode = result.code;
+          if (result.map) {
+            combinedMap = result.map;
+          }
+        }
+      }
+    } catch (err) {
+      throw new Error(
+        `Plugin '${plugin.name}' renderChunk hook failed for '${chunk.fileName}'`,
+        { cause: err },
+      );
+    }
+  }
+
+  if (!hasTransformed) {
+    return null;
+  }
+
+  return {
+    code: currentCode,
+    map: combinedMap ?? undefined,
+  };
+}
+
+/**
+ * Call generateBundle hooks on all plugins.
+ *
+ * @param {Record<string, ChunkInfo>} bundle - The bundle being generated
+ * @returns {Promise<void>}
+ */
+export async function generateBundle(bundle) {
+  for (const plugin of sortedPlugins) {
+    if (typeof plugin.generateBundle !== "function") {
+      continue;
+    }
+
+    try {
+      await plugin.generateBundle(bundle);
+    } catch (err) {
+      throw new Error(`Plugin '${plugin.name}' generateBundle hook failed`, {
+        cause: err,
+      });
+    }
+  }
 }
 
 /**
@@ -299,9 +467,23 @@ export class PluginContext {
 
 // Export functions to Deno internals for Rust to call
 internals.installPlugins = installPlugins;
+internals.buildStart = buildStart;
+internals.buildEnd = buildEnd;
 internals.resolveId = resolveId;
 internals.load = load;
 internals.transform = transform;
+internals.renderChunk = renderChunk;
+internals.generateBundle = generateBundle;
+
+// Import built-in plugins
+import {
+  jsonPlugin,
+  definePlugin,
+  aliasPlugin,
+  virtualPlugin,
+  importGlobPlugin,
+  builtinPlugins,
+} from "ext:cli/41_vbundle_plugins.js";
 
 // Also expose on Deno namespace for plugin authors
 if (!Deno.vbundle) {
@@ -310,3 +492,15 @@ if (!Deno.vbundle) {
 
 Deno.vbundle.emitFile = emitFile;
 Deno.vbundle.PluginContext = PluginContext;
+
+// Built-in plugin factories
+Deno.vbundle.plugins = {
+  json: jsonPlugin,
+  define: definePlugin,
+  alias: aliasPlugin,
+  virtual: virtualPlugin,
+  importGlob: importGlobPlugin,
+};
+
+// Also export for internal use
+export { builtinPlugins };

@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "basic_vbundle_no_plugins": {
+      "args": "vbundle --unstable-sloppy-imports main.ts",
+      "output": "basic.out",
+      "exitCode": 0
+    },
+    "vbundle_with_custom_plugin": {
+      "args": "vbundle --unstable-sloppy-imports --plugin ./custom_plugin.ts main.ts",
+      "output": "with_plugin.out",
+      "exitCode": 0
+    },
+    "vbundle_plugin_with_transform": {
+      "args": "vbundle --unstable-sloppy-imports --plugin ./transform_plugin.ts app.ts",
+      "output": "transform.out",
+      "exitCode": 0
+    }
+  }
+}

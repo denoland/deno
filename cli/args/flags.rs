@@ -708,6 +708,7 @@ impl DenoSubcommand {
         | Self::Bench(_)
         | Self::Lint(_)
         | Self::Lsp
+        | Self::Vbundle(_)
     )
   }
 
@@ -7002,8 +7003,10 @@ Bundle for multiple environments:
           .help("Disable source map generation")
           .action(ArgAction::SetTrue),
       )
-      .arg(watch_arg(true))
+      .arg(watch_arg(false))
       .arg(no_clear_screen_arg())
+      .arg(config_arg())
+      .arg(no_config_arg())
       .arg(
         Arg::new("files")
           .help("Entry point files to bundle")

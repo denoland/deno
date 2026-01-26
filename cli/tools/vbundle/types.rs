@@ -57,6 +57,17 @@ pub struct TransformResult {
   pub map: Option<String>,
 }
 
+/// Result of a plugin's renderChunk hook.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "deno_core::serde")]
+pub struct RenderChunkResult {
+  /// The transformed chunk code.
+  pub code: String,
+  /// Optional source map.
+  #[serde(default)]
+  pub map: Option<String>,
+}
+
 /// Information about a loaded and registered plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "deno_core::serde", rename_all = "camelCase")]
@@ -75,6 +86,21 @@ pub struct PluginInfo {
   /// Whether this plugin provides transform hook.
   #[serde(default)]
   pub has_transform: bool,
+  /// Whether this plugin provides buildStart hook.
+  #[serde(default)]
+  pub has_build_start: bool,
+  /// Whether this plugin provides buildEnd hook.
+  #[serde(default)]
+  pub has_build_end: bool,
+  /// Whether this plugin provides renderChunk hook.
+  #[serde(default)]
+  pub has_render_chunk: bool,
+  /// Whether this plugin provides generateBundle hook.
+  #[serde(default)]
+  pub has_generate_bundle: bool,
+  /// Plugin execution order ('pre', 'post', or None for normal).
+  #[serde(default)]
+  pub enforce: Option<String>,
 }
 
 /// A module that has been transformed by the bundler.
