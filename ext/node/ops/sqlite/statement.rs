@@ -70,6 +70,7 @@ pub struct StatementSync {
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
+  pub return_arrays: Cell<bool>,
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
   pub allow_unknown_named_params: Cell<bool>,
@@ -272,7 +273,7 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            return Err(SqliteError::NumberTooLarge(value));
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -315,7 +316,7 @@ impl StatementSync {
   fn read_row<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-  ) -> Result<Option<v8::Local<'a, v8::Object>>, SqliteError> {
+  ) -> Result<Option<v8::Local<'a, v8::Value>>, SqliteError> {
     if self.step()? {
       return Ok(None);
     }
@@ -339,11 +340,15 @@ impl StatementSync {
       values.push(value);
     }
 
-    let null = v8::null(scope).into();
-    let result =
-      v8::Object::with_prototype_and_properties(scope, null, &names, &values);
-
-    Ok(Some(result))
+    if self.return_arrays.get() {
+      let result = v8::Array::new_with_elements(scope, &values);
+      Ok(Some(result.into()))
+    } else {
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, &names, &values);
+      Ok(Some(result.into()))
+    }
   }
 
   fn bind_value(
@@ -612,9 +617,7 @@ impl StatementSync {
     let _reset = ResetGuard(self);
 
     let entry = self.read_row(scope)?;
-    let result = entry
-      .map(|r| r.into())
-      .unwrap_or_else(|| v8::undefined(scope).into());
+    let result = entry.unwrap_or_else(|| v8::undefined(scope).into());
 
     Ok(result)
   }
@@ -662,7 +665,7 @@ impl StatementSync {
 
     let _reset = ResetGuard(self);
     while let Some(result) = self.read_row(scope)? {
-      arr.push(result.into());
+      arr.push(result);
     }
 
     let arr = v8::Array::new_with_elements(scope, &arr);
@@ -710,10 +713,8 @@ impl StatementSync {
       ];
 
       if statement.is_iter_finished.get() {
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -725,10 +726,8 @@ impl StatementSync {
         let _ = statement.reset();
         statement.is_iter_finished.set(true);
 
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -736,7 +735,7 @@ impl StatementSync {
         return;
       };
 
-      let values = &[v8::Boolean::new(scope, false).into(), row.into()];
+      let values = &[v8::Boolean::new(scope, false).into(), row];
       let null = v8::null(scope).into();
       let result =
         v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -758,10 +757,8 @@ impl StatementSync {
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
-      let values = &[
-        v8::Boolean::new(scope, true).into(),
-        v8::undefined(scope).into(),
-      ];
+      let values =
+        &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
 
       let null = v8::null(scope).into();
       let result =
@@ -850,6 +847,17 @@ impl StatementSync {
   ) -> Result<(), SqliteError> {
     self.assert_statement_finalized()?;
     self.use_big_ints.set(enabled);
+    Ok(())
+  }
+
+  #[fast]
+  #[undefined]
+  fn set_return_arrays(
+    &self,
+    #[validate(validators::return_arrays_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
+    self.assert_statement_finalized()?;
+    self.return_arrays.set(enabled);
     Ok(())
   }
 

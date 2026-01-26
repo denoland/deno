@@ -101,6 +101,7 @@ pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
 pub(crate) const SOCKET_DEV_API_PORT: u16 = 4268;
+pub(crate) const PUBLIC_NPM_JSR_REGISTRY_PORT: u16 = 4269;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -156,6 +157,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+  let npm_jsr_registry_server_futs =
+    npm_registry::public_npm_jsr_registry(PUBLIC_NPM_JSR_REGISTRY_PORT);
   let socket_dev_api_futs = socket_dev::api(SOCKET_DEV_API_PORT);
 
   // for serving node header files to node-gyp in tests
@@ -198,6 +201,7 @@ pub async fn run_all_servers() {
   futures.extend(private_npm_registry_1_server_futs);
   futures.extend(private_npm_registry_2_server_futs);
   futures.extend(private_npm_registry_3_server_futs);
+  futures.extend(npm_jsr_registry_server_futs);
   futures.extend(socket_dev_api_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
