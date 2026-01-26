@@ -417,4 +417,94 @@ mod tests {
     assert!(wrapped.contains("__module_0__"));
     assert!(wrapped.contains("export const x = 1;"));
   }
+
+  #[test]
+  fn test_build_mode_default() {
+    let config = EmitterConfig::default();
+    assert!(matches!(config.mode, BuildMode::Development));
+    assert!(!config.minify);
+  }
+
+  #[test]
+  fn test_build_mode_production() {
+    let config = EmitterConfig::production();
+    assert!(matches!(config.mode, BuildMode::Production));
+    assert!(config.minify);
+  }
+
+  #[test]
+  fn test_emitter_config_with_env_vars() {
+    let config = EmitterConfig::default()
+      .with_env_var("API_URL", "https://api.example.com")
+      .with_env_var("DEBUG", "true");
+
+    assert_eq!(config.env_vars.get("API_URL"), Some(&"https://api.example.com".to_string()));
+    assert_eq!(config.env_vars.get("DEBUG"), Some(&"true".to_string()));
+  }
+
+  #[test]
+  fn test_generate_env_shim_development_server() {
+    let source_graph = SharedSourceGraph::new();
+    let emitter = ChunkEmitter::new(&source_graph, EmitterConfig::default());
+
+    let shim = emitter.generate_env_shim(&BundleEnvironment::Server);
+
+    assert!(shim.contains("MODE: \"development\""));
+    assert!(shim.contains("DEV: true"));
+    assert!(shim.contains("PROD: false"));
+    assert!(shim.contains("SSR: true"));
+  }
+
+  #[test]
+  fn test_generate_env_shim_development_browser() {
+    let source_graph = SharedSourceGraph::new();
+    let emitter = ChunkEmitter::new(&source_graph, EmitterConfig::default());
+
+    let shim = emitter.generate_env_shim(&BundleEnvironment::Browser);
+
+    assert!(shim.contains("MODE: \"development\""));
+    assert!(shim.contains("DEV: true"));
+    assert!(shim.contains("PROD: false"));
+    assert!(shim.contains("SSR: false"));
+  }
+
+  #[test]
+  fn test_generate_env_shim_production() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::production();
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let shim = emitter.generate_env_shim(&BundleEnvironment::Server);
+
+    assert!(shim.contains("MODE: \"production\""));
+    assert!(shim.contains("DEV: false"));
+    assert!(shim.contains("PROD: true"));
+  }
+
+  #[test]
+  fn test_generate_env_shim_with_custom_vars() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::default()
+      .with_env_var("API_URL", "https://api.example.com")
+      .with_env_var("VERSION", "1.0.0");
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let shim = emitter.generate_env_shim(&BundleEnvironment::Server);
+
+    assert!(shim.contains("API_URL: \"https://api.example.com\""));
+    assert!(shim.contains("VERSION: \"1.0.0\""));
+  }
+
+  #[test]
+  fn test_generate_env_shim_escapes_special_chars() {
+    let source_graph = SharedSourceGraph::new();
+    let config = EmitterConfig::default()
+      .with_env_var("MESSAGE", "Hello \"World\"\nNew line");
+    let emitter = ChunkEmitter::new(&source_graph, config);
+
+    let shim = emitter.generate_env_shim(&BundleEnvironment::Server);
+
+    // Should escape quotes and newlines
+    assert!(shim.contains(r#"MESSAGE: "Hello \"World\"\nNew line""#));
+  }
 }
