@@ -118,6 +118,7 @@ pub struct TestContextBuilder {
   temp_dir_path: Option<PathBuf>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
+  fd3: i32,
 }
 
 impl TestContextBuilder {
@@ -150,6 +151,11 @@ impl TestContextBuilder {
 
   pub fn use_temp_cwd(mut self) -> Self {
     self.use_temp_cwd = true;
+    self
+  }
+
+  pub fn fd3(mut self, fd: i32) -> Self {
+    self.fd3 = fd;
     self
   }
 
@@ -293,6 +299,7 @@ impl TestContextBuilder {
       _http_server_guard: http_server_guard,
       deno_dir,
       temp_dir,
+      fd3: self.fd3,
     }
   }
 }
@@ -306,6 +313,7 @@ pub struct TestContext {
   _http_server_guard: Option<Rc<HttpServerGuard>>,
   deno_dir: TempDir,
   temp_dir: TempDir,
+  fd3: i32,
 }
 
 impl Default for TestContext {
@@ -332,6 +340,7 @@ impl TestContext {
       .set_diagnostic_logger(self.diagnostic_logger.clone())
       .envs(self.envs.clone())
       .current_dir(&self.cwd)
+      .fd3(self.fd3)
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
@@ -448,6 +457,7 @@ pub struct TestCommandBuilder {
   args_vec: Vec<String>,
   split_output: bool,
   show_output: bool,
+  fd3: i32,
 }
 
 impl TestCommandBuilder {
@@ -468,6 +478,7 @@ impl TestCommandBuilder {
       args_text: "".to_string(),
       args_vec: Default::default(),
       show_output: false,
+      fd3: 0,
     }
   }
 
@@ -551,6 +562,11 @@ impl TestCommandBuilder {
   #[deprecated]
   pub fn show_output(mut self) -> Self {
     self.show_output = true;
+    self
+  }
+
+  pub fn fd3(mut self, fd: i32) -> Self {
+    self.fd3 = fd;
     self
   }
 
@@ -663,7 +679,26 @@ impl TestCommandBuilder {
   }
 
   pub fn spawn(&self) -> Result<DenoChild, std::io::Error> {
-    let child = self.build_command().spawn()?;
+    let mut command = self.build_command();
+
+    // Copy the file descriptor to fd3 before spawning the subprocess
+    #[cfg(unix)]
+    if self.command_name == "deno" && self.fd3 > 0 {
+      unsafe {
+        use std::os::unix::process::CommandExt;
+
+        let fd3 = self.fd3;
+        command.pre_exec(move || {
+          if libc::dup2(fd3, 3) == -1 {
+            return Err(std::io::Error::last_os_error());
+          }
+          Ok(())
+        });
+      }
+    }
+
+    let child = command.spawn()?;
+
     let mut child = DenoChild {
       _deno_dir: self.deno_dir.clone(),
       child,
@@ -740,6 +775,22 @@ impl TestCommandBuilder {
       command.stderr(combined_writer);
       (Some(combined_reader), None)
     };
+
+    // Copy the file descriptor to fd3 before spawning the subprocess
+    #[cfg(unix)]
+    if self.command_name == "deno" && self.fd3 > 0 {
+      unsafe {
+        use std::os::unix::process::CommandExt;
+
+        let fd3 = self.fd3;
+        command.pre_exec(move || {
+          if libc::dup2(fd3, 3) == -1 {
+            return Err(std::io::Error::last_os_error());
+          }
+          Ok(())
+        });
+      }
+    }
 
     let mut process = command.spawn().expect("Failed spawning command");
 
