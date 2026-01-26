@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use deno_core::serde_json;
-use once_cell::unsync::OnceCell;
 use deno_core::unsync::spawn;
+use once_cell::unsync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncBufReadExt;
@@ -62,7 +62,8 @@ impl SocketCronHandler {
   pub fn new(socket_addr: String) -> Self {
     let (cmd_tx, cmd_rx) = mpsc::channel(32);
     let exit_error = Rc::new(OnceCell::new());
-    let task = spawn(Self::socket_task(socket_addr, cmd_rx, exit_error.clone()));
+    let task =
+      spawn(Self::socket_task(socket_addr, cmd_rx, exit_error.clone()));
 
     Self {
       socket_task_tx: cmd_tx,
@@ -70,7 +71,6 @@ impl SocketCronHandler {
       socket_task_exit_error: exit_error,
     }
   }
-
 
   async fn socket_task(
     socket_addr: String,
@@ -152,7 +152,7 @@ impl Drop for SocketCronHandler {
 
 pub struct SocketCronHandle {
   spec: CronSpec,
-  invocation_rx: std::cell::RefCell<mpsc::Receiver<()>>,
+  invocation_rx: std::cell::RefCell<Option<mpsc::Receiver<()>>>,
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
   closed: std::cell::Cell<bool>,
   first_call: std::cell::Cell<bool>,
@@ -166,7 +166,7 @@ impl SocketCronHandle {
   ) -> Self {
     Self {
       spec,
-      invocation_rx: std::cell::RefCell::new(invocation_rx),
+      invocation_rx: std::cell::RefCell::new(Some(invocation_rx)),
       socket_task_tx,
       closed: std::cell::Cell::new(false),
       first_call: std::cell::Cell::new(true),
@@ -191,13 +191,19 @@ impl CronHandle for SocketCronHandle {
         .await;
     }
 
-    match self.invocation_rx.borrow_mut().recv().await {
+    let mut invocation_rx = self
+      .invocation_rx
+      .take()
+      .expect("calls to CronHandle::next should be serialized");
+    let r = match invocation_rx.recv().await {
       Some(()) => Ok(true),
       None => {
         self.closed.set(true);
         Ok(false)
       }
-    }
+    };
+    self.invocation_rx.replace(Some(invocation_rx));
+    r
   }
 
   fn close(&self) {
@@ -305,7 +311,11 @@ async fn connect_to_socket(
       .await??;
       Ok(SocketStream::Unix(stream))
     }
-    #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     Some(("vsock", addr)) => {
       use tokio_vsock::VsockAddr;
       use tokio_vsock::VsockStream;
@@ -357,8 +367,7 @@ async fn register_cron(
 
   let msg = OutboundMessage::Register { crons: &[cron] };
 
-  let mut json = serde_json::to_string(&msg)
-    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+  let mut json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
   json.push('\n');
   writer.write_all(json.as_bytes()).await?;
   writer.flush().await?;
@@ -373,8 +382,7 @@ async fn send_execution_result(
 ) -> Result<(), std::io::Error> {
   let msg = OutboundMessage::Result { name, success };
 
-  let mut json = serde_json::to_string(&msg)
-    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+  let mut json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
   json.push('\n');
   writer.write_all(json.as_bytes()).await?;
   writer.flush().await?;

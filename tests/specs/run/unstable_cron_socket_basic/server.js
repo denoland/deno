@@ -32,7 +32,10 @@ outer: while (true) {
 
     if (msg.kind === "register") {
       console.error("[CRON SERVER] Registered", msg.crons.length, "crons");
-      console.error("[CRON SERVER] Cron names:", msg.crons.map((c) => c.name).join(", "));
+      console.error(
+        "[CRON SERVER] Cron names:",
+        msg.crons.map((c) => c.name).join(", "),
+      );
 
       if (!firstCronName) {
         firstCronName = msg.crons[0].name;
@@ -41,13 +44,18 @@ outer: while (true) {
       if (!hasInvoked && firstCronName) {
         hasInvoked = true;
         setTimeout(async () => {
-        const invocation = JSON.stringify({ kind: "invoke", name: firstCronName }) + "\n";
-        await writer.write(new TextEncoder().encode(invocation));
-        console.error("[CRON SERVER] Invoked cron:", firstCronName);
+          const invocation =
+            JSON.stringify({ kind: "invoke", name: firstCronName }) + "\n";
+          await writer.write(new TextEncoder().encode(invocation));
+          console.error("[CRON SERVER] Invoked cron:", firstCronName);
         }, 200);
       }
     } else if (msg.kind === "result") {
-      console.error("[CRON SERVER] Result for", msg.name + ":", msg.success ? "SUCCESS" : "FAILURE");
+      console.error(
+        "[CRON SERVER] Result for",
+        msg.name + ":",
+        msg.success ? "SUCCESS" : "FAILURE",
+      );
       break outer;
     }
   }

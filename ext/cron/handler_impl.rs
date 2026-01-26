@@ -2,14 +2,14 @@
 
 use async_trait::async_trait;
 
-use crate::local::CronExecutionHandle;
-use crate::local::LocalCronHandler;
-use crate::socket::SocketCronHandle;
-use crate::socket::SocketCronHandler;
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
 use crate::CronSpec;
+use crate::local::CronExecutionHandle;
+use crate::local::LocalCronHandler;
+use crate::socket::SocketCronHandle;
+use crate::socket::SocketCronHandler;
 
 pub enum CronHandlerImpl {
   Local(LocalCronHandler),

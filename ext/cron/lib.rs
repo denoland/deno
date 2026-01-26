@@ -17,12 +17,12 @@ use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
-
-pub use crate::interface::*;
 pub use handler_impl::CronHandleImpl;
 pub use handler_impl::CronHandlerImpl;
 pub use socket::SocketCronHandle;
 pub use socket::SocketCronHandler;
+
+pub use crate::interface::*;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
@@ -165,4 +165,3 @@ fn validate_cron_name(name: &str) -> Result<(), CronError> {
   }
   Ok(())
 }
-
