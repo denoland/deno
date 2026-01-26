@@ -14,10 +14,10 @@ use std::time::UNIX_EPOCH;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::futures::StreamExt;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use tokio::sync::broadcast;
@@ -78,7 +78,10 @@ impl HmrModuleGraph {
   }
 
   /// Get modules that import a given module (reverse dependencies).
-  pub fn get_importers(&self, specifier: &ModuleSpecifier) -> Vec<ModuleSpecifier> {
+  pub fn get_importers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
     self
       .importers
       .get(specifier)
@@ -87,12 +90,18 @@ impl HmrModuleGraph {
   }
 
   /// Get HMR info for a module.
-  pub fn get_module_info(&self, specifier: &ModuleSpecifier) -> Option<&HmrModuleInfo> {
+  pub fn get_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&HmrModuleInfo> {
     self.modules.get(specifier)
   }
 
   /// Get mutable HMR info for a module.
-  pub fn get_module_info_mut(&mut self, specifier: &ModuleSpecifier) -> Option<&mut HmrModuleInfo> {
+  pub fn get_module_info_mut(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&mut HmrModuleInfo> {
     self.modules.get_mut(specifier)
   }
 
@@ -105,7 +114,10 @@ impl HmrModuleGraph {
   ///
   /// Starting from the changed module, traverse up the dependency graph
   /// until we find modules that accept the update or reach entry points.
-  pub fn find_accepting_boundary(&self, changed: &ModuleSpecifier) -> HmrBoundary {
+  pub fn find_accepting_boundary(
+    &self,
+    changed: &ModuleSpecifier,
+  ) -> HmrBoundary {
     let mut visited = HashSet::new();
     let mut to_process = vec![changed.clone()];
     let mut boundaries = Vec::new();
@@ -206,7 +218,9 @@ impl HmrServer {
     source_graph: SharedSourceGraph,
     file_change_rx: UnboundedReceiver<Vec<PathBuf>>,
   ) -> Self {
-    let hmr_graph = Arc::new(RwLock::new(HmrModuleGraph::from_source_graph(&source_graph)));
+    let hmr_graph = Arc::new(RwLock::new(HmrModuleGraph::from_source_graph(
+      &source_graph,
+    )));
     let (broadcast_tx, _) = broadcast::channel(256);
 
     Self {
@@ -235,6 +249,21 @@ impl HmrServer {
 
   /// Handle a file change notification.
   pub fn handle_file_change(&self, paths: &[PathBuf]) -> Vec<HmrEvent> {
+    let specifiers: Vec<ModuleSpecifier> =
+      paths.iter().filter_map(path_to_specifier).collect();
+
+    self.handle_specifier_change(&specifiers)
+  }
+
+  /// Handle a specifier change notification.
+  ///
+  /// This is the core logic for handling module changes. It finds the
+  /// accepting boundary for each changed module and generates the
+  /// appropriate HMR events.
+  pub fn handle_specifier_change(
+    &self,
+    specifiers: &[ModuleSpecifier],
+  ) -> Vec<HmrEvent> {
     let mut events = Vec::new();
     let timestamp = SystemTime::now()
       .duration_since(UNIX_EPOCH)
@@ -243,24 +272,22 @@ impl HmrServer {
 
     let hmr_graph = self.hmr_graph.read();
 
-    for path in paths {
-      // Convert path to module specifier
-      let specifier = match path_to_specifier(path) {
-        Some(s) => s,
-        None => continue,
-      };
-
+    for specifier in specifiers {
       // Check if this module is in our graph
       let graph = self.source_graph.read();
-      if !graph.has_module(&specifier) {
+      if !graph.has_module(specifier) {
         continue;
       }
+      drop(graph);
 
       // Find accepting boundary
-      let boundary = hmr_graph.find_accepting_boundary(&specifier);
+      let boundary = hmr_graph.find_accepting_boundary(specifier);
 
       match boundary {
-        HmrBoundary::Accepted { boundaries, invalidated: _ } => {
+        HmrBoundary::Accepted {
+          boundaries,
+          invalidated: _,
+        } => {
           let updates: Vec<HmrModuleUpdate> = boundaries
             .into_iter()
             .map(|boundary| {
@@ -394,16 +421,538 @@ impl HmrWebSocketHandler {
 }
 
 /// Create file change sender and receiver pair.
-pub fn create_file_change_channel() -> (UnboundedSender<Vec<PathBuf>>, UnboundedReceiver<Vec<PathBuf>>) {
+pub fn create_file_change_channel() -> (
+  UnboundedSender<Vec<PathBuf>>,
+  UnboundedReceiver<Vec<PathBuf>>,
+) {
   mpsc::unbounded()
 }
 
 #[cfg(test)]
 mod tests {
+  use std::time::Duration;
+
+  use deno_ast::MediaType;
+
   use super::*;
+  use crate::tools::vbundle::environment::BundleEnvironment;
+  use crate::tools::vbundle::source_graph::ImportInfo;
+  use crate::tools::vbundle::source_graph::SourceModule;
 
   fn create_test_specifier(path: &str) -> ModuleSpecifier {
     ModuleSpecifier::parse(&format!("file:///{}", path)).unwrap()
+  }
+
+  // ===========================================================================
+  // Test Infrastructure
+  // ===========================================================================
+
+  /// Helper to construct SharedSourceGraph with known dependency structures.
+  struct TestSourceGraphBuilder {
+    modules: Vec<(String, Vec<String>)>,
+    entrypoints: Vec<String>,
+  }
+
+  impl TestSourceGraphBuilder {
+    fn new() -> Self {
+      Self {
+        modules: Vec::new(),
+        entrypoints: Vec::new(),
+      }
+    }
+
+    /// Add a module with its imports.
+    fn add_module(mut self, specifier: &str, imports: &[&str]) -> Self {
+      self.modules.push((
+        specifier.to_string(),
+        imports.iter().map(|s| s.to_string()).collect(),
+      ));
+      self
+    }
+
+    /// Mark a module as an entry point.
+    fn add_entrypoint(mut self, specifier: &str) -> Self {
+      self.entrypoints.push(specifier.to_string());
+      self
+    }
+
+    /// Build the SharedSourceGraph.
+    fn build(self) -> SharedSourceGraph {
+      let graph = SharedSourceGraph::new();
+      {
+        let mut g = graph.write();
+
+        // Add all modules
+        for (specifier, imports) in &self.modules {
+          let spec = ModuleSpecifier::parse(specifier).unwrap();
+          let mut module =
+            SourceModule::new(spec.clone(), "".into(), MediaType::TypeScript);
+          module.add_environment(BundleEnvironment::Server);
+
+          // Add imports
+          for import_spec in imports {
+            let import_specifier = ModuleSpecifier::parse(import_spec).unwrap();
+            module.imports.push(ImportInfo {
+              specifier: import_specifier,
+              original: import_spec.clone(),
+              named: vec![],
+              default_import: None,
+              namespace_import: None,
+              is_type_only: false,
+              range: (0, 0),
+            });
+          }
+
+          // Mark as entry if it's in the entrypoints list
+          if self.entrypoints.contains(specifier) {
+            module.is_entry = true;
+          }
+
+          g.add_module(module);
+        }
+
+        // Register entrypoints
+        for entry in &self.entrypoints {
+          let spec = ModuleSpecifier::parse(entry).unwrap();
+          g.add_entrypoint(BundleEnvironment::Server, spec);
+        }
+      }
+
+      graph
+    }
+  }
+
+  /// Context wrapper for end-to-end HMR testing.
+  struct TestHmrContext {
+    source_graph: SharedSourceGraph,
+    hmr_graph: SharedHmrGraph,
+    #[allow(dead_code)]
+    file_change_tx: UnboundedSender<Vec<PathBuf>>,
+    file_change_rx: Option<UnboundedReceiver<Vec<PathBuf>>>,
+  }
+
+  impl TestHmrContext {
+    /// Create a new test context from a source graph.
+    fn new(source_graph: SharedSourceGraph) -> Self {
+      let hmr_graph = Arc::new(RwLock::new(HmrModuleGraph::from_source_graph(
+        &source_graph,
+      )));
+      let (file_change_tx, file_change_rx) = create_file_change_channel();
+
+      Self {
+        source_graph,
+        hmr_graph,
+        file_change_tx,
+        file_change_rx: Some(file_change_rx),
+      }
+    }
+
+    /// Configure a module to accept itself (has import.meta.hot.accept()).
+    fn with_self_accept(self, specifier: &str) -> Self {
+      let spec = ModuleSpecifier::parse(specifier).unwrap();
+      let info = HmrModuleInfo::new(spec.clone()).with_accept_self();
+      self.hmr_graph.write().update_module_info(info);
+      self
+    }
+
+    /// Configure a module to accept a specific dependency.
+    fn with_dep_accept(self, acceptor: &str, dep: &str) -> Self {
+      let acceptor_spec = ModuleSpecifier::parse(acceptor).unwrap();
+      let dep_spec = ModuleSpecifier::parse(dep).unwrap();
+
+      {
+        let mut graph = self.hmr_graph.write();
+        let info = if let Some(existing) = graph.get_module_info(&acceptor_spec)
+        {
+          let mut info = existing.clone();
+          info.accepted_deps.insert(dep_spec);
+          info
+        } else {
+          HmrModuleInfo::new(acceptor_spec.clone()).with_accepted_dep(dep_spec)
+        };
+        graph.update_module_info(info);
+      }
+      self
+    }
+
+    /// Configure a module to decline HMR.
+    #[allow(dead_code)]
+    fn with_declined(self, specifier: &str) -> Self {
+      let spec = ModuleSpecifier::parse(specifier).unwrap();
+      let info = HmrModuleInfo::new(spec.clone()).with_declined();
+      self.hmr_graph.write().update_module_info(info);
+      self
+    }
+
+    /// Simulate a file change and get resulting events.
+    ///
+    /// Paths should be specifier strings like "file:///app/mod.ts".
+    fn simulate_change(&self, specifiers: &[&str]) -> Vec<HmrEvent> {
+      // Create a temporary HmrServer to handle the file change
+      let (_, file_rx) = create_file_change_channel();
+      let server = HmrServer {
+        config: HmrConfig::default(),
+        hmr_graph: self.hmr_graph.clone(),
+        broadcast_tx: broadcast::channel(16).0,
+        file_change_rx: Some(file_rx),
+        source_graph: self.source_graph.clone(),
+      };
+
+      // Convert specifier strings to ModuleSpecifiers
+      let specs: Vec<ModuleSpecifier> = specifiers
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect();
+
+      server.handle_specifier_change(&specs)
+    }
+
+    /// Build an HmrServer for async tests.
+    fn build_server(mut self) -> (HmrServer, UnboundedSender<Vec<PathBuf>>) {
+      let file_rx = self.file_change_rx.take().unwrap();
+      let server = HmrServer {
+        config: HmrConfig::default(),
+        hmr_graph: self.hmr_graph.clone(),
+        broadcast_tx: broadcast::channel(16).0,
+        file_change_rx: Some(file_rx),
+        source_graph: self.source_graph.clone(),
+      };
+      (server, self.file_change_tx.clone())
+    }
+  }
+
+  // ===========================================================================
+  // End-to-End Tests
+  // ===========================================================================
+
+  #[test]
+  fn test_e2e_self_accepting_module() {
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/mod.ts", &[])
+      .add_entrypoint("file:///app/mod.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph).with_self_accept("file:///app/mod.ts");
+
+    let events = ctx.simulate_change(&["file:///app/mod.ts"]);
+
+    assert_eq!(events.len(), 1);
+    match &events[0] {
+      HmrEvent::Update(payload) => {
+        assert_eq!(payload.updates.len(), 1);
+        assert!(payload.updates[0].path.contains("mod.ts"));
+        assert!(payload.updates[0].accepted_path.contains("mod.ts"));
+      }
+      _ => panic!("Expected Update event, got {:?}", events[0]),
+    }
+  }
+
+  #[test]
+  fn test_e2e_bubble_up_no_hot_in_child() {
+    // child.ts has NO import.meta.hot
+    // parent.ts imports child and has import.meta.hot.accept("./child")
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/child.ts", &[])
+      .add_module("file:///app/parent.ts", &["file:///app/child.ts"])
+      .add_entrypoint("file:///app/parent.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph)
+      .with_dep_accept("file:///app/parent.ts", "file:///app/child.ts");
+
+    // Change child - should bubble to parent
+    let events = ctx.simulate_change(&["file:///app/child.ts"]);
+
+    assert_eq!(events.len(), 1);
+    match &events[0] {
+      HmrEvent::Update(payload) => {
+        assert_eq!(payload.updates.len(), 1);
+        assert!(payload.updates[0].path.contains("child.ts"));
+        assert!(payload.updates[0].accepted_path.contains("parent.ts"));
+      }
+      _ => panic!("Expected Update event, got {:?}", events[0]),
+    }
+  }
+
+  #[test]
+  fn test_e2e_full_bubble_chain() {
+    // entry -> middle -> leaf
+    // Each module accepts its direct dependency:
+    // - entry accepts middle
+    // - middle accepts leaf
+    // This creates a full bubble-up chain.
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/leaf.ts", &[])
+      .add_module("file:///app/middle.ts", &["file:///app/leaf.ts"])
+      .add_module("file:///app/entry.ts", &["file:///app/middle.ts"])
+      .add_entrypoint("file:///app/entry.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph)
+      .with_dep_accept("file:///app/middle.ts", "file:///app/leaf.ts");
+
+    // Change leaf - should bubble to middle (which accepts it)
+    let events = ctx.simulate_change(&["file:///app/leaf.ts"]);
+
+    assert_eq!(events.len(), 1);
+    match &events[0] {
+      HmrEvent::Update(payload) => {
+        assert_eq!(payload.updates.len(), 1);
+        // leaf.ts change is accepted by middle.ts
+        assert!(payload.updates[0].path.contains("leaf.ts"));
+        assert!(payload.updates[0].accepted_path.contains("middle.ts"));
+      }
+      _ => panic!("Expected Update event, got {:?}", events[0]),
+    }
+  }
+
+  #[test]
+  fn test_e2e_self_accept_no_bubble_needed() {
+    // When a self-accepting module changes, it handles its own update
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/child.ts", &[])
+      .add_module("file:///app/parent.ts", &["file:///app/child.ts"])
+      .add_entrypoint("file:///app/parent.ts")
+      .build();
+
+    // child.ts is self-accepting
+    let ctx =
+      TestHmrContext::new(graph).with_self_accept("file:///app/child.ts");
+
+    // Change child.ts - it accepts itself
+    let events = ctx.simulate_change(&["file:///app/child.ts"]);
+
+    assert_eq!(events.len(), 1);
+    match &events[0] {
+      HmrEvent::Update(payload) => {
+        assert_eq!(payload.updates.len(), 1);
+        assert!(payload.updates[0].path.contains("child.ts"));
+        assert!(payload.updates[0].accepted_path.contains("child.ts"));
+      }
+      _ => panic!("Expected Update event, got {:?}", events[0]),
+    }
+  }
+
+  #[test]
+  fn test_e2e_no_acceptor_full_reload() {
+    // Neither module has import.meta.hot
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/dep.ts", &[])
+      .add_module("file:///app/entry.ts", &["file:///app/dep.ts"])
+      .add_entrypoint("file:///app/entry.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph);
+    // No HMR configuration
+
+    let events = ctx.simulate_change(&["file:///app/dep.ts"]);
+
+    assert_eq!(events.len(), 1);
+    assert!(
+      matches!(&events[0], HmrEvent::FullReload { .. }),
+      "Expected FullReload event, got {:?}",
+      events[0]
+    );
+  }
+
+  #[test]
+  fn test_e2e_diamond_multiple_acceptors() {
+    //     entry
+    //    /     \
+    //  left   right  (both accept shared)
+    //    \     /
+    //    shared
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/shared.ts", &[])
+      .add_module("file:///app/left.ts", &["file:///app/shared.ts"])
+      .add_module("file:///app/right.ts", &["file:///app/shared.ts"])
+      .add_module(
+        "file:///app/entry.ts",
+        &["file:///app/left.ts", "file:///app/right.ts"],
+      )
+      .add_entrypoint("file:///app/entry.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph)
+      .with_dep_accept("file:///app/left.ts", "file:///app/shared.ts")
+      .with_dep_accept("file:///app/right.ts", "file:///app/shared.ts");
+
+    let events = ctx.simulate_change(&["file:///app/shared.ts"]);
+
+    // Should have updates for both left and right
+    assert_eq!(events.len(), 1);
+    if let HmrEvent::Update(payload) = &events[0] {
+      assert_eq!(
+        payload.updates.len(),
+        2,
+        "Expected 2 updates (left and right), got {}",
+        payload.updates.len()
+      );
+
+      let accepted_paths: Vec<&str> = payload
+        .updates
+        .iter()
+        .map(|u| u.accepted_path.as_str())
+        .collect();
+
+      assert!(
+        accepted_paths.iter().any(|p| p.contains("left.ts")),
+        "Expected left.ts in accepted paths"
+      );
+      assert!(
+        accepted_paths.iter().any(|p| p.contains("right.ts")),
+        "Expected right.ts in accepted paths"
+      );
+    } else {
+      panic!("Expected Update event, got {:?}", events[0]);
+    }
+  }
+
+  #[test]
+  fn test_e2e_declined_module_triggers_full_reload() {
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/child.ts", &[])
+      .add_module("file:///app/parent.ts", &["file:///app/child.ts"])
+      .add_entrypoint("file:///app/parent.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph).with_declined("file:///app/parent.ts");
+
+    let events = ctx.simulate_change(&["file:///app/child.ts"]);
+
+    assert_eq!(events.len(), 1);
+    assert!(
+      matches!(&events[0], HmrEvent::FullReload { .. }),
+      "Expected FullReload when module declines HMR, got {:?}",
+      events[0]
+    );
+  }
+
+  #[test]
+  fn test_e2e_multiple_file_changes() {
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/a.ts", &[])
+      .add_module("file:///app/b.ts", &[])
+      .add_module(
+        "file:///app/entry.ts",
+        &["file:///app/a.ts", "file:///app/b.ts"],
+      )
+      .add_entrypoint("file:///app/entry.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph)
+      .with_dep_accept("file:///app/entry.ts", "file:///app/a.ts")
+      .with_dep_accept("file:///app/entry.ts", "file:///app/b.ts");
+
+    // Change both files at once
+    let events = ctx.simulate_change(&["file:///app/a.ts", "file:///app/b.ts"]);
+
+    // Should have two Update events
+    assert_eq!(events.len(), 2, "Expected 2 events for 2 file changes");
+
+    for event in &events {
+      assert!(
+        matches!(event, HmrEvent::Update(_)),
+        "Expected Update events, got {:?}",
+        event
+      );
+    }
+  }
+
+  #[test]
+  fn test_e2e_change_unknown_file() {
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/mod.ts", &[])
+      .add_entrypoint("file:///app/mod.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph).with_self_accept("file:///app/mod.ts");
+
+    // Change a file that's not in the graph
+    let events = ctx.simulate_change(&["file:///app/unknown.ts"]);
+
+    // Should produce no events
+    assert!(
+      events.is_empty(),
+      "Expected no events for unknown file, got {:?}",
+      events
+    );
+  }
+
+  #[tokio::test]
+  async fn test_e2e_async_server_startup() {
+    // This test verifies the async server event flow:
+    // 1. Server broadcasts Connected event on startup
+    // 2. Channel shutdown causes server to exit cleanly
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/mod.ts", &[])
+      .add_entrypoint("file:///app/mod.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph).with_self_accept("file:///app/mod.ts");
+
+    let (mut server, file_tx) = ctx.build_server();
+    let mut event_rx = server.subscribe();
+
+    // Spawn server
+    let handle = tokio::spawn(async move { server.run().await });
+
+    // Receive Connected event (sent on startup)
+    let msg1 =
+      tokio::time::timeout(Duration::from_millis(100), event_rx.recv())
+        .await
+        .expect("Timeout waiting for Connected event")
+        .expect("Channel closed");
+
+    assert!(
+      matches!(msg1, HmrServerMessage::Broadcast(HmrEvent::Connected)),
+      "Expected Connected event on startup, got {:?}",
+      msg1
+    );
+
+    // Clean up - dropping the sender closes the channel and causes run() to exit
+    drop(file_tx);
+    let result = tokio::time::timeout(Duration::from_millis(100), handle).await;
+    assert!(result.is_ok(), "Server should have shut down cleanly");
+  }
+
+  #[tokio::test]
+  async fn test_e2e_async_broadcast_channel() {
+    // Test that the broadcast channel works for multiple subscribers
+    let graph = TestSourceGraphBuilder::new()
+      .add_module("file:///app/mod.ts", &[])
+      .add_entrypoint("file:///app/mod.ts")
+      .build();
+
+    let ctx = TestHmrContext::new(graph).with_self_accept("file:///app/mod.ts");
+
+    let (server, _file_tx) = ctx.build_server();
+
+    // Create multiple subscribers
+    let mut rx1 = server.subscribe();
+    let mut rx2 = server.subscribe();
+
+    // Broadcast an event directly
+    server.broadcast(HmrEvent::FullReload { path: None });
+
+    // Both subscribers should receive it
+    let msg1 = tokio::time::timeout(Duration::from_millis(50), rx1.recv())
+      .await
+      .expect("Timeout waiting for rx1")
+      .expect("Channel closed");
+    let msg2 = tokio::time::timeout(Duration::from_millis(50), rx2.recv())
+      .await
+      .expect("Timeout waiting for rx2")
+      .expect("Channel closed");
+
+    assert!(matches!(
+      msg1,
+      HmrServerMessage::Broadcast(HmrEvent::FullReload { .. })
+    ));
+    assert!(matches!(
+      msg2,
+      HmrServerMessage::Broadcast(HmrEvent::FullReload { .. })
+    ));
   }
 
   #[test]
@@ -414,8 +963,12 @@ mod tests {
     let dep = create_test_specifier("app/dep.ts");
 
     // Add modules
-    graph.modules.insert(main.clone(), HmrModuleInfo::new(main.clone()));
-    graph.modules.insert(dep.clone(), HmrModuleInfo::new(dep.clone()));
+    graph
+      .modules
+      .insert(main.clone(), HmrModuleInfo::new(main.clone()));
+    graph
+      .modules
+      .insert(dep.clone(), HmrModuleInfo::new(dep.clone()));
 
     // Add reverse dependency (main imports dep)
     graph
@@ -456,9 +1009,12 @@ mod tests {
     let child = create_test_specifier("app/child.ts");
 
     // Parent accepts updates from child
-    let parent_info = HmrModuleInfo::new(parent.clone()).with_accepted_dep(child.clone());
+    let parent_info =
+      HmrModuleInfo::new(parent.clone()).with_accepted_dep(child.clone());
     graph.modules.insert(parent.clone(), parent_info);
-    graph.modules.insert(child.clone(), HmrModuleInfo::new(child.clone()));
+    graph
+      .modules
+      .insert(child.clone(), HmrModuleInfo::new(child.clone()));
 
     // Parent imports child
     graph
@@ -488,7 +1044,9 @@ mod tests {
     // Parent declines HMR
     let parent_info = HmrModuleInfo::new(parent.clone()).with_declined();
     graph.modules.insert(parent.clone(), parent_info);
-    graph.modules.insert(child.clone(), HmrModuleInfo::new(child.clone()));
+    graph
+      .modules
+      .insert(child.clone(), HmrModuleInfo::new(child.clone()));
 
     // Parent imports child
     graph
@@ -515,8 +1073,12 @@ mod tests {
     let child = create_test_specifier("app/child.ts");
 
     // Neither module accepts HMR
-    graph.modules.insert(entry.clone(), HmrModuleInfo::new(entry.clone()));
-    graph.modules.insert(child.clone(), HmrModuleInfo::new(child.clone()));
+    graph
+      .modules
+      .insert(entry.clone(), HmrModuleInfo::new(entry.clone()));
+    graph
+      .modules
+      .insert(child.clone(), HmrModuleInfo::new(child.clone()));
 
     // Entry imports child (entry is the root)
     graph

@@ -108,15 +108,15 @@ generateBundle(options, bundle): void,
 
 ```rust
 pub struct SourceModuleGraph {
-modules: HashMap<ModuleSpecifier, SourceModule>,
-entrypoints: HashMap<BundleEnvironment, Vec<ModuleSpecifier>>,
-cross_env_refs: HashMap<(ModuleSpecifier, BundleEnvironment), CrossEnvRef>,
+  modules: HashMap<ModuleSpecifier, SourceModule>,
+  entrypoints: HashMap<BundleEnvironment, Vec<ModuleSpecifier>>,
+  cross_env_refs: HashMap<(ModuleSpecifier, BundleEnvironment), CrossEnvRef>,
 }
 
 pub enum BundleEnvironment {
-Server,   // Deno runtime (default)
-Browser,  // Browser runtime
-Custom(String),
+  Server,  // Deno runtime (default)
+  Browser, // Browser runtime
+  Custom(String),
 }
 ```
 
@@ -127,19 +127,19 @@ Cross-environment references allow server code to reference browser entrypoints
 
 ```rust
 pub struct ChunkGraph {
-environment: BundleEnvironment,
-chunks: HashMap<ChunkId, Chunk>,
-module_to_chunk: HashMap<ModuleSpecifier, ChunkId>,
+  environment: BundleEnvironment,
+  chunks: HashMap<ChunkId, Chunk>,
+  module_to_chunk: HashMap<ModuleSpecifier, ChunkId>,
 }
 
 pub struct Chunk {
-id: ChunkId,
-is_entry: bool,
-modules: Vec<ModuleSpecifier>,
-imports: Vec<ChunkId>,       // Static chunk deps
-dynamic_imports: Vec<ChunkId>, // Dynamic chunk deps
-code: Option<String>,
-source_map: Option<String>,
+  id: ChunkId,
+  is_entry: bool,
+  modules: Vec<ModuleSpecifier>,
+  imports: Vec<ChunkId>,         // Static chunk deps
+  dynamic_imports: Vec<ChunkId>, // Dynamic chunk deps
+  code: Option<String>,
+  source_map: Option<String>,
 }
 ```
 
@@ -178,55 +178,64 @@ The VFS is the core abstraction enabling integration with all Deno tools:
 
 ```rust
 pub struct BundlerVirtualFS {
-/// Plugin host for on-demand transformation
-plugin_host: Arc<PluginHost>,
+  /// Plugin host for on-demand transformation
+  plugin_host: Arc<PluginHost>,
 
-/// Cache of transformed files: original specifier → transformed code
-transformed_cache: DashMap<ModuleSpecifier, TransformedModule>,
+  /// Cache of transformed files: original specifier → transformed code
+  transformed_cache: DashMap<ModuleSpecifier, TransformedModule>,
 
-/// Source maps: transformed position → original position
-source_maps: DashMap<ModuleSpecifier, SourceMap>,
+  /// Source maps: transformed position → original position
+  source_maps: DashMap<ModuleSpecifier, SourceMap>,
 
-/// File extension handlers registered by plugins
-extension_handlers: HashMap<String, PluginId>,
+  /// File extension handlers registered by plugins
+  extension_handlers: HashMap<String, PluginId>,
 }
 
 pub struct TransformedModule {
-pub original_specifier: ModuleSpecifier,
-pub code: Arc<str>,
-pub source_map: Option<SourceMap>,
-pub media_type: MediaType,  // Always JS/TS after transformation
+  pub original_specifier: ModuleSpecifier,
+  pub code: Arc<str>,
+  pub source_map: Option<SourceMap>,
+  pub media_type: MediaType, // Always JS/TS after transformation
 }
 
 impl BundlerVirtualFS {
-/// Transform a file on-demand (lazy transformation)
-pub async fn load(&self, specifier: &ModuleSpecifier) -> Result<TransformedModule> {
-// Check cache first
-if let Some(cached) = self.transformed_cache.get(specifier) {
-return Ok(cached.clone());
-}
+  /// Transform a file on-demand (lazy transformation)
+  pub async fn load(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<TransformedModule> {
+    // Check cache first
+    if let Some(cached) = self.transformed_cache.get(specifier) {
+      return Ok(cached.clone());
+    }
 
-// Determine if this file type needs transformation
-let ext = specifier.extension();
-if let Some(plugin_id) = self.extension_handlers.get(ext) {
-// Call plugin to transform
-let result = self.plugin_host.transform(specifier, plugin_id).await?;
-self.transformed_cache.insert(specifier.clone(), result.clone());
-return Ok(result);
-}
+    // Determine if this file type needs transformation
+    let ext = specifier.extension();
+    if let Some(plugin_id) = self.extension_handlers.get(ext) {
+      // Call plugin to transform
+      let result = self.plugin_host.transform(specifier, plugin_id).await?;
+      self
+        .transformed_cache
+        .insert(specifier.clone(), result.clone());
+      return Ok(result);
+    }
 
-// Pass through unchanged for native JS/TS
-self.load_passthrough(specifier).await
-}
+    // Pass through unchanged for native JS/TS
+    self.load_passthrough(specifier).await
+  }
 
-/// Map error positions from transformed → original
-pub fn map_error_position(&self, specifier: &ModuleSpecifier, pos: Position) -> Position {
-if let Some(source_map) = self.source_maps.get(specifier) {
-source_map.lookup(pos).unwrap_or(pos)
-} else {
-pos
-}
-}
+  /// Map error positions from transformed → original
+  pub fn map_error_position(
+    &self,
+    specifier: &ModuleSpecifier,
+    pos: Position,
+  ) -> Position {
+    if let Some(source_map) = self.source_maps.get(specifier) {
+      source_map.lookup(pos).unwrap_or(pos)
+    } else {
+      pos
+    }
+  }
 }
 ```
 
@@ -247,27 +256,28 @@ The linter needs to lint the **transformed** output of non-JS files:
 // cli/tools/lint/mod.rs modifications
 
 pub async fn lint_with_vfs(
-vfs: &BundlerVirtualFS,
-specifiers: &[ModuleSpecifier],
+  vfs: &BundlerVirtualFS,
+  specifiers: &[ModuleSpecifier],
 ) -> Result<Vec<LintDiagnostic>> {
-let mut diagnostics = Vec::new();
+  let mut diagnostics = Vec::new();
 
-for specifier in specifiers {
-// Get transformed code from VFS
-let transformed = vfs.load(specifier).await?;
+  for specifier in specifiers {
+    // Get transformed code from VFS
+    let transformed = vfs.load(specifier).await?;
 
-// Lint the transformed JS/TS
-let file_diagnostics = lint_file(&transformed.code, &transformed.media_type)?;
+    // Lint the transformed JS/TS
+    let file_diagnostics =
+      lint_file(&transformed.code, &transformed.media_type)?;
 
-// Map diagnostic positions back to original source
-for mut diag in file_diagnostics {
-diag.range = vfs.map_error_position(specifier, diag.range);
-diag.filename = specifier.to_string();  // Show original filename
-diagnostics.push(diag);
-}
-}
+    // Map diagnostic positions back to original source
+    for mut diag in file_diagnostics {
+      diag.range = vfs.map_error_position(specifier, diag.range);
+      diag.filename = specifier.to_string(); // Show original filename
+      diagnostics.push(diag);
+    }
+  }
 
-Ok(diagnostics)
+  Ok(diagnostics)
 }
 ```
 
@@ -287,30 +297,36 @@ TypeScript needs to see transformed files as valid TS/JS:
 // Integration with TypeScript language service
 
 pub struct VfsTypeChecker {
-vfs: Arc<BundlerVirtualFS>,
-ts_server: TsServer,
+  vfs: Arc<BundlerVirtualFS>,
+  ts_server: TsServer,
 }
 
 impl VfsTypeChecker {
-/// Provide transformed source to TypeScript
-fn get_script_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
-// TypeScript asks for file content
-// Return transformed JS/TS instead of original .svelte
-let transformed = self.vfs.load_sync(specifier).ok()?;
-Some(transformed.code.to_string())
-}
+  /// Provide transformed source to TypeScript
+  fn get_script_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    // TypeScript asks for file content
+    // Return transformed JS/TS instead of original .svelte
+    let transformed = self.vfs.load_sync(specifier).ok()?;
+    Some(transformed.code.to_string())
+  }
 
-/// Map TypeScript errors back to original source
-fn map_diagnostics(&self, diagnostics: Vec<TsDiagnostic>) -> Vec<TsDiagnostic> {
-diagnostics.into_iter().map(|mut diag| {
-if let Some(file) = &diag.file {
-let specifier = ModuleSpecifier::parse(file).ok()?;
-diag.start = self.vfs.map_error_position(&specifier, diag.start);
-diag.end = self.vfs.map_error_position(&specifier, diag.end);
-}
-diag
-}).collect()
-}
+  /// Map TypeScript errors back to original source
+  fn map_diagnostics(
+    &self,
+    diagnostics: Vec<TsDiagnostic>,
+  ) -> Vec<TsDiagnostic> {
+    diagnostics
+      .into_iter()
+      .map(|mut diag| {
+        if let Some(file) = &diag.file {
+          let specifier = ModuleSpecifier::parse(file).ok()?;
+          diag.start = self.vfs.map_error_position(&specifier, diag.start);
+          diag.end = self.vfs.map_error_position(&specifier, diag.end);
+        }
+        diag
+      })
+      .collect()
+  }
 }
 ```
 

@@ -129,7 +129,9 @@ impl EnvironmentConfig {
 }
 
 /// Output module format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
+)]
 #[serde(crate = "deno_core::serde", rename_all = "lowercase")]
 pub enum OutputFormat {
   /// ES modules (default).
@@ -264,9 +266,7 @@ impl MultiEnvConfig {
 
   /// Add an environment configuration.
   pub fn add_environment(&mut self, config: EnvironmentConfig) {
-    self
-      .environments
-      .insert(config.environment.clone(), config);
+    self.environments.insert(config.environment.clone(), config);
   }
 
   /// Create a simple server-only config.
@@ -301,10 +301,22 @@ mod tests {
 
   #[test]
   fn test_environment_from_str() {
-    assert_eq!(BundleEnvironment::from_str("server"), BundleEnvironment::Server);
-    assert_eq!(BundleEnvironment::from_str("deno"), BundleEnvironment::Server);
-    assert_eq!(BundleEnvironment::from_str("browser"), BundleEnvironment::Browser);
-    assert_eq!(BundleEnvironment::from_str("client"), BundleEnvironment::Browser);
+    assert_eq!(
+      BundleEnvironment::from_str("server"),
+      BundleEnvironment::Server
+    );
+    assert_eq!(
+      BundleEnvironment::from_str("deno"),
+      BundleEnvironment::Server
+    );
+    assert_eq!(
+      BundleEnvironment::from_str("browser"),
+      BundleEnvironment::Browser
+    );
+    assert_eq!(
+      BundleEnvironment::from_str("client"),
+      BundleEnvironment::Browser
+    );
     assert_eq!(
       BundleEnvironment::from_str("edge"),
       BundleEnvironment::Custom("edge".to_string())
@@ -316,6 +328,8 @@ mod tests {
     let config = MultiEnvConfig::ssr();
     assert!(config.has_environment(&BundleEnvironment::Server));
     assert!(config.has_environment(&BundleEnvironment::Browser));
-    assert!(!config.has_environment(&BundleEnvironment::Custom("edge".to_string())));
+    assert!(
+      !config.has_environment(&BundleEnvironment::Custom("edge".to_string()))
+    );
   }
 }

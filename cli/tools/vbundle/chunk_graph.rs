@@ -217,7 +217,9 @@ impl ChunkGraph {
   pub fn add_chunk(&mut self, chunk: Chunk) {
     let chunk_id = chunk.id.clone();
     for module in &chunk.modules {
-      self.module_to_chunk.insert(module.clone(), chunk_id.clone());
+      self
+        .module_to_chunk
+        .insert(module.clone(), chunk_id.clone());
     }
     self.chunks.insert(chunk_id, chunk);
   }
@@ -233,12 +235,19 @@ impl ChunkGraph {
   }
 
   /// Get the chunk containing a module.
-  pub fn get_chunk_for_module(&self, specifier: &ModuleSpecifier) -> Option<&ChunkId> {
+  pub fn get_chunk_for_module(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&ChunkId> {
     self.module_to_chunk.get(specifier)
   }
 
   /// Assign a module to a chunk.
-  pub fn assign_module_to_chunk(&mut self, specifier: ModuleSpecifier, chunk_id: ChunkId) {
+  pub fn assign_module_to_chunk(
+    &mut self,
+    specifier: ModuleSpecifier,
+    chunk_id: ChunkId,
+  ) {
     self.module_to_chunk.insert(specifier, chunk_id);
   }
 

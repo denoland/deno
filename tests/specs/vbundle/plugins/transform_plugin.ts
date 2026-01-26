@@ -13,7 +13,10 @@ export default {
     if (code.includes("DEBUG")) {
       console.log(`[transform-plugin] transforming: ${id}`);
       // Replace DEBUG with false for "production" build
-      const transformed = code.replace(/const DEBUG = true/g, "const DEBUG = false");
+      const transformed = code.replace(
+        /const DEBUG = true/g,
+        "const DEBUG = false",
+      );
       return {
         code: transformed,
         map: undefined,

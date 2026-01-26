@@ -111,7 +111,11 @@ pub struct HmrModuleUpdate {
 
 impl HmrModuleUpdate {
   /// Create a new JS module update.
-  pub fn js_update(path: impl Into<String>, accepted_path: impl Into<String>, timestamp: u64) -> Self {
+  pub fn js_update(
+    path: impl Into<String>,
+    accepted_path: impl Into<String>,
+    timestamp: u64,
+  ) -> Self {
     Self {
       update_type: "js-update".to_string(),
       path: path.into(),
@@ -242,7 +246,10 @@ pub enum HmrBoundary {
 
 impl HmrBoundary {
   /// Create a boundary that accepts the update.
-  pub fn accepted(boundaries: Vec<ModuleSpecifier>, invalidated: Vec<ModuleSpecifier>) -> Self {
+  pub fn accepted(
+    boundaries: Vec<ModuleSpecifier>,
+    invalidated: Vec<ModuleSpecifier>,
+  ) -> Self {
     Self::Accepted {
       boundaries,
       invalidated,
@@ -306,16 +313,16 @@ mod tests {
 
   #[test]
   fn test_hmr_config_custom() {
-    let config = HmrConfig::default()
-      .with_port(3000)
-      .with_host("127.0.0.1");
+    let config = HmrConfig::default().with_port(3000).with_host("127.0.0.1");
     assert_eq!(config.websocket_url(), "ws://127.0.0.1:3000");
   }
 
   #[test]
   fn test_hmr_event_serialization() {
     let event = HmrEvent::Update(HmrUpdatePayload {
-      updates: vec![HmrModuleUpdate::js_update("/app.js", "/app.js", 1234567890)],
+      updates: vec![HmrModuleUpdate::js_update(
+        "/app.js", "/app.js", 1234567890,
+      )],
     });
 
     let json = serde_json::to_string(&event).unwrap();
@@ -337,7 +344,10 @@ mod tests {
 
     assert!(info.can_accept(&spec));
     assert!(info.can_accept(&dep));
-    assert!(!info.can_accept(&ModuleSpecifier::parse("file:///app/other.ts").unwrap()));
+    assert!(
+      !info
+        .can_accept(&ModuleSpecifier::parse("file:///app/other.ts").unwrap())
+    );
   }
 
   #[test]
@@ -355,7 +365,8 @@ mod tests {
   fn test_hmr_boundary() {
     let spec = ModuleSpecifier::parse("file:///app/mod.ts").unwrap();
 
-    let accepted = HmrBoundary::accepted(vec![spec.clone()], vec![spec.clone()]);
+    let accepted =
+      HmrBoundary::accepted(vec![spec.clone()], vec![spec.clone()]);
     assert!(accepted.can_apply());
 
     let full_reload = HmrBoundary::full_reload("No accepting boundary");

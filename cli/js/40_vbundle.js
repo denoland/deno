@@ -477,12 +477,12 @@ internals.generateBundle = generateBundle;
 
 // Import built-in plugins
 import {
-  jsonPlugin,
-  definePlugin,
   aliasPlugin,
-  virtualPlugin,
-  importGlobPlugin,
   builtinPlugins,
+  definePlugin,
+  importGlobPlugin,
+  jsonPlugin,
+  virtualPlugin,
 } from "ext:cli/41_vbundle_plugins.js";
 
 // Also expose on Deno namespace for plugin authors

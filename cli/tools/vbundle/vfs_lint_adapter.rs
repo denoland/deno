@@ -96,7 +96,8 @@ impl VfsLintAdapter {
     }
 
     // Run the linter on transformed code
-    let raw_diagnostics = self.run_linter(specifier, &transformed.code, media_type)?;
+    let raw_diagnostics =
+      self.run_linter(specifier, &transformed.code, media_type)?;
 
     // Map diagnostic positions back to original source
     let mapped_diagnostics = raw_diagnostics
@@ -189,7 +190,10 @@ impl VfsLintAdapter {
   }
 
   /// Get the original source for a file (for diagnostic display).
-  pub fn get_original_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_original_source(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     self.vfs.get_original_source(specifier)
   }
 }
@@ -236,8 +240,14 @@ mod tests {
       message: "Unused variable".to_string(),
       code: "no-unused-vars".to_string(),
       severity: LintSeverity::Warning,
-      start: Position { line: 5, column: 10 },
-      end: Position { line: 5, column: 15 },
+      start: Position {
+        line: 5,
+        column: 10,
+      },
+      end: Position {
+        line: 5,
+        column: 15,
+      },
       hint: Some("Remove or use the variable".to_string()),
     };
 
@@ -255,11 +265,29 @@ mod tests {
     let vfs = Arc::new(BundlerVirtualFS::passthrough());
     let adapter = VfsLintAdapter::new(vfs);
 
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.ts").unwrap()));
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.js").unwrap()));
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.tsx").unwrap()));
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.jsx").unwrap()));
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.mjs").unwrap()));
-    assert!(adapter.should_lint(&ModuleSpecifier::parse("file:///app/test.mts").unwrap()));
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.ts").unwrap())
+    );
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.js").unwrap())
+    );
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.tsx").unwrap())
+    );
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.jsx").unwrap())
+    );
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.mjs").unwrap())
+    );
+    assert!(
+      adapter
+        .should_lint(&ModuleSpecifier::parse("file:///app/test.mts").unwrap())
+    );
   }
 }

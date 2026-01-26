@@ -88,9 +88,9 @@ pub use hmr_types::HmrConfig;
 pub use hmr_types::HmrEvent;
 pub use hmr_types::HmrModuleInfo;
 pub use hmr_types::HmrUpdatePayload;
-pub use plugins::create_runner_and_load_plugins;
 pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
+pub use plugins::create_runner_and_load_plugins;
 pub use source_graph::SharedSourceGraph;
 pub use source_graph::SourceModule;
 pub use source_map::Position;
@@ -126,9 +126,7 @@ pub async fn vbundle(
     .files
     .include
     .iter()
-    .map(|f| {
-      deno_path_util::resolve_url_or_path(f, cli_options.initial_cwd())
-    })
+    .map(|f| deno_path_util::resolve_url_or_path(f, cli_options.initial_cwd()))
     .collect::<Result<Vec<_>, _>>()?;
 
   if entry_points.is_empty() {
@@ -140,9 +138,7 @@ pub async fn vbundle(
   let plugin_specifiers: Vec<ModuleSpecifier> = vbundle_flags
     .plugins
     .iter()
-    .map(|p| {
-      deno_path_util::resolve_url_or_path(p, cli_options.initial_cwd())
-    })
+    .map(|p| deno_path_util::resolve_url_or_path(p, cli_options.initial_cwd()))
     .collect::<Result<Vec<_>, _>>()?;
 
   // Create the build configuration
@@ -158,7 +154,10 @@ pub async fn vbundle(
     plugins: plugin_specifiers.clone(),
   };
 
-  log::info!("Starting vbundle with {} entry points", config.entry_points.len());
+  log::info!(
+    "Starting vbundle with {} entry points",
+    config.entry_points.len()
+  );
 
   // Create plugin host if there are plugins
   let maybe_plugin_host = if !plugin_specifiers.is_empty() {
@@ -169,7 +168,8 @@ pub async fn vbundle(
         println!("{}", msg);
       }
     });
-    let host = create_runner_and_load_plugins(plugin_specifiers, logger).await?;
+    let host =
+      create_runner_and_load_plugins(plugin_specifiers, logger).await?;
     log::info!("Loaded {} plugins", host.get_plugins().len());
     Some(Arc::new(host))
   } else {
@@ -186,7 +186,10 @@ pub async fn vbundle(
       // Register extensions from plugins
       for plugin_info in host.get_plugins() {
         if !plugin_info.extensions.is_empty() {
-          builder = builder.register_extensions(&plugin_info.name, plugin_info.extensions.clone());
+          builder = builder.register_extensions(
+            &plugin_info.name,
+            plugin_info.extensions.clone(),
+          );
         }
       }
       builder = builder.plugin_host(host.clone());
@@ -195,8 +198,10 @@ pub async fn vbundle(
     Arc::new(builder.build())
   };
 
-  log::info!("VFS initialized with {} extension handlers",
-    vfs.extension_handler_count());
+  log::info!(
+    "VFS initialized with {} extension handlers",
+    vfs.extension_handler_count()
+  );
 
   // Build the source module graph using VFS
   let graph = build_source_graph(&config, &vfs).await?;
@@ -286,11 +291,7 @@ pub async fn vbundle(
 
     // Report what was generated
     for chunk in emitted {
-      log::info!(
-        "  {} ({} bytes)",
-        chunk.file_name,
-        chunk.code.len()
-      );
+      log::info!("  {} ({} bytes)", chunk.file_name, chunk.code.len());
     }
   }
 
@@ -307,7 +308,10 @@ fn parse_environments(envs: &[String]) -> Vec<BundleEnvironment> {
   if envs.is_empty() {
     return vec![BundleEnvironment::Server];
   }
-  envs.iter().map(|s| BundleEnvironment::from_str(s)).collect()
+  envs
+    .iter()
+    .map(|s| BundleEnvironment::from_str(s))
+    .collect()
 }
 
 /// Build the source module graph from entry points using the VFS.
@@ -345,12 +349,14 @@ async fn build_source_graph(
         // Queue dependencies for processing
         for import in &module.imports {
           if !processed.contains(&import.specifier) {
-            to_process.push((import.specifier.clone(), Some(specifier.clone())));
+            to_process
+              .push((import.specifier.clone(), Some(specifier.clone())));
           }
         }
         for import in &module.dynamic_imports {
           if !processed.contains(&import.specifier) {
-            to_process.push((import.specifier.clone(), Some(specifier.clone())));
+            to_process
+              .push((import.specifier.clone(), Some(specifier.clone())));
           }
         }
 
@@ -409,7 +415,11 @@ async fn load_module_via_vfs(
     transformed.media_type
   };
 
-  match import_analyzer::analyze_imports(specifier, &transformed.code, analysis_media_type) {
+  match import_analyzer::analyze_imports(
+    specifier,
+    &transformed.code,
+    analysis_media_type,
+  ) {
     Ok(analysis) => {
       module.imports = analysis.imports;
       module.dynamic_imports = analysis.dynamic_imports;

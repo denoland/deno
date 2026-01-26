@@ -6958,7 +6958,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn vbundle_subcommand() -> Command {
   command(
     "vbundle",
-    cstr!("Bundle JavaScript/TypeScript with plugin support.
+    cstr!(
+      "Bundle JavaScript/TypeScript with plugin support.
 
   <p(245)>deno vbundle main.ts</>
   <p(245)>deno vbundle --out-dir dist main.ts</>
@@ -6970,7 +6971,8 @@ Bundle for multiple environments:
   <p(245)>deno vbundle --env server --env browser main.ts</>
 
 <y>Note:</> This is an experimental feature.
-"),
+"
+    ),
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {

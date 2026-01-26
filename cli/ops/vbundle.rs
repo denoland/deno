@@ -49,7 +49,11 @@ pub struct EmittedFile {
 
 /// Print operation for plugin logging.
 #[op2(fast)]
-pub fn op_vbundle_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
+pub fn op_vbundle_print(
+  state: &mut OpState,
+  #[string] msg: &str,
+  is_err: bool,
+) {
   let logger = state.borrow::<PluginLogger>();
   if is_err {
     logger.error(msg);

@@ -112,7 +112,11 @@ impl EmitterConfig {
   }
 
   /// Add a single environment variable.
-  pub fn with_env_var(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+  pub fn with_env_var(
+    mut self,
+    key: impl Into<String>,
+    value: impl Into<String>,
+  ) -> Self {
     self.env_vars.insert(key.into(), value.into());
     self
   }
@@ -142,7 +146,10 @@ pub struct ChunkEmitter<'a> {
 
 impl<'a> ChunkEmitter<'a> {
   /// Create a new chunk emitter.
-  pub fn new(source_graph: &'a SharedSourceGraph, config: EmitterConfig) -> Self {
+  pub fn new(
+    source_graph: &'a SharedSourceGraph,
+    config: EmitterConfig,
+  ) -> Self {
     Self {
       source_graph,
       config,
@@ -150,11 +157,15 @@ impl<'a> ChunkEmitter<'a> {
   }
 
   /// Emit all chunks in a chunk graph.
-  pub fn emit_all(&self, chunk_graph: &mut ChunkGraph) -> Result<Vec<EmittedChunk>, AnyError> {
+  pub fn emit_all(
+    &self,
+    chunk_graph: &mut ChunkGraph,
+  ) -> Result<Vec<EmittedChunk>, AnyError> {
     let mut results = Vec::new();
 
     // Collect chunk IDs first to avoid borrow issues
-    let chunk_ids: Vec<ChunkId> = chunk_graph.chunks().map(|c| c.id.clone()).collect();
+    let chunk_ids: Vec<ChunkId> =
+      chunk_graph.chunks().map(|c| c.id.clone()).collect();
 
     let environment = chunk_graph.environment.clone();
 
@@ -237,7 +248,8 @@ impl<'a> ChunkEmitter<'a> {
     }
 
     // Add module registry and initialization
-    let init_code = self.generate_init_code(&ordered_modules, &module_map, chunk);
+    let init_code =
+      self.generate_init_code(&ordered_modules, &module_map, chunk);
     bundle_code.push_str(&init_code);
 
     // Generate source map if enabled
@@ -265,7 +277,10 @@ impl<'a> ChunkEmitter<'a> {
     let media_type = deno_ast::MediaType::from_specifier(specifier);
 
     // If already JavaScript, return as-is
-    if matches!(media_type, deno_ast::MediaType::JavaScript | deno_ast::MediaType::Mjs) {
+    if matches!(
+      media_type,
+      deno_ast::MediaType::JavaScript | deno_ast::MediaType::Mjs
+    ) {
       return Ok(code.to_string());
     }
 
@@ -295,13 +310,22 @@ impl<'a> ChunkEmitter<'a> {
 
     let transpile_module_options = TranspileModuleOptions::default();
 
-    let emitted = parsed.transpile(&transpile_options, &transpile_module_options, &emit_options)?;
+    let emitted = parsed.transpile(
+      &transpile_options,
+      &transpile_module_options,
+      &emit_options,
+    )?;
 
     Ok(emitted.into_source().text)
   }
 
   /// Wrap a module in a scope function.
-  fn wrap_module(&self, module_id: &str, specifier: &ModuleSpecifier, code: &str) -> String {
+  fn wrap_module(
+    &self,
+    module_id: &str,
+    specifier: &ModuleSpecifier,
+    code: &str,
+  ) -> String {
     // Create a module wrapper that exports to a module object
     format!(
       r#"// Module: {}
@@ -319,7 +343,12 @@ return module.exports;
   /// Wrap a module in a scope function with HMR support.
   ///
   /// This injects the `import.meta.hot` context for HMR-enabled modules.
-  fn wrap_module_with_hmr(&self, module_id: &str, specifier: &ModuleSpecifier, code: &str) -> String {
+  fn wrap_module_with_hmr(
+    &self,
+    module_id: &str,
+    specifier: &ModuleSpecifier,
+    code: &str,
+  ) -> String {
     hmr_runtime::generate_module_hmr_wrapper(
       &specifier.to_string(),
       module_id,
@@ -390,7 +419,10 @@ if (typeof globalThis !== "undefined") {{
     if chunk.is_entry && !ordered_modules.is_empty() {
       let entry_specifier = &ordered_modules[ordered_modules.len() - 1];
       if let Some(module_id) = module_map.get(&entry_specifier.to_string()) {
-        init_code.push_str(&format!("\n// Entry point\nvar __entry__ = {};\n", module_id));
+        init_code.push_str(&format!(
+          "\n// Entry point\nvar __entry__ = {};\n",
+          module_id
+        ));
       }
     }
 
@@ -406,7 +438,10 @@ if (typeof globalThis !== "undefined") {{
   }
 
   /// Write emitted chunks to disk.
-  pub fn write_to_disk(&self, emitted: &[EmittedChunk]) -> Result<(), AnyError> {
+  pub fn write_to_disk(
+    &self,
+    emitted: &[EmittedChunk],
+  ) -> Result<(), AnyError> {
     std::fs::create_dir_all(&self.config.out_dir)?;
 
     for chunk in emitted {
@@ -470,7 +505,8 @@ mod tests {
     let emitter = ChunkEmitter::new(&source_graph, EmitterConfig::default());
 
     let specifier = ModuleSpecifier::parse("file:///app/mod.ts").unwrap();
-    let wrapped = emitter.wrap_module("__module_0__", &specifier, "export const x = 1;");
+    let wrapped =
+      emitter.wrap_module("__module_0__", &specifier, "export const x = 1;");
 
     assert!(wrapped.contains("__module_0__"));
     assert!(wrapped.contains("export const x = 1;"));
@@ -496,7 +532,10 @@ mod tests {
       .with_env_var("API_URL", "https://api.example.com")
       .with_env_var("DEBUG", "true");
 
-    assert_eq!(config.env_vars.get("API_URL"), Some(&"https://api.example.com".to_string()));
+    assert_eq!(
+      config.env_vars.get("API_URL"),
+      Some(&"https://api.example.com".to_string())
+    );
     assert_eq!(config.env_vars.get("DEBUG"), Some(&"true".to_string()));
   }
 
@@ -624,7 +663,11 @@ mod tests {
     let emitter = ChunkEmitter::new(&source_graph, config);
 
     let specifier = ModuleSpecifier::parse("file:///app/mod.ts").unwrap();
-    let wrapped = emitter.wrap_module_with_hmr("__module_0__", &specifier, "export const x = 1;");
+    let wrapped = emitter.wrap_module_with_hmr(
+      "__module_0__",
+      &specifier,
+      "export const x = 1;",
+    );
 
     // Should contain HMR context creation
     assert!(wrapped.contains("__module_0__"));

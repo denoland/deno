@@ -99,7 +99,10 @@ impl VfsTscAdapter {
   }
 
   /// Get file content synchronously (from cache).
-  pub fn get_file_content_sync(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_file_content_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     // Try to get from VFS cache
     if let Some(source) = self.vfs.get_original_source(specifier) {
       // If not transformed, return original
@@ -136,17 +139,27 @@ impl VfsTscAdapter {
   }
 
   /// Get declaration file for a transformed module.
-  pub fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<&String> {
+  pub fn get_declaration(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&String> {
     self.declarations.get(specifier)
   }
 
   /// Set declaration file for a module (called by plugins).
-  pub fn set_declaration(&mut self, specifier: ModuleSpecifier, declaration: String) {
+  pub fn set_declaration(
+    &mut self,
+    specifier: ModuleSpecifier,
+    declaration: String,
+  ) {
     self.declarations.insert(specifier, declaration);
   }
 
   /// Map TypeScript diagnostics to original source positions.
-  pub fn map_diagnostics(&self, diagnostics: Vec<TsDiagnostic>) -> Vec<TsDiagnostic> {
+  pub fn map_diagnostics(
+    &self,
+    diagnostics: Vec<TsDiagnostic>,
+  ) -> Vec<TsDiagnostic> {
     diagnostics
       .into_iter()
       .map(|diag| self.map_diagnostic(diag))
@@ -191,7 +204,10 @@ impl VfsTscAdapter {
   }
 
   /// Get the original specifier for a declaration file.
-  fn get_original_specifier(&self, decl_specifier: &ModuleSpecifier) -> Option<ModuleSpecifier> {
+  fn get_original_specifier(
+    &self,
+    decl_specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
     let path = decl_specifier.path();
     if path.ends_with(".d.ts") {
       let original_path = path.trim_end_matches(".d.ts");
@@ -212,7 +228,9 @@ impl VfsTscAdapter {
   }
 
   /// Get the declaration file specifier for a module.
-  pub fn get_declaration_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  pub fn get_declaration_specifier(
+    specifier: &ModuleSpecifier,
+  ) -> ModuleSpecifier {
     let path = specifier.path();
     let decl_path = format!("{}.d.ts", path);
     ModuleSpecifier::parse(&format!(
@@ -274,8 +292,14 @@ mod tests {
       message: "Type 'string' is not assignable to type 'number'".to_string(),
       code: 2322,
       severity: TsSeverity::Error,
-      start: Position { line: 10, column: 5 },
-      end: Position { line: 10, column: 15 },
+      start: Position {
+        line: 10,
+        column: 5,
+      },
+      end: Position {
+        line: 10,
+        column: 15,
+      },
       related: vec![],
     };
 
@@ -290,16 +314,27 @@ mod tests {
   fn test_format_ts_diagnostic_with_related() {
     let diag = TsDiagnostic {
       specifier: ModuleSpecifier::parse("file:///app/test.ts").unwrap(),
-      message: "Argument of type 'A' is not assignable to parameter of type 'B'".to_string(),
+      message:
+        "Argument of type 'A' is not assignable to parameter of type 'B'"
+          .to_string(),
       code: 2345,
       severity: TsSeverity::Error,
-      start: Position { line: 20, column: 10 },
-      end: Position { line: 20, column: 20 },
+      start: Position {
+        line: 20,
+        column: 10,
+      },
+      end: Position {
+        line: 20,
+        column: 20,
+      },
       related: vec![TsRelatedInfo {
         specifier: ModuleSpecifier::parse("file:///app/types.ts").unwrap(),
         message: "The expected type comes from this signature".to_string(),
         start: Position { line: 5, column: 0 },
-        end: Position { line: 5, column: 30 },
+        end: Position {
+          line: 5,
+          column: 30,
+        },
       }],
     };
 
@@ -311,7 +346,8 @@ mod tests {
 
   #[test]
   fn test_declaration_specifier() {
-    let specifier = ModuleSpecifier::parse("file:///app/Component.svelte").unwrap();
+    let specifier =
+      ModuleSpecifier::parse("file:///app/Component.svelte").unwrap();
     let decl = VfsTscAdapter::get_declaration_specifier(&specifier);
     assert!(decl.path().ends_with(".svelte.d.ts"));
   }
@@ -322,10 +358,22 @@ mod tests {
     let adapter = VfsTscAdapter::new(vfs);
 
     // Standard TypeScript/JavaScript files should be recognized
-    assert!(adapter.file_exists(&ModuleSpecifier::parse("file:///app/test.ts").unwrap()));
-    assert!(adapter.file_exists(&ModuleSpecifier::parse("file:///app/test.tsx").unwrap()));
-    assert!(adapter.file_exists(&ModuleSpecifier::parse("file:///app/test.js").unwrap()));
-    assert!(adapter.file_exists(&ModuleSpecifier::parse("file:///app/test.mts").unwrap()));
+    assert!(
+      adapter
+        .file_exists(&ModuleSpecifier::parse("file:///app/test.ts").unwrap())
+    );
+    assert!(
+      adapter
+        .file_exists(&ModuleSpecifier::parse("file:///app/test.tsx").unwrap())
+    );
+    assert!(
+      adapter
+        .file_exists(&ModuleSpecifier::parse("file:///app/test.js").unwrap())
+    );
+    assert!(
+      adapter
+        .file_exists(&ModuleSpecifier::parse("file:///app/test.mts").unwrap())
+    );
   }
 
   #[test]
@@ -334,8 +382,12 @@ mod tests {
     let mut adapter = VfsTscAdapter::new(vfs);
 
     // Add a declaration for a transformed file
-    let specifier = ModuleSpecifier::parse("file:///app/Component.svelte").unwrap();
-    adapter.set_declaration(specifier.clone(), "export const x: number;".to_string());
+    let specifier =
+      ModuleSpecifier::parse("file:///app/Component.svelte").unwrap();
+    adapter.set_declaration(
+      specifier.clone(),
+      "export const x: number;".to_string(),
+    );
 
     // Check that we can get the declaration
     assert!(adapter.get_declaration(&specifier).is_some());

@@ -79,7 +79,9 @@ impl SourceModule {
   }
 
   /// Get all import specifiers (both static and dynamic).
-  pub fn all_import_specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+  pub fn all_import_specifiers(
+    &self,
+  ) -> impl Iterator<Item = &ModuleSpecifier> {
     self
       .imports
       .iter()
@@ -216,7 +218,10 @@ impl SourceModuleGraph {
   }
 
   /// Get a module by specifier.
-  pub fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&SourceModule> {
+  pub fn get_module(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&SourceModule> {
     self.modules.get(specifier)
   }
 
@@ -296,7 +301,10 @@ impl SourceModuleGraph {
   ///
   /// This is useful for HMR to determine which modules need to be updated
   /// when a dependency changes.
-  pub fn get_importers(&self, specifier: &ModuleSpecifier) -> Vec<ModuleSpecifier> {
+  pub fn get_importers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
     let mut importers = Vec::new();
 
     for module in self.modules.values() {
@@ -326,8 +334,11 @@ impl SourceModuleGraph {
   ///
   /// Returns a map where each key is a module and the value is a set of
   /// modules that import it.
-  pub fn build_reverse_dependency_map(&self) -> HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> {
-    let mut reverse_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> = HashMap::new();
+  pub fn build_reverse_dependency_map(
+    &self,
+  ) -> HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> {
+    let mut reverse_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
+      HashMap::new();
 
     for module in self.modules.values() {
       // Add static imports to reverse map
@@ -369,7 +380,13 @@ impl SourceModuleGraph {
     let mut stack = HashSet::new();
 
     for specifier in &env_modules {
-      self.visit_topo(specifier, &env_modules, &mut visited, &mut stack, &mut result)?;
+      self.visit_topo(
+        specifier,
+        &env_modules,
+        &mut visited,
+        &mut stack,
+        &mut result,
+      )?;
     }
 
     Ok(result)
@@ -396,13 +413,25 @@ impl SourceModuleGraph {
       // Visit static imports first
       for import in &module.imports {
         if env_modules.contains(&import.specifier) {
-          self.visit_topo(&import.specifier, env_modules, visited, stack, result)?;
+          self.visit_topo(
+            &import.specifier,
+            env_modules,
+            visited,
+            stack,
+            result,
+          )?;
         }
       }
       // Then dynamic imports
       for import in &module.dynamic_imports {
         if env_modules.contains(&import.specifier) {
-          self.visit_topo(&import.specifier, env_modules, visited, stack, result)?;
+          self.visit_topo(
+            &import.specifier,
+            env_modules,
+            visited,
+            stack,
+            result,
+          )?;
         }
       }
     }
@@ -516,7 +545,8 @@ mod tests {
     let other_spec = ModuleSpecifier::parse("file:///other.ts").unwrap();
 
     // Create main module that imports dep
-    let mut main_module = SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
+    let mut main_module =
+      SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
     main_module.imports.push(ImportInfo {
       specifier: dep_spec.clone(),
       original: "./dep.ts".to_string(),
@@ -529,11 +559,13 @@ mod tests {
     graph.add_module(main_module);
 
     // Create dep module (no imports)
-    let dep_module = SourceModule::new(dep_spec.clone(), "".into(), MediaType::TypeScript);
+    let dep_module =
+      SourceModule::new(dep_spec.clone(), "".into(), MediaType::TypeScript);
     graph.add_module(dep_module);
 
     // Create other module (no imports)
-    let other_module = SourceModule::new(other_spec.clone(), "".into(), MediaType::TypeScript);
+    let other_module =
+      SourceModule::new(other_spec.clone(), "".into(), MediaType::TypeScript);
     graph.add_module(other_module);
 
     // Get importers of dep - should be main
@@ -560,7 +592,8 @@ mod tests {
     let shared_spec = ModuleSpecifier::parse("file:///shared.ts").unwrap();
 
     // main imports dep1 and dep2
-    let mut main_module = SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
+    let mut main_module =
+      SourceModule::new(main_spec.clone(), "".into(), MediaType::TypeScript);
     main_module.imports.push(ImportInfo {
       specifier: dep1_spec.clone(),
       original: "./dep1.ts".to_string(),
@@ -582,7 +615,8 @@ mod tests {
     graph.add_module(main_module);
 
     // dep1 imports shared
-    let mut dep1_module = SourceModule::new(dep1_spec.clone(), "".into(), MediaType::TypeScript);
+    let mut dep1_module =
+      SourceModule::new(dep1_spec.clone(), "".into(), MediaType::TypeScript);
     dep1_module.imports.push(ImportInfo {
       specifier: shared_spec.clone(),
       original: "./shared.ts".to_string(),
@@ -595,7 +629,8 @@ mod tests {
     graph.add_module(dep1_module);
 
     // dep2 imports shared (shared has multiple importers)
-    let mut dep2_module = SourceModule::new(dep2_spec.clone(), "".into(), MediaType::TypeScript);
+    let mut dep2_module =
+      SourceModule::new(dep2_spec.clone(), "".into(), MediaType::TypeScript);
     dep2_module.imports.push(ImportInfo {
       specifier: shared_spec.clone(),
       original: "./shared.ts".to_string(),
@@ -608,7 +643,8 @@ mod tests {
     graph.add_module(dep2_module);
 
     // shared has no imports
-    let shared_module = SourceModule::new(shared_spec.clone(), "".into(), MediaType::TypeScript);
+    let shared_module =
+      SourceModule::new(shared_spec.clone(), "".into(), MediaType::TypeScript);
     graph.add_module(shared_module);
 
     // Build reverse map

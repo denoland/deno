@@ -7,12 +7,12 @@
 
 use std::sync::Arc;
 
-use deno_ast::swc::ast;
-use deno_ast::swc::ecma_visit::Visit;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseParams;
+use deno_ast::swc::ast;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_core::error::AnyError;
 
 use super::source_graph::ImportInfo;
@@ -162,8 +162,12 @@ impl Visit for ImportCollector {
           let name = named_spec.imported.as_ref().map_or_else(
             || named_spec.local.sym.as_str().to_string(),
             |imported| match imported {
-              ast::ModuleExportName::Ident(ident) => ident.sym.as_str().to_string(),
-              ast::ModuleExportName::Str(s) => s.value.to_string_lossy().into_owned(),
+              ast::ModuleExportName::Ident(ident) => {
+                ident.sym.as_str().to_string()
+              }
+              ast::ModuleExportName::Str(s) => {
+                s.value.to_string_lossy().into_owned()
+              }
             },
           );
           let alias = if named_spec.imported.is_some() {
@@ -230,19 +234,31 @@ impl Visit for ImportCollector {
         match spec {
           ast::ExportSpecifier::Named(named_spec) => {
             let name = match &named_spec.orig {
-              ast::ModuleExportName::Ident(ident) => ident.sym.as_str().to_string(),
-              ast::ModuleExportName::Str(s) => s.value.to_string_lossy().into_owned(),
+              ast::ModuleExportName::Ident(ident) => {
+                ident.sym.as_str().to_string()
+              }
+              ast::ModuleExportName::Str(s) => {
+                s.value.to_string_lossy().into_owned()
+              }
             };
             let alias = named_spec.exported.as_ref().map(|exp| match exp {
-              ast::ModuleExportName::Ident(ident) => ident.sym.as_str().to_string(),
-              ast::ModuleExportName::Str(s) => s.value.to_string_lossy().into_owned(),
+              ast::ModuleExportName::Ident(ident) => {
+                ident.sym.as_str().to_string()
+              }
+              ast::ModuleExportName::Str(s) => {
+                s.value.to_string_lossy().into_owned()
+              }
             });
             named.push(NamedReExport { name, alias });
           }
           ast::ExportSpecifier::Namespace(ns_spec) => {
             let alias = match &ns_spec.name {
-              ast::ModuleExportName::Ident(ident) => ident.sym.as_str().to_string(),
-              ast::ModuleExportName::Str(s) => s.value.to_string_lossy().into_owned(),
+              ast::ModuleExportName::Ident(ident) => {
+                ident.sym.as_str().to_string()
+              }
+              ast::ModuleExportName::Str(s) => {
+                s.value.to_string_lossy().into_owned()
+              }
             };
             named.push(NamedReExport {
               name: "*".to_string(),
@@ -281,7 +297,9 @@ impl Visit for ImportCollector {
 /// Extract a string literal value from an expression.
 fn extract_string_literal(expr: &ast::Expr) -> Option<String> {
   match expr {
-    ast::Expr::Lit(ast::Lit::Str(s)) => Some(s.value.to_string_lossy().into_owned()),
+    ast::Expr::Lit(ast::Lit::Str(s)) => {
+      Some(s.value.to_string_lossy().into_owned())
+    }
     ast::Expr::Tpl(tpl) if tpl.exprs.is_empty() && tpl.quasis.len() == 1 => {
       // Template literal with no expressions, e.g., `import(`./foo`)`
       tpl.quasis.first().map(|q| q.raw.to_string())
@@ -332,7 +350,8 @@ mod tests {
       import * as ns from './namespace.ts';
     "#;
 
-    let result = analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
+    let result =
+      analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
 
     assert_eq!(result.imports.len(), 3);
 
@@ -345,11 +364,21 @@ mod tests {
     assert_eq!(result.imports[0].named[1].alias.as_deref(), Some("baz"));
 
     // Check default import
-    assert!(result.imports[1].specifier.as_str().ends_with("/default.ts"));
+    assert!(
+      result.imports[1]
+        .specifier
+        .as_str()
+        .ends_with("/default.ts")
+    );
     assert_eq!(result.imports[1].default_import.as_deref(), Some("Default"));
 
     // Check namespace import
-    assert!(result.imports[2].specifier.as_str().ends_with("/namespace.ts"));
+    assert!(
+      result.imports[2]
+        .specifier
+        .as_str()
+        .ends_with("/namespace.ts")
+    );
     assert_eq!(result.imports[2].namespace_import.as_deref(), Some("ns"));
   }
 
@@ -361,11 +390,22 @@ mod tests {
       import('./another.ts').then(m => m.foo());
     "#;
 
-    let result = analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
+    let result =
+      analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
 
     assert_eq!(result.dynamic_imports.len(), 2);
-    assert!(result.dynamic_imports[0].specifier.as_str().ends_with("/dynamic.ts"));
-    assert!(result.dynamic_imports[1].specifier.as_str().ends_with("/another.ts"));
+    assert!(
+      result.dynamic_imports[0]
+        .specifier
+        .as_str()
+        .ends_with("/dynamic.ts")
+    );
+    assert!(
+      result.dynamic_imports[1]
+        .specifier
+        .as_str()
+        .ends_with("/another.ts")
+    );
   }
 
   #[test]
@@ -377,7 +417,8 @@ mod tests {
       export * as ns from './namespace.ts';
     "#;
 
-    let result = analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
+    let result =
+      analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
 
     assert_eq!(result.re_exports.len(), 3);
 
@@ -391,7 +432,12 @@ mod tests {
     assert!(result.re_exports[1].is_all);
 
     // Check namespace re-export
-    assert!(result.re_exports[2].specifier.as_str().ends_with("/namespace.ts"));
+    assert!(
+      result.re_exports[2]
+        .specifier
+        .as_str()
+        .ends_with("/namespace.ts")
+    );
     assert_eq!(result.re_exports[2].named.len(), 1);
     assert_eq!(result.re_exports[2].named[0].name, "*");
   }
@@ -404,7 +450,8 @@ mod tests {
       import { type Bar } from './mixed.ts';
     "#;
 
-    let result = analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
+    let result =
+      analyze_imports(&specifier, source, MediaType::TypeScript).unwrap();
 
     assert_eq!(result.imports.len(), 2);
 

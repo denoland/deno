@@ -59,7 +59,10 @@ pub struct CodeSplitter<'a> {
 
 impl<'a> CodeSplitter<'a> {
   /// Create a new code splitter.
-  pub fn new(source_graph: &'a SharedSourceGraph, config: SplitterConfig) -> Self {
+  pub fn new(
+    source_graph: &'a SharedSourceGraph,
+    config: SplitterConfig,
+  ) -> Self {
     Self {
       source_graph,
       config,
@@ -87,7 +90,8 @@ impl<'a> CodeSplitter<'a> {
     }
 
     // Step 2: Identify dynamic import boundaries and create async chunks
-    let mut dynamic_chunk_ids: HashMap<ModuleSpecifier, ChunkId> = HashMap::new();
+    let mut dynamic_chunk_ids: HashMap<ModuleSpecifier, ChunkId> =
+      HashMap::new();
 
     if self.config.split_dynamic_imports {
       for module in source.modules_for_env(environment) {
@@ -230,16 +234,24 @@ impl<'a> CodeSplitter<'a> {
         if let Some(module) = source.get_module(module_specifier) {
           // Static imports
           for import in &module.imports {
-            if let Some(target_chunk_id) = chunk_graph.get_chunk_for_module(&import.specifier) {
+            if let Some(target_chunk_id) =
+              chunk_graph.get_chunk_for_module(&import.specifier)
+            {
               if target_chunk_id != &chunk_id {
-                updates.push((chunk_id.clone(), target_chunk_id.clone(), false));
+                updates.push((
+                  chunk_id.clone(),
+                  target_chunk_id.clone(),
+                  false,
+                ));
               }
             }
           }
 
           // Dynamic imports
           for import in &module.dynamic_imports {
-            if let Some(target_chunk_id) = chunk_graph.get_chunk_for_module(&import.specifier) {
+            if let Some(target_chunk_id) =
+              chunk_graph.get_chunk_for_module(&import.specifier)
+            {
               if target_chunk_id != &chunk_id {
                 updates.push((chunk_id.clone(), target_chunk_id.clone(), true));
               }
@@ -312,10 +324,11 @@ pub fn determine_bundle_order(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::tools::vbundle::source_graph::SourceModule;
-  use crate::tools::vbundle::source_graph::ImportInfo;
   use deno_ast::MediaType;
+
+  use super::*;
+  use crate::tools::vbundle::source_graph::ImportInfo;
+  use crate::tools::vbundle::source_graph::SourceModule;
 
   fn create_test_module(specifier: &str) -> SourceModule {
     SourceModule::new(

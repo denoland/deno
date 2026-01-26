@@ -12,10 +12,15 @@ use super::hmr_types::HmrConfig;
 /// Generate the HMR runtime preamble for injection into entry chunks.
 ///
 /// This creates the `__VBUNDLE_HMR__` global object with the full HMR API.
-pub fn generate_hmr_runtime(config: &HmrConfig, environment: &BundleEnvironment) -> String {
+pub fn generate_hmr_runtime(
+  config: &HmrConfig,
+  environment: &BundleEnvironment,
+) -> String {
   let client_code = match environment {
     BundleEnvironment::Browser => generate_browser_client(config),
-    BundleEnvironment::Server | BundleEnvironment::Custom(_) => generate_server_client(config),
+    BundleEnvironment::Server | BundleEnvironment::Custom(_) => {
+      generate_server_client(config)
+    }
   };
 
   format!(
@@ -700,7 +705,8 @@ mod tests {
   #[test]
   fn test_generate_module_hmr_wrapper() {
     let code = "export const x = 1;";
-    let wrapped = generate_module_hmr_wrapper("file:///app/mod.ts", "__module_0__", code);
+    let wrapped =
+      generate_module_hmr_wrapper("file:///app/mod.ts", "__module_0__", code);
 
     assert!(wrapped.contains("__module_0__"));
     assert!(wrapped.contains("import.meta.hot"));

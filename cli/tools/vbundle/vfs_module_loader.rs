@@ -22,10 +22,10 @@
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_core::error::AnyError;
 
 use super::virtual_fs::BundlerVirtualFS;
 

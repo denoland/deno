@@ -99,7 +99,10 @@ pub struct BundlerVirtualFS {
 
 impl BundlerVirtualFS {
   /// Create a new VFS with the given plugin host.
-  pub fn new(plugin_host: Option<Arc<PluginHostProxy>>, config: VfsConfig) -> Self {
+  pub fn new(
+    plugin_host: Option<Arc<PluginHostProxy>>,
+    config: VfsConfig,
+  ) -> Self {
     Self {
       plugin_host,
       cache: DashMap::new(),
@@ -222,7 +225,10 @@ impl BundlerVirtualFS {
     let source_map = if let Some(map_json) = source_map_json {
       match SourceMapInfo::from_json(&map_json, specifier.clone()) {
         Ok(info) => {
-          self.source_maps.write().insert(specifier.clone(), info.clone());
+          self
+            .source_maps
+            .write()
+            .insert(specifier.clone(), info.clone());
           Some(info.source_map().clone())
         }
         Err(e) => {
@@ -271,7 +277,10 @@ impl BundlerVirtualFS {
   }
 
   /// Load source code from the file system or network.
-  async fn load_native(&self, specifier: &ModuleSpecifier) -> Result<String, AnyError> {
+  async fn load_native(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<String, AnyError> {
     if specifier.scheme() == "file" {
       let path = specifier.to_file_path().map_err(|_| {
         deno_core::anyhow::anyhow!("Invalid file URL: {}", specifier)
@@ -318,7 +327,10 @@ impl BundlerVirtualFS {
   }
 
   /// Get the original source for a specifier (from source map if available).
-  pub fn get_original_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_original_source(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     let maps = self.source_maps.read();
     if let Some(info) = maps.get(specifier) {
       info.original_source().map(|s| s.to_string())
@@ -458,7 +470,11 @@ impl VfsBuilder {
   }
 
   /// Register extensions for a plugin.
-  pub fn register_extensions(mut self, plugin_name: &str, extensions: Vec<String>) -> Self {
+  pub fn register_extensions(
+    mut self,
+    plugin_name: &str,
+    extensions: Vec<String>,
+  ) -> Self {
     self.extensions.push((plugin_name.to_string(), extensions));
     self
   }
@@ -482,22 +498,35 @@ mod tests {
   #[test]
   fn test_get_extension() {
     let spec = ModuleSpecifier::parse("file:///test.svelte").unwrap();
-    assert_eq!(BundlerVirtualFS::get_extension(&spec), Some("svelte".to_string()));
+    assert_eq!(
+      BundlerVirtualFS::get_extension(&spec),
+      Some("svelte".to_string())
+    );
 
     let spec = ModuleSpecifier::parse("file:///test.vue").unwrap();
-    assert_eq!(BundlerVirtualFS::get_extension(&spec), Some("vue".to_string()));
+    assert_eq!(
+      BundlerVirtualFS::get_extension(&spec),
+      Some("vue".to_string())
+    );
 
     // Files without an extension should return None
     let spec = ModuleSpecifier::parse("file:///test").unwrap();
     assert_eq!(BundlerVirtualFS::get_extension(&spec), None);
 
     // Nested paths
-    let spec = ModuleSpecifier::parse("file:///src/components/App.svelte").unwrap();
-    assert_eq!(BundlerVirtualFS::get_extension(&spec), Some("svelte".to_string()));
+    let spec =
+      ModuleSpecifier::parse("file:///src/components/App.svelte").unwrap();
+    assert_eq!(
+      BundlerVirtualFS::get_extension(&spec),
+      Some("svelte".to_string())
+    );
 
     // Multiple dots
     let spec = ModuleSpecifier::parse("file:///test.spec.ts").unwrap();
-    assert_eq!(BundlerVirtualFS::get_extension(&spec), Some("ts".to_string()));
+    assert_eq!(
+      BundlerVirtualFS::get_extension(&spec),
+      Some("ts".to_string())
+    );
   }
 
   #[test]

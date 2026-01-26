@@ -76,8 +76,9 @@ impl SourceMapInfo {
     json: &str,
     original_specifier: ModuleSpecifier,
   ) -> Result<Self, AnyError> {
-    let source_map = SourceMap::from_slice(json.as_bytes())
-      .map_err(|e| deno_core::anyhow::anyhow!("Failed to parse source map: {}", e))?;
+    let source_map = SourceMap::from_slice(json.as_bytes()).map_err(|e| {
+      deno_core::anyhow::anyhow!("Failed to parse source map: {}", e)
+    })?;
     Ok(Self::new(source_map, original_specifier))
   }
 
@@ -143,7 +144,10 @@ impl SourceMapCache {
   }
 
   /// Remove a source map from the cache.
-  pub fn remove(&mut self, specifier: &ModuleSpecifier) -> Option<SourceMapInfo> {
+  pub fn remove(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SourceMapInfo> {
     self.maps.remove(specifier)
   }
 

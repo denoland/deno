@@ -196,9 +196,10 @@ impl PluginHostProxy {
   pub fn handles_extension(&self, ext: &str) -> bool {
     let infos = self.plugin_info.lock();
     infos.iter().any(|info| {
-      info.extensions.iter().any(|e| {
-        e.trim_start_matches('.') == ext.trim_start_matches('.')
-      })
+      info
+        .extensions
+        .iter()
+        .any(|e| e.trim_start_matches('.') == ext.trim_start_matches('.'))
     })
   }
 
@@ -293,10 +294,7 @@ impl PluginHostProxy {
   /// Call buildStart hooks on all plugins.
   pub async fn build_start(&self) -> Result<(), AnyError> {
     let (tx, rx) = oneshot::channel();
-    self
-      .tx
-      .send(PluginHostRequest::BuildStart { tx })
-      .await?;
+    self.tx.send(PluginHostRequest::BuildStart { tx }).await?;
 
     if let Ok(PluginHostResponse::BuildStart(result)) = rx.await {
       return result;
@@ -307,10 +305,7 @@ impl PluginHostProxy {
   /// Call buildEnd hooks on all plugins.
   pub async fn build_end(&self) -> Result<(), AnyError> {
     let (tx, rx) = oneshot::channel();
-    self
-      .tx
-      .send(PluginHostRequest::BuildEnd { tx })
-      .await?;
+    self.tx.send(PluginHostRequest::BuildEnd { tx }).await?;
 
     if let Ok(PluginHostResponse::BuildEnd(result)) = rx.await {
       return result;
@@ -391,13 +386,14 @@ impl PluginHost {
       log::debug!("Vbundle PluginHost thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
-        let runner = match create_plugin_runner_inner(logger.clone(), rx_req).await {
-          Ok(runner) => runner,
-          Err(e) => {
-            log::error!("Vbundle PluginHost initialization failed: {}", e);
-            return Err(e);
-          }
-        };
+        let runner =
+          match create_plugin_runner_inner(logger.clone(), rx_req).await {
+            Ok(runner) => runner,
+            Err(e) => {
+              log::error!("Vbundle PluginHost initialization failed: {}", e);
+              return Err(e);
+            }
+          };
         log::debug!("Vbundle PluginHost running loop");
         runner.run_loop().await?;
         log::debug!(
@@ -443,7 +439,9 @@ impl PluginHost {
           options,
           tx,
         } => {
-          let r = self.resolve_id(&source, importer.as_deref(), &options).await;
+          let r = self
+            .resolve_id(&source, importer.as_deref(), &options)
+            .await;
           let _ = tx.send(PluginHostResponse::Resolve(r));
         }
         PluginHostRequest::Load { id, tx } => {
@@ -484,7 +482,8 @@ impl PluginHost {
         .js_runtime
         .load_side_es_module(&specifier)
         .await?;
-      let mod_future = self.worker.js_runtime.mod_evaluate(mod_id).boxed_local();
+      let mod_future =
+        self.worker.js_runtime.mod_evaluate(mod_id).boxed_local();
       load_futures.push((mod_future, mod_id));
     }
 
@@ -502,7 +501,8 @@ impl PluginHost {
       deno_core::scope!(scope, &mut self.worker.js_runtime);
       let module_local = v8::Local::new(scope, module);
       let default_export_str = DEFAULT.v8_string(scope).unwrap();
-      let default_export = module_local.get(scope, default_export_str.into()).unwrap();
+      let default_export =
+        module_local.get(scope, default_export_str.into()).unwrap();
       let default_export_global = v8::Global::new(scope, default_export);
       plugin_handles.push(default_export_global);
     }
@@ -707,7 +707,8 @@ impl PluginHost {
       let load_fn = v8::Local::new(scope, &*self.load_fn.clone());
       let undefined = v8::undefined(scope);
 
-      let id_v8: v8::Local<v8::Value> = v8::String::new(scope, id).unwrap().into();
+      let id_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, id).unwrap().into();
 
       let result = {
         v8::tc_scope!(tc_scope, scope);
@@ -767,7 +768,8 @@ impl PluginHost {
       let transform_fn = v8::Local::new(scope, &*self.transform_fn.clone());
       let undefined = v8::undefined(scope);
 
-      let id_v8: v8::Local<v8::Value> = v8::String::new(scope, id).unwrap().into();
+      let id_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, id).unwrap().into();
       let code_v8: v8::Local<v8::Value> =
         v8::String::new(scope, code).unwrap().into();
 
@@ -827,7 +829,8 @@ impl PluginHost {
   ) -> Result<Option<RenderChunkResult>, AnyError> {
     let promise = {
       deno_core::scope!(scope, &mut self.worker.js_runtime);
-      let render_chunk_fn = v8::Local::new(scope, &*self.render_chunk_fn.clone());
+      let render_chunk_fn =
+        v8::Local::new(scope, &*self.render_chunk_fn.clone());
       let undefined = v8::undefined(scope);
 
       let code_v8: v8::Local<v8::Value> =
@@ -836,8 +839,11 @@ impl PluginHost {
 
       let result = {
         v8::tc_scope!(tc_scope, scope);
-        let result =
-          render_chunk_fn.call(tc_scope, undefined.into(), &[code_v8, chunk_v8]);
+        let result = render_chunk_fn.call(
+          tc_scope,
+          undefined.into(),
+          &[code_v8, chunk_v8],
+        );
         if let Some(exception) = tc_scope.exception() {
           let error = JsError::from_v8_exception(tc_scope, exception);
           return Err(error.into());
@@ -1008,9 +1014,8 @@ async fn create_plugin_runner_inner(
       build_start_fn_val.try_into().unwrap();
 
     let build_end_fn_name = BUILD_END.v8_string(scope).unwrap();
-    let build_end_fn_val = module_exports
-      .get(scope, build_end_fn_name.into())
-      .unwrap();
+    let build_end_fn_val =
+      module_exports.get(scope, build_end_fn_name.into()).unwrap();
     let build_end_fn: v8::Local<v8::Function> =
       build_end_fn_val.try_into().unwrap();
 
@@ -1022,16 +1027,12 @@ async fn create_plugin_runner_inner(
       resolve_id_fn_val.try_into().unwrap();
 
     let load_fn_name = LOAD.v8_string(scope).unwrap();
-    let load_fn_val = module_exports
-      .get(scope, load_fn_name.into())
-      .unwrap();
-    let load_fn: v8::Local<v8::Function> =
-      load_fn_val.try_into().unwrap();
+    let load_fn_val = module_exports.get(scope, load_fn_name.into()).unwrap();
+    let load_fn: v8::Local<v8::Function> = load_fn_val.try_into().unwrap();
 
     let transform_fn_name = TRANSFORM.v8_string(scope).unwrap();
-    let transform_fn_val = module_exports
-      .get(scope, transform_fn_name.into())
-      .unwrap();
+    let transform_fn_val =
+      module_exports.get(scope, transform_fn_name.into()).unwrap();
     let transform_fn: v8::Local<v8::Function> =
       transform_fn_val.try_into().unwrap();
 
