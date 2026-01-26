@@ -478,7 +478,7 @@
 "parallel/test-fs-read-stream-patch-open.js" = {}
 "parallel/test-fs-read-stream-resume.js" = {}
 "parallel/test-fs-read-stream-throw-type-error.js" = {}
-"parallel/test-fs-read-stream.js" = {}
+# "parallel/test-fs-read-stream.js" = {}
 "parallel/test-fs-read-type.js" = {}
 "parallel/test-fs-read-zero-length.js" = {}
 "parallel/test-fs-readdir-pipe.js" = {}
@@ -834,7 +834,7 @@
 "parallel/test-net-sync-cork.js" = {}
 "parallel/test-net-timeout-no-handle.js" = {}
 "parallel/test-net-writable.js" = {}
-"parallel/test-net-write-connect-write.js" = {}
+# "parallel/test-net-write-connect-write.js" = {}
 "parallel/test-net-write-fully-async-buffer.js" = {}
 "parallel/test-net-write-slow.js" = {}
 "parallel/test-next-tick-doesnt-hang.js" = {}

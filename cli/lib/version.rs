@@ -34,9 +34,18 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
         } else if IS_RC {
           ReleaseChannel::Rc
         } else {
-          ReleaseChannel::Stable
+          ReleaseChannel::Lts
         }
       });
+
+    #[cfg(all(debug_assertions, target_os = "macos", target_arch = "x86_64"))]
+    let release_channel = if IS_CANARY {
+      ReleaseChannel::Canary
+    } else if IS_RC {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Lts
+    };
 
     DenoVersionInfo {
       deno: if release_channel == ReleaseChannel::Canary {
