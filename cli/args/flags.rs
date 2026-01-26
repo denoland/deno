@@ -391,6 +391,17 @@ impl LintFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct VbundleFlags {
+  pub files: FileFlags,
+  pub out_dir: Option<String>,
+  pub plugins: Vec<String>,
+  pub environments: Vec<String>,
+  pub minify: bool,
+  pub no_sourcemap: bool,
+  pub watch: Option<WatchFlags>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
@@ -627,6 +638,7 @@ pub enum DenoSubcommand {
   Outdated(OutdatedFlags),
   Types,
   Upgrade(UpgradeFlags),
+  Vbundle(VbundleFlags),
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
@@ -1875,6 +1887,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
         "upgrade" => upgrade_parse(&mut flags, &mut m),
+        "vbundle" => vbundle_parse(&mut flags, &mut m)?,
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
@@ -2141,6 +2154,7 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
+        .subcommand(vbundle_subcommand())
         .subcommand(vendor_subcommand())
         .subcommand(x_subcommand());
 
@@ -6930,6 +6944,127 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     version_or_hash_or_channel,
   });
+}
+
+fn vbundle_subcommand() -> Command {
+  command(
+    "vbundle",
+    cstr!("Bundle JavaScript/TypeScript with plugin support.
+
+  <p(245)>deno vbundle main.ts</>
+  <p(245)>deno vbundle --out-dir dist main.ts</>
+
+Use plugins to transform non-JS files:
+  <p(245)>deno vbundle --plugin ./svelte-plugin.ts app.svelte</>
+
+Bundle for multiple environments:
+  <p(245)>deno vbundle --env server --env browser main.ts</>
+
+<y>Note:</> This is an experimental feature.
+"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("out-dir")
+          .long("out-dir")
+          .short('o')
+          .help("Output directory for bundled files")
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("plugin")
+          .long("plugin")
+          .short('p')
+          .help("Plugin modules to load")
+          .value_parser(value_parser!(String))
+          .action(ArgAction::Append),
+      )
+      .arg(
+        Arg::new("env")
+          .long("env")
+          .help("Target environments (server, browser)")
+          .value_parser(value_parser!(String))
+          .action(ArgAction::Append),
+      )
+      .arg(
+        Arg::new("minify")
+          .long("minify")
+          .short('m')
+          .help("Minify the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-sourcemap")
+          .long("no-sourcemap")
+          .help("Disable source map generation")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(watch_arg(true))
+      .arg(no_clear_screen_arg())
+      .arg(
+        Arg::new("files")
+          .help("Entry point files to bundle")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .value_name("FILES")
+          .help("Ignore files")
+          .value_parser(value_parser!(String))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::AnyPath),
+      )
+  })
+}
+
+fn vbundle_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  config_args_parse(flags, matches);
+
+  let files = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
+  let out_dir = matches.remove_one::<String>("out-dir");
+  let plugins = match matches.remove_many::<String>("plugin") {
+    Some(p) => p.collect(),
+    None => vec![],
+  };
+  let environments = match matches.remove_many::<String>("env") {
+    Some(e) => e.collect(),
+    None => vec![],
+  };
+  let minify = matches.get_flag("minify");
+  let no_sourcemap = matches.get_flag("no-sourcemap");
+
+  flags.subcommand = DenoSubcommand::Vbundle(VbundleFlags {
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
+    out_dir,
+    plugins,
+    environments,
+    minify,
+    no_sourcemap,
+    watch: watch_arg_parse(matches)?,
+  });
+  Ok(())
 }
 
 fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {

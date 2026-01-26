@@ -453,6 +453,9 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+    DenoSubcommand::Vbundle(vbundle_flags) => spawn_subcommand(async {
+      tools::vbundle::vbundle(flags, vbundle_flags).await
+    }),
     DenoSubcommand::Vendor => exit_with_message(
       "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
