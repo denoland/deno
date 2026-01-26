@@ -1909,6 +1909,8 @@ pub fn flags_from_vec_with_initial_cwd(
     }
   }
 
+  apply_node_options(&mut flags);
+
   Ok(flags)
 }
 
@@ -3913,6 +3915,70 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(tunnel_arg())
 }
 
+#[cfg(test)]
+thread_local! {
+  static TEST_NODE_OPTIONS: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Reads some flags from NODE_OPTIONS:
+/// https://nodejs.org/api/cli.html#node_optionsoptions
+/// Currently supports:
+/// - `--require` / `-r`
+/// - `--inspect-publish-uid`
+/// Add more as needed.
+fn apply_node_options(flags: &mut Flags) {
+  let node_options = match std::env::var("NODE_OPTIONS") {
+    Ok(val) if !val.is_empty() => val,
+    _ => {
+      #[cfg(test)]
+      {
+        match TEST_NODE_OPTIONS.with(|opt| opt.borrow().clone()) {
+          Some(val) if !val.is_empty() => val,
+          _ => return,
+        }
+      }
+      #[cfg(not(test))]
+      return;
+    }
+  };
+
+  // Filter out unsupported flags, since they can consume the supported flags as
+  // values.
+  let args = node_options
+    .split_whitespace()
+    .scan(false, |prev_was_require, word| {
+      if word == "--require" || word == "-r" {
+        *prev_was_require = true;
+        return Some((word, true));
+      }
+      if word.starts_with("--inspect-publish-uid=") || *prev_was_require {
+        *prev_was_require = false;
+        return Some((word, true));
+      }
+      *prev_was_require = false;
+      Some((word, false))
+    })
+    .filter_map(|(word, should_keep)| should_keep.then_some(word));
+
+  let cmd = Command::new("node-options-parser")
+    .arg(require_arg().short('r'))
+    .arg(inspect_publish_uid_arg())
+    .ignore_errors(true);
+  let mut matches =
+    cmd.get_matches_from(std::iter::once("node-options-parser").chain(args));
+
+  if let Some(require_values) = matches.remove_many::<String>("require") {
+    let mut merged_require: Vec<String> = require_values.collect();
+    merged_require.append(&mut flags.require);
+    flags.require = merged_require;
+  }
+
+  if flags.inspect_publish_uid.is_none() {
+    flags.inspect_publish_uid =
+      matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
+  }
+}
+
 fn run_subcommand() -> Command {
   run_args(command("run", cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
@@ -5049,20 +5115,22 @@ fn inspect_args(app: Command) -> Command {
         .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
-    .arg(
-      Arg::new("inspect-publish-uid")
-        .long("inspect-publish-uid")
-        .value_name("VALUE")
-        .require_equals(true)
-        .value_parser(inspect_publish_uid_value_parser)
-        .hide(true),
-    )
+    .arg(inspect_publish_uid_arg())
 }
 
 fn inspect_publish_uid_value_parser(
   value: &str,
 ) -> Result<InspectPublishUid, String> {
   parse_inspect_publish_uid(value)
+}
+
+fn inspect_publish_uid_arg() -> Arg {
+  Arg::new("inspect-publish-uid")
+    .long("inspect-publish-uid")
+    .value_name("VALUE")
+    .require_equals(true)
+    .value_parser(inspect_publish_uid_value_parser)
+    .hide(true)
 }
 
 fn import_map_arg() -> Arg {
@@ -14391,5 +14459,102 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags =
       flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
     assert_eq!(flags.inspect_publish_uid, None);
+  }
+
+  fn set_test_node_options(value: Option<&str>) {
+    TEST_NODE_OPTIONS.with(|opt| {
+      *opt.borrow_mut() = value.map(|s| s.to_string());
+    });
+  }
+
+  #[test]
+  fn node_options_require() {
+    // Test NODE_OPTIONS --require when no CLI --require is passed
+    set_test_node_options(Some("--require only.js"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["only.js"]);
+  }
+
+  #[test]
+  fn node_options_require_prepend_to_cli() {
+    // Test NODE_OPTIONS --require is prepended to CLI --require values
+    set_test_node_options(Some("--require foo.js --require bar.js"));
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--require", "cli.js", "script.ts",])
+        .unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["foo.js", "bar.js", "cli.js"]);
+  }
+
+  #[test]
+  fn node_options_inspect_publish_uid() {
+    set_test_node_options(Some("--inspect-publish-uid=http"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: false,
+        http: true,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_inspect_publish_uid_cli_precedence() {
+    set_test_node_options(Some("--inspect-publish-uid=http"));
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-publish-uid=stderr",
+      "script.ts",
+    ])
+    .unwrap();
+    set_test_node_options(None);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: false,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_combined() {
+    // Test NODE_OPTIONS with both --require and --inspect-publish-uid
+    set_test_node_options(Some(
+      "--require foo.js --inspect-publish-uid=stderr,http",
+    ));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["foo.js"]);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: true,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_empty() {
+    set_test_node_options(Some(""));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert!(flags.require.is_empty());
+    assert_eq!(flags.inspect_publish_uid, None);
+  }
+
+  #[test]
+  fn node_options_ignores_unknown_flags() {
+    set_test_node_options(Some(
+      "--require known.js --unknown-flag --another-unknown",
+    ));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["known.js"]);
   }
 }
