@@ -54,7 +54,6 @@ use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 pub use deno_runtime::deno_inspector_server::InspectPublishUid;
-use deno_runtime::deno_node::ops::node_cli_parser::parse_node_options_env_var;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -63,6 +62,7 @@ use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
 use log::Level;
 use log::debug;
+use node_shim::parse_node_options_env_var;
 use serde::Deserialize;
 use serde::Serialize;
 

@@ -96,6 +96,7 @@ deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
+node_shim.workspace = true
 
 anstream.workspace = true
 async-trait.workspace = true
