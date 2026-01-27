@@ -100,7 +100,7 @@ fn op_cron_create<C>(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
   #[string] cron_schedule: String,
-  #[serde] backoff_schedule: Option<Vec<u32>>,
+  #[scoped] backoff_schedule: Option<Vec<u32>>,
 ) -> Result<ResourceId, CronError>
 where
   C: CronHandler + 'static,
@@ -130,7 +130,7 @@ where
   Ok(handle_rid)
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
