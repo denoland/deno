@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod blocklist;
 pub mod buffer;
@@ -12,6 +12,7 @@ pub mod http2;
 pub mod idna;
 pub mod inspector;
 pub mod ipc;
+pub mod node_cli_parser;
 pub mod os;
 pub mod perf_hooks;
 pub mod process;

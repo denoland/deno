@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -86,7 +86,6 @@ impl GPUQueue {
   // In the successful case, the promise should resolve to undefined, but
   // `#[undefined]` does not seem to work here.
   // https://github.com/denoland/deno/issues/29603
-  #[async_method]
   async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
     let (sender, receiver) = oneshot::channel::<()>();
 

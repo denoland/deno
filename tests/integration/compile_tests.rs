@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
 use test_util::eprintln;
@@ -294,7 +294,7 @@ fn standalone_runtime_flags() {
     .split_output()
     .run()
     .assert_exit_code(1)
-    .assert_stdout_matches_text("0.1472050634010581\n")
+    .assert_stdout_matches_text("0.34158532233056826\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     );

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-write --allow-run --allow-env --allow-read
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { join } from "./util.js";
 
 const dir = await Deno.makeTempDir();

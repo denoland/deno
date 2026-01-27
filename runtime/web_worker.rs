@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -64,8 +64,7 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
-use crate::inspector_server::InspectorServer;
-use crate::inspector_server::MainInspectorSessionChannel;
+use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -377,7 +376,6 @@ pub struct WebWorkerServiceOptions<
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
@@ -649,7 +647,6 @@ impl WebWorker {
           options.enable_raw_imports,
         ))),
       ),
-      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),

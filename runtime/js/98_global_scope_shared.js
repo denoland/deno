@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -83,6 +83,10 @@ const windowOrWorkerGlobalScope = {
   PerformanceEntry: core.propNonEnumerable(performance.PerformanceEntry),
   PerformanceMark: core.propNonEnumerable(performance.PerformanceMark),
   PerformanceMeasure: core.propNonEnumerable(performance.PerformanceMeasure),
+  PerformanceObserver: core.propNonEnumerable(performance.PerformanceObserver),
+  PerformanceObserverEntryList: core.propNonEnumerable(
+    performance.PerformanceObserverEntryList,
+  ),
   PromiseRejectionEvent: core.propNonEnumerable(event.PromiseRejectionEvent),
   ProgressEvent: core.propNonEnumerable(event.ProgressEvent),
   ReadableStream: core.propNonEnumerable(streams.ReadableStream),
@@ -200,6 +204,14 @@ const windowOrWorkerGlobalScope = {
   ),
   GPUCommandEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUCommandEncoder,
+    loadWebGPU,
+  ),
+  GPUCompilationInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationInfo,
+    loadWebGPU,
+  ),
+  GPUCompilationMessage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationMessage,
     loadWebGPU,
   ),
   GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(

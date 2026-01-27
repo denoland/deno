@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::v8;
 
@@ -131,5 +131,18 @@ pub(super) fn read_big_ints_bool(
 
   Err(Error::InvalidArgType(
     "The \"readBigInts\" argument must be a boolean.",
+  ))
+}
+
+pub(super) fn return_arrays_bool(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"returnArrays\" argument must be a boolean.",
   ))
 }

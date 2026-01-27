@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -313,7 +313,7 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
@@ -355,7 +355,7 @@ async fn op_host_recv_ctrl(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,

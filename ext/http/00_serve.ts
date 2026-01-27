@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -698,6 +698,9 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed
+let serveAddressOverrideConsumed = false;
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -726,6 +729,11 @@ function serve(arg1, arg2) {
   if (options === undefined) {
     options = { __proto__: null };
   }
+
+  if (serveAddressOverrideConsumed) {
+    return serveInner(options, handler);
+  }
+  serveAddressOverrideConsumed = true;
 
   const {
     0: overrideKind,

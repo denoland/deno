@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub use deno_cache;
 pub use deno_canvas;
@@ -10,6 +10,7 @@ pub use deno_ffi;
 pub use deno_fs;
 pub use deno_http;
 pub use deno_image;
+pub use deno_inspector_server;
 pub use deno_io;
 pub use deno_kv;
 pub use deno_napi;
@@ -30,7 +31,6 @@ pub use deno_webstorage;
 pub mod code_cache;
 pub mod coverage;
 pub mod fmt_errors;
-pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;

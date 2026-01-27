@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -55,7 +55,7 @@ pub fn op_pipe_open(
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_pipe_windows_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

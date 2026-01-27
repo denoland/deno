@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
 const {
+  Boolean,
   Number,
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeSlice,
@@ -13,6 +14,13 @@ const {
 } = primordials;
 
 const searchParams = Symbol("query");
+
+export function isURL(self: unknown): self is URL {
+  return Boolean(
+    self?.href && self.protocol && self.auth === undefined &&
+      self.path === undefined,
+  );
+}
 
 export function toPathIfFileURL(
   fileURLOrPath: string | Buffer | URL,

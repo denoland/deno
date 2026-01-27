@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -95,7 +95,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_test(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
   #[string] name: String,
   ignore: bool,
   only: bool,
@@ -139,7 +139,7 @@ fn op_register_test(
 fn op_register_test_hook(
   state: &mut OpState,
   #[string] hook_type: String,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
 ) -> Result<(), JsErrorBox> {
   let container = state.borrow_mut::<TestContainer>();
   container.register_hook(hook_type, function);

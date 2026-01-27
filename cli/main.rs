@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod args;
 mod cache;
@@ -257,9 +257,9 @@ async fn run_subcommand(
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
-    DenoSubcommand::X(x_flags) => spawn_subcommand(async move {
-      tools::x::run(flags, x_flags, unconfigured_runtime, roots).await
-    }),
+    DenoSubcommand::X(x_flags) => {
+      spawn_subcommand(async move { tools::x::run(flags, x_flags).await })
+    }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
         let task_flags = TaskFlags {
@@ -798,7 +798,6 @@ fn init_v8(flags: &Flags) {
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
-      "--js-explicit-resource-management".to_string(),
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
@@ -818,11 +817,7 @@ fn init_v8(flags: &Flags) {
     None
   };
 
-  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(
-    v8_platform,
-    /* import assertions enabled */ false,
-  );
+  deno_core::JsRuntime::init_platform(v8_platform);
 }
 
 fn init_logging(

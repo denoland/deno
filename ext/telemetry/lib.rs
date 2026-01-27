@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
 #![expect(unexpected_cfgs)]
@@ -2512,7 +2512,7 @@ fn op_otel_metric_attribute3<'s>(
 
 struct ObservationDone(oneshot::Sender<()>);
 
-#[op2(async)]
+#[op2]
 async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
   let (tx, rx) = oneshot::channel();
   {

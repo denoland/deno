@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::env;
 use std::io::Write;
@@ -29,10 +29,10 @@ mod macros;
 mod npm;
 mod parsers;
 pub mod print;
+pub mod process;
 pub mod pty;
 mod semaphore;
 pub mod servers;
-pub mod spawn;
 pub mod test_runner;
 mod wildcard;
 
@@ -66,6 +66,7 @@ pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
     ("SOCKET_DEV_URL".to_string(), socket_dev_api_url()),
@@ -139,6 +140,7 @@ pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
 pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("JSR_URL".to_string(), jsr_registry_url()),
     (
       "DENO_TESTING_DISABLE_GIT_CHECK".to_string(),
@@ -199,6 +201,17 @@ pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
 }
 
+pub fn npm_jsr_registry_url() -> String {
+  format!(
+    "http://localhost:{}/",
+    servers::PUBLIC_NPM_JSR_REGISTRY_PORT
+  )
+}
+
+pub fn npm_jsr_registry_unset_url() -> String {
+  "http://JSR_NPM_URL.is.unset".to_string()
+}
+
 pub fn nodejs_org_mirror_url() -> String {
   format!(
     "http://127.0.0.1:{}/",
@@ -252,6 +265,10 @@ pub fn target_dir() -> PathRef {
 }
 
 pub fn deno_exe_path() -> PathRef {
+  // Allow overriding the deno executable path via environment variable
+  if let Ok(path) = std::env::var("DENO_TEST_UTIL_DENO_EXE") {
+    return PathRef::new(PathBuf::from(path));
+  }
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno").to_path_buf();
   if cfg!(windows) {
@@ -339,7 +356,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 35;
+pub const TEST_SERVERS_COUNT: usize = 37;
 
 #[derive(Default)]
 struct HttpServerCount {
@@ -595,6 +612,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
+    .env("JSR_NPM_URL", npm_jsr_registry_unset_url())
     .env("NODEJS_ORG_MIRROR", nodejs_org_mirror_unset_url())
     .env("JSR_URL", jsr_registry_unset_url())
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -547,7 +547,7 @@ unsafe fn do_ffi_callback(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

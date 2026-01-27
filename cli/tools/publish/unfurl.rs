@@ -1,6 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_ast::ParsedSource;
@@ -27,6 +29,7 @@ use deno_ast::swc::atoms::Atom;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_graph::analysis::DependencyDescriptor;
@@ -35,16 +38,20 @@ use deno_graph::analysis::StaticDependencyKind;
 use deno_graph::analysis::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_resolver::npm::NpmResolverSys;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolverSys;
 
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
+use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
@@ -369,18 +376,23 @@ pub enum PositionOrSourceRangeRef<'a> {
 }
 
 #[sys_traits::auto_impl]
-pub trait SpecifierUnfurlerSys: FsMetadata + FsRead {}
+pub trait SpecifierUnfurlerSys: NodeResolverSys + NpmResolverSys {}
 
 pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
-  // optional for testing
-  node_resolver: Option<Arc<CliNodeResolver>>,
+  node_resolver: Arc<CliNodeResolver<TSys>>,
+  npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
+  pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
+  workspace_dir: Arc<WorkspaceDirectory>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
 
 impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   pub fn new(
-    node_resolver: Option<Arc<CliNodeResolver>>,
+    node_resolver: Arc<CliNodeResolver<TSys>>,
+    npm_req_resolver: Arc<CliNpmReqResolver<TSys>>,
+    pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
+    workspace_dir: Arc<WorkspaceDirectory>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -390,6 +402,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     );
     Self {
       node_resolver,
+      npm_req_resolver,
+      pkg_json_resolver,
+      workspace_dir,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -590,20 +605,17 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               None
             }
           },
-          MappedResolution::PackageJsonImport { pkg_json } => {
-            self.node_resolver.as_ref().and_then(|resolver| {
-              resolver
-                .resolve_package_import(
-                  specifier,
-                  Some(&node_resolver::UrlOrPathRef::from_url(referrer)),
-                  Some(pkg_json),
-                  node_resolver::ResolutionMode::Import,
-                  node_resolver::NodeResolutionKind::Execution,
-                )
-                .ok()
-                .and_then(|s| s.into_url().ok())
-            })
-          }
+          MappedResolution::PackageJsonImport { pkg_json } => self
+            .node_resolver
+            .resolve_package_import(
+              specifier,
+              Some(&node_resolver::UrlOrPathRef::from_url(referrer)),
+              Some(pkg_json),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )
+            .ok()
+            .and_then(|s| s.into_url().ok()),
         }
       }
       Err(_) => None,
@@ -679,6 +691,132 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     }
   }
 
+  /// Look up the version constraint for a @types/* package from package.json
+  /// dependencies (including devDependencies) or from the import map.
+  fn find_types_package_version_req(
+    &self,
+    types_package_name: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<VersionReq> {
+    // check package.json dependencies
+    let referrer_path = deno_path_util::url_to_file_path(referrer).ok();
+    let referrer_pkg_jsons = referrer_path
+      .as_ref()
+      .map(|path| self.pkg_json_resolver.get_closest_package_jsons(path))
+      .into_iter()
+      .flatten()
+      .filter_map(|i| i.ok());
+    for pkg_json in referrer_pkg_jsons
+      .chain(self.workspace_dir.workspace.package_jsons().cloned())
+    {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      if let Some(Ok(PackageJsonDepValue::Req(pkg_req))) =
+        deps.get(types_package_name)
+      {
+        return Some(pkg_req.version_req.clone());
+      }
+    }
+
+    let check_dep = |dep: JsrDepPackageReq| {
+      if dep.kind == deno_semver::package::PackageKind::Npm
+        && dep.req.name == types_package_name
+      {
+        Some(dep.req.version_req)
+      } else {
+        None
+      }
+    };
+
+    // now look in the member and root deno json
+    let deno_jsons = [
+      self.workspace_dir.member_deno_json(),
+      self.workspace_dir.workspace.root_deno_json(),
+    ];
+    for deno_json in deno_jsons.iter().flatten() {
+      let deps = deno_json
+        .dependencies()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+      for dep in deps {
+        if let Some(version_req) = check_dep(dep) {
+          return Some(version_req);
+        }
+      }
+    }
+
+    // check the import map for the types package
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
+      let deps = deno_config::import_map::import_map_deps(import_map);
+      for dep in deps {
+        if let Some(version_req) = check_dep(dep) {
+          return Some(version_req);
+        }
+      }
+    }
+
+    None
+  }
+
+  /// Check if a resolved npm specifier (like "npm:express@^4" or
+  /// "npm:express@^4/subpath") has types coming from a separate @types/*
+  /// package. If so, return the types package specifier to use for @ts-types
+  /// comment.
+  fn get_types_package_specifier(
+    &self,
+    unfurled_specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
+    let npm_req_ref =
+      NpmPackageReqReference::from_str(unfurled_specifier).ok()?;
+    if npm_req_ref.req().name.starts_with("@types/") {
+      return None;
+    }
+    let types_resolution = self.npm_req_resolver.resolve_req_reference(
+      &npm_req_ref,
+      referrer,
+      node_resolver::ResolutionMode::Import,
+      node_resolver::NodeResolutionKind::Types,
+    );
+    let resolved_path = types_resolution.ok()?.into_path().ok()?;
+    let types_pkg_json = self
+      .pkg_json_resolver
+      .get_closest_package_jsons(&resolved_path)
+      .filter_map(|pkg_json| pkg_json.ok())
+      .find(|p| p.name.is_some())?;
+    let types_pkg_name = types_pkg_json.name.as_ref()?;
+    let types_pkg_version = types_pkg_json
+      .version
+      .as_ref()
+      .and_then(|v| Version::parse_from_npm(v).ok());
+
+    if !types_pkg_name.starts_with("@types/") {
+      return None;
+    }
+
+    // determine version constraint
+    let version_req = if let Some(req) =
+      self.find_types_package_version_req(types_pkg_name, referrer)
+    {
+      req.to_string()
+    } else {
+      // fall back to using the package's version
+      types_pkg_version
+        .map(|v| format!("^{}", v))
+        .unwrap_or_else(|| "*".to_string())
+    };
+
+    // construct the types specifier with subpath if present
+    Some(format!(
+      "npm:{}@{}{}",
+      types_pkg_name,
+      version_req,
+      npm_req_ref
+        .sub_path()
+        .map(|path| format!("/{}", path))
+        .unwrap_or_default()
+    ))
+  }
+
   /// Attempts to unfurl the dynamic dependency returning `true` on success
   /// or `false` when the import was not analyzable.
   fn try_unfurl_dynamic_dep(
@@ -718,9 +856,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         match parts.first() {
           Some(DynamicTemplatePart::String { value: specifier }) => {
             // relative doesn't need to be modified
-            let is_relative =
-              specifier.starts_with("./") || specifier.starts_with("../");
-            if is_relative {
+            if deno_path_util::is_relative_specifier(specifier) {
               return true;
             }
             if !specifier.ends_with('/') {
@@ -800,6 +936,11 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           });
         }
       };
+    // collect import declaration start positions to correctly insert @ts-types
+    // comments when multiple imports are on the same line
+    let mut specifier_collector = SpecifierStartCollector::default();
+    parsed_source.program().visit_with(&mut specifier_collector);
+
     for dep in &module_info.dependencies {
       match dep {
         DependencyDescriptor::Static(dep) => {
@@ -821,6 +962,36 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               }
             }
           };
+
+          // check if we need to add @ts-types comment
+          if dep.types_specifier.is_none()
+            && let Ok(Some(unfurled)) = self.unfurl_specifier(
+              url,
+              &dep.specifier,
+              deno_resolver::workspace::ResolutionKind::Types,
+            )
+            && let Some(types_specifier) =
+              self.get_types_package_specifier(&unfurled, url)
+          {
+            // insert @ts-types comment before the import declaration
+            let specifier_range =
+              dep.specifier_range.as_source_range(text_info);
+            let decl_start_byte_index = specifier_collector
+              .specifier_to_decl_start
+              .get(&specifier_range)
+              .map(|start| start.as_byte_index(text_info.range().start))
+              .unwrap_or_else(|| {
+                // fallback to line start if not found (shouldn't happen)
+                let line_start =
+                  text_info.line_start(dep.specifier_range.start.line);
+                line_start.as_byte_index(text_info.range().start)
+              });
+            // use block comment so it works even with multiple imports on one line
+            text_changes.push(deno_ast::TextChange {
+              range: decl_start_byte_index..decl_start_byte_index,
+              new_text: format!("/* @ts-types=\"{}\" */ ", types_specifier),
+            });
+          }
 
           analyze_specifier(
             &dep.specifier,
@@ -955,6 +1126,39 @@ fn to_range(
   range
 }
 
+/// Collects the start position of import/export declarations for each specifier.
+/// This is needed to correctly insert @ts-types comments before import statements
+/// when multiple imports appear on the same line.
+#[derive(Default)]
+struct SpecifierStartCollector {
+  /// Maps the specifier source range to the start position of the declaration.
+  specifier_to_decl_start: HashMap<SourceRange<SourcePos>, SourcePos>,
+}
+
+impl Visit for SpecifierStartCollector {
+  noop_visit_type!();
+
+  fn visit_import_decl(&mut self, node: &deno_ast::swc::ast::ImportDecl) {
+    let decl_start = node.range().start;
+    let src_range = node.src.range();
+    self.specifier_to_decl_start.insert(src_range, decl_start);
+  }
+
+  fn visit_export_all(&mut self, node: &deno_ast::swc::ast::ExportAll) {
+    let decl_start = node.range().start;
+    let src_range = node.src.range();
+    self.specifier_to_decl_start.insert(src_range, decl_start);
+  }
+
+  fn visit_named_export(&mut self, node: &deno_ast::swc::ast::NamedExport) {
+    if let Some(src) = &node.src {
+      let decl_start = node.range().start;
+      let src_range = src.range();
+      self.specifier_to_decl_start.insert(src_range, decl_start);
+    }
+  }
+}
+
 #[derive(Default)]
 struct ImportMetaResolveCollector {
   specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
@@ -991,24 +1195,24 @@ impl Visit for ImportMetaResolveCollector {
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+  use std::path::PathBuf;
   use std::sync::Arc;
 
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
-  use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
   use deno_graph::ast::ParserModuleAnalyzer;
-  use deno_resolver::workspace::SloppyImportsOptions;
-  use deno_runtime::deno_node::PackageJson;
-  use deno_semver::Version;
-  use import_map::ImportMapWithDiagnostics;
-  use indexmap::IndexMap;
+  use deno_resolver::factory::ResolverFactory;
+  use deno_resolver::factory::ResolverFactoryOptions;
+  use deno_resolver::factory::WorkspaceFactory;
+  use deno_resolver::factory::WorkspaceFactoryOptions;
   use pretty_assertions::assert_eq;
-  use test_util::testdata_path;
+  use sys_traits::EnvCurrentDir;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
-  use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
@@ -1023,50 +1227,46 @@ mod tests {
     .unwrap()
   }
 
-  #[test]
-  fn test_unfurling() {
-    let cwd = testdata_path().join("unfurl").to_path_buf();
-
-    let deno_json_url =
-      ModuleSpecifier::from_file_path(cwd.join("deno.json")).unwrap();
-    let value = json!({
-      "imports": {
-        "express": "npm:express@5",
-        "lib/": "./lib/",
-        "fizz": "./fizz/mod.ts",
-        "@std/fs": "npm:@jsr/std__fs@1",
-      }
-    });
-    let ImportMapWithDiagnostics { import_map, .. } =
-      import_map::parse_from_value(deno_json_url, value).unwrap();
-    let package_json = PackageJson::load_from_value(
+  #[tokio::test]
+  async fn test_unfurling() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "workspace": [
+          "./jsr-package"
+        ],
+        "imports": {
+          "express": "npm:express@5",
+          "lib/": "./lib/",
+          "fizz": "./fizz/mod.ts",
+          "@std/fs": "npm:@jsr/std__fs@1",
+        }
+      }),
+    );
+    memory_sys.fs_insert_json(
       cwd.join("package.json"),
       json!({
         "dependencies": {
           "chalk": 5
         }
       }),
-    )
-    .unwrap();
-    let workspace_resolver = WorkspaceResolver::new_raw(
-      Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
-      Some(import_map),
-      vec![ResolverWorkspaceJsrPackage {
-        is_link: false,
-        base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
-          .unwrap(),
-        name: "@denotest/example".to_string(),
-        version: Some(Version::parse_standard("1.0.0").unwrap()),
-        exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
-      }],
-      vec![Arc::new(package_json)],
-      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
-      SloppyImportsOptions::Enabled,
-      Default::default(),
-      CliSys::default(),
     );
-    let unfurler =
-      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
+    memory_sys.fs_insert_json(
+      cwd.join("jsr-package/deno.json"),
+      json!({
+        "name": "@denotest/example",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    memory_sys.fs_insert(cwd.join("b.ts"), "");
+    memory_sys.fs_insert(cwd.join("c.js"), "");
+    memory_sys.fs_insert(cwd.join("c.d.ts"), "");
+    memory_sys.fs_insert(cwd.join("baz").join("index.js"), "");
+    memory_sys.fs_insert(cwd.join("jsr-package/mod.ts"), "export default 1;");
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
 
     // Unfurling TS file should apply changes.
     {
@@ -1102,13 +1302,11 @@ const warn2 = await import(`${expr}`);
 import.meta.resolve("chalk");
 import.meta.resolve(nonAnalyzable);
 "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
+      let (unfurled_source, d) = unfurl_text_with_diagnostics(
+        &cwd.join("mod.ts"),
+        source_code,
+        &unfurler,
+      );
       assert_eq!(d.len(), 3);
       assert!(
         matches!(
@@ -1174,14 +1372,8 @@ import.meta.resolve(nonAnalyzable);
       let source_code = r#"import express from "express";"
 export type * from "./c";
 "#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("mod.d.ts")).unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
       let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
-      assert_eq!(d.len(), 0);
+        unfurl_text(&cwd.join("mod.d.ts"), source_code, &unfurler);
       let expected_source = r#"import express from "npm:express@5";"
 export type * from "./c.d.ts";
 "#;
@@ -1189,21 +1381,23 @@ export type * from "./c.d.ts";
     }
   }
 
-  #[test]
-  fn test_unfurling_npm_dep_workspace_specifier() {
-    let cwd = testdata_path().join("unfurl").to_path_buf();
-
-    let pkg_json_add = PackageJson::load_from_value(
+  #[tokio::test]
+  async fn test_unfurling_npm_dep_workspace_specifier() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({ "workspaces": ["./publish", "./subtract", "./add"] }),
+    );
+    memory_sys.fs_insert_json(
       cwd.join("add/package.json"),
       json!({ "name": "add", "version": "0.1.0", }),
-    )
-    .unwrap();
-    let pkg_json_subtract = PackageJson::load_from_value(
+    );
+    memory_sys.fs_insert_json(
       cwd.join("subtract/package.json"),
       json!({ "name": "subtract", "version": "0.2.0", }),
-    )
-    .unwrap();
-    let pkg_json_publishing = PackageJson::load_from_value(
+    );
+    memory_sys.fs_insert_json(
       cwd.join("publish/package.json"),
       json!({
         "name": "@denotest/main",
@@ -1214,47 +1408,23 @@ export type * from "./c.d.ts";
           "non-existent": "workspace:~",
         }
       }),
-    )
-    .unwrap();
-    let root_pkg_json = PackageJson::load_from_value(
-      cwd.join("package.json"),
-      json!({ "workspaces": ["./publish", "./subtract", "./add"] }),
-    )
-    .unwrap();
-    let sys = CliSys::default();
-    let workspace_resolver = WorkspaceResolver::new_raw(
-      Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
-      None,
-      vec![ResolverWorkspaceJsrPackage {
-        is_link: false,
-        base: ModuleSpecifier::from_directory_path(
-          cwd.join("publish/jsr.json"),
-        )
-        .unwrap(),
-        name: "@denotest/main".to_string(),
-        version: Some(Version::parse_standard("1.0.0").unwrap()),
-        exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
-      }],
-      vec![
-        Arc::new(root_pkg_json),
-        Arc::new(pkg_json_add),
-        Arc::new(pkg_json_subtract),
-        Arc::new(pkg_json_publishing),
-      ],
-      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
-      Default::default(),
-      Default::default(),
-      sys.clone(),
     );
-    let unfurler =
-      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
+    memory_sys.fs_insert_json(
+      cwd.join("publish/jsr.json"),
+      json!({
+        "name": "@denotest/main",
+        "version": "1.0.0",
+        "exports": "./mod.ts",
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
 
     {
       let source_code = r#"import add from "add";
-import subtract from "subtract";
+  import subtract from "subtract";
 
-console.log(add, subtract);
-"#;
+  console.log(add, subtract);
+  "#;
       let specifier =
         ModuleSpecifier::from_file_path(cwd.join("publish").join("mod.ts"))
           .unwrap();
@@ -1266,25 +1436,22 @@ console.log(add, subtract);
       assert_eq!(d.len(), 0);
       // it will inline the version
       let expected_source = r#"import add from "npm:add@~0.1.0";
-import subtract from "npm:subtract@^0.2.0";
+  import subtract from "npm:subtract@^0.2.0";
 
-console.log(add, subtract);
-"#;
+  console.log(add, subtract);
+  "#;
       assert_eq!(unfurled_source, expected_source);
     }
 
     {
       let source_code = r#"import nonExistent from "non-existent";
-console.log(nonExistent);
-"#;
-      let specifier =
-        ModuleSpecifier::from_file_path(cwd.join("publish").join("other.ts"))
-          .unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let mut d = Vec::new();
-      let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source =
-        unfurl(&unfurler, &specifier, &source, &mut reporter);
+  console.log(nonExistent);
+  "#;
+      let (unfurled_source, d) = unfurl_text_with_diagnostics(
+        &cwd.join("publish").join("other.ts"),
+        source_code,
+        &unfurler,
+      );
       assert_eq!(d.len(), 1);
       match &d[0] {
         SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
@@ -1303,8 +1470,332 @@ console.log(nonExistent);
     }
   }
 
+  #[tokio::test]
+  async fn test_unfurl_types_package() {
+    async fn run_test(memory_sys: InMemorySys) {
+      let cwd = memory_sys.env_current_dir().unwrap();
+      memory_sys.fs_insert_json(
+        cwd.join("node_modules/package/package.json"),
+        json!({
+          "name": "package",
+          "exports": {
+            ".": "./index.js",
+            "./subpath": "./subpath.js"
+          }
+        }),
+      );
+      memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+      memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+      memory_sys.fs_insert_json(
+        cwd.join("node_modules/@types/package/package.json"),
+        json!({
+          "name": "@types/package",
+          "types": "./index.d.ts",
+          "exports": {
+            ".": "./index.d.ts",
+            "./subpath": "./subpath.d.ts"
+          }
+        }),
+      );
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+      let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+      let source_code = r#"import { data } from "package"; import { a } from "package";
+import { helper } from "package/subpath";
+// @ts-types="npm:@types/package@^1.0"
+import { other } from "package";
+export { a, data, helper, other };
+export { b } from "package"; export { c } from "package";
+import type { d } from "package"; import type { e } from "package";
+import type { f } from "@types/package";
+export { d, e, f };
+"#;
+      let unfurled_source =
+        unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+      let expected_source = r#"/* @ts-types="npm:@types/package@^1" */ import { data } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import { a } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
+// @ts-types="npm:@types/package@^1.0"
+import { other } from "npm:package@^1.2.3";
+export { a, data, helper, other };
+/* @ts-types="npm:@types/package@^1" */ export { b } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ export { c } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1" */ import type { d } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import type { e } from "npm:package@^1.2.3";
+import type { f } from "npm:@types/package@^1";
+export { d, e, f };
+"#;
+      // when using a deno.json or import map, it adds an extra slash at the
+      // start, which is harmless, so ignore that in order to normalize to the
+      // expected source
+      assert_eq!(unfurled_source.replace("npm:/", "npm:"), expected_source);
+    }
+
+    // these different scenarios should all have the same outcome
+    let cwd = get_cwd();
+    // deno.json
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts",
+          "nodeModulesDir": "manual",
+          "imports": {
+            "@types/package": "npm:@types/package@^1",
+            "package": "npm:package@^1.2.3"
+          }
+        }),
+      );
+      run_test(memory_sys).await;
+    }
+    // package.json
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("package.json"),
+        json!({
+          "dependencies": {
+            "@types/package": "^1",
+            "package": "^1.2.3"
+          }
+        }),
+      );
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts"
+        }),
+      );
+      run_test(memory_sys).await;
+    }
+    // import map
+    {
+      let memory_sys = InMemorySys::new_with_cwd(&cwd);
+      memory_sys.fs_insert_json(
+        cwd.join("deno.json"),
+        json!({
+          "name": "@denotest/main",
+          "version": "1.0.0",
+          "exports": "./mod.ts",
+          "nodeModulesDir": "manual",
+          "importMap": "./import_map.json",
+        }),
+      );
+      memory_sys.fs_insert_json(
+        cwd.join("import_map.json"),
+        json!({
+          "imports": {
+            "@types/package": "npm:@types/package@^1",
+            "@types/package/": "npm:/@types/package@^1/",
+            "package": "npm:package@^1.2.3",
+            "package/": "npm:/package@^1.2.3/",
+          }
+        }),
+      );
+      run_test(memory_sys).await;
+    }
+  }
+
+  #[tokio::test]
+  async fn test_unfurl_types_package_not_dep() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({
+        "dependencies": {
+          "package": "^1.2.3"
+        }
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "name": "@denotest/main",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/package/package.json"),
+      json!({
+        "name": "package",
+        "exports": {
+          ".": "./index.js",
+          "./subpath": "./subpath.js"
+        }
+      }),
+    );
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/@types/package/package.json"),
+      json!({
+        "name": "@types/package",
+        "version": "1.5.6",
+        "types": "./index.d.ts",
+        "exports": {
+          ".": "./index.d.ts",
+          "./subpath": "./subpath.d.ts"
+        }
+      }),
+    );
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import { data } from "package";
+import { helper } from "package/subpath";
+export { data, helper };
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    let expected_source = r#"/* @ts-types="npm:@types/package@^1.5.6" */ import { data } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1.5.6/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
+export { data, helper };
+"#;
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  #[tokio::test]
+  async fn test_unfurl_types_in_original_package() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("package.json"),
+      json!({
+        "dependencies": {
+          "@types/package": "^1",
+          "package": "^1.2.3"
+        }
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "name": "@denotest/main",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/package/package.json"),
+      json!({
+        "name": "package",
+        "exports": {
+          ".": "./index.js",
+          "./subpath": "./subpath.js"
+        }
+      }),
+    );
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
+    memory_sys.fs_insert(cwd.join("node_modules/package/index.d.ts"), ""); // types here, so no injection
+    memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+    memory_sys.fs_insert_json(
+      cwd.join("node_modules/@types/package/package.json"),
+      json!({
+        "name": "@types/package",
+        "types": "./index.d.ts",
+        "exports": {
+          ".": "./index.d.ts",
+          "./subpath": "./subpath.d.ts"
+        }
+      }),
+    );
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
+    memory_sys
+      .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import { data } from "package";
+import { helper } from "package/subpath";
+export { data, helper };
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    let expected_source = r#"import { data } from "npm:package@^1.2.3";
+/* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
+export { data, helper };
+"#;
+    assert_eq!(unfurled_source, expected_source);
+  }
+
+  fn get_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from("C:\\unfurl")
+    } else {
+      PathBuf::from("/unfurl")
+    }
+  }
+
+  async fn build_unfurler(
+    sys: InMemorySys,
+    cwd: &Path,
+  ) -> SpecifierUnfurler<InMemorySys> {
+    let workspace_factory = Arc::new(WorkspaceFactory::new(
+      sys,
+      cwd.to_path_buf(),
+      WorkspaceFactoryOptions::default(),
+    ));
+    let resolver_factory = ResolverFactory::new(
+      workspace_factory,
+      ResolverFactoryOptions {
+        package_json_dep_resolution: Some(
+          deno_resolver::workspace::PackageJsonDepResolution::Enabled,
+        ),
+        unstable_sloppy_imports: true,
+        ..Default::default()
+      },
+    );
+
+    SpecifierUnfurler::new(
+      resolver_factory.node_resolver().unwrap().clone(),
+      resolver_factory.npm_req_resolver().unwrap().clone(),
+      resolver_factory.pkg_json_resolver().clone(),
+      resolver_factory
+        .workspace_factory()
+        .workspace_directory()
+        .unwrap()
+        .clone(),
+      resolver_factory.workspace_resolver().await.unwrap().clone(),
+      true,
+    )
+  }
+
+  fn unfurl_text(
+    path: &Path,
+    source_code: &str,
+    unfurler: &SpecifierUnfurler<InMemorySys>,
+  ) -> String {
+    let (unfurled_source, d) =
+      unfurl_text_with_diagnostics(path, source_code, unfurler);
+    assert_eq!(d.len(), 0);
+    unfurled_source
+  }
+
+  fn unfurl_text_with_diagnostics(
+    path: &Path,
+    source_code: &str,
+    unfurler: &SpecifierUnfurler<InMemorySys>,
+  ) -> (String, Vec<SpecifierUnfurlerDiagnostic>) {
+    let specifier = ModuleSpecifier::from_file_path(path).unwrap();
+    let source = parse_ast(&specifier, source_code);
+    let mut d = Vec::new();
+    let mut reporter = |diagnostic| d.push(diagnostic);
+    let unfurled_source = unfurl(unfurler, &specifier, &source, &mut reporter);
+    (unfurled_source, d)
+  }
+
   fn unfurl(
-    unfurler: &SpecifierUnfurler,
+    unfurler: &SpecifierUnfurler<InMemorySys>,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),

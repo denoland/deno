@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -756,20 +756,14 @@ fn get_resolution_error_bare_specifier(
   } = error
   {
     Some(specifier.as_str())
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::ImportMap(error) = (*error).as_ref() {
-      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
-        specifier,
-        _,
-      ) = error.as_kind()
-      {
-        Some(specifier.as_str())
-      } else {
-        None
-      }
-    } else {
-      None
-    }
+  } else if let ResolutionError::ResolverError { error, .. } = error
+    && let ResolveError::Other(error) = (*error).as_ref()
+    && let Some(error) =
+      error.get_ref().downcast_ref::<import_map::ImportMapError>()
+    && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) =
+      error.as_kind()
+  {
+    Some(specifier.as_str())
   } else {
     None
   }
@@ -808,11 +802,11 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
           other_error.get_ref().downcast_ref::<SpecifierError>()
         {
           maybe_specifier = Some(specifier);
-        }
-      }
-      ResolveError::ImportMap(import_map_err) => {
-        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
-          import_map_err.as_kind()
+        } else if let Some(err) = other_error
+          .get_ref()
+          .downcast_ref::<import_map::ImportMapError>()
+          && let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+            err.as_kind()
         {
           maybe_specifier = Some(specifier);
         }
@@ -907,7 +901,7 @@ mod test {
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
         #[allow(clippy::disallowed_types)]
-        error: std::sync::Arc::new(ResolveError::ImportMap(err)),
+        error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,
@@ -932,7 +926,6 @@ mod test {
         },
         error: SpecifierError::ImportPrefixMissing {
           specifier: input.to_string(),
-          referrer: None,
         },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);

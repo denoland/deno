@@ -1,6 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,8 +35,6 @@ mod flags;
 mod fmt;
 #[path = "init_tests.rs"]
 mod init;
-#[path = "inspector_tests.rs"]
-mod inspector;
 #[path = "install_tests.rs"]
 mod install;
 #[path = "jsr_tests.rs"]
@@ -139,7 +136,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
-      parallelism: NonZeroUsize::new(1).unwrap(),
+      parallelism: file_test_runner::Parallelism::from_usize(1),
       reporter: reporter.clone(),
     },
     {

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -157,7 +157,6 @@ impl TransferredResource for MessagePort {
 }
 
 #[op2]
-#[serde]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
 ) -> (ResourceId, ResourceId) {
@@ -273,7 +272,7 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -47,6 +47,34 @@ impl Resource for UnixDatagramResource {
   }
 }
 
+/// A wrapper around `UnixListener` that holds the socket path and removes it on drop.
+pub struct UnixListenerWithPath {
+  listener: UnixListener,
+  path: PathBuf,
+}
+
+impl UnixListenerWithPath {
+  pub fn new(listener: UnixListener, path: PathBuf) -> Self {
+    Self { listener, path }
+  }
+
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(UnixStream, tokio::net::unix::SocketAddr)> {
+    self.listener.accept().await
+  }
+
+  pub fn local_addr(&self) -> std::io::Result<tokio::net::unix::SocketAddr> {
+    self.listener.local_addr()
+  }
+}
+
+impl Drop for UnixListenerWithPath {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_file(&self.path);
+  }
+}
+
 #[derive(Serialize)]
 pub struct UnixAddr {
   pub path: Option<String>,
@@ -57,8 +85,7 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -66,7 +93,7 @@ pub async fn op_net_accept_unix(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<UnixListener>>(rid)
+    .get::<NetworkListenerResource<UnixListenerWithPath>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -89,8 +116,7 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_net_connect_unix(
   state: Rc<RefCell<OpState>>,
   #[string] address_path: String,
@@ -118,7 +144,7 @@ pub async fn op_net_connect_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -140,7 +166,7 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
 pub async fn op_net_send_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -173,7 +199,6 @@ pub async fn op_net_send_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_unix(
   state: &mut OpState,
   #[string] address_path: &str,
@@ -188,10 +213,12 @@ pub fn op_net_listen_unix(
       Some(&api_call_expr),
     )
     .map_err(NetError::Permission)?;
-  let listener = UnixListener::bind(address_path)?;
+  let listener = UnixListener::bind(&address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
-  let listener_resource = NetworkListenerResource::new(listener);
+  let listener_with_path =
+    UnixListenerWithPath::new(listener, address_path.to_path_buf());
+  let listener_resource = NetworkListenerResource::new(listener_with_path);
   let rid = state.resource_table.add(listener_resource);
   Ok((rid, pathname))
 }
@@ -220,7 +247,6 @@ pub fn net_listen_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,
@@ -230,7 +256,6 @@ pub fn op_net_listen_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_unstable_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,

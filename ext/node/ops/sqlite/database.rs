@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -48,6 +48,10 @@ struct DatabaseSyncOptions {
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
+  use_big_int_arguments: bool,
+  allow_bare_named_params: bool,
+  return_arrays: bool,
+  allow_unknown_named_params: bool,
   timeout: u64,
 }
 
@@ -79,6 +83,10 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       ALLOW_EXTENSION_STRING = "allowExtension",
       ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
       TIMEOUT_STRING = "timeout",
+      READ_BIG_INTS = "readBigInts",
+      RETURN_ARRAYS = "returnArrays",
+      ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
+      ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -175,6 +183,65 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       }
     }
 
+    let read_big_ints_string = READ_BIG_INTS.v8_string(scope).unwrap();
+    if let Some(read_big_ints) = obj.get(scope, read_big_ints_string.into())
+      && !read_big_ints.is_undefined()
+    {
+      options.use_big_int_arguments =
+        v8::Local::<v8::Boolean>::try_from(read_big_ints)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.readBigInts\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let return_arrays_string = RETURN_ARRAYS.v8_string(scope).unwrap();
+    if let Some(return_arrays) = obj.get(scope, return_arrays_string.into())
+      && !return_arrays.is_undefined()
+    {
+      options.return_arrays = v8::Local::<v8::Boolean>::try_from(return_arrays)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.returnArrays\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
+    }
+
+    let allow_bare_named_params_string =
+      ALLOW_BARE_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_bare_named_params) =
+      obj.get(scope, allow_bare_named_params_string.into())
+      && !allow_bare_named_params.is_undefined()
+    {
+      options.allow_bare_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_bare_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowBareNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let allow_unknown_named_params_string =
+      ALLOW_UNKNOWN_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_unknown_named_params) =
+      obj.get(scope, allow_unknown_named_params_string.into())
+      && !allow_unknown_named_params.is_undefined()
+    {
+      options.allow_unknown_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_unknown_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowUnknownNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
     Ok(options)
   }
 }
@@ -187,6 +254,10 @@ impl Default for DatabaseSyncOptions {
       read_only: false,
       allow_extension: false,
       enable_double_quoted_string_literals: false,
+      use_big_int_arguments: false,
+      return_arrays: false,
+      allow_bare_named_params: true,
+      allow_unknown_named_params: false,
       timeout: 0,
     }
   }
@@ -583,7 +654,7 @@ impl DatabaseSync {
   fn new(
     state: &mut OpState,
     #[string] location: String,
-    #[from_v8] options: DatabaseSyncOptions,
+    #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
       let db = open_db(state, &location, &options)?;
@@ -745,12 +816,15 @@ impl DatabaseSync {
 
     Ok(StatementSync {
       inner: stmt_cell,
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
-      use_big_ints: Cell::new(false),
-      allow_bare_named_params: Cell::new(true),
-      allow_unknown_named_params: Cell::new(false),
+      return_arrays: Cell::new(self.options.return_arrays),
+      use_big_ints: Cell::new(self.options.use_big_int_arguments),
+      allow_bare_named_params: Cell::new(self.options.allow_bare_named_params),
+      allow_unknown_named_params: Cell::new(
+        self.options.allow_unknown_named_params,
+      ),
       is_iter_finished: Cell::new(false),
     })
   }
@@ -1181,7 +1255,7 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[from_v8] options: OptionUndefined<SessionOptions>,
+    #[scoped] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
     let db = self.conn.borrow();
@@ -1229,7 +1303,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: self.conn.clone(),
     })
   }
 

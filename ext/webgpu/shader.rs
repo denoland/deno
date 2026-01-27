@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -194,7 +194,6 @@ unsafe impl GarbageCollected for GPUCompilationInfo {
 #[op2]
 impl GPUCompilationInfo {
   #[getter]
-  #[global]
   fn messages(&self) -> v8::Global<v8::Object> {
     self.messages.clone()
   }

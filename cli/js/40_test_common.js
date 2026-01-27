@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { core, primordials } from "ext:core/mod.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 const ops = core.ops;

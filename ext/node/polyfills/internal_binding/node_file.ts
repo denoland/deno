@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,10 +25,18 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type * as nodeAssert from "node:assert";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_sync } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
+
 const {
   ErrorPrototype,
   ObjectPrototypeIsPrototypeOf,
@@ -58,6 +66,7 @@ export function writeBuffer(
   position: number | null,
   ctx: { errno?: number },
 ) {
+  assert ??= lazyLoadAssert();
   assert(offset >= 0, "offset should be greater or equal to 0");
   assert(
     offset + length <= TypedArrayPrototypeGetByteLength(buffer),

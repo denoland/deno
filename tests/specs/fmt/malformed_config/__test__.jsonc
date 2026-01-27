@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "fmt_with_malformed_config": {
+      "args": "fmt --config deno.malformed.jsonc",
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "fmt_with_malformed_config2": {
+      "args": "fmt --config deno.malformed2.jsonc",
+      "output": "error.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 mod go;
 mod js;
@@ -637,6 +637,9 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -697,17 +700,17 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(_)) => {
-      if let Some(npm) = maybe_npm
-        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
-      {
-        let package_folder = npm
-          .npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+    Some(Module::Npm(module)) => {
+      if let Some(npm) = maybe_npm {
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            module.pkg_req_ref.req(),
+            referrer,
+          )?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            req_ref.sub_path(),
+            module.pkg_req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -881,7 +884,14 @@ pub fn exec(
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut remapped_specifiers = HashMap::new();
-  log::debug!("exec request, root_names: {:?}", request.root_names);
+  log::debug!(
+    "exec request, root_names: {:?}",
+    request
+      .root_names
+      .iter()
+      .map(|r| (r.0.as_str(), r.1))
+      .collect::<Vec<_>>()
+  );
   let root_names: Vec<String> = request
     .root_names
     .iter()
@@ -936,15 +946,21 @@ pub fn resolve_specifier_for_tsc(
   referrer_module: Option<&Module>,
   remapped_specifiers: &mut HashMap<String, ModuleSpecifier>,
 ) -> Result<(String, Option<&'static str>), ResolveError> {
-  if specifier.starts_with("node:") {
-    return Ok((
-      MISSING_DEPENDENCY_SPECIFIER.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ));
+  if specifier.starts_with("node:")
+    && let Ok(specifier) = ModuleSpecifier::parse(&specifier)
+  {
+    return Ok((specifier.into(), Some(MediaType::Dts.as_ts_extension())));
   }
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+  if referrer.scheme() == "asset"
+    && deno_path_util::is_relative_specifier(&specifier)
+  {
+    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
+    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
@@ -970,12 +986,19 @@ pub fn resolve_specifier_for_tsc(
       )?
     }
     _ => {
-      match resolve_non_graph_specifier_types(
+      let result = resolve_non_graph_specifier_types(
         &specifier,
         referrer,
         resolution_mode,
         maybe_npm,
-      ) {
+      );
+      if result.is_err() && specifier == "node" {
+        return Ok((
+          "asset:///reference_types_node.d.ts".to_string(),
+          Some(MediaType::Dts.as_ts_extension()),
+        ));
+      }
+      match result {
         Ok(maybe_result) => maybe_result,
         Err(
           err
@@ -1263,11 +1286,15 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "CloseEvent",
   "CompressionStream",
   "CountQueuingStrategy",
+  "Crypto",
+  "CryptoKey",
   "CustomEvent",
   "DecompressionStream",
   "Disposable",
   "DOMException",
+  "ErrorEvent",
   "Event",
+  "EventListenerObject",
   "EventSource",
   "EventTarget",
   "fetch",
@@ -1280,8 +1307,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "MessageChannel",
   "MessageEvent",
   "MessagePort",
+  "navigator",
   "Navigator",
   "performance",
+  "Performance",
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
@@ -1297,6 +1326,7 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "Request",
   "Response",
   "Storage",
+  "SubtleCrypto",
   "TextDecoder",
   "TextDecoderStream",
   "TextEncoder",

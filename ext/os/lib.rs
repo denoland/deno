@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -10,13 +10,13 @@ use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::v8;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 
 mod ops;
 pub mod sys_info;
@@ -352,7 +352,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, PermissionCheckError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, OsError> {
@@ -362,7 +361,7 @@ fn op_network_interfaces(
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct NetworkInterface {
   family: &'static str,
   name: String,

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
@@ -236,7 +236,6 @@ impl Storage {
 }
 
 #[op2]
-#[serde]
 fn op_webstorage_iterate_keys(
   #[cppgc] storage: &Storage,
   state: &mut OpState,

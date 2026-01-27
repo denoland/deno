@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -147,7 +147,6 @@ impl GPU {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[async_method]
   #[cppgc]
   async fn request_adapter(
     &self,

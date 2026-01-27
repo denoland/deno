@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::future::Future;
@@ -53,7 +53,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -97,6 +96,7 @@ use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
@@ -304,7 +304,6 @@ struct CliFactoryServices {
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
-  maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
@@ -741,6 +740,13 @@ impl CliFactory {
     self.resolver_factory()?.node_resolver()
   }
 
+  pub async fn npm_req_resolver(
+    &self,
+  ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
+    self.initialize_npm_resolution_if_managed().await?;
+    self.resolver_factory()?.npm_req_resolver()
+  }
+
   async fn initialize_npm_resolution_if_managed(&self) -> Result<(), AnyError> {
     self
       .npm_installer_factory()?
@@ -806,6 +812,7 @@ impl CliFactory {
             self.caches()?.clone(),
             self.cjs_tracker()?.clone(),
             cli_options.clone(),
+            self.compiler_options_resolver()?.clone(),
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
@@ -821,7 +828,6 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
-            self.compiler_options_resolver()?.clone(),
             self.install_reporter()?.cloned().map(|r| {
               r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
             }),
@@ -871,16 +877,18 @@ impl CliFactory {
       .await
   }
 
-  pub fn maybe_inspector_server(
-    &self,
-  ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
-    self.services.maybe_inspector_server.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      match cli_options.resolve_inspector_server() {
-        Ok(server) => Ok(server.map(Arc::new)),
-        Err(err) => Err(err),
-      }
-    })
+  pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
+    let cli_options = self.cli_options()?;
+    if let Some((host, name, publish_uid)) =
+      cli_options.resolve_inspector_server_options()
+    {
+      deno_runtime::deno_inspector_server::create_inspector_server(
+        host,
+        name,
+        publish_uid,
+      )?;
+    }
+    Ok(())
   }
 
   pub async fn module_load_preparer(
@@ -1059,6 +1067,7 @@ impl CliFactory {
     };
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
+    self.maybe_start_inspector_server()?;
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -1071,7 +1080,6 @@ impl CliFactory {
       self.feature_checker()?.clone(),
       fs.clone(),
       cli_options.coverage_dir(),
-      self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
       create_npm_process_state_provider(npm_resolver),
@@ -1116,8 +1124,8 @@ impl CliFactory {
       has_node_modules_dir: workspace_factory
         .node_modules_dir_path()?
         .is_some(),
-      inspect_brk: cli_options.inspect_brk().is_some(),
-      inspect_wait: cli_options.inspect_wait().is_some(),
+      inspect_brk: cli_options.inspect_brk(),
+      inspect_wait: cli_options.inspect_wait(),
       trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -432,6 +432,8 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
+      // Store options for potential retry on stale keepAlive connections.
+      this._agentOptions = optsWithoutSignal;
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -727,7 +729,21 @@ class ClientRequest extends OutgoingMessage {
           err.message.includes("Bad resource ID") ||
           err.message.includes("operation was canceled")
         ) {
-          // Stale connection - emit ECONNRESET so clients retry.
+          // Stale keepAlive connection. If this was a reused socket,
+          // retry the request on a fresh connection.
+          if (this.reusedSocket && this.agent && this._agentOptions) {
+            const socket = this.socket;
+            if (socket) {
+              socket.destroy();
+            }
+            this.socket = null;
+            this._header = null;
+            this._headerSent = false;
+            this.reusedSocket = false;
+            this._req = null;
+            this.agent.addRequest(this, this._agentOptions);
+            return;
+          }
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);

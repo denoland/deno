@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -90,7 +90,7 @@ pub fn op_broadcast_send(
   bc.send(&resource, name, buf.to_vec())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_broadcast_recv(
   state: Rc<RefCell<OpState>>,

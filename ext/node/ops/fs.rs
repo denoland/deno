@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -61,7 +61,7 @@ pub fn op_node_fs_exists_sync(
   Ok(fs.exists_sync(&path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_fs_exists(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -119,7 +119,7 @@ pub fn op_node_open_sync(
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 pub async fn op_node_open(
   state: Rc<RefCell<OpState>>,
@@ -180,7 +180,7 @@ pub fn op_node_statfs_sync(
   statfs(path, bigint)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
@@ -349,7 +349,7 @@ pub fn op_node_lutimes_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lutimes(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -397,7 +397,7 @@ pub fn op_node_lchown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchown(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -433,7 +433,7 @@ pub fn op_node_lchmod_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchmod(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -483,7 +483,7 @@ pub fn op_node_mkdtemp_sync(
   )))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_node_mkdtemp(
   state: Rc<RefCell<OpState>>,

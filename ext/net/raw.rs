@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -442,7 +442,7 @@ network_stream!(
     Unix,
     unix,
     tokio::net::UnixStream,
-    tokio::net::UnixListener,
+    crate::ops_unix::UnixListenerWithPath,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource,
     tokio::net::unix::OwnedReadHalf,

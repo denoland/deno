@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::num::NonZeroU8;
 use std::num::NonZeroU32;
@@ -52,6 +53,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
+pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -812,6 +814,29 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   }
 }
 
+/// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
+pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
+  let mut result = InspectPublishUid {
+    console: false,
+    http: false,
+  };
+  for part in s.split(',') {
+    let part = part.trim();
+    match part {
+      "stderr" => result.console = true,
+      "http" => result.http = true,
+      "" => {}
+      _ => {
+        return Err(format!(
+          "--inspect-publish-uid destination can be stderr or http, got '{}'",
+          part
+        ));
+      }
+    }
+  }
+  Ok(result)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InternalFlags {
   /// Used when the language server is configured with an
@@ -851,6 +876,7 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
+  pub inspect_publish_uid: Option<InspectPublishUid>,
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
@@ -1437,6 +1463,16 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_KV_DB_MODE",
     description: "Controls whether Deno.openKv() API should use disk based or in-memory\ndatabase.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_DEFAULT_PATH",
+    description: "Set the default path for Deno.openKv() when no path is provided.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_KV_PATH_PREFIX",
+    description: "Set a prefix to be added to all Deno.openKv() paths.",
     example: None,
   },
   EnvVar {
@@ -3667,6 +3703,7 @@ fn x_subcommand() -> Command {
       .arg(
         Arg::new("install-alias")
           .long("install-alias")
+          .help("Creates a dx alias so you can run dx <command> instead of deno x <command>")
           .num_args(0..=1)
           .default_missing_value("dx")
           .value_parser(deno_x_shim_name_parser)
@@ -4259,10 +4296,11 @@ fn upgrade_subcommand() -> Command {
 
 {}
 
-The version is downloaded from <p(245)>https://dl.deno.land</> and is used to replace the current executable.
+The version is resolved via <p(245)>https://dl.deno.land</> and then downloaded
+from either there or GitHub releases, replacing the current executable.
 
-If you want to not replace the current Deno executable but instead download an update to a
-different location, use the <c>--output</> flag:
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the <c>--output</> flag:
   <p(245)>deno upgrade --output $HOME/my_deno</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/upgrade</>", UPGRADE_USAGE),
@@ -4830,8 +4868,11 @@ fn allow_all_arg() -> Arg {
     .conflicts_with("allow-ffi")
     .conflicts_with("allow-import")
     .conflicts_with("permission-set")
-    .action(ArgAction::SetTrue)
     .help("Allow all permissions")
+    // So situations like `--allow-all -A` don't crash - this is for historic reason,
+    // because VSCode automatically added `--allow-all` in some scenarios, causing crashes
+    // when users used `-A` themselves.
+    .action(ArgAction::Count)
 }
 
 fn runtime_args(
@@ -4906,45 +4947,122 @@ fn deny_import_arg() -> Arg {
   .value_parser(flags_net::validator)
 }
 
+pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
+  const DEFAULT_HOST: &str = "127.0.0.1";
+  const DEFAULT_PORT: u16 = 9229;
+
+  fn parse_port(port: &str) -> Result<u16, String> {
+    port
+      .parse::<u16>()
+      .map_err(|_| format!("Invalid inspector port '{port}'"))
+  }
+
+  let default_host: IpAddr = DEFAULT_HOST.parse().unwrap();
+
+  if host_and_port.is_empty() {
+    return Err("Inspector address cannot be empty".to_string());
+  }
+
+  if let Some(port_part) = host_and_port.strip_prefix(':') {
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+    return Ok(SocketAddr::new(default_host, port));
+  }
+
+  if host_and_port.contains(':') {
+    if let Ok(addr) = host_and_port.parse::<SocketAddr>() {
+      return Ok(addr);
+    }
+
+    if let Ok(host_ip) = host_and_port.parse::<IpAddr>() {
+      return Ok(SocketAddr::new(host_ip, DEFAULT_PORT));
+    }
+
+    let (host_part, port_part) = host_and_port
+      .rsplit_once(':')
+      .ok_or_else(|| format!("Invalid inspector address '{host_and_port}'"))?;
+
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+
+    let host_ip = host_part
+      .parse::<IpAddr>()
+      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
+
+    return Ok(SocketAddr::new(host_ip, port));
+  }
+
+  if host_and_port.chars().all(|c| c.is_ascii_digit()) {
+    let port = parse_port(host_and_port)?;
+    return Ok(SocketAddr::new(default_host, port));
+  }
+
+  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
+    format!("Invalid inspector host '{host_and_port}': {:?}", e)
+  })?;
+
+  Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
+}
+
 fn inspect_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("inspect")
         .long("inspect")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
-        .help(cstr!("Activate inspector on host:port <p(245)>[default: 127.0.0.1:9229]</>"))
+        .help(cstr!("Activate inspector on host:port <p(245)>[default: 127.0.0.1:9229]</>. Host and port are optional. Using port 0 will assign a random free port."))
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
     .arg(
       Arg::new("inspect-brk")
         .long("inspect-brk")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
     .arg(
       Arg::new("inspect-wait")
         .long("inspect-wait")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
+    .arg(
+      Arg::new("inspect-publish-uid")
+        .long("inspect-publish-uid")
+        .value_name("VALUE")
+        .require_equals(true)
+        .value_parser(inspect_publish_uid_value_parser)
+        .hide(true),
+    )
+}
+
+fn inspect_publish_uid_value_parser(
+  value: &str,
+) -> Result<InspectPublishUid, String> {
+  parse_inspect_publish_uid(value)
 }
 
 fn import_map_arg() -> Arg {
@@ -7063,7 +7181,7 @@ fn permission_args_parse(
     }
   }
 
-  if matches.get_flag("allow-all") {
+  if matches.get_count("allow-all") > 0 {
     flags.allow_all();
   }
 
@@ -7144,6 +7262,8 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.inspect = matches.remove_one::<SocketAddr>("inspect");
   flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
   flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
+  flags.inspect_publish_uid =
+    matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
 }
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -10892,7 +11012,7 @@ mod tests {
       .filter(|arg| arg.get_id() == "inspect")
       .collect::<Vec<_>>();
     // The value_name cannot have a : otherwise it breaks shell completions for zsh.
-    let value_name = "HOST_AND_PORT";
+    let value_name = "HOST_PORT";
     let arg = inspect_args
       .iter()
       .any(|v| v.get_value_names().unwrap() == [value_name]);
@@ -14128,5 +14248,148 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn multiple_allow_all() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-all",
+      "--inspect",
+      "-A",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          ..Default::default()
+        }),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        code_cache_enabled: true,
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn inspect_flag_parsing() {
+    use std::net::IpAddr;
+    use std::net::Ipv4Addr;
+
+    let cases = vec![
+      (
+        "127.0.0.1:9229",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9229),
+      ),
+      (
+        "192.168.0.1",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 9229),
+      ),
+      (
+        "10000",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10000),
+      ),
+      (
+        ":10000",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10000),
+      ),
+      (
+        ":0",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
+      ),
+      (
+        "0",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
+      ),
+    ];
+
+    for case in cases {
+      let flags = flags_from_vec(svec![
+        "deno",
+        "run",
+        &format!("--inspect={}", case.0),
+        "script.ts",
+      ])
+      .unwrap();
+      assert_eq!(
+        flags,
+        Flags {
+          subcommand: DenoSubcommand::Run(RunFlags {
+            script: "script.ts".to_string(),
+            ..Default::default()
+          }),
+          inspect: Some(case.1),
+          code_cache_enabled: true,
+          ..Flags::default()
+        }
+      );
+    }
+  }
+
+  #[test]
+  fn inspect_publish_uid_flag_parsing() {
+    // Test with both stderr and http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr,http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: true,
+      })
+    );
+
+    // Test with only stderr
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: false,
+      })
+    );
+
+    // Test with only http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: false,
+        http: true,
+      })
+    );
+
+    // Test without the flag (should be None)
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
+    assert_eq!(flags.inspect_publish_uid, None);
   }
 }

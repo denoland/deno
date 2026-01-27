@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -220,11 +220,11 @@ impl ModuleLoadPreparer {
 
     self
       .module_graph_builder
-      .build_graph_with_npm_resolution(
+      .build_graph_roots_with_npm_resolution(
         graph,
+        roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Roots(roots.to_vec()),
           loader: Some(&mut loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
@@ -289,9 +289,9 @@ impl ModuleLoadPreparer {
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
+        BuildGraphRequest::Reload(specifiers),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Reload(specifiers),
           loader: Some(&mut loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },

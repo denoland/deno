@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -1091,7 +1091,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
       Ok(new_rc(NpmVersionResolver {
-        types_node_version_req: None,
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config

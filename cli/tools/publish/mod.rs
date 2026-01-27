@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -124,7 +124,10 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
-    Some(cli_factory.node_resolver().await?.clone()),
+    cli_factory.node_resolver().await?.clone(),
+    cli_factory.npm_req_resolver().await?.clone(),
+    cli_factory.pkg_json_resolver()?.clone(),
+    cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
@@ -138,7 +141,10 @@ pub async fn publish(
     cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
+    GraphDiagnosticsCollector::new(
+      cli_factory.npm_resolver().await?.clone(),
+      parsed_source_cache.clone(),
+    ),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),

@@ -1,9 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::rc::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::ToV8;
@@ -67,10 +66,11 @@ pub type InnerStatementPtr = Rc<Cell<Option<*mut ffi::sqlite3_stmt>>>;
 #[derive(Debug)]
 pub struct StatementSync {
   pub inner: InnerStatementPtr,
-  pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
   pub statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
   pub ignore_next_sqlite_error: Rc<Cell<bool>>,
 
+  pub return_arrays: Cell<bool>,
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
   pub allow_unknown_named_params: Cell<bool>,
@@ -273,7 +273,7 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            return Err(SqliteError::NumberTooLarge(value));
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -316,7 +316,7 @@ impl StatementSync {
   fn read_row<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-  ) -> Result<Option<v8::Local<'a, v8::Object>>, SqliteError> {
+  ) -> Result<Option<v8::Local<'a, v8::Value>>, SqliteError> {
     if self.step()? {
       return Ok(None);
     }
@@ -340,11 +340,15 @@ impl StatementSync {
       values.push(value);
     }
 
-    let null = v8::null(scope).into();
-    let result =
-      v8::Object::with_prototype_and_properties(scope, null, &names, &values);
-
-    Ok(Some(result))
+    if self.return_arrays.get() {
+      let result = v8::Array::new_with_elements(scope, &values);
+      Ok(Some(result.into()))
+    } else {
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, &names, &values);
+      Ok(Some(result.into()))
+    }
   }
 
   fn bind_value(
@@ -432,9 +436,8 @@ impl StatementSync {
         self.ignore_next_sqlite_error.set(false);
         return Ok(());
       }
-      let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-      let db = db_rc.borrow();
-      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      let db = self.db.borrow();
+      let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
       // SAFETY: db.handle() is valid
       unsafe {
@@ -614,9 +617,7 @@ impl StatementSync {
     let _reset = ResetGuard(self);
 
     let entry = self.read_row(scope)?;
-    let result = entry
-      .map(|r| r.into())
-      .unwrap_or_else(|| v8::undefined(scope).into());
+    let result = entry.unwrap_or_else(|| v8::undefined(scope).into());
 
     Ok(result)
   }
@@ -625,15 +626,13 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
-  #[to_v8]
   fn run(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
-    let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-    let db = db_rc.borrow();
-    let db = db.as_ref().ok_or(SqliteError::InUse)?;
+    let db = self.db.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     self.bind_params(scope, params)?;
 
@@ -665,7 +664,7 @@ impl StatementSync {
 
     let _reset = ResetGuard(self);
     while let Some(result) = self.read_row(scope)? {
-      arr.push(result.into());
+      arr.push(result);
     }
 
     let arr = v8::Array::new_with_elements(scope, &arr);
@@ -692,6 +691,7 @@ impl StatementSync {
       RETURN = "return",
       DONE = "done",
       VALUE = "value",
+      __STATEMENT_REF = "__statement_ref",
     }
 
     self.reset()?;
@@ -712,10 +712,8 @@ impl StatementSync {
       ];
 
       if statement.is_iter_finished.get() {
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -727,10 +725,8 @@ impl StatementSync {
         let _ = statement.reset();
         statement.is_iter_finished.set(true);
 
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -738,7 +734,7 @@ impl StatementSync {
         return;
       };
 
-      let values = &[v8::Boolean::new(scope, false).into(), row.into()];
+      let values = &[v8::Boolean::new(scope, false).into(), row];
       let null = v8::null(scope).into();
       let result =
         v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -760,10 +756,8 @@ impl StatementSync {
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
-      let values = &[
-        v8::Boolean::new(scope, true).into(),
-        v8::undefined(scope).into(),
-      ];
+      let values =
+        &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
 
       let null = v8::null(scope).into();
       let result =
@@ -797,8 +791,19 @@ impl StatementSync {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
+      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
-    let values = &[next_func.into(), return_func.into()];
+
+    // Get the cppgc wrapper object to keep the statement alive
+    // We store a reference to the statement object on the iterator to prevent
+    // the GC from collecting it while the iterator is still in use.
+    let statement_ref = if let Some(args) = params {
+      args.this().into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let values = &[next_func.into(), return_func.into(), statement_ref];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,
@@ -841,6 +846,17 @@ impl StatementSync {
   ) -> Result<(), SqliteError> {
     self.assert_statement_finalized()?;
     self.use_big_ints.set(enabled);
+    Ok(())
+  }
+
+  #[fast]
+  #[undefined]
+  fn set_return_arrays(
+    &self,
+    #[validate(validators::return_arrays_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
+    self.assert_statement_finalized()?;
+    self.return_arrays.set(enabled);
     Ok(())
   }
 

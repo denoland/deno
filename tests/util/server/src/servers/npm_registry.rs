@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -38,6 +38,14 @@ pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(port, "npm registry server error", {
     move |req| async move {
       handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_REGISTRY).await
+    }
+  })
+}
+
+pub fn public_npm_jsr_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(port, "npm jsr registry server error", {
+    move |req| async move {
+      handle_req_for_registry(req, &npm::PUBLIC_TEST_NPM_JSR_REGISTRY).await
     }
   })
 }

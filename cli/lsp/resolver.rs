@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -202,7 +202,7 @@ impl LspScopedResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(CliNpmResolver::new::<CliSys>(
+      factory.set_npm_resolver(CliNpmResolver::<CliSys>::new::<CliSys>(
         match npm_resolver {
           CliNpmResolver::Byonm(byonm_npm_resolver) => {
             CliNpmResolverCreateOptions::Byonm(
@@ -942,7 +942,6 @@ impl<'a> ResolverFactory<'a> {
         None,
       ));
       let npm_version_resolver = Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
       });
@@ -988,7 +987,7 @@ impl<'a> ResolverFactory<'a> {
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(CliNpmResolver::new(options));
+    self.set_npm_resolver(CliNpmResolver::<CliSys>::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {
