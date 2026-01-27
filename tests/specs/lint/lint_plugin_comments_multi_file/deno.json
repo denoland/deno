@@ -1,8 +1,5 @@
 {
   "lint": {
-    "plugins": ["./plugin.ts"],
-    "rules": {
-      "exclude": ["no-unused-vars"]
-    }
+    "plugins": ["./plugin.ts"]
   }
 }

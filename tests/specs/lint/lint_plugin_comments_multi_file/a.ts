@@ -1,2 +1,2 @@
 // commentA
-const a = 1;
+const _a = 1;
