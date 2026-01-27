@@ -242,6 +242,7 @@ impl CronHandle for SocketCronHandle {
 
 enum SocketStream {
   Tcp(tokio::net::TcpStream),
+  #[cfg(unix)]
   Unix(tokio::net::UnixStream),
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockStream),
@@ -255,6 +256,7 @@ impl tokio::io::AsyncRead for SocketStream {
   ) -> std::task::Poll<std::io::Result<()>> {
     match &mut *self {
       Self::Tcp(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+      #[cfg(unix)]
       Self::Unix(s) => std::pin::Pin::new(s).poll_read(cx, buf),
       #[cfg(any(
         target_os = "android",
@@ -274,6 +276,7 @@ impl tokio::io::AsyncWrite for SocketStream {
   ) -> std::task::Poll<std::io::Result<usize>> {
     match &mut *self {
       Self::Tcp(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+      #[cfg(unix)]
       Self::Unix(s) => std::pin::Pin::new(s).poll_write(cx, buf),
       #[cfg(any(
         target_os = "android",
@@ -290,6 +293,7 @@ impl tokio::io::AsyncWrite for SocketStream {
   ) -> std::task::Poll<std::io::Result<()>> {
     match &mut *self {
       Self::Tcp(s) => std::pin::Pin::new(s).poll_flush(cx),
+      #[cfg(unix)]
       Self::Unix(s) => std::pin::Pin::new(s).poll_flush(cx),
       #[cfg(any(
         target_os = "android",
@@ -306,6 +310,7 @@ impl tokio::io::AsyncWrite for SocketStream {
   ) -> std::task::Poll<std::io::Result<()>> {
     match &mut *self {
       Self::Tcp(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+      #[cfg(unix)]
       Self::Unix(s) => std::pin::Pin::new(s).poll_shutdown(cx),
       #[cfg(any(
         target_os = "android",
@@ -321,7 +326,8 @@ async fn connect_to_socket(
   socket_addr: &str,
 ) -> Result<SocketStream, std::io::Error> {
   use tokio::net::TcpStream;
-  use tokio::net::UnixSocket;
+  #[cfg(unix)]
+  use tokio::net::UnixStream;
 
   match socket_addr.split_once(':') {
     Some(("tcp", addr)) => {
@@ -332,11 +338,11 @@ async fn connect_to_socket(
       .await??;
       Ok(SocketStream::Tcp(stream))
     }
+    #[cfg(unix)]
     Some(("unix", path)) => {
-      let socket = UnixSocket::new_stream()?;
       let stream = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        socket.connect(path),
+        UnixStream::connect(path),
       )
       .await??;
       Ok(SocketStream::Unix(stream))
