@@ -321,7 +321,7 @@ async fn connect_to_socket(
   socket_addr: &str,
 ) -> Result<SocketStream, std::io::Error> {
   use tokio::net::TcpStream;
-  use tokio::net::UnixStream;
+  use tokio::net::UnixSocket;
 
   match socket_addr.split_once(':') {
     Some(("tcp", addr)) => {
@@ -333,9 +333,10 @@ async fn connect_to_socket(
       Ok(SocketStream::Tcp(stream))
     }
     Some(("unix", path)) => {
+      let socket = UnixSocket::new_stream()?;
       let stream = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        UnixStream::connect(path),
+        socket.connect(path),
       )
       .await??;
       Ok(SocketStream::Unix(stream))
