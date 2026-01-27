@@ -654,3 +654,64 @@ Deno.test({
     );
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/28703
+Deno.test({
+  name: "createDecipheriv - setAutoPadding(false) with empty final input",
+  fn() {
+    // Test aes-256-ecb (the original issue)
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-ecb",
+        Buffer.alloc(32),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.end(Buffer.alloc(16));
+    }
+
+    // Test aes-128-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-ecb",
+        Buffer.alloc(16),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.end(Buffer.alloc(16));
+    }
+
+    // Test aes-192-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-192-ecb",
+        Buffer.alloc(24),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.end(Buffer.alloc(16));
+    }
+
+    // Test aes-128-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-cbc",
+        Buffer.alloc(16),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.end(Buffer.alloc(16));
+    }
+
+    // Test aes-256-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        Buffer.alloc(32),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.end(Buffer.alloc(16));
+    }
+  },
+});
