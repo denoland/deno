@@ -273,7 +273,7 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            return Err(SqliteError::NumberTooLarge(value));
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -626,7 +626,6 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
-  #[to_v8]
   fn run(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -713,10 +712,8 @@ impl StatementSync {
       ];
 
       if statement.is_iter_finished.get() {
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -728,10 +725,8 @@ impl StatementSync {
         let _ = statement.reset();
         statement.is_iter_finished.set(true);
 
-        let values = &[
-          v8::Boolean::new(scope, true).into(),
-          v8::undefined(scope).into(),
-        ];
+        let values =
+          &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
@@ -761,10 +756,8 @@ impl StatementSync {
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
-      let values = &[
-        v8::Boolean::new(scope, true).into(),
-        v8::undefined(scope).into(),
-      ];
+      let values =
+        &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
 
       let null = v8::null(scope).into();
       let result =
