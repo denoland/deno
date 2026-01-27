@@ -46,6 +46,25 @@ use uuid::Uuid;
 /// the WebSocket URL for connecting to the debugger.
 pub struct InspectorServerUrl(pub String);
 
+/// Options for controlling where the inspector WebSocket URL is published.
+/// Mirrors Node.js --inspect-publish-uid behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InspectPublishUid {
+  /// Publish to stderr (console).
+  pub console: bool,
+  /// Publish via HTTP endpoint (/json, /json/list, /json/version).
+  pub http: bool,
+}
+
+impl Default for InspectPublishUid {
+  fn default() -> Self {
+    Self {
+      console: true,
+      http: true,
+    }
+  }
+}
+
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
 pub struct InspectorServer {
@@ -85,6 +104,7 @@ pub fn stop_inspector_server() {
 pub fn create_inspector_server(
   host: SocketAddr,
   name: &'static str,
+  publish_uid: InspectPublishUid,
 ) -> Result<Arc<InspectorServer>, InspectorServerError> {
   let mut guard = global_server().lock();
   // Return existing server if already created
@@ -92,7 +112,7 @@ pub fn create_inspector_server(
     return Ok(server.clone());
   }
 
-  let server = Arc::new(InspectorServer::new(host, name)?);
+  let server = Arc::new(InspectorServer::new(host, name, publish_uid)?);
   *guard = Some(server.clone());
   Ok(server)
 }
@@ -147,6 +167,7 @@ impl InspectorServer {
   pub fn new(
     host: SocketAddr,
     name: &'static str,
+    publish_uid: InspectPublishUid,
   ) -> Result<Self, InspectorServerError> {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
@@ -173,6 +194,7 @@ impl InspectorServer {
           shutdown_server_rx,
           reset_rx,
           name,
+          publish_uid,
         ),
       )
     });
@@ -454,14 +476,18 @@ async fn server(
   shutdown_server_rx: broadcast::Receiver<()>,
   reset_rx: broadcast::Receiver<()>,
   name: &str,
+  publish_uid: InspectPublishUid,
 ) {
   let inspector_map_ =
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let register_inspector_handler =
-    listen_for_new_inspectors(register_inspector_rx, inspector_map.clone())
-      .boxed_local();
+  let register_inspector_handler = listen_for_new_inspectors(
+    register_inspector_rx,
+    inspector_map.clone(),
+    publish_uid,
+  )
+  .boxed_local();
 
   let inspector_map = Rc::clone(&inspector_map_);
   let mut reset_rx_deregister = reset_rx.resubscribe();
@@ -544,13 +570,13 @@ async fn server(
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
-              (&http::Method::GET, "/json/version") => {
+              (&http::Method::GET, "/json/version") if publish_uid.http => {
                 handle_json_version_request(json_version_response.clone())
               }
-              (&http::Method::GET, "/json") => {
+              (&http::Method::GET, "/json") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
-              (&http::Method::GET, "/json/list") => {
+              (&http::Method::GET, "/json/list") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
               _ => http::Response::builder()
@@ -601,15 +627,18 @@ async fn server(
 async fn listen_for_new_inspectors(
   mut register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  publish_uid: InspectPublishUid,
 ) {
   while let Some(info) = register_inspector_rx.next().await {
-    log::info!(
-      "Debugger listening on {}",
-      info.get_websocket_debugger_url(&info.host.to_string())
-    );
-    log::info!("Visit chrome://inspect to connect to the debugger.");
-    if info.wait_for_session {
-      log::info!("Deno is waiting for debugger to connect.");
+    if publish_uid.console {
+      log::info!(
+        "Debugger listening on {}",
+        info.get_websocket_debugger_url(&info.host.to_string())
+      );
+      log::info!("Visit chrome://inspect to connect to the debugger.");
+      if info.wait_for_session {
+        log::info!("Deno is waiting for debugger to connect.");
+      }
     }
     if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
       panic!("Inspector UUID already in map");

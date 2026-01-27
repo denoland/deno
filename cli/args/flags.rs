@@ -53,6 +53,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
+pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -813,6 +814,29 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   }
 }
 
+/// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
+pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
+  let mut result = InspectPublishUid {
+    console: false,
+    http: false,
+  };
+  for part in s.split(',') {
+    let part = part.trim();
+    match part {
+      "stderr" => result.console = true,
+      "http" => result.http = true,
+      "" => {}
+      _ => {
+        return Err(format!(
+          "--inspect-publish-uid destination can be stderr or http, got '{}'",
+          part
+        ));
+      }
+    }
+  }
+  Ok(result)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InternalFlags {
   /// Used when the language server is configured with an
@@ -852,6 +876,7 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
+  pub inspect_publish_uid: Option<InspectPublishUid>,
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
@@ -5024,6 +5049,20 @@ fn inspect_args(app: Command) -> Command {
         .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
+    .arg(
+      Arg::new("inspect-publish-uid")
+        .long("inspect-publish-uid")
+        .value_name("VALUE")
+        .require_equals(true)
+        .value_parser(inspect_publish_uid_value_parser)
+        .hide(true),
+    )
+}
+
+fn inspect_publish_uid_value_parser(
+  value: &str,
+) -> Result<InspectPublishUid, String> {
+  parse_inspect_publish_uid(value)
 }
 
 fn import_map_arg() -> Arg {
@@ -7223,6 +7262,8 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.inspect = matches.remove_one::<SocketAddr>("inspect");
   flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
   flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
+  flags.inspect_publish_uid =
+    matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
 }
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -14291,5 +14332,64 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         }
       );
     }
+  }
+
+  #[test]
+  fn inspect_publish_uid_flag_parsing() {
+    // Test with both stderr and http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr,http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: true,
+      })
+    );
+
+    // Test with only stderr
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: false,
+      })
+    );
+
+    // Test with only http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: false,
+        http: true,
+      })
+    );
+
+    // Test without the flag (should be None)
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
+    assert_eq!(flags.inspect_publish_uid, None);
   }
 }

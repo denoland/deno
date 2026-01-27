@@ -323,7 +323,7 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
 
   const { done, value } = iter.next();
   assertEquals(done, true);
-  assertEquals(value, undefined);
+  assertEquals(value, null);
 
   db.close();
 });

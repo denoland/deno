@@ -874,7 +874,8 @@ async fn serve_http2_autodetect(
   options: Options,
 ) -> Result<(), HttpNextError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
-  let (matches, io) = prefix.match_prefix().await?;
+  let (matches, io) =
+    prefix.match_prefix().try_or_cancel(cancel.clone()).await?;
   if matches {
     serve_http2_unconditional(io, svc, cancel, options.http2_builder_hook)
       .await
