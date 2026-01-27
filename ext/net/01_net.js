@@ -601,7 +601,7 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const port = validatePort(args.port);
+      const port = validatePort(args.port, true);
       const { 0: rid, 1: addr } = op_net_listen_tcp(
         {
           hostname: args.hostname ?? "0.0.0.0",
@@ -646,7 +646,10 @@ function listen(args) {
   }
 }
 
-function validatePort(maybePort) {
+function validatePort(maybePort, isServer = false) {
+  if (maybePort === null || maybePort === undefined) {
+    maybePort = 0;
+  }
   if (typeof maybePort !== "number" && typeof maybePort !== "string") {
     throw new TypeError(`Invalid port (expected number): ${maybePort}`);
   }
@@ -658,6 +661,8 @@ function validatePort(maybePort) {
     } else {
       throw new TypeError(`Invalid port: ${maybePort}`);
     }
+  } else if (!isServer && (port < 1 || port > 65535)) {
+    throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   } else if (port < 0 || port > 65535) {
     throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   }
@@ -668,7 +673,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
-        const port = validatePort(args.port);
+        const port = validatePort(args.port, true);
         const { 0: rid, 1: addr } = udpOpFn(
           {
             hostname: args.hostname ?? "127.0.0.1",
