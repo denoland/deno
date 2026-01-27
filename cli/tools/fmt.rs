@@ -407,6 +407,51 @@ pub fn format_css(
   })
 }
 
+
+fn fix_css_bracket_spacing(css: &str) -> String {
+  let mut result = String::with_capacity(css.len());
+  let mut chars = css.chars().peekable();
+  
+  while let Some(ch) = chars.next() {
+    if ch == '-' {
+      result.push(ch);
+
+      let mut temp_chars = chars.clone();
+      let mut skip_whitespace = false;
+      
+
+      while let Some(&next_ch) = temp_chars.peek() {
+        if next_ch.is_whitespace() {
+          temp_chars.next();
+        } else if next_ch == '[' {
+          skip_whitespace = true;
+          break;
+        } else {
+          break;
+        }
+      }
+      
+      if skip_whitespace {
+
+        while let Some(&next_ch) = chars.peek() {
+          if next_ch.is_whitespace() {
+            chars.next();
+          } else if next_ch == '[' {
+            result.push(chars.next().unwrap());
+            break;
+          } else {
+            break;
+          }
+        }
+      }
+    } else {
+      result.push(ch);
+    }
+  }
+  
+  result
+}
+
 fn format_yaml(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
@@ -472,7 +517,11 @@ pub fn format_html(
             malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
             &malva_config,
           )
-          .map(Cow::from)
+          .map(|formatted| {
+            // Fix the space-before-bracket issue in CSS property values
+            let fixed = fix_css_bracket_spacing(&formatted);
+            Cow::from(fixed)
+          })
           .map_err(AnyError::from)
         }
         "json" | "jsonc" => {
