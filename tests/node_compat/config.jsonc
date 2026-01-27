@@ -260,39 +260,65 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    "parallel/test-debugger-address.mjs": {},
-    "parallel/test-debugger-auto-resume.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-address.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-auto-resume.mjs": {},
     "parallel/test-debugger-backtrace.js": {},
-    "parallel/test-debugger-break.js": {},
-    "parallel/test-debugger-breakpoint-exists.js": {},
-    "parallel/test-debugger-clear-breakpoints.js": {},
-    "parallel/test-debugger-exceptions.js": {},
-    "parallel/test-debugger-exec-scope.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-break.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-breakpoint-exists.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-clear-breakpoints.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-exceptions.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-exec-scope.mjs": {},
     "parallel/test-debugger-exec.js": {},
-    "parallel/test-debugger-extract-function-name.mjs": {},
-    "parallel/test-debugger-heap-profiler.js": {},
-    "parallel/test-debugger-help.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-extract-function-name.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-heap-profiler.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-help.mjs": {},
     "parallel/test-debugger-invalid-json.mjs": {},
-    "parallel/test-debugger-list.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-list.js": {},
     "parallel/test-debugger-low-level.js": {},
-    "parallel/test-debugger-object-type-remote-object.js": {},
-    "parallel/test-debugger-pid.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-object-type-remote-object.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-pid.js": {},
     "parallel/test-debugger-preserve-breaks.js": {},
-    "parallel/test-debugger-profile-command.js": {},
-    "parallel/test-debugger-profile.js": {},
-    "parallel/test-debugger-random-port-with-inspect-port.js": {},
-    "parallel/test-debugger-random-port.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-profile-command.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-profile.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-random-port-with-inspect-port.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-random-port.js": {},
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    "parallel/test-debugger-run-after-quit-restart.js": {},
-    "parallel/test-debugger-sb-before-load.js": {},
-    "parallel/test-debugger-scripts.js": {},
-    "parallel/test-debugger-set-context-line-number.mjs": {},
-    "parallel/test-debugger-unavailable-port.js": {},
-    "parallel/test-debugger-use-strict.js": {},
-    "parallel/test-debugger-watch-validation.js": {},
-    "parallel/test-debugger-watchers.mjs": {},
-    "parallel/test-debugger-websocket-secret-mismatch.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-run-after-quit-restart.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-sb-before-load.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-scripts.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-set-context-line-number.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-unavailable-port.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-use-strict.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-watch-validation.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-watchers.mjs": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-websocket-secret-mismatch.js": {},
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-address.js": {},
@@ -373,7 +399,8 @@
     "parallel/test-diagnostics-channel-tracing-channel-sync-run-stores.js": {},
     "parallel/test-diagnostics-channel-tracing-channel-sync.js": {},
     "parallel/test-diagnostics-channel-udp.js": {},
-    "parallel/test-disable-sigusr1.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-disable-sigusr1.js": {},
     "parallel/test-dns-default-order-ipv4.js": {},
     "parallel/test-dns-lookupService.js": {},
     "parallel/test-dns-lookupService-promises.js": {},
@@ -383,13 +410,15 @@
     "parallel/test-dns-setservers-type-check.js": {},
     "parallel/test-domain-add-remove.js": {},
     "parallel/test-domain-crypto.js": {},
-    "parallel/test-domain-dep0097.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-domain-dep0097.js": {},
     "parallel/test-domain-ee-error-listener.js": {},
     "parallel/test-domain-ee.js": {},
     "parallel/test-domain-nested-throw.js": {},
     "parallel/test-domain-nested.js": {},
     "parallel/test-domain-stack.js": {},
     "parallel/test-domain-top-level-error-handler-clears-stack.js": {},
+    "parallel/test-domexception-cause.js": {},
     "parallel/test-dsa-fips-invalid-key.js": {},
     "parallel/test-env-newprotomethod-remove-unnecessary-prototypes.js": {},
     "parallel/test-error-format-list.js": {},
@@ -418,8 +447,8 @@
     "parallel/test-eslint-prefer-util-format-errors.js": {},
     "parallel/test-eslint-require-common-first.js": {},
     "parallel/test-eslint-required-modules.js": {},
-    "parallel/test-esm-loader-hooks-inspect-brk.js": {},
-    "parallel/test-esm-loader-hooks-inspect-wait.js": {},
+    // "parallel/test-esm-loader-hooks-inspect-brk.js": {},
+    // "parallel/test-esm-loader-hooks-inspect-wait.js": {},
     "parallel/test-eval-strict-referenceerror.js": {},
     "parallel/test-eval.js": {},
     "parallel/test-event-capture-rejections.js": {},
@@ -531,6 +560,7 @@
     "parallel/test-fs-readfilesync-enoent.js": {},
     "parallel/test-fs-readlink-type-check.js": {},
     "parallel/test-fs-readSync-optional-params.js": {},
+    "parallel/test-fs-readv-promises.js": {},
     "parallel/test-fs-readv-promisify.js": {},
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
@@ -562,17 +592,28 @@
     "parallel/test-global-webcrypto.js": {},
     "parallel/test-global-webstreams.js": {},
     "parallel/test-handle-wrap-close-abort.js": {},
-    "parallel/test-heap-prof-basic.js": {},
-    "parallel/test-heap-prof-dir-absolute.js": {},
-    "parallel/test-heap-prof-dir-name.js": {},
-    "parallel/test-heap-prof-dir-relative.js": {},
-    "parallel/test-heap-prof-exec-argv.js": {},
-    "parallel/test-heap-prof-exit.js": {},
-    "parallel/test-heap-prof-interval.js": {},
-    "parallel/test-heap-prof-invalid-args.js": {},
-    "parallel/test-heap-prof-loop-drained.js": {},
-    "parallel/test-heap-prof-name.js": {},
-    "parallel/test-heap-prof-sigint.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-basic.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-absolute.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-name.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-dir-relative.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-exec-argv.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-exit.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-interval.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-invalid-args.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-loop-drained.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-name.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-heap-prof-sigint.js": {},
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
     "parallel/test-http-agent-close.js": {},
@@ -717,71 +758,107 @@
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
-    "parallel/test-inspect-address-in-use.js": {},
-    "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
     "parallel/test-inspect-publish-uid.js": {},
-    "parallel/test-inspect-support-for-node_options.js": {},
-    "parallel/test-inspector-already-activated-cli.js": {},
-    "parallel/test-inspector-async-call-stack-abort.js": {},
-    "parallel/test-inspector-async-call-stack.js": {},
-    "parallel/test-inspector-async-context-brk.js": {},
-    "parallel/test-inspector-async-hook-after-done.js": {},
-    "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
-    "parallel/test-inspector-async-hook-setup-at-signal.js": {},
-    "parallel/test-inspector-async-stack-traces-promise-then.js": {},
-    "parallel/test-inspector-async-stack-traces-set-interval.js": {},
-    "parallel/test-inspector-bindings.js": {},
-    "parallel/test-inspector-break-e.js": {},
-    "parallel/test-inspector-break-when-eval.js": {},
+
+    // TODO(bartlomieju):
+    // "parallel/test-inspector-async-hook-after-done.js": {},
+    // "parallel/test-inspector-async-call-stack-abort.js": {},
+    // "parallel/test-inspector-async-hook-setup-at-signal.js": {},
+    // "parallel/test-inspector.js": {},
+    // "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {},
+    // "parallel/test-inspector-exit-worker-in-wait-for-connection2.js": {},
+    // "parallel/test-inspector-console-top-frame.js": {},
+    // "parallel/test-inspector-async-call-stack.js": {},
+    // "parallel/test-inspector-heap-allocation-tracker.js": {},
+    // "parallel/test-inspector-tracing-domain.js": {},
+    // "parallel/test-inspector-ip-detection.js": {},
+    // "parallel/test-inspector-already-activated-cli.js": {},
+    // "parallel/test-v8-coverage.js": {},
+    // "parallel/test-v8-stop-coverage.js": {},
+    // "parallel/test-v8-take-coverage-noop.js": {},
+    // "parallel/test-v8-take-coverage.js": {},
+    // "parallel/test-inspect-address-in-use.js": {},
+    // "parallel/test-inspector-inspect-brk-node.js": {},
+    // "parallel/test-inspector-invalid-args.js": {},
+
     "parallel/test-inspector-close-worker.js": {},
-    "parallel/test-inspector-connect-main-thread.js": {},
+
+    // TODO(bartlomieju): times out
+    // "parallel/test-inspector-connect-main-thread.js": {},
+    // "parallel/test-inspector-multisession-js.js": {},
+    // "parallel/test-inspector-bindings.js": {},
+    // "parallel/test-inspector-async-context-brk.js": {},
+    // "parallel/test-inspector-wait-for-connection.js": {},
+
     "parallel/test-inspector-connect-to-main-thread.js": {},
-    "parallel/test-inspector-console-top-frame.js": {},
-    "parallel/test-inspector-console.js": {},
-    "parallel/test-inspector-contexts.js": {},
-    "parallel/test-inspector-debug-brk-flag.js": {},
-    "parallel/test-inspector-debug-end.js": {},
-    "parallel/test-inspector-emit-protocol-event.js": {},
-    "parallel/test-inspector-enabled.js": {},
-    "parallel/test-inspector-esm.js": {},
-    "parallel/test-inspector-exception.js": {},
-    "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {},
-    "parallel/test-inspector-exit-worker-in-wait-for-connection2.js": {},
+
+    // TODO(bartlomieju): mismatch in name of the default context,
+    // requires changes to `deno_core`.
+    // "parallel/test-inspector-contexts.js": {},
+
+    // TODO(bartlomieju): mismatch in name of the eval context,
+    // requires changes to `deno_core`.
+    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
+
+    // TODO(bartlomieju): depends on internal APIs from Node like `process.bindings()`
+    // or `process._debugEnd`
+    // "parallel/test-inspector-enabled.js": {},
+    // "parallel/test-inspector-debug-end.js": {},
+
     "parallel/test-inspector-has-idle.js": {},
-    "parallel/test-inspector-heap-allocation-tracker.js": {},
+
     "parallel/test-inspector-heapdump.js": {},
-    "parallel/test-inspector-inspect-brk-node.js": {},
-    "parallel/test-inspector-invalid-args.js": {},
-    "parallel/test-inspector-ip-detection.js": {},
     "parallel/test-inspector-module.js": {},
-    "parallel/test-inspector-multisession-js.js": {},
-    "parallel/test-inspector-multisession-ws.js": {},
-    "parallel/test-inspector-network-arbitrary-data.js": {},
-    "parallel/test-inspector-network-fetch.js": {},
-    "parallel/test-inspector-network-http.js": {},
+
+    // TODO(bartlomieju): depends on `Network` CDP domain
+    // "parallel/test-inspector-network-http.js": {},
+    // "parallel/test-inspector-network-arbitrary-data.js": {},
+    // "parallel/test-inspector-emit-protocol-event.js": {},
+
+    // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
+    // "parallel/test-inspector-esm.js": {},
+    // "parallel/test-inspector-console.js": {},
+    // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
+    // "parallel/test-inspector-exception.js": {},
+    // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
+    // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
+    // "parallel/test-inspector-scriptparsed-context.js": {},
+    // "parallel/test-inspector-break-e.js": {},
+    // "parallel/test-inspector-waiting-for-disconnect.js": {},
+    // "parallel/test-inspector-multisession-ws.js": {},
+    // "parallel/test-inspector-worker-target.js"
+    // "parallel/test-inspector-debug-brk-flag.js": {},
+    // "parallel/test-inspector-wait.mjs": {},
+    // "parallel/test-inspector-stop-profile-after-done.js": {},
+    // "parallel/test-inspector-break-when-eval.js": {},
+
+    // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
+    // "parallel/test-inspector-network-fetch.js": {},
     "parallel/test-inspector-not-blocked-on-idle.js": {},
     "parallel/test-inspector-open-coverage.js": {},
     "parallel/test-inspector-open-port-integer-overflow.js": {},
     "parallel/test-inspector-open.js": {},
-    "parallel/test-inspector-port-zero-cluster.js": {},
-    "parallel/test-inspector-port-zero.js": {},
+
+    // TODO(bartlomieju): requires `cluster.fork` module
+    // "parallel/test-inspector-port-zero-cluster.js": {},
+    // "parallel/test-inspect-support-for-node_options.js": {},
+
+    // TODO(bartlomieju):: easy, `--inspect` flag doesn't support `localhost`
+    // "parallel/test-inspector-port-zero.js": {},
     "parallel/test-inspector-promises.js": {},
     "parallel/test-inspector-reported-host.js": {},
-    "parallel/test-inspector-resource-name-to-url.js": {},
+    "parallel/test-inspector-resource-name-to-url.js": {
+      "windows": false,
+      "reason": "Uses lowercase 'a' instead of 'A' for drive letter"
+    },
     "parallel/test-inspector-runtime-evaluate-with-timeout.js": {},
-    "parallel/test-inspector-scriptparsed-context.js": {},
-    "parallel/test-inspector-stop-profile-after-done.js": {},
     "parallel/test-inspector-stops-no-file.js": {},
     "parallel/test-inspector-stress-http.js": {},
     "parallel/test-inspector-strip-types.js": {},
-    "parallel/test-inspector-tracing-domain.js": {},
     "parallel/test-inspector-vm-global-accessors-getter-sideeffect.js": {},
     "parallel/test-inspector-vm-global-accessors-sideeffects.js": {},
-    "parallel/test-inspector-wait-for-connection.js": {},
-    "parallel/test-inspector-wait.mjs": {},
-    "parallel/test-inspector-waiting-for-disconnect.js": {},
+
     "parallel/test-inspector-workers-flat-list.js": {},
-    "parallel/test-inspector.js": {},
     "parallel/test-instanceof.js": {},
     "parallel/test-internal-fs.js": {},
     "parallel/test-internal-modules.js": {},
@@ -932,8 +1009,10 @@
     "parallel/test-performanceobserver-gc.js": {},
     "parallel/test-performanceobserver.js": {},
     "parallel/test-performance-measure-detail.js": {},
-    "parallel/test-permission-inspector-brk.js": {},
-    "parallel/test-permission-inspector.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-permission-inspector-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-permission-inspector.js": {},
     "parallel/test-permission-no-addons.js": {},
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
@@ -1004,13 +1083,19 @@
     "parallel/test-readline.js": {},
     "parallel/test-ref-unref-return.js": {},
     "parallel/test-regression-object-prototype.js": {},
-    "parallel/test-repl-inspector.js": {},
-    "parallel/test-repl-preview-newlines.js": {},
-    "parallel/test-repl-preview-timeout.js": {},
-    "parallel/test-repl-preview.js": {},
-    "parallel/test-repl-strict-mode-previews.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-inspector.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview-newlines.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview-timeout.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-preview.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-strict-mode-previews.js": {},
     "parallel/test-repl-syntax-error-handling.js": {},
-    "parallel/test-repl-top-level-await.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-repl-top-level-await.js": {},
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
     "parallel/test-require-exceptions.js": {},
@@ -1020,34 +1105,37 @@
     "parallel/test-require-long-path.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
-    "parallel/test-runner-coverage-source-map.js": {},
-    "parallel/test-runner-coverage-thresholds.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-coverage-source-map.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-filter-warning.js": {},
-    "parallel/test-runner-inspect.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
-    "parallel/test-set-process-debug-port.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-set-process-debug-port.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
-    "parallel/test-snapshot-console.js": {},
-    "parallel/test-snapshot-coverage.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-snapshot-console.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
-    "parallel/test-source-map-enable.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
-    "parallel/test-sqlite-database-sync.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "https://github.com/denoland/deno/issues/31634"
-    },
+    "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -1273,6 +1361,7 @@
     "parallel/test-timers-clear-timeout-interval-equivalent.js": {},
     "parallel/test-timers-clearImmediate-als.js": {},
     "parallel/test-timers-clearImmediate.js": {},
+    "parallel/test-timers-immediate-promisified.js": {},
     "parallel/test-timers-immediate-unref-nested-once.js": {},
     "parallel/test-timers-immediate-unref-simple.js": {},
     "parallel/test-timers-immediate-unref.js": {},
@@ -1332,7 +1421,8 @@
     "parallel/test-trace-events-async-hooks-dynamic.js": {},
     "parallel/test-trace-events-async-hooks-worker.js": {},
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
-    "parallel/test-trace-events-dynamic-enable.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-trace-events-dynamic-enable.js": {},
     "parallel/test-trace-events-get-category-enabled-buffer.js": {},
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
@@ -1368,13 +1458,9 @@
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
-    "parallel/test-v8-coverage.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-global-setter.js": {},
-    "parallel/test-v8-stop-coverage.js": {},
-    "parallel/test-v8-take-coverage-noop.js": {},
-    "parallel/test-v8-take-coverage.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1422,7 +1508,8 @@
     "parallel/test-vm-timeout-escape-promise.js": {},
     "parallel/test-vm-timeout.js": {},
     "parallel/test-vm-util-lazy-properties.js": {},
-    "parallel/test-warn-sigprof.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
     "parallel/test-websocket.js": {},
@@ -1453,7 +1540,8 @@
     "parallel/test-whatwg-url-override-hostname.js": {},
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
-    "parallel/test-worker-debug.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate-during-query.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
@@ -1464,7 +1552,8 @@
     "parallel/test-worker-message-port-receive-message.js": {},
     "parallel/test-worker-message-port-terminate-transfer-list.js": {},
     "parallel/test-worker-mjs-workerdata.js": {},
-    "parallel/test-worker-name.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
     "parallel/test-worker-ref-onexit.js": {},
@@ -1498,51 +1587,76 @@
     "pseudo-tty/test-tty-stdin-call-end.js": {},
     "pseudo-tty/test-tty-stdin-end.js": {},
     "pseudo-tty/test-tty-stdout-end.js": {},
+    "pseudo-tty/test-tty-isatty.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
     "pummel/test-dh-regr.js": {},
     "pummel/test-fs-watch-system-limit.js": {},
-    "pummel/test-heapdump-inspector.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "pummel/test-heapdump-inspector.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
-    "sequential/test-cluster-inspect-brk.js": {},
-    "sequential/test-cpu-prof-default.js": {},
-    "sequential/test-cpu-prof-dir-absolute.js": {},
-    "sequential/test-cpu-prof-dir-and-name.js": {},
-    "sequential/test-cpu-prof-dir-relative.js": {},
-    "sequential/test-cpu-prof-dir-worker.js": {},
-    "sequential/test-cpu-prof-drained.js": {},
-    "sequential/test-cpu-prof-exit.js": {},
-    "sequential/test-cpu-prof-invalid-options.js": {},
-    "sequential/test-cpu-prof-kill.js": {},
-    "sequential/test-cpu-prof-name.js": {},
-    "sequential/test-cpu-prof-worker-argv.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cluster-inspect-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-default.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-absolute.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-and-name.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-relative.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-dir-worker.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-drained.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-exit.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-invalid-options.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-kill.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-name.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    "sequential/test-debugger-custom-port.js": {},
-    "sequential/test-debugger-debug-brk.js": {},
-    "sequential/test-debugger-invalid-args.js": {},
-    "sequential/test-debugger-launch.mjs": {},
-    "sequential/test-debugger-pid.js": {},
-    "sequential/test-diagnostic-dir-cpu-prof.js": {},
-    "sequential/test-diagnostic-dir-heap-prof.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-custom-port.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-debug-brk.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-invalid-args.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-launch.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-debugger-pid.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-diagnostic-dir-cpu-prof.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
-    "sequential/test-inspector-open-dispose.mjs": {},
-    "sequential/test-inspector-port-cluster.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-inspector-open-dispose.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-inspector-port-cluster.js": {},
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
-    "sequential/test-runner-run-inspect.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-runner-run-inspect.mjs": {},
     "sequential/test-stream2-fs.js": {},
     "sequential/test-tls-lookup.js": {},
     "sequential/test-tls-psk-client.js": {},
     "sequential/test-vm-timeout-rethrow.js": {},
-    "sequential/test-watch-mode-inspect.mjs": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-watch-mode-inspect.mjs": {},
     "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }

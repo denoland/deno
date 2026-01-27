@@ -46,22 +46,56 @@ use uuid::Uuid;
 /// the WebSocket URL for connecting to the debugger.
 pub struct InspectorServerUrl(pub String);
 
+/// Options for controlling where the inspector WebSocket URL is published.
+/// Mirrors Node.js --inspect-publish-uid behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InspectPublishUid {
+  /// Publish to stderr (console).
+  pub console: bool,
+  /// Publish via HTTP endpoint (/json, /json/list, /json/version).
+  pub http: bool,
+}
+
+impl Default for InspectPublishUid {
+  fn default() -> Self {
+    Self {
+      console: true,
+      http: true,
+    }
+  }
+}
+
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
   shutdown_server_tx: Option<broadcast::Sender<()>>,
+  /// Channel to signal an abrupt reset - closes all connections and deregisters all inspectors
+  reset_tx: broadcast::Sender<()>,
   // Wrapped in Mutex to make InspectorServer Sync (JoinHandle is Send but not Sync)
   thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
-static GLOBAL_INSPECTOR_SERVER: OnceLock<Arc<InspectorServer>> =
+static GLOBAL_INSPECTOR_SERVER: OnceLock<Mutex<Option<Arc<InspectorServer>>>> =
   OnceLock::new();
+
+fn global_server() -> &'static Mutex<Option<Arc<InspectorServer>>> {
+  GLOBAL_INSPECTOR_SERVER.get_or_init(|| Mutex::new(None))
+}
 
 /// Returns the global inspector server if it has been created.
 pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
-  GLOBAL_INSPECTOR_SERVER.get().cloned()
+  global_server().lock().clone()
+}
+
+/// Stops the global inspector server if it exists.
+/// This abruptly closes all pending connections and deregisters all inspectors.
+/// The server continues to run and can accept new connections/registrations.
+pub fn stop_inspector_server() {
+  if let Some(server) = global_server().lock().take() {
+    server.stop();
+  }
 }
 
 /// Creates a global inspector server at the given address with the given name.
@@ -70,17 +104,31 @@ pub fn get_inspector_server() -> Option<Arc<InspectorServer>> {
 pub fn create_inspector_server(
   host: SocketAddr,
   name: &'static str,
+  publish_uid: InspectPublishUid,
 ) -> Result<Arc<InspectorServer>, InspectorServerError> {
+  let mut guard = global_server().lock();
   // Return existing server if already created
-  if let Some(server) = GLOBAL_INSPECTOR_SERVER.get() {
+  if let Some(server) = guard.as_ref() {
     return Ok(server.clone());
   }
 
-  let server = Arc::new(InspectorServer::new(host, name)?);
-  // If another thread created the server between our check and now,
-  // just return the existing one
-  let _ = GLOBAL_INSPECTOR_SERVER.set(server);
-  Ok(GLOBAL_INSPECTOR_SERVER.get().unwrap().clone())
+  let server = Arc::new(InspectorServer::new(host, name, publish_uid)?);
+  *guard = Some(server.clone());
+  Ok(server)
+}
+
+static RESTART_NOTIFIER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
+
+fn get_restart_notifier() -> broadcast::Sender<()> {
+  RESTART_NOTIFIER
+    .get_or_init(|| broadcast::channel(16).0)
+    .clone()
+}
+
+/// Notifies all connected /ws/events clients that a restart is about to occur.
+pub fn notify_restart() {
+  let sender = get_restart_notifier();
+  let _ = sender.send(()); // Ignore error if no receivers
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -119,11 +167,13 @@ impl InspectorServer {
   pub fn new(
     host: SocketAddr,
     name: &'static str,
+    publish_uid: InspectPublishUid,
   ) -> Result<Self, InspectorServerError> {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
+    let (reset_tx, reset_rx) = broadcast::channel(1);
 
     let tcp_listener = std::net::TcpListener::bind(host)
       .map_err(|source| InspectorServerError::Connect { host, source })?;
@@ -142,7 +192,9 @@ impl InspectorServer {
           tcp_listener,
           register_inspector_rx,
           shutdown_server_rx,
+          reset_rx,
           name,
+          publish_uid,
         ),
       )
     });
@@ -151,6 +203,7 @@ impl InspectorServer {
       host,
       register_inspector_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
+      reset_tx,
       thread_handle: Mutex::new(Some(thread_handle)),
     })
   }
@@ -175,6 +228,12 @@ impl InspectorServer {
     );
     self.register_inspector_tx.unbounded_send(info).unwrap();
     url
+  }
+
+  /// Stop the inspector server by resetting IO.
+  /// This abruptly closes all pending connections and deregisters all inspectors.
+  pub fn stop(&self) {
+    let _ = self.reset_tx.send(());
   }
 }
 
@@ -309,22 +368,135 @@ fn handle_json_version_request(
     .body(body)
 }
 
+fn handle_ws_events_request(
+  req: http::Request<hyper::body::Incoming>,
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
+  if std::env::var("UNSTABLE_INSPECTOR_WS_EVENTS").is_err() {
+    return http::Response::builder()
+      .status(http::StatusCode::NOT_FOUND)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not Found",
+      ))));
+  }
+
+  let (parts, body) = req.into_parts();
+  let req = http::Request::from_parts(parts, ());
+
+  let (parts, _) = req.into_parts();
+  let mut req = http::Request::from_parts(parts, body);
+
+  let Ok((resp, upgrade_fut)) = fastwebsockets::upgrade::upgrade(&mut req)
+  else {
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
+      .body(Box::new(http_body_util::Full::new(Bytes::from(
+        "Not a valid Websocket Request",
+      ))));
+  };
+
+  let restart_rx = get_restart_notifier().subscribe();
+
+  // spawn a task that will wait for websocket connection and then pump event notifications
+  spawn(async move {
+    let websocket = match upgrade_fut.await {
+      Ok(w) => w,
+      Err(err) => {
+        log::error!(
+          "Inspector server failed to upgrade to WS connection for /ws/events: {:?}",
+          err
+        );
+        return;
+      }
+    };
+
+    log::debug!("Deno event session started.");
+    pump_event_notifications(websocket, restart_rx).await;
+  });
+
+  let (parts, _body) = resp.into_parts();
+  let resp = http::Response::from_parts(
+    parts,
+    Box::new(http_body_util::Full::new(Bytes::new())),
+  );
+  Ok(resp)
+}
+
+async fn pump_event_notifications(
+  mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
+  mut restart_rx: broadcast::Receiver<()>,
+) {
+  loop {
+    tokio::select! {
+      result = restart_rx.recv() => {
+        match result {
+          Ok(()) => {
+            let timestamp = std::time::SystemTime::now()
+              .duration_since(std::time::UNIX_EPOCH)
+              .map(|d| d.as_millis() as u64)
+              .unwrap_or(0);
+            let msg = json!({
+              "type": "restart",
+              "timestamp": timestamp,
+            });
+            let frame = Frame::text(msg.to_string().into_bytes().into());
+            if websocket.write_frame(frame).await.is_err() {
+              break;
+            }
+          }
+          Err(broadcast::error::RecvError::Lagged(_)) => {
+            // Missed some messages, continue
+            continue;
+          }
+          Err(broadcast::error::RecvError::Closed) => {
+            break;
+          }
+        }
+      }
+      result = websocket.read_frame() => {
+        match result {
+          Ok(frame) => {
+            if frame.opcode == OpCode::Close {
+              log::debug!("Deno event session ended");
+              break;
+            }
+            // Ignore other messages
+          }
+          Err(_) => {
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
 async fn server(
   listener: std::net::TcpListener,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: broadcast::Receiver<()>,
+  reset_rx: broadcast::Receiver<()>,
   name: &str,
+  publish_uid: InspectPublishUid,
 ) {
   let inspector_map_ =
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let register_inspector_handler =
-    listen_for_new_inspectors(register_inspector_rx, inspector_map.clone())
-      .boxed_local();
+  let register_inspector_handler = listen_for_new_inspectors(
+    register_inspector_rx,
+    inspector_map.clone(),
+    publish_uid,
+  )
+  .boxed_local();
 
   let inspector_map = Rc::clone(&inspector_map_);
+  let mut reset_rx_deregister = reset_rx.resubscribe();
   let deregister_inspector_handler = future::poll_fn(|cx| {
+    // Check for reset signal
+    if let Ok(()) = reset_rx_deregister.try_recv() {
+      // Clear all registered inspectors
+      inspector_map.borrow_mut().clear();
+    }
     inspector_map
       .borrow_mut()
       .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
@@ -337,6 +509,8 @@ async fn server(
     "Protocol-Version": "1.3",
     "V8-Version": deno_core::v8::VERSION_STRING,
   });
+
+  let mut reset_rx_server = reset_rx.resubscribe();
 
   // Create the server manually so it can use the Local Executor
   let listener = match TcpListener::from_std(listener) {
@@ -373,6 +547,7 @@ async fn server(
       let inspector_map = Rc::clone(&inspector_map_);
       let json_version_response = json_version_response.clone();
       let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
+      let mut reset_rx_conn = reset_rx.resubscribe();
 
       let service = hyper::service::service_fn(
         move |req: http::Request<hyper::body::Incoming>| {
@@ -389,16 +564,19 @@ async fn server(
                 _ => None,
               });
             match (req.method(), req.uri().path()) {
+              (&http::Method::GET, "/ws/events") => {
+                handle_ws_events_request(req)
+              }
               (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
-              (&http::Method::GET, "/json/version") => {
+              (&http::Method::GET, "/json/version") if publish_uid.http => {
                 handle_json_version_request(json_version_response.clone())
               }
-              (&http::Method::GET, "/json") => {
+              (&http::Method::GET, "/json") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
-              (&http::Method::GET, "/json/list") => {
+              (&http::Method::GET, "/json/list") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
               _ => http::Response::builder()
@@ -417,6 +595,7 @@ async fn server(
         let mut conn =
           pin!(server.serve_connection(io, service).with_upgrades());
         let mut shutdown_rx = pin!(shutdown_server_rx.recv());
+        let mut reset_rx = pin!(reset_rx_conn.recv());
 
         tokio::select! {
           result = conn.as_mut() => {
@@ -427,6 +606,9 @@ async fn server(
           _ = &mut shutdown_rx => {
             conn.as_mut().graceful_shutdown();
             let _ = conn.await;
+          },
+          _ = &mut reset_rx => {
+            // Abruptly close the connection without graceful shutdown
           }
         }
       });
@@ -438,21 +620,25 @@ async fn server(
     _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => {},
+    _ = reset_rx_server.recv() => {},
   }
 }
 
 async fn listen_for_new_inspectors(
   mut register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  publish_uid: InspectPublishUid,
 ) {
   while let Some(info) = register_inspector_rx.next().await {
-    log::info!(
-      "Debugger listening on {}",
-      info.get_websocket_debugger_url(&info.host.to_string())
-    );
-    log::info!("Visit chrome://inspect to connect to the debugger.");
-    if info.wait_for_session {
-      log::info!("Deno is waiting for debugger to connect.");
+    if publish_uid.console {
+      log::info!(
+        "Debugger listening on {}",
+        info.get_websocket_debugger_url(&info.host.to_string())
+      );
+      log::info!("Visit chrome://inspect to connect to the debugger.");
+      if info.wait_for_session {
+        log::info!("Deno is waiting for debugger to connect.");
+      }
     }
     if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
       panic!("Inspector UUID already in map");

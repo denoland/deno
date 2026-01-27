@@ -261,10 +261,13 @@ fn parse_cli_args() -> CliArgs {
 }
 
 fn load_config() -> NodeCompatConfig {
-  let config_path = tests_path().join("node_compat").join("config.json");
-  let config_content =
-    std::fs::read_to_string(&config_path).expect("Failed to read config.json");
-  serde_json::from_str(&config_content).expect("Failed to parse config.json")
+  let config_path = tests_path().join("node_compat").join("config.jsonc");
+  let config_content = std::fs::read_to_string(&config_path).unwrap();
+  let value =
+    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+      .unwrap()
+      .unwrap();
+  serde_json::from_value(value).unwrap()
 }
 
 fn collect_tests_from_config(
@@ -517,6 +520,21 @@ fn run_test(
     return TestResult::Ignored;
   }
 
+  // Skip pseudo-tty tests when PTY is not supported (e.g., Windows CI)
+  let is_pseudo_tty_test = data.test_path.starts_with("pseudo-tty/");
+  if is_pseudo_tty_test && !util::pty::Pty::is_supported() {
+    results.lock().unwrap().insert(
+      data.test_path.clone(),
+      CollectedResult {
+        passed: None,
+        error: None,
+        uses_node_test: false,
+        ignore_reason: Some("PTY not supported on this platform".to_string()),
+      },
+    );
+    return TestResult::Ignored;
+  }
+
   let test_suite_path = tests_path().join("node_compat/runner/suite");
   let test_path = format!("test/{}", data.test_path);
   let full_test_path = test_suite_path.join(&test_path);
@@ -581,58 +599,141 @@ fn run_test(
   } else {
     10_000
   });
-  let child = cmd.piped_output().spawn().unwrap();
-  let test_output = wait_with_timeout(child, timeout);
 
-  let (success, collected, output_for_error) = match test_output {
-    TestOutput::Completed(output) => {
-      let success = output.status.success();
-      let stderr = String::from_utf8_lossy(&output.stderr);
-      let stdout = String::from_utf8_lossy(&output.stdout);
-      let output_text = if uses_node_test {
-        stdout.to_string()
-      } else {
-        stderr.to_string()
-      };
+  // Format v8_flags for reuse in both PTY and non-PTY paths
+  let v8_flags_arg = if !v8_flags.is_empty() {
+    Some(format!("--v8-flags={}", v8_flags.join(",")))
+  } else {
+    None
+  };
 
-      let collected = if success {
-        CollectedResult {
-          passed: Some(true),
-          error: None,
-          uses_node_test,
-          ignore_reason: None,
-        }
-      } else {
-        CollectedResult {
-          passed: Some(false),
-          error: Some(ErrorInfo {
-            code: output.status.code(),
-            stderr: Some(truncate_output(&output_text, 2000)),
-            timeout: None,
-            message: None,
-          }),
-          uses_node_test,
-          ignore_reason: None,
-        }
-      };
-      let output_str = format!("{}\n{}", stdout, stderr);
-      (success, collected, output_str)
+  let (success, collected, output_for_error) = if is_pseudo_tty_test {
+    // Run in PTY for pseudo-tty tests (PTY support was already verified above)
+    let deno_exe = util::deno_exe_path();
+    let mut args: Vec<&str> = if uses_node_test {
+      TEST_ARGS.to_vec()
+    } else {
+      RUN_ARGS.to_vec()
+    };
+
+    // Add V8 flags
+    if let Some(ref flags) = v8_flags_arg {
+      args.push(flags);
     }
-    TestOutput::TimedOut => {
-      let collected = CollectedResult {
+
+    // Add inspect flags
+    if cli_args.inspect_brk {
+      args.push("--inspect-brk");
+    }
+    if cli_args.inspect_wait {
+      args.push("--inspect-wait");
+    }
+
+    args.push(&test_path);
+
+    let mut env_vars = std::collections::HashMap::new();
+    env_vars.insert("NODE_TEST_KNOWN_GLOBALS".to_string(), "0".to_string());
+    env_vars.insert("NODE_SKIP_FLAG_CHECK".to_string(), "1".to_string());
+    env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
+    env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+    env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
+    // Inherit current environment
+    for (key, value) in std::env::vars() {
+      env_vars.entry(key).or_insert(value);
+    }
+
+    let pty_output = util::pty::run_in_pty(
+      deno_exe.as_path(),
+      &args,
+      test_suite_path.as_path(),
+      Some(env_vars),
+      timeout,
+    );
+
+    let output_text = String::from_utf8_lossy(&pty_output.output).to_string();
+    let success = pty_output.exit_code == Some(0);
+
+    let collected = if success {
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      }
+    } else {
+      CollectedResult {
         passed: Some(false),
         error: Some(ErrorInfo {
-          code: None,
-          stderr: None,
-          timeout: Some(timeout.as_millis() as u64),
+          code: pty_output.exit_code,
+          stderr: Some(truncate_output(&output_text, 2000)),
+          timeout: if pty_output.exit_code.is_none() {
+            Some(timeout.as_millis() as u64)
+          } else {
+            None
+          },
           message: None,
         }),
         uses_node_test,
         ignore_reason: None,
-      };
-      let output_str =
-        format!("Test timed out after {}ms", timeout.as_millis());
-      (false, collected, output_str)
+      }
+    };
+
+    (success, collected, output_text)
+  } else {
+    // Run normally with piped output
+    let child = cmd.piped_output().spawn().unwrap();
+    let test_output = wait_with_timeout(child, timeout);
+
+    match test_output {
+      TestOutput::Completed(output) => {
+        let success = output.status.success();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let output_text = if uses_node_test {
+          stdout.to_string()
+        } else {
+          stderr.to_string()
+        };
+
+        let collected = if success {
+          CollectedResult {
+            passed: Some(true),
+            error: None,
+            uses_node_test,
+            ignore_reason: None,
+          }
+        } else {
+          CollectedResult {
+            passed: Some(false),
+            error: Some(ErrorInfo {
+              code: output.status.code(),
+              stderr: Some(truncate_output(&output_text, 2000)),
+              timeout: None,
+              message: None,
+            }),
+            uses_node_test,
+            ignore_reason: None,
+          }
+        };
+        let output_str = format!("{}\n{}", stdout, stderr);
+        (success, collected, output_str)
+      }
+      TestOutput::TimedOut => {
+        let collected = CollectedResult {
+          passed: Some(false),
+          error: Some(ErrorInfo {
+            code: None,
+            stderr: None,
+            timeout: Some(timeout.as_millis() as u64),
+            message: None,
+          }),
+          uses_node_test,
+          ignore_reason: None,
+        };
+        let output_str =
+          format!("Test timed out after {}ms", timeout.as_millis());
+        (false, collected, output_str)
+      }
     }
   };
 

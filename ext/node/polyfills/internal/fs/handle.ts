@@ -26,6 +26,7 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
 import { fchmodPromise } from "ext:deno_node/_fs/_fs_fchmod.ts";
 import { fchownPromise } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
@@ -170,6 +171,13 @@ export class FileHandle extends EventEmitter {
 
   writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
     return fsCall(writevPromise, "writev", this, buffers, position);
+  }
+
+  readv(
+    buffers: readonly ArrayBufferView[],
+    position?: number,
+  ): Promise<ReadVResult> {
+    return fsCall(readvPromise, "readv", this, buffers, position);
   }
 
   [kRef]() {

@@ -812,6 +812,7 @@ impl CliFactory {
             self.caches()?.clone(),
             self.cjs_tracker()?.clone(),
             cli_options.clone(),
+            self.compiler_options_resolver()?.clone(),
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
@@ -827,7 +828,6 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
-            self.compiler_options_resolver()?.clone(),
             self.install_reporter()?.cloned().map(|r| {
               r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
             }),
@@ -879,8 +879,14 @@ impl CliFactory {
 
   pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
     let cli_options = self.cli_options()?;
-    if let Some((host, name)) = cli_options.resolve_inspector_server_options() {
-      deno_runtime::deno_inspector_server::create_inspector_server(host, name)?;
+    if let Some((host, name, publish_uid)) =
+      cli_options.resolve_inspector_server_options()
+    {
+      deno_runtime::deno_inspector_server::create_inspector_server(
+        host,
+        name,
+        publish_uid,
+      )?;
     }
     Ok(())
   }

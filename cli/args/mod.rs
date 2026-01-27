@@ -834,14 +834,18 @@ impl CliOptions {
 
   pub fn resolve_inspector_server_options(
     &self,
-  ) -> Option<(SocketAddr, &'static str)> {
+  ) -> Option<(SocketAddr, &'static str, InspectPublishUid)> {
     let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait)?;
 
-    Some((host, DENO_VERSION_INFO.user_agent))
+    Some((
+      host,
+      DENO_VERSION_INFO.user_agent,
+      self.flags.inspect_publish_uid.unwrap_or_default(),
+    ))
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -1320,6 +1324,16 @@ impl CliOptions {
     unstable_features
   }
 
+  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
+  /// This includes features from both CLI flags and config file.
+  pub fn unstable_args(&self) -> Vec<String> {
+    self
+      .unstable_features()
+      .into_iter()
+      .map(|f| format!("--unstable-{}", f))
+      .collect()
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }
@@ -1503,12 +1517,7 @@ pub fn config_to_deno_graph_workspace_member(
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
-    "--js-explicit-resource-management".to_string(),
-    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-    // and its settings.
-    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-    "--no-harmony-import-assertions".to_string(),
+    "--inspector-live-edit".to_string(),
   ]
 }
 

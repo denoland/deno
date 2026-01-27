@@ -37,6 +37,7 @@ members = [
   "libs/inspector_server",
   "libs/maybe_sync",
   "libs/node_resolver",
+  "libs/node_shim",
   "libs/npm_cache",
   "libs/npm_installer",
   "libs/package_json",
@@ -65,24 +66,24 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.380.0" }
+deno_core = { version = "0.381.1" }
 
 deno_cache_dir = "=0.26.3"
-deno_doc = "=0.189.0"
+deno_doc = "=0.189.1"
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.106.0", default-features = false }
 deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.42.3"
+deno_npm = "=0.43.0"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.9.1"
-deno_task_shell = "=0.26.2"
+deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.107.0"
+eszip = "=0.108.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -90,51 +91,52 @@ denokv_remote = "0.13.0"
 denokv_sqlite = { default-features = false, version = "0.13.0" }
 
 # exts
-deno_bundle_runtime = { version = "0.14.0", path = "./ext/bundle" }
-deno_cache = { version = "0.160.0", path = "./ext/cache" }
-deno_cron = { version = "0.107.0", path = "./ext/cron" }
-deno_crypto = { version = "0.241.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.251.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.214.0", path = "./ext/ffi" }
-deno_fs = { version = "0.137.0", path = "./ext/fs" }
-deno_http = { version = "0.225.0", path = "./ext/http" }
-deno_image = { version = "0.3.0", path = "./ext/image" }
-deno_io = { version = "0.137.0", path = "./ext/io" }
-deno_kv = { version = "0.135.0", path = "./ext/kv" }
-deno_napi = { version = "0.158.0", path = "./ext/napi" }
-deno_net = { version = "0.219.0", path = "./ext/net" }
-deno_node = { version = "0.165.0", path = "./ext/node" }
-deno_os = { version = "0.44.0", path = "./ext/os" }
-deno_process = { version = "0.42.0", path = "./ext/process" }
-deno_signals = { version = "0.18.0", path = "./ext/signals" }
-deno_telemetry = { version = "0.49.0", path = "./ext/telemetry" }
-deno_tls = { version = "0.214.0", path = "./ext/tls" }
-deno_web = { version = "0.258.0", path = "./ext/web" }
-deno_webgpu = { version = "0.194.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.227.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.232.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.222.0", path = "./ext/webstorage" }
-denort_helper = { version = "0.25.0", path = "./ext/rt_helper" }
+deno_bundle_runtime = { version = "0.15.0", path = "./ext/bundle" }
+deno_cache = { version = "0.161.0", path = "./ext/cache" }
+deno_cron = { version = "0.108.0", path = "./ext/cron" }
+deno_crypto = { version = "0.242.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.252.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.215.0", path = "./ext/ffi" }
+deno_fs = { version = "0.138.0", path = "./ext/fs" }
+deno_http = { version = "0.226.0", path = "./ext/http" }
+deno_image = { version = "0.4.0", path = "./ext/image" }
+deno_io = { version = "0.138.0", path = "./ext/io" }
+deno_kv = { version = "0.136.0", path = "./ext/kv" }
+deno_napi = { version = "0.159.0", path = "./ext/napi" }
+deno_net = { version = "0.220.0", path = "./ext/net" }
+deno_node = { version = "0.166.0", path = "./ext/node" }
+deno_os = { version = "0.45.0", path = "./ext/os" }
+deno_process = { version = "0.43.0", path = "./ext/process" }
+deno_signals = { version = "0.19.0", path = "./ext/signals" }
+deno_telemetry = { version = "0.50.0", path = "./ext/telemetry" }
+deno_tls = { version = "0.215.0", path = "./ext/tls" }
+deno_web = { version = "0.259.0", path = "./ext/web" }
+deno_webgpu = { version = "0.195.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.228.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.233.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.223.0", path = "./ext/webstorage" }
+denort_helper = { version = "0.26.0", path = "./ext/rt_helper" }
 
 # workspace libraries
-deno_bench_util = { version = "0.221.0", path = "./bench_util" }
-deno_config = { version = "0.77.0", features = ["workspace"], path = "./libs/config" }
-deno_crypto_provider = { version = "0.21.0", path = "./libs/crypto" }
-deno_features = { version = "0.24.0", path = "./runtime/features" }
-deno_inspector_server = { version = "0.1.0", path = "./libs/inspector_server" }
-deno_lib = { version = "0.45.0", path = "./cli/lib" }
-deno_maybe_sync = { version = "0.14.0", path = "./libs/maybe_sync" }
-deno_npm_cache = { version = "0.46.0", path = "./libs/npm_cache" }
-deno_npm_installer = { version = "0.22.0", path = "./libs/npm_installer" }
-deno_package_json = { version = "0.29.0", default-features = false, path = "./libs/package_json" }
-deno_permissions = { version = "0.86.0", path = "./runtime/permissions" }
-deno_resolver = { version = "0.58.0", path = "./libs/resolver" }
-deno_runtime = { version = "0.235.0", path = "./runtime" }
-deno_snapshots = { version = "0.42.0", path = "./cli/snapshot" }
-deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.22.0" }
-deno_typescript_go_client_rust = { version = "0.9.0", path = "./libs/typescript_go_client" }
-napi_sym = { version = "0.157.0", path = "./ext/napi/sym" }
-node_resolver = { version = "0.65.0", path = "./libs/node_resolver" }
+deno_bench_util = { version = "0.222.0", path = "./bench_util" }
+deno_config = { version = "0.78.0", features = ["workspace"], path = "./libs/config" }
+deno_crypto_provider = { version = "0.22.0", path = "./libs/crypto" }
+deno_features = { version = "0.25.0", path = "./runtime/features" }
+deno_inspector_server = { version = "0.2.0", path = "./libs/inspector_server" }
+deno_lib = { version = "0.46.0", path = "./cli/lib" }
+deno_maybe_sync = { version = "0.15.0", path = "./libs/maybe_sync" }
+deno_npm_cache = { version = "0.47.0", path = "./libs/npm_cache" }
+deno_npm_installer = { version = "0.23.0", path = "./libs/npm_installer" }
+deno_package_json = { version = "0.30.0", default-features = false, path = "./libs/package_json" }
+deno_permissions = { version = "0.87.0", path = "./runtime/permissions" }
+deno_resolver = { version = "0.59.0", path = "./libs/resolver" }
+deno_runtime = { version = "0.236.0", path = "./runtime" }
+deno_snapshots = { version = "0.43.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.23.0" }
+deno_typescript_go_client_rust = { version = "0.10.0", path = "./libs/typescript_go_client" }
+napi_sym = { version = "0.158.0", path = "./ext/napi/sym" }
+node_resolver = { version = "0.66.0", path = "./libs/node_resolver" }
+node_shim = { version = "0.3.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 

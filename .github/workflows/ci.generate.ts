@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 90;
+const cacheVersion = 91;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -172,7 +172,7 @@ const cloneRepoSteps = [{
   ].join("\n"),
 }, {
   name: "Clone repository",
-  uses: "actions/checkout@v4",
+  uses: "actions/checkout@v6",
   with: {
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
@@ -192,7 +192,7 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v5",
+  uses: "actions/setup-python@v6",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
@@ -207,7 +207,7 @@ const installPythonSteps = [{
 }];
 const installNodeStep = {
   name: "Install Node",
-  uses: "actions/setup-node@v4",
+  uses: "actions/setup-node@v6",
   with: { "node-version": 18 },
 };
 const installDenoStep = {
@@ -261,7 +261,7 @@ const saveCacheMainStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v2",
+  uses: "google-github-actions/auth@v3",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -579,7 +579,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v2",
+          uses: "google-github-actions/setup-gcloud@v3",
           with: {
             project_id: "denoland",
           },
@@ -686,7 +686,7 @@ const ci = {
         },
         {
           name: "Set up playwright cache",
-          uses: "actions/cache@v4",
+          uses: "actions/cache@v5",
           with: {
             path: "./.ms-playwright",
             key: "playwright-${{ runner.os }}-${{ runner.arch }}",
@@ -765,7 +765,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          uses: "actions/upload-artifact@v4",
+          uses: "actions/upload-artifact@v6",
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
@@ -1169,7 +1169,7 @@ const ci = {
         },
         {
           name: "Upload release to GitHub",
-          uses: "softprops/action-gh-release@v0.1.15",
+          uses: "softprops/action-gh-release@v2",
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",

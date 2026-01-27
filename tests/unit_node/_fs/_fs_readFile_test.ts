@@ -2,7 +2,14 @@
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { existsSync, promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
-import { assert, assertEquals, assertMatch } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  assertRejects,
+  assertThrows,
+} from "@std/assert";
+import { open, readFile as readFilePromise } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
@@ -203,6 +210,30 @@ Deno.test("fs.readFile creates new file when passed 'w+' flag", async () => {
   assert(existsSync(filePath));
   Deno.removeSync(tmpDir, { recursive: true });
 });
+
+Deno.test(
+  "fs.readFile throws ERR_INVALID_ARG_TYPE when path is undefined (e.g. fd.name)",
+  async () => {
+    const fh = await open(testData, "r");
+
+    try {
+      // Simulate user code that passes `fd.name` (which is undefined) into readFile
+      const name = (fh as { name?: unknown }).name;
+
+      // Check async (promises) variant rejects with ERR_INVALID_ARG_TYPE
+      const err = await assertRejects(async () => {
+        await readFilePromise(name as unknown as string);
+      });
+      const errObj = err as { code?: string };
+      assertEquals(errObj.code, "ERR_INVALID_ARG_TYPE");
+
+      // Also check sync variant throws the proper TypeError
+      assertThrows(() => readFileSync(name as unknown as string), TypeError);
+    } finally {
+      await fh.close();
+    }
+  },
+);
 
 Deno.test("fs.readFileSync creates new file when passed 'w+' flag", () => {
   const tmpDir = Deno.makeTempDirSync();
