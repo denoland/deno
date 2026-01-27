@@ -39,7 +39,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
         } else if IS_RC {
           ReleaseChannel::Rc
         } else {
-          ReleaseChannel::Stable
+          ReleaseChannel::Lts
         }
       });
 
@@ -49,7 +49,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
     } else if IS_RC {
       ReleaseChannel::Rc
     } else {
-      ReleaseChannel::Stable
+      ReleaseChannel::Lts
     };
 
     DenoVersionInfo {

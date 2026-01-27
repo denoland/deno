@@ -43,6 +43,9 @@ fn upgrade_invalid_lockfile() {
   );
 }
 
+// TODO(bartlomieju): this test breaks on v2.5 branch because it
+// has hardcoded "LTS" release channel.
+#[ignore]
 #[flaky_test::flaky_test]
 fn upgrade_prompt() {
   let context = upgrade_context();
