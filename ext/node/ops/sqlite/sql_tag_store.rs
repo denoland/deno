@@ -175,6 +175,8 @@ pub struct SQLTagStore {
   return_arrays: bool,
   use_big_ints: bool,
   db_object: v8::Global<v8::Object>,
+  is_iter_finished: Cell<bool>,
+  iter_sql: RefCell<String>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -203,6 +205,8 @@ impl SQLTagStore {
       return_arrays,
       use_big_ints,
       db_object,
+      is_iter_finished: Cell::new(true),
+      iter_sql: RefCell::new(String::new()),
     }
   }
 
@@ -509,36 +513,23 @@ impl SQLTagStore {
       stmt.bind_params(scope, args, 1)?;
     }
 
-    // Create an iterator object with next and return methods
-    // Store context needed for iteration
-    // TODO: Check if this struct may never be dropped
-    struct IterContext {
-      sql: String,
-      done: Cell<bool>,
-    }
-
-    let iter_context = Box::new(IterContext {
-      sql: sql.clone(),
-      done: Cell::new(false),
-    });
+    *self.iter_sql.borrow_mut() = sql;
+    self.is_iter_finished.set(false);
 
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         fargs: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
       let data = v8::Local::<v8::External>::try_from(fargs.data())
         .expect("Iterator#next expected external data");
-      // SAFETY: `data` contains our iter context
-      let (ctx, store) = unsafe {
-        let pair = data.value() as *mut (IterContext, *const SQLTagStore);
-        (&(*pair).0, &*(*pair).1)
-      };
+      // SAFETY: `data` is a valid pointer to a SQLTagStore instance
+      let store = unsafe { &*(data.value() as *const SQLTagStore) };
 
       let names = &[
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
-      if ctx.done.get() {
+      if store.is_iter_finished.get() {
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
@@ -549,7 +540,8 @@ impl SQLTagStore {
       }
 
       let result = {
-        let stmt = store.get_cached_statement(&ctx.sql);
+        let sql = store.iter_sql.borrow();
+        let stmt = store.get_cached_statement(&sql);
         stmt.read_row(scope)
       };
 
@@ -563,9 +555,10 @@ impl SQLTagStore {
           rv.set(result.into());
         }
         Ok(None) | Err(_) => {
-          ctx.done.set(true);
+          store.is_iter_finished.set(true);
           let _ = {
-            let stmt = store.get_cached_statement(&ctx.sql);
+            let sql = store.iter_sql.borrow();
+            let stmt = store.get_cached_statement(&sql);
             stmt.reset()
           };
           let values =
@@ -584,15 +577,13 @@ impl SQLTagStore {
                           mut rv: v8::ReturnValue| {
       let data = v8::Local::<v8::External>::try_from(fargs.data())
         .expect("Iterator#return expected external data");
-      // SAFETY: `data` contains our iter context
-      let (ctx, store) = unsafe {
-        let pair = data.value() as *mut (IterContext, *const SQLTagStore);
-        (&(*pair).0, &*(*pair).1)
-      };
+      // SAFETY: `data` is a valid pointer to a SQLTagStore instance
+      let store = unsafe { &*(data.value() as *const SQLTagStore) };
 
-      ctx.done.set(true);
+      store.is_iter_finished.set(true);
       let _ = {
-        let stmt = store.get_cached_statement(&ctx.sql);
+        let sql = store.iter_sql.borrow();
+        let stmt = store.get_cached_statement(&sql);
         stmt.reset()
       };
 
@@ -608,10 +599,7 @@ impl SQLTagStore {
       rv.set(result.into());
     };
 
-    let combined = Box::new((*iter_context, self as *const _));
-    let combined_ptr = Box::into_raw(combined);
-
-    let external = v8::External::new(scope, combined_ptr as _);
+    let external = v8::External::new(scope, self as *const _ as _);
     let next_func = v8::Function::builder(iterate_next)
       .data(external.into())
       .build(scope)
