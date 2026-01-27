@@ -162,9 +162,9 @@ impl Predicate {
   pub fn new_github_actions() -> Result<Self, AnyError> {
     let repo = std::env::var("GITHUB_REPOSITORY")
       .map_err(|_| anyhow::anyhow!("GITHUB_REPOSITORY environment variable is not set"))?;
-    let rel_ref = std::env::var("GITHUB_WORKFLOW_REF")
-      .unwrap_or_default()
-      .replace(&format!("{}/", &repo), "");
+    let workflow_ref_raw = std::env::var("GITHUB_WORKFLOW_REF")
+      .map_err(|_| anyhow::anyhow!("GITHUB_WORKFLOW_REF environment variable is not set"))?;
+    let rel_ref = workflow_ref_raw.replace(&format!("{}/", &repo), "");
 
     let delimn = rel_ref.find('@').ok_or_else(|| {
       anyhow::anyhow!(
