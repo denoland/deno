@@ -1755,6 +1755,33 @@ impl WorkspaceDirectory {
       .or(self.pkg_json.root.as_ref())
   }
 
+  /// Resolve plugin specifiers from config, making paths relative to config file.
+  pub fn resolve_plugins_config(&self) -> Result<Vec<String>, url::ParseError> {
+    let Some(deno_json) = self.member_or_root_deno_json() else {
+      return Ok(vec![]);
+    };
+
+    let Some(plugins) = deno_json.to_plugins_config() else {
+      return Ok(vec![]);
+    };
+
+    let config_dir = deno_json.specifier.join(".")?;
+    let mut resolved = Vec::new();
+
+    for plugin in plugins {
+      if plugin.starts_with("./") || plugin.starts_with("../") {
+        // Resolve relative path against config file location
+        let resolved_url = config_dir.join(plugin)?;
+        resolved.push(resolved_url.to_string());
+      } else {
+        // Keep absolute paths, npm:, jsr:, https:// as-is
+        resolved.push(plugin.clone());
+      }
+    }
+
+    Ok(resolved)
+  }
+
   pub fn maybe_package_config(
     self: &WorkspaceDirectoryRc,
   ) -> Option<JsrPackageConfig> {

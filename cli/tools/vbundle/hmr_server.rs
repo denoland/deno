@@ -29,6 +29,7 @@ use super::hmr_types::HmrModuleInfo;
 use super::hmr_types::HmrModuleUpdate;
 use super::hmr_types::HmrUpdatePayload;
 use super::source_graph::SharedSourceGraph;
+use super::virtual_fs::BundlerVirtualFS;
 
 /// HMR Module Graph for tracking dependencies and computing update boundaries.
 #[derive(Debug, Default)]
@@ -209,6 +210,8 @@ pub struct HmrServer {
   file_change_rx: Option<UnboundedReceiver<Vec<PathBuf>>>,
   /// The source graph (for looking up module info).
   source_graph: SharedSourceGraph,
+  /// Optional VFS for re-transforming files through plugins.
+  vfs: Option<Arc<BundlerVirtualFS>>,
 }
 
 impl HmrServer {
@@ -229,6 +232,29 @@ impl HmrServer {
       broadcast_tx,
       file_change_rx: Some(file_change_rx),
       source_graph,
+      vfs: None,
+    }
+  }
+
+  /// Create a new HMR server with VFS for plugin transformation.
+  pub fn new_with_vfs(
+    config: HmrConfig,
+    source_graph: SharedSourceGraph,
+    vfs: Arc<BundlerVirtualFS>,
+    file_change_rx: UnboundedReceiver<Vec<PathBuf>>,
+  ) -> Self {
+    let hmr_graph = Arc::new(RwLock::new(HmrModuleGraph::from_source_graph(
+      &source_graph,
+    )));
+    let (broadcast_tx, _) = broadcast::channel(256);
+
+    Self {
+      config,
+      hmr_graph,
+      broadcast_tx,
+      file_change_rx: Some(file_change_rx),
+      source_graph,
+      vfs: Some(vfs),
     }
   }
 
@@ -251,6 +277,48 @@ impl HmrServer {
   pub fn handle_file_change(&self, paths: &[PathBuf]) -> Vec<HmrEvent> {
     let specifiers: Vec<ModuleSpecifier> =
       paths.iter().filter_map(path_to_specifier).collect();
+
+    self.handle_specifier_change(&specifiers)
+  }
+
+  /// Handle a file change notification with plugin re-transformation.
+  ///
+  /// This invalidates the VFS cache for changed files and reloads them
+  /// through the plugin pipeline, then computes HMR events.
+  pub async fn handle_file_change_with_plugins(
+    &self,
+    paths: &[PathBuf],
+  ) -> Vec<HmrEvent> {
+    let specifiers: Vec<ModuleSpecifier> =
+      paths.iter().filter_map(path_to_specifier).collect();
+
+    // If we have a VFS, invalidate and reload changed files
+    if let Some(vfs) = &self.vfs {
+      for specifier in &specifiers {
+        // Invalidate the VFS cache
+        vfs.invalidate(specifier);
+
+        // Reload the module through the VFS (triggers plugin hooks)
+        match vfs.load(specifier).await {
+          Ok(transformed) => {
+            // Update the source graph with the new content
+            let mut module = super::source_graph::SourceModule::new(
+              specifier.clone(),
+              transformed.code.clone(),
+              transformed.media_type,
+            );
+            module.transformed = Some(transformed);
+
+            // Update the source graph
+            self.source_graph.write().update_module(module);
+            log::debug!("Reloaded module through VFS: {}", specifier);
+          }
+          Err(e) => {
+            log::error!("Failed to reload module {}: {}", specifier, e);
+          }
+        }
+      }
+    }
 
     self.handle_specifier_change(&specifiers)
   }
@@ -596,6 +664,7 @@ mod tests {
         broadcast_tx: broadcast::channel(16).0,
         file_change_rx: Some(file_rx),
         source_graph: self.source_graph.clone(),
+        vfs: None,
       };
 
       // Convert specifier strings to ModuleSpecifiers
@@ -616,6 +685,7 @@ mod tests {
         broadcast_tx: broadcast::channel(16).0,
         file_change_rx: Some(file_rx),
         source_graph: self.source_graph.clone(),
+        vfs: None,
       };
       (server, self.file_change_tx.clone())
     }

@@ -50,10 +50,14 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 
 use crate::args::Flags;
 use crate::args::VbundleFlags;
 use crate::factory::CliFactory;
+use crate::util::file_watcher::PrintConfig;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod chunk_graph;
 pub mod emitter;
@@ -118,6 +122,20 @@ pub async fn vbundle(
   flags: Arc<Flags>,
   vbundle_flags: VbundleFlags,
 ) -> Result<(), AnyError> {
+  if vbundle_flags.hmr {
+    // Use file watcher for HMR mode
+    return vbundle_with_watcher(flags, vbundle_flags).await;
+  }
+
+  // One-shot build mode
+  vbundle_once(flags, vbundle_flags).await
+}
+
+/// One-shot build mode (no file watching).
+async fn vbundle_once(
+  flags: Arc<Flags>,
+  vbundle_flags: VbundleFlags,
+) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
 
@@ -134,11 +152,16 @@ pub async fn vbundle(
     return Err(deno_core::anyhow::anyhow!("No entry points specified"));
   }
 
-  // Parse plugin specifiers
-  let plugin_specifiers: Vec<ModuleSpecifier> = vbundle_flags
-    .plugins
+  // Merge config plugins with CLI plugins
+  let all_plugins = cli_options.resolve_plugins(&vbundle_flags.plugins)?;
+
+  let plugin_specifiers: Vec<ModuleSpecifier> = all_plugins
     .iter()
-    .map(|p| deno_path_util::resolve_url_or_path(p, cli_options.initial_cwd()))
+    .map(|p| {
+      // Try parsing as URL first (for already-resolved config paths)
+      ModuleSpecifier::parse(p)
+        .or_else(|_| deno_path_util::resolve_url_or_path(p, cli_options.initial_cwd()))
+    })
     .collect::<Result<Vec<_>, _>>()?;
 
   // Create the build configuration
@@ -294,6 +317,297 @@ pub async fn vbundle(
       log::info!("  {} ({} bytes)", chunk.file_name, chunk.code.len());
     }
   }
+
+  // Shutdown plugin host
+  if let Some(host) = maybe_plugin_host {
+    host.shutdown().await?;
+  }
+
+  Ok(())
+}
+
+/// HMR mode with file watching.
+///
+/// This function uses the file watcher infrastructure to:
+/// 1. Build the initial source graph with plugins
+/// 2. Emit chunks with HMR runtime
+/// 3. Start the HMR WebSocket server
+/// 4. Watch for file changes
+/// 5. Re-transform changed files through plugins
+/// 6. Send HMR updates to connected clients
+async fn vbundle_with_watcher(
+  flags: Arc<Flags>,
+  vbundle_flags: VbundleFlags,
+) -> Result<(), AnyError> {
+  let mut print_config = PrintConfig::new_with_banner("HMR", "VBundle", true);
+  print_config.print_finished = false;
+
+  crate::util::file_watcher::watch_recv(
+    flags,
+    print_config,
+    WatcherRestartMode::Manual,
+    move |flags, watcher_communicator, changed_paths| {
+      let vbundle_flags = vbundle_flags.clone();
+      Ok(async move {
+        vbundle_inner(flags, vbundle_flags, watcher_communicator, changed_paths)
+          .await
+      })
+    },
+  )
+  .boxed_local()
+  .await
+}
+
+/// Inner build logic for HMR mode.
+///
+/// This is called by the watcher on initial build and on each file change.
+async fn vbundle_inner(
+  flags: Arc<Flags>,
+  vbundle_flags: VbundleFlags,
+  watcher_communicator: Arc<WatcherCommunicator>,
+  changed_paths: Option<Vec<PathBuf>>,
+) -> Result<(), AnyError> {
+  // Show what changed if this is a rebuild
+  watcher_communicator.show_path_changed(changed_paths.clone());
+
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+
+  // Parse entry points
+  let entry_points: Vec<ModuleSpecifier> = vbundle_flags
+    .files
+    .include
+    .iter()
+    .map(|f| deno_path_util::resolve_url_or_path(f, cli_options.initial_cwd()))
+    .collect::<Result<Vec<_>, _>>()?;
+
+  if entry_points.is_empty() {
+    log::error!("No entry points specified");
+    return Err(deno_core::anyhow::anyhow!("No entry points specified"));
+  }
+
+  // Merge config plugins with CLI plugins
+  let all_plugins = cli_options.resolve_plugins(&vbundle_flags.plugins)?;
+
+  let plugin_specifiers: Vec<ModuleSpecifier> = all_plugins
+    .iter()
+    .map(|p| {
+      ModuleSpecifier::parse(p)
+        .or_else(|_| deno_path_util::resolve_url_or_path(p, cli_options.initial_cwd()))
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+
+  // Create the build configuration
+  let config = BuildConfig {
+    entry_points: entry_points.clone(),
+    out_dir: vbundle_flags
+      .out_dir
+      .clone()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| PathBuf::from("dist")),
+    sourcemap: !vbundle_flags.no_sourcemap,
+    minify: vbundle_flags.minify,
+    environments: parse_environments(&vbundle_flags.environments),
+    plugins: plugin_specifiers.clone(),
+  };
+
+  log::info!(
+    "Starting vbundle HMR with {} entry points",
+    config.entry_points.len()
+  );
+
+  // Create plugin host if there are plugins
+  let maybe_plugin_host = if !plugin_specifiers.is_empty() {
+    let logger = PluginLogger::new(|msg, is_error| {
+      if is_error {
+        eprintln!("{}", msg);
+      } else {
+        println!("{}", msg);
+      }
+    });
+    let host =
+      create_runner_and_load_plugins(plugin_specifiers.clone(), logger).await?;
+    log::info!("Loaded {} plugins", host.get_plugins().len());
+    Some(Arc::new(host))
+  } else {
+    None
+  };
+
+  // Create VFS with plugins
+  let vfs = {
+    let mut builder = VfsBuilder::new()
+      .enable_cache(true)
+      .source_maps(!vbundle_flags.no_sourcemap);
+
+    if let Some(host) = &maybe_plugin_host {
+      for plugin_info in host.get_plugins() {
+        if !plugin_info.extensions.is_empty() {
+          builder = builder.register_extensions(
+            &plugin_info.name,
+            plugin_info.extensions.clone(),
+          );
+        }
+      }
+      builder = builder.plugin_host(host.clone());
+    }
+
+    Arc::new(builder.build())
+  };
+
+  log::info!(
+    "VFS initialized with {} extension handlers",
+    vfs.extension_handler_count()
+  );
+
+  // Build the source module graph using VFS
+  let graph = build_source_graph(&config, &vfs).await?;
+
+  if graph.read().has_errors() {
+    for error in graph.read().errors() {
+      log::error!("Error loading {}: {}", error.specifier, error.message);
+    }
+    return Err(deno_core::anyhow::anyhow!("Failed to build module graph"));
+  }
+
+  log::info!(
+    "Built source graph with {} modules",
+    graph.read().module_count()
+  );
+
+  // Register paths to watch: entry points and all discovered dependencies
+  let watch_paths: Vec<PathBuf> = graph
+    .read()
+    .modules()
+    .filter_map(|m| m.specifier.to_file_path().ok())
+    .collect();
+
+  if !watch_paths.is_empty() {
+    let _ = watcher_communicator.watch_paths(watch_paths);
+  }
+
+  // Also watch plugin files
+  let plugin_paths: Vec<PathBuf> = plugin_specifiers
+    .iter()
+    .filter_map(|s| s.to_file_path().ok())
+    .collect();
+
+  if !plugin_paths.is_empty() {
+    let _ = watcher_communicator.watch_paths(plugin_paths);
+  }
+
+  // Configure HMR
+  let mut hmr_config = hmr_types::HmrConfig::default();
+  if let Some(port) = vbundle_flags.hmr_port {
+    hmr_config = hmr_config.with_port(port);
+  }
+
+  // Parse build mode
+  let build_mode = match vbundle_flags.mode.as_deref() {
+    Some("production") => emitter::BuildMode::Production,
+    _ => emitter::BuildMode::Development,
+  };
+
+  // Parse custom environment variables
+  let mut env_vars = std::collections::HashMap::new();
+  for define in &vbundle_flags.define {
+    if let Some((key, value)) = define.split_once('=') {
+      env_vars.insert(key.to_string(), value.to_string());
+    }
+  }
+
+  let emitter_config = EmitterConfig {
+    source_maps: config.sourcemap,
+    minify: config.minify,
+    out_dir: config.out_dir.clone(),
+    mode: build_mode,
+    env_vars,
+    hmr: true,
+    hmr_config: Some(hmr_config.clone()),
+  };
+
+  // Code splitting and chunk generation
+  let splitter_config = SplitterConfig::default();
+  let splitter = CodeSplitter::new(&graph, splitter_config);
+
+  // Generate chunks for each environment
+  for env in &config.environments {
+    log::info!("Splitting modules for environment '{}'", env);
+
+    let mut chunk_graph = splitter.split(env);
+    log::info!(
+      "Created {} chunks for environment '{}'",
+      chunk_graph.chunk_count(),
+      env
+    );
+
+    // Emit the chunks
+    let emitter = ChunkEmitter::new(&graph, emitter_config.clone());
+    let emitted = emitter.emit_all(&mut chunk_graph)?;
+
+    // Write to disk
+    emitter.write_to_disk(&emitted)?;
+
+    log::info!(
+      "Emitted {} files to {}",
+      emitted.len(),
+      config.out_dir.display()
+    );
+
+    for chunk in emitted {
+      log::info!("  {} ({} bytes)", chunk.file_name, chunk.code.len());
+    }
+  }
+
+  // Create HMR server with VFS for plugin re-transformation
+  let (file_change_tx, file_change_rx) = hmr_server::create_file_change_channel();
+  let mut hmr_server =
+    HmrServer::new_with_vfs(hmr_config.clone(), graph.clone(), vfs.clone(), file_change_rx);
+
+  log::info!(
+    "HMR server listening on ws://{}:{}",
+    hmr_config.host,
+    hmr_config.port
+  );
+
+  // Run the HMR event loop - wait for file changes and process them
+  loop {
+    // Wait for file change notification from the watcher
+    let maybe_changed = watcher_communicator.watch_for_changed_paths().await;
+
+    match maybe_changed {
+      Ok(Some(paths)) => {
+        log::debug!("HMR received file changes: {:?}", paths);
+
+        // Send file changes to HMR server for processing
+        let _ = file_change_tx.unbounded_send(paths.clone());
+
+        // Handle file changes with plugin re-transformation
+        let events = hmr_server.handle_file_change_with_plugins(&paths).await;
+
+        // Broadcast HMR events to connected clients
+        for event in events {
+          hmr_server.broadcast(event);
+        }
+
+        // Re-emit affected chunks
+        // For a full implementation, we'd need to track which chunks
+        // are affected by the changed modules and only re-emit those.
+        // For now, we invalidate and rebuild on the next iteration.
+      }
+      Ok(None) => {
+        // No specific paths, general restart requested
+        log::debug!("HMR received restart signal");
+        break;
+      }
+      Err(_) => {
+        // Channel closed, exit
+        break;
+      }
+    }
+  }
+
+  // Shutdown HMR server
+  hmr_server.shutdown();
 
   // Shutdown plugin host
   if let Some(host) = maybe_plugin_host {

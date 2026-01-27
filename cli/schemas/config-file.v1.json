@@ -967,6 +967,13 @@
       "description": "Named permission sets that can be selected with -P/--permission-set or referenced in \"test\", \"bench\", or \"compile\" permissions. A special name \"default\" is used when -P is passed without a value.",
       "additionalProperties": { "$ref": "#/$defs/permissionSet" }
     },
+    "plugins": {
+      "type": "array",
+      "description": "List of vbundle plugins to load. Can be file paths, npm:, jsr:, or URL specifiers.",
+      "items": {
+        "type": "string"
+      }
+    },
     "patch": {
       "type": "array",
       "items": {

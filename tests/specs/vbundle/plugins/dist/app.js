@@ -9,13 +9,15 @@ if (typeof globalThis !== "undefined") {
   globalThis.__VBUNDLE_ENV__ = __env__;
 }
 
-// Module: file:///Users/marvinh/dev/denoland/deno/tests/specs/vbundle/plugins/main.ts
+// Module: file:///Users/marvinh/dev/denoland/deno/tests/specs/vbundle/plugins/app.ts
 var __module_0__ = (function(exports, module) {
-  // Simple entry point for basic vbundle test
-  export function greet(name) {
-    return `Hello, ${name}!`;
+  // Entry point for transform plugin test
+  const DEBUG = false;
+  const VERSION = "1.0.0";
+  if (DEBUG) {
+    console.log(`App version: ${VERSION}`);
   }
-  console.log(greet("World"));
+  export { DEBUG, VERSION };
 return module.exports;
 })(Object.create(null), { exports: Object.create(null) });
 

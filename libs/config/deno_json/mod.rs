@@ -1093,6 +1093,7 @@ pub struct ConfigFileJson {
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
+  pub plugins: Option<Vec<String>>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
@@ -1441,6 +1442,11 @@ impl ConfigFile {
         self.specifier
       ),
     }
+  }
+
+  /// Get the plugins configuration.
+  pub fn to_plugins_config(&self) -> Option<&Vec<String>> {
+    self.json.plugins.as_ref()
   }
 
   pub fn to_import_map_specifier(

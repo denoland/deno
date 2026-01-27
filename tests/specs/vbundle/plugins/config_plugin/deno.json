@@ -1,0 +1,3 @@
+{
+  "plugins": ["./test_plugin.ts"]
+}

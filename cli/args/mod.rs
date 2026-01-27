@@ -539,6 +539,17 @@ impl CliOptions {
     &self.start_dir.workspace
   }
 
+  /// Get plugins from config merged with CLI flags.
+  /// Config plugins come first, then CLI flags are appended.
+  pub fn resolve_plugins(
+    &self,
+    cli_plugins: &[String],
+  ) -> Result<Vec<String>, AnyError> {
+    let mut plugins = self.start_dir.resolve_plugins_config()?;
+    plugins.extend(cli_plugins.iter().cloned());
+    Ok(plugins)
+  }
+
   pub fn graph_kind(&self) -> GraphKind {
     match self.sub_command() {
       DenoSubcommand::Add(_) => GraphKind::All,

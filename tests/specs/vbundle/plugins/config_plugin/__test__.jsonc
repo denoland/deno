@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "vbundle_plugin_from_config": {
+      "args": "vbundle entry.ts",
+      "output": "[WILDCARD]Loaded 1 plugins[WILDCARD]\nEmitted 1 files to dist\n[WILDCARD]",
+      "exitCode": 0
+    },
+    "vbundle_plugin_merged_config_and_cli": {
+      "args": "vbundle --plugin ../custom_plugin.ts entry.ts",
+      "output": "[WILDCARD]Loaded 2 plugins[WILDCARD]\nEmitted 1 files to dist\n[WILDCARD]",
+      "exitCode": 0
+    }
+  }
+}

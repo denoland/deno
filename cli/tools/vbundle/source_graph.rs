@@ -286,6 +286,14 @@ impl SourceModuleGraph {
     self.modules.len()
   }
 
+  /// Update a module with new transformed content.
+  ///
+  /// This is used by HMR to update modules when they are re-transformed
+  /// after a file change.
+  pub fn update_module(&mut self, module: SourceModule) {
+    self.modules.insert(module.specifier.clone(), module);
+  }
+
   /// Get modules for a specific environment.
   pub fn modules_for_env(
     &self,
