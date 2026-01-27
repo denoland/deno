@@ -2,7 +2,7 @@
 import { join } from "@std/path";
 
 const testDir = new URL(".", import.meta.url).pathname;
-const socketPath = join(Deno.createTempDirSync(), "test.sock");
+const socketPath = join(Deno.makeTempDirSync(), "test.sock");
 
 // Start the server in background
 const serverEnv = { TEST_SOCKET_PATH: socketPath };

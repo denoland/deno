@@ -1,7 +1,7 @@
 import { join } from "@std/path";
 
 const testDir = new URL(".", import.meta.url).pathname;
-const tempDir = Deno.createTempDirSync();
+const tempDir = Deno.makeTempDirSync();
 const cronSocketPath = join(tempDir, "cron.sock");
 const controlSocketPath = join(tempDir, "control.sock");
 
@@ -112,7 +112,7 @@ async function readControlMessages() {
         console.error("[CRON SERVER] Sent rejection");
 
         // Wait to ensure no more registrations arrive
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Read side is closed by Deno. We cannot close the whole connection here because we are still reading
         // in the readCronMessages loop

@@ -445,10 +445,7 @@ impl CronHandler for SocketCronHandler {
 
   fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
     if let Some(reason) = self.reject_reason.get() {
-      return Err(CronError::SocketError(format!(
-        "Service not accepting new cron registrations: {}",
-        reason
-      )));
+      return Err(CronError::RejectedError(reason.clone()));
     }
 
     let (invocation_tx, invocation_rx) = mpsc::channel::<Traceparent>(1);

@@ -84,8 +84,11 @@ pub enum CronError {
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
   #[class(generic)]
-  #[error("Socket error: {0}")]
+  #[error("Cron socket error: {0}")]
   SocketError(String),
+  #[class(generic)]
+  #[error("Error registering cron: {0}")]
+  RejectedError(String),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
