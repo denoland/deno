@@ -60,7 +60,6 @@ unsafe impl GarbageCollected for GPUCanvasContext {
 #[op2]
 impl GPUCanvasContext {
   #[getter]
-  #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
     self.canvas.clone()
   }
@@ -117,7 +116,6 @@ impl GPUCanvasContext {
     todo!()
   }
 
-  #[global]
   fn get_current_texture(
     &self,
     scope: &mut v8::PinScope<'_, '_>,

@@ -67,7 +67,6 @@ unsafe impl GarbageCollected for ImageBitmapRenderingContext {
 #[op2]
 impl ImageBitmapRenderingContext {
   #[getter]
-  #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
     self.canvas.clone()
   }

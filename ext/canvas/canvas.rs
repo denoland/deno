@@ -115,7 +115,6 @@ impl OffscreenCanvas {
     }
   }
 
-  #[global]
   fn get_context<'s>(
     &self,
     #[this] this: v8::Global<v8::Object>,
