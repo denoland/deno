@@ -6,7 +6,9 @@ export default {
         return {
           Program(node) {
             const comments = node.comments;
-            const values = comments.map((c: Deno.lint.LineComment | Deno.lint.BlockComment) => c.value.trim());
+            const values = comments.map((
+              c: Deno.lint.LineComment | Deno.lint.BlockComment,
+            ) => c.value.trim());
             console.log(`${ctx.filename}: ${JSON.stringify(values)}`);
           },
         };
