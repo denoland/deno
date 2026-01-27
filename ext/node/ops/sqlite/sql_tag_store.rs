@@ -265,8 +265,7 @@ impl SQLTagStore {
 
     {
       let mut cache = self.cache.borrow_mut();
-      if cache.exists(&sql) {
-        let stmt = cache.get_mut(&sql).unwrap();
+      if let Some(stmt) = cache.get_mut(&sql) {
         if !stmt.is_finalized() {
           // Update settings from store
           stmt.return_arrays = self.return_arrays;
@@ -462,8 +461,7 @@ impl SQLTagStore {
 
     {
       let mut cache = self.cache.borrow_mut();
-      if cache.exists(&sql) {
-        let stmt = cache.get_mut(&sql).unwrap();
+      if let Some(stmt) = cache.get_mut(&sql) {
         if stmt.is_finalized() {
           cache.erase(&sql);
         }
