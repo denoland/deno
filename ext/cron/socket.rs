@@ -21,8 +21,9 @@ use crate::CronSpec;
 
 pub struct SocketCronHandler {
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
-  task_handle: deno_core::unsync::JoinHandle<()>,
+  socket_task_handle: deno_core::unsync::JoinHandle<()>,
   socket_task_exit_error: Rc<OnceCell<CronError>>,
+  reject_reason: Rc<OnceCell<String>>,
 }
 
 // Commands sent to the socket task
@@ -53,29 +54,37 @@ struct CronRegistration<'a> {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 enum InboundMessage {
   Invoke { name: String },
+  RejectNewCrons { reason: String },
 }
 
 impl SocketCronHandler {
   pub fn new(socket_addr: String) -> Self {
-    let (cmd_tx, cmd_rx) = mpsc::channel(32);
-    let exit_error = Rc::new(OnceCell::new());
-    let task =
-      spawn(Self::socket_task(socket_addr, cmd_rx, exit_error.clone()));
+    let (socket_task_tx, socket_task_rx) = mpsc::channel(32);
+    let socket_task_exit_error = Rc::new(OnceCell::new());
+    let reject_reason = Rc::new(OnceCell::new());
+    let socket_task_handle = spawn(Self::socket_task(
+      socket_addr,
+      socket_task_rx,
+      socket_task_exit_error.clone(),
+      reject_reason.clone(),
+    ));
 
     Self {
-      socket_task_tx: cmd_tx,
-      task_handle: task,
-      socket_task_exit_error: exit_error,
+      socket_task_tx,
+      socket_task_handle,
+      socket_task_exit_error,
+      reject_reason,
     }
   }
 
   async fn socket_task(
     socket_addr: String,
-    mut cmd_rx: mpsc::Receiver<SocketTaskCommand>,
+    mut socket_task_rx: mpsc::Receiver<SocketTaskCommand>,
     exit_error: Rc<OnceCell<CronError>>,
+    reject_reason: Rc<OnceCell<String>>,
   ) {
     let mut invocation_senders = HashMap::new();
     let stream = match connect_to_socket(&socket_addr).await {
@@ -90,16 +99,16 @@ impl SocketCronHandler {
     };
 
     let (reader, writer) = tokio::io::split(stream);
-    let mut reader = BufReader::new(reader).lines();
-    let mut writer = BufWriter::new(writer);
+    let mut socket_reader = BufReader::new(reader).lines();
+    let mut socket_writer = BufWriter::new(writer);
 
     loop {
       tokio::select! {
-        Some(cmd) = cmd_rx.recv() => {
+        Some(cmd) = socket_task_rx.recv() => {
           match cmd {
             SocketTaskCommand::RegisterCron { spec, invocation_tx } => {
               invocation_senders.insert(spec.name.clone(), invocation_tx);
-              if let Err(e) = register_cron(&mut writer, &spec).await {
+              if let Err(e) = register_cron(&mut socket_writer, &spec).await {
                 let _ = exit_error.set(CronError::SocketError(format!(
                   "Failed to send cron registration: {}",
                   e
@@ -108,7 +117,7 @@ impl SocketCronHandler {
               }
             }
             SocketTaskCommand::SendResult { name, success } => {
-              if let Err(e) = send_execution_result(&mut writer, &name, success).await {
+              if let Err(e) = send_execution_result(&mut socket_writer, &name, success).await {
                 let _ = exit_error.set(CronError::SocketError(format!(
                   "Failed to send execution result: {}",
                   e
@@ -119,10 +128,10 @@ impl SocketCronHandler {
           }
         }
 
-        result = reader.next_line() => {
+        result = socket_reader.next_line() => {
           match result {
             Ok(Some(line)) => {
-              let _ = handle_invocation_message(&line, &invocation_senders);
+              let _ = handle_invocation_message(&line, &invocation_senders, &reject_reason);
             }
             Ok(None) => {
               let _ = exit_error.set(CronError::SocketError(
@@ -146,7 +155,7 @@ impl SocketCronHandler {
 
 impl Drop for SocketCronHandler {
   fn drop(&mut self) {
-    self.task_handle.abort();
+    self.socket_task_handle.abort();
   }
 }
 
@@ -356,7 +365,7 @@ async fn connect_to_socket(
 }
 
 async fn register_cron(
-  writer: &mut BufWriter<impl tokio::io::AsyncWrite + Unpin>,
+  socket_writer: &mut BufWriter<impl tokio::io::AsyncWrite + Unpin>,
   spec: &CronSpec,
 ) -> Result<(), std::io::Error> {
   let cron = CronRegistration {
@@ -367,25 +376,25 @@ async fn register_cron(
 
   let msg = OutboundMessage::Register { crons: &[cron] };
 
-  let mut json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
-  json.push('\n');
-  writer.write_all(json.as_bytes()).await?;
-  writer.flush().await?;
+  let json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
+  socket_writer.write_all(json.as_bytes()).await?;
+  socket_writer.write_all(b"\n").await?;
+  socket_writer.flush().await?;
 
   Ok(())
 }
 
 async fn send_execution_result(
-  writer: &mut BufWriter<impl tokio::io::AsyncWrite + Unpin>,
+  socket_writer: &mut BufWriter<impl tokio::io::AsyncWrite + Unpin>,
   name: &str,
   success: bool,
 ) -> Result<(), std::io::Error> {
   let msg = OutboundMessage::Result { name, success };
 
-  let mut json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
-  json.push('\n');
-  writer.write_all(json.as_bytes()).await?;
-  writer.flush().await?;
+  let json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
+  socket_writer.write_all(json.as_bytes()).await?;
+  socket_writer.write_all(b"\n").await?;
+  socket_writer.flush().await?;
 
   Ok(())
 }
@@ -393,6 +402,7 @@ async fn send_execution_result(
 fn handle_invocation_message(
   line: &str,
   invocation_senders: &HashMap<String, mpsc::Sender<()>>,
+  reject_reason: &Rc<OnceCell<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let msg: InboundMessage = serde_json::from_str(line)?;
 
@@ -401,6 +411,9 @@ fn handle_invocation_message(
       if let Some(tx) = invocation_senders.get(&name) {
         let _ = tx.try_send(());
       }
+    }
+    InboundMessage::RejectNewCrons { reason } => {
+      let _ = reject_reason.set(reason);
     }
   }
 
@@ -411,23 +424,30 @@ impl CronHandler for SocketCronHandler {
   type EH = SocketCronHandle;
 
   fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
-    let (tx, rx) = mpsc::channel(1);
-    let socket_tx = self.socket_task_tx.clone();
-    let exit_error = self.socket_task_exit_error.clone();
+    if let Some(reason) = self.reject_reason.get() {
+      return Err(CronError::SocketError(format!(
+        "Service not accepting new cron registrations: {}",
+        reason
+      )));
+    }
 
-    socket_tx
+    let (invocation_tx, invocation_rx) = mpsc::channel(1);
+    let socket_task_tx = self.socket_task_tx.clone();
+    let socket_task_exit_error = self.socket_task_exit_error.clone();
+
+    socket_task_tx
       .try_send(SocketTaskCommand::RegisterCron {
         spec: spec.clone(),
-        invocation_tx: tx,
+        invocation_tx,
       })
       .map_err(|_| {
-        if let Some(err) = exit_error.get() {
+        if let Some(err) = socket_task_exit_error.get() {
           CronError::SocketError(err.to_string())
         } else {
           CronError::SocketError("Socket task closed".into())
         }
       })?;
 
-    Ok(SocketCronHandle::new(spec, rx, socket_tx))
+    Ok(SocketCronHandle::new(spec, invocation_rx, socket_task_tx))
   }
 }
