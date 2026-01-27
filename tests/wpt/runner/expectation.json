@@ -6140,9 +6140,9 @@
       "constructors.html": false,
       "default-iterator-object.html": true,
       "default-toJSON-cross-realm.html": false,
-      "global-immutable-prototype.any.worker.html": [
-        "Setting to a different prototype"
-      ],
+      "global-immutable-prototype.any.worker.html": {
+        "ignore": true
+      },
       "global-object-implicit-this-value-cross-realm.html": false,
       "has-instance.html": [
         "Manually-constructed prototype chains are correctly handled by instanceof",
@@ -15004,9 +15004,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,

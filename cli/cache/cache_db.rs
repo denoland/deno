@@ -605,7 +605,7 @@ mod tests {
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX));
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX - 1));
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN));
-    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN + 1));
+    assert_same_serialize_deserialize(CacheDBHash::new(1));
   }
 
   fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {

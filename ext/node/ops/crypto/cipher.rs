@@ -25,8 +25,8 @@ enum Cipher {
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
   Aes192Ecb(Box<ecb::Encryptor<aes::Aes192>>),
   Aes256Ecb(Box<ecb::Encryptor<aes::Aes256>>),
-  Aes128Gcm(Box<Aes128Gcm>),
-  Aes256Gcm(Box<Aes256Gcm>),
+  Aes128Gcm(Box<Aes128Gcm>, Option<usize>),
+  Aes256Gcm(Box<Aes256Gcm>, Option<usize>),
   Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
@@ -74,9 +74,15 @@ impl CipherContext {
     algorithm: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, CipherContextError> {
     Ok(Self {
-      cipher: Rc::new(RefCell::new(Cipher::new(algorithm, key, iv)?)),
+      cipher: Rc::new(RefCell::new(Cipher::new(
+        algorithm,
+        key,
+        iv,
+        auth_tag_length,
+      )?)),
     })
   }
 
@@ -197,6 +203,9 @@ pub enum CipherError {
   #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
+  #[class(type)]
+  #[error("Invalid authentication tag length: {0}")]
+  InvalidAuthTag(usize),
 }
 
 impl Cipher {
@@ -204,6 +213,7 @@ impl Cipher {
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
+    auth_tag_length: Option<usize>,
   ) -> Result<Self, CipherError> {
     use Cipher::*;
     Ok(match algorithm_name {
@@ -218,20 +228,32 @@ impl Cipher {
           return Err(CipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
-        Aes128Gcm(Box::new(cipher))
+        Aes128Gcm(Box::new(cipher), auth_tag_length)
       }
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(CipherError::InvalidKeyLength);
         }
 
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
-        Aes256Gcm(Box::new(cipher))
+        Aes256Gcm(Box::new(cipher), auth_tag_length)
       }
       "aes256" | "aes-256-cbc" => {
         if key.len() != 32 {
@@ -277,10 +299,10 @@ impl Cipher {
   fn set_aad(&mut self, aad: &[u8]) {
     use Cipher::*;
     match self {
-      Aes128Gcm(cipher) => {
+      Aes128Gcm(cipher, _) => {
         cipher.set_aad(aad);
       }
-      Aes256Gcm(cipher) => {
+      Aes256Gcm(cipher, _) => {
         cipher.set_aad(aad);
       }
       _ => {}
@@ -315,11 +337,11 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
-      Aes128Gcm(cipher) => {
+      Aes128Gcm(cipher, _) => {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
       }
-      Aes256Gcm(cipher) => {
+      Aes256Gcm(cipher, _) => {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
       }
@@ -403,8 +425,20 @@ impl Cipher {
         );
         Ok(None)
       }
-      (Aes128Gcm(cipher), _) => Ok(Some(cipher.finish().to_vec())),
-      (Aes256Gcm(cipher), _) => Ok(Some(cipher.finish().to_vec())),
+      (Aes128Gcm(cipher, auth_tag_length), _) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Ok(Some(tag))
+      }
+      (Aes256Gcm(cipher, auth_tag_length), _) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Ok(Some(tag))
+      }
       (Aes256Cbc(encryptor), true) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
@@ -425,8 +459,20 @@ impl Cipher {
   fn take_tag(self) -> Tag {
     use Cipher::*;
     match self {
-      Aes128Gcm(cipher) => Some(cipher.finish().to_vec()),
-      Aes256Gcm(cipher) => Some(cipher.finish().to_vec()),
+      Aes128Gcm(cipher, auth_tag_length) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Some(tag)
+      }
+      Aes256Gcm(cipher, auth_tag_length) => {
+        let mut tag = cipher.finish().to_vec();
+        if let Some(tag_len) = auth_tag_length {
+          tag.truncate(tag_len);
+        }
+        Some(tag)
+      }
       _ => None,
     }
   }
@@ -760,9 +806,15 @@ impl Decipher {
         );
         Ok(())
       }
-      (Aes128Gcm(decipher, _), true) => {
+      (Aes128Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
@@ -771,9 +823,15 @@ impl Decipher {
       (Aes128Gcm(..), false) => {
         Err(DecipherError::SetAutoPaddingFalseAes128GcmUnsupported)
       }
-      (Aes256Gcm(decipher, _), true) => {
+      (Aes256Gcm(decipher, auth_tag_length), true) => {
         let tag = decipher.finish();
-        if tag.as_slice() == auth_tag {
+        let tag_slice = tag.as_slice();
+        let truncated_tag = if let Some(len) = auth_tag_length {
+          &tag_slice[..len]
+        } else {
+          tag_slice
+        };
+        if truncated_tag == auth_tag {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)

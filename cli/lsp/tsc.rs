@@ -52,7 +52,6 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
-use log::error;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -1718,9 +1717,12 @@ pub enum OneOrMany<T> {
 }
 
 /// Aligns with ts.ScriptElementKind
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(
+  Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, Hash,
+)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
+  #[default]
   Unknown,
   #[serde(rename = "warning")]
   Warning,
@@ -1800,12 +1802,6 @@ pub enum ScriptElementKind {
   LinkName,
   #[serde(rename = "link text")]
   LinkText,
-}
-
-impl Default for ScriptElementKind {
-  fn default() -> Self {
-    Self::Unknown
-  }
 }
 
 /// This mirrors the method `convertKind` in `completions.ts` in vscode (extensions/typescript-language-features)

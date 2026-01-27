@@ -23,6 +23,11 @@ const IS_RC: bool = option_env!("DENO_RC").is_some();
 
 pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
   std::sync::LazyLock::new(|| {
+    #[cfg(not(all(
+      debug_assertions,
+      target_os = "macos",
+      target_arch = "x86_64"
+    )))]
     let release_channel = libsui::find_section("denover")
       .ok()
       .flatten()

@@ -12,7 +12,7 @@ const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
-const macosX86Runner = "macos-13";
+const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
@@ -76,7 +76,7 @@ const prCachePath = [
 ].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 20;
+const llvmVersion = 21;
 const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {

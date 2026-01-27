@@ -52,6 +52,7 @@ use esbuild_client::EsbuildService;
 use esbuild_client::protocol;
 use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
@@ -112,6 +113,13 @@ pub async fn prepare_inputs(
     let roots =
       resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
     plugin_handler.prepare_module_load(&roots).await?;
+    let graph = plugin_handler.module_graph_container.graph();
+    let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
+    for root in &graph.roots {
+      fully_resolved_roots.insert(graph.resolve(root).clone());
+    }
+    *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
+
     Ok(BundlerInput::Entrypoints(
       roots.into_iter().map(|e| ("".into(), e.into())).collect(),
     ))
@@ -173,6 +181,13 @@ pub async fn prepare_inputs(
     // Pre-cache modules referenced by HTML pages
     let _ = plugin_handler.prepare_module_load(&to_cache_urls).await;
 
+    let graph = plugin_handler.module_graph_container.graph();
+    let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
+    for root in &graph.roots {
+      fully_resolved_roots.insert(graph.resolve(root).clone());
+    }
+    *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
+
     Ok(BundlerInput::EntrypointsWithHtml {
       entries,
       html_pages,
@@ -210,6 +225,7 @@ pub async fn bundle_init(
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
+    resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions: root_permissions.clone(),
     module_loader: module_loader.clone(),
@@ -647,7 +663,7 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
-      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+      format!("import{{createRequire as __deno_internal_createRequire}} from \"node:module\";var {var_name}=__deno_internal_createRequire(import.meta.url);")
     }).into_owned()
   } else {
     let re = lazy_regex::regex!(
@@ -655,8 +671,8 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace_all(
       contents,
-      r#"import { createRequire } from "node:module";
-var __require = createRequire(import.meta.url);
+      r#"import { createRequire as __deno_internal_createRequire } from "node:module";
+var __require = __deno_internal_createRequire(import.meta.url);
 "#,
     )
     .into_owned()
@@ -828,6 +844,7 @@ pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
+  resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
   module_loader: Arc<CliDenoResolverModuleLoader>,
@@ -967,6 +984,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // to the output file. It will be tricky to figure out which
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
+        || r.starts_with("bun:")
         || self
           .externals_matcher
           .as_ref()
@@ -1494,8 +1512,10 @@ impl DenoPluginHandler {
       let module_graph_container = self.module_graph_container.clone();
       let specifier = specifier.clone();
       let code = source.to_vec();
+      let resolved_roots = self.resolved_roots.read().clone();
       let code = tokio::task::spawn_blocking(move || {
         Self::apply_transform(
+          &resolved_roots,
           &module_graph_container,
           &specifier,
           media_type,
@@ -1542,13 +1562,15 @@ impl DenoPluginHandler {
 
   #[allow(clippy::result_large_err)]
   fn apply_transform(
+    resolved_roots: &IndexSet<ModuleSpecifier>,
     module_graph_container: &MainModuleGraphContainer,
     specifier: &ModuleSpecifier,
     media_type: deno_ast::MediaType,
     code: &str,
   ) -> Result<String, BundleLoadError> {
+    let graph = module_graph_container.graph();
     let mut transform = transform::BundleImportMetaMainTransform::new(
-      module_graph_container.graph().roots.contains(specifier),
+      graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
