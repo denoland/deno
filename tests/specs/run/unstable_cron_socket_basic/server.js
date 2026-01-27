@@ -2,7 +2,6 @@
 const socketPath = Deno.env.get("TEST_SOCKET_PATH");
 
 const listener = Deno.listen({ transport: "unix", path: socketPath });
-console.error("[CRON SERVER] Listening on", socketPath);
 
 const conn = await listener.accept();
 const reader = conn.readable.pipeThrough(new TextDecoderStream()).getReader();

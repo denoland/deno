@@ -1,4 +1,3 @@
-[CRON SERVER] Listening on /Users/arnauorriols/dev/deno/deno/tests/specs/run/unstable_cron_socket_basic/test.sock
 [ISOLATE] Registering test-cron
 [ISOLATE] Registering other-cron
 [ISOLATE] isolate booted
