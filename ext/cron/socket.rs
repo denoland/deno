@@ -17,7 +17,9 @@ use tokio::sync::mpsc;
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
+use crate::CronNextResult;
 use crate::CronSpec;
+use crate::Traceparent;
 
 pub struct SocketCronHandler {
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
@@ -30,7 +32,7 @@ pub struct SocketCronHandler {
 pub(crate) enum SocketTaskCommand {
   RegisterCron {
     spec: CronSpec,
-    invocation_tx: mpsc::Sender<()>,
+    invocation_tx: mpsc::Sender<Traceparent>,
   },
   SendResult {
     name: String,
@@ -56,8 +58,13 @@ struct CronRegistration<'a> {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum InboundMessage {
-  Invoke { name: String },
-  RejectNewCrons { reason: String },
+  Invoke {
+    name: String,
+    traceparent: Option<String>,
+  },
+  RejectNewCrons {
+    reason: String,
+  },
 }
 
 impl SocketCronHandler {
@@ -86,7 +93,8 @@ impl SocketCronHandler {
     exit_error: Rc<OnceCell<CronError>>,
     reject_reason: Rc<OnceCell<String>>,
   ) {
-    let mut invocation_senders = HashMap::new();
+    let mut invocation_txs: HashMap<String, mpsc::Sender<Traceparent>> =
+      HashMap::new();
     let stream = match connect_to_socket(&socket_addr).await {
       Ok(s) => s,
       Err(e) => {
@@ -107,7 +115,7 @@ impl SocketCronHandler {
         Some(cmd) = socket_task_rx.recv() => {
           match cmd {
             SocketTaskCommand::RegisterCron { spec, invocation_tx } => {
-              invocation_senders.insert(spec.name.clone(), invocation_tx);
+              invocation_txs.insert(spec.name.clone(), invocation_tx);
               if let Err(e) = register_cron(&mut socket_writer, &spec).await {
                 let _ = exit_error.set(CronError::SocketError(format!(
                   "Failed to send cron registration: {}",
@@ -131,7 +139,7 @@ impl SocketCronHandler {
         result = socket_reader.next_line() => {
           match result {
             Ok(Some(line)) => {
-              let _ = handle_invocation_message(&line, &invocation_senders, &reject_reason);
+              let _ = handle_inbound_messages(&line, &invocation_txs, &reject_reason);
             }
             Ok(None) => {
               let _ = exit_error.set(CronError::SocketError(
@@ -161,7 +169,7 @@ impl Drop for SocketCronHandler {
 
 pub struct SocketCronHandle {
   spec: CronSpec,
-  invocation_rx: std::cell::RefCell<Option<mpsc::Receiver<()>>>,
+  invocation_rx: std::cell::RefCell<Option<mpsc::Receiver<Traceparent>>>,
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
   closed: std::cell::Cell<bool>,
   first_call: std::cell::Cell<bool>,
@@ -170,7 +178,7 @@ pub struct SocketCronHandle {
 impl SocketCronHandle {
   pub(crate) fn new(
     spec: CronSpec,
-    invocation_rx: mpsc::Receiver<()>,
+    invocation_rx: mpsc::Receiver<Traceparent>,
     socket_task_tx: mpsc::Sender<SocketTaskCommand>,
   ) -> Self {
     Self {
@@ -185,9 +193,15 @@ impl SocketCronHandle {
 
 #[async_trait::async_trait(?Send)]
 impl CronHandle for SocketCronHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, CronError> {
+  async fn next(
+    &self,
+    prev_success: bool,
+  ) -> Result<CronNextResult, CronError> {
     if self.closed.get() {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     }
 
     if !self.first_call.replace(false) {
@@ -205,10 +219,16 @@ impl CronHandle for SocketCronHandle {
       .take()
       .expect("calls to CronHandle::next should be serialized");
     let r = match invocation_rx.recv().await {
-      Some(()) => Ok(true),
+      Some(traceparent) => Ok(CronNextResult {
+        active: true,
+        traceparent,
+      }),
       None => {
         self.closed.set(true);
-        Ok(false)
+        Ok(CronNextResult {
+          active: false,
+          traceparent: None,
+        })
       }
     };
     self.invocation_rx.replace(Some(invocation_rx));
@@ -399,17 +419,17 @@ async fn send_execution_result(
   Ok(())
 }
 
-fn handle_invocation_message(
+fn handle_inbound_messages(
   line: &str,
-  invocation_senders: &HashMap<String, mpsc::Sender<()>>,
+  invocation_txs: &HashMap<String, mpsc::Sender<Traceparent>>,
   reject_reason: &Rc<OnceCell<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let msg: InboundMessage = serde_json::from_str(line)?;
 
   match msg {
-    InboundMessage::Invoke { name } => {
-      if let Some(tx) = invocation_senders.get(&name) {
-        let _ = tx.try_send(());
+    InboundMessage::Invoke { name, traceparent } => {
+      if let Some(tx) = invocation_txs.get(&name) {
+        let _ = tx.try_send(traceparent);
       }
     }
     InboundMessage::RejectNewCrons { reason } => {
@@ -431,7 +451,7 @@ impl CronHandler for SocketCronHandler {
       )));
     }
 
-    let (invocation_tx, invocation_rx) = mpsc::channel(1);
+    let (invocation_tx, invocation_rx) = mpsc::channel::<Traceparent>(1);
     let socket_task_tx = self.socket_task_tx.clone();
     let socket_task_exit_error = self.socket_task_exit_error.clone();
 

@@ -128,11 +128,12 @@ where
 }
 
 #[op2(async)]
+#[serde]
 async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   prev_success: bool,
-) -> Result<bool, CronError>
+) -> Result<CronNextResult, CronError>
 where
   C: CronHandler + 'static,
 {
@@ -142,7 +143,10 @@ where
       Ok(resource) => resource,
       Err(err) => {
         if err.get_class() == "BadResource" {
-          return Ok(false);
+          return Ok(CronNextResult {
+            active: false,
+            traceparent: None,
+          });
         } else {
           return Err(CronError::Resource(err));
         }

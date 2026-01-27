@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
+use crate::CronNextResult;
 use crate::CronSpec;
 use crate::local::CronExecutionHandle;
 use crate::local::LocalCronHandler;
@@ -43,7 +44,10 @@ pub enum CronHandleImpl {
 
 #[async_trait(?Send)]
 impl CronHandle for CronHandleImpl {
-  async fn next(&self, prev_success: bool) -> Result<bool, CronError> {
+  async fn next(
+    &self,
+    prev_success: bool,
+  ) -> Result<CronNextResult, CronError> {
     match self {
       Self::Local(h) => h.next(prev_success).await,
       Self::Socket(h) => h.next(prev_success).await,
