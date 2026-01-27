@@ -19,8 +19,8 @@ use crate::ops::sqlite::statement::statement_column_value;
 
 struct CachedStatement {
   inner: InnerStatementPtr,
-  return_arrays: Cell<bool>,
-  use_big_ints: Cell<bool>,
+  return_arrays: bool,
+  use_big_ints: bool,
 }
 
 impl CachedStatement {
@@ -82,12 +82,7 @@ impl CachedStatement {
     index: i32,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
-    statement_column_value(
-      self.stmt_ptr()?,
-      index,
-      self.use_big_ints.get(),
-      scope,
-    )
+    statement_column_value(self.stmt_ptr()?, index, self.use_big_ints, scope)
   }
 
   fn bind_value(
@@ -160,7 +155,7 @@ impl CachedStatement {
       values.push(value);
     }
 
-    if self.return_arrays.get() {
+    if self.return_arrays {
       let result = v8::Array::new_with_elements(scope, &values);
       Ok(Some(result.into()))
     } else {
@@ -274,8 +269,8 @@ impl SQLTagStore {
         let stmt = cache.get_mut(&sql).unwrap();
         if !stmt.is_finalized() {
           // Update settings from store
-          stmt.return_arrays.set(self.return_arrays);
-          stmt.use_big_ints.set(self.use_big_ints);
+          stmt.return_arrays = self.return_arrays;
+          stmt.use_big_ints = self.use_big_ints;
           // Need to return, but can't borrow mut twice
           drop(cache);
           return Ok(self.get_cached_statement(&sql));
@@ -307,8 +302,8 @@ impl SQLTagStore {
 
     let cached_stmt = CachedStatement {
       inner: stmt_cell,
-      return_arrays: Cell::new(self.return_arrays),
-      use_big_ints: Cell::new(self.use_big_ints),
+      return_arrays: self.return_arrays,
+      use_big_ints: self.use_big_ints,
     };
 
     self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -501,8 +496,8 @@ impl SQLTagStore {
 
       let cached_stmt = CachedStatement {
         inner: stmt_cell,
-        return_arrays: Cell::new(self.return_arrays),
-        use_big_ints: Cell::new(self.use_big_ints),
+        return_arrays: self.return_arrays,
+        use_big_ints: self.use_big_ints,
       };
 
       self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -510,9 +505,9 @@ impl SQLTagStore {
     drop(db);
 
     {
-      let stmt = self.get_cached_statement(&sql);
-      stmt.return_arrays.set(self.return_arrays);
-      stmt.use_big_ints.set(self.use_big_ints);
+      let mut stmt = self.get_cached_statement(&sql);
+      stmt.return_arrays = self.return_arrays;
+      stmt.use_big_ints = self.use_big_ints;
       stmt.bind_params(scope, args, 1)?;
     }
 
@@ -615,10 +610,7 @@ impl SQLTagStore {
       rv.set(result.into());
     };
 
-    let combined = Box::new((
-      *iter_context,
-      self as *const _,
-    ));
+    let combined = Box::new((*iter_context, self as *const _));
     let combined_ptr = Box::into_raw(combined);
 
     let external = v8::External::new(scope, combined_ptr as _);
