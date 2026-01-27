@@ -1535,6 +1535,49 @@ async fn test_watch_serve() {
   check_alive_then_kill(child);
 }
 
+/// Ensures that Deno.serve with unix socket operates properly after a watch restart.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_serve_unix_socket() {
+  let t = TempDir::new();
+  let socket_path = t.path().join("test.sock");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = format!(
+    r#"
+      console.error("serving");
+      await Deno.serve({{path: "{}"}}, () => new Response("hello"));
+    "#,
+    socket_path.to_string().replace('\\', "\\\\")
+  );
+  file_to_watch.write(&file_content);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--allow-read")
+    .arg("--allow-write")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut _stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Listening on", &mut stderr_lines).await;
+  // Note that we start serving very quickly, so we specifically want to wait for this message
+  wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
+
+  file_to_watch.write(&file_content);
+
+  wait_contains("serving", &mut stderr_lines).await;
+  wait_contains("Listening on", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();

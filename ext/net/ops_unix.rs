@@ -47,6 +47,34 @@ impl Resource for UnixDatagramResource {
   }
 }
 
+/// A wrapper around `UnixListener` that holds the socket path and removes it on drop.
+pub struct UnixListenerWithPath {
+  listener: UnixListener,
+  path: PathBuf,
+}
+
+impl UnixListenerWithPath {
+  pub fn new(listener: UnixListener, path: PathBuf) -> Self {
+    Self { listener, path }
+  }
+
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(UnixStream, tokio::net::unix::SocketAddr)> {
+    self.listener.accept().await
+  }
+
+  pub fn local_addr(&self) -> std::io::Result<tokio::net::unix::SocketAddr> {
+    self.listener.local_addr()
+  }
+}
+
+impl Drop for UnixListenerWithPath {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_file(&self.path);
+  }
+}
+
 #[derive(Serialize)]
 pub struct UnixAddr {
   pub path: Option<String>,
@@ -66,7 +94,7 @@ pub async fn op_net_accept_unix(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<UnixListener>>(rid)
+    .get::<NetworkListenerResource<UnixListenerWithPath>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -188,10 +216,12 @@ pub fn op_net_listen_unix(
       Some(&api_call_expr),
     )
     .map_err(NetError::Permission)?;
-  let listener = UnixListener::bind(address_path)?;
+  let listener = UnixListener::bind(&address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
-  let listener_resource = NetworkListenerResource::new(listener);
+  let listener_with_path =
+    UnixListenerWithPath::new(listener, address_path.to_path_buf());
+  let listener_resource = NetworkListenerResource::new(listener_with_path);
   let rid = state.resource_table.add(listener_resource);
   Ok((rid, pathname))
 }
