@@ -872,6 +872,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
               c.json.import_map.is_some()
                 || c.json.scopes.is_some()
                 || c.json.imports.is_some()
+                || c.json.dependencies.is_some()
+                || c.json.dev_dependencies.is_some()
                 || c
                   .json
                   .compiler_options
