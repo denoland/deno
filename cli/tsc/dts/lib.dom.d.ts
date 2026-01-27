@@ -21422,6 +21422,12 @@ interface Navigator extends NavigatorAutomationInformation, NavigatorBadge, Navi
      */
     readonly mediaSession: MediaSession;
     /**
+     * The **`platform`** read-only property returns a string identifying the platform on which the user's browser is running.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/platform)
+     */
+    readonly platform: string;
+    /**
      * The **`permissions`** read-only property of the Navigator interface returns a status of APIs covered by the Permissions API.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/permissions)

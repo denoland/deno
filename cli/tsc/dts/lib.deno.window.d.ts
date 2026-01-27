@@ -362,6 +362,7 @@ interface Navigator {
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
+  readonly platform: string;
 }
 
 /**
