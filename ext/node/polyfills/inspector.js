@@ -34,6 +34,7 @@ import {
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
 } from "ext:deno_node/internal/errors.ts";
+import { isMainThread } from "node:worker_threads";
 
 function isLoopback(host) {
   const hostLower = host.toLowerCase();

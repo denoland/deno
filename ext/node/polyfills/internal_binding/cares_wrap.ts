@@ -282,7 +282,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         query,
         recordType,
         options: resolveOptions,
-      });
+      }, /* useEdns0 */ false);
       if (ttl) {
         ret = res;
       } else {

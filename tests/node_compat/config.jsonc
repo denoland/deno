@@ -158,6 +158,9 @@
       "windows": false
     },
     "parallel/test-child-process-advanced-serialization-splitted-length-field.js": {},
+    "parallel/test-child-process-bad-stdio.js": {
+      "windows": false
+    },
     "parallel/test-child-process-can-write-to-stdout.js": {
       "flaky": true
     },
@@ -560,6 +563,7 @@
     "parallel/test-fs-readfilesync-enoent.js": {},
     "parallel/test-fs-readlink-type-check.js": {},
     "parallel/test-fs-readSync-optional-params.js": {},
+    "parallel/test-fs-readv-promises.js": {},
     "parallel/test-fs-readv-promisify.js": {},
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
@@ -757,74 +761,107 @@
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
     "parallel/test-icu-transcode.js": {},
-    // "parallel/test-inspect-address-in-use.js": {},
-    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
-    // "parallel/test-inspect-publish-uid.js": {},
-    // "parallel/test-inspect-support-for-node_options.js": {},
-    // "parallel/test-inspector-already-activated-cli.js": {},
-    // "parallel/test-inspector-async-call-stack-abort.js": {},
-    // "parallel/test-inspector-async-call-stack.js": {},
-    // "parallel/test-inspector-async-context-brk.js": {},
+    "parallel/test-inspect-publish-uid.js": {},
+
+    // TODO(bartlomieju):
     // "parallel/test-inspector-async-hook-after-done.js": {},
-    // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
+    // "parallel/test-inspector-async-call-stack-abort.js": {},
     // "parallel/test-inspector-async-hook-setup-at-signal.js": {},
-    // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
-    // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
-    // "parallel/test-inspector-bindings.js": {},
-    // "parallel/test-inspector-break-e.js": {},
-    // "parallel/test-inspector-break-when-eval.js": {},
-    "parallel/test-inspector-close-worker.js": {},
-    // "parallel/test-inspector-connect-main-thread.js": {},
-    "parallel/test-inspector-connect-to-main-thread.js": {},
-    // "parallel/test-inspector-console-top-frame.js": {},
-    // "parallel/test-inspector-console.js": {},
-    // "parallel/test-inspector-contexts.js": {},
-    // "parallel/test-inspector-debug-brk-flag.js": {},
-    // "parallel/test-inspector-debug-end.js": {},
-    // "parallel/test-inspector-emit-protocol-event.js": {},
-    // "parallel/test-inspector-enabled.js": {},
-    // "parallel/test-inspector-esm.js": {},
-    // "parallel/test-inspector-exception.js": {},
+    // "parallel/test-inspector.js": {},
     // "parallel/test-inspector-exit-worker-in-wait-for-connection.js": {},
     // "parallel/test-inspector-exit-worker-in-wait-for-connection2.js": {},
-    "parallel/test-inspector-has-idle.js": {},
+    // "parallel/test-inspector-console-top-frame.js": {},
+    // "parallel/test-inspector-async-call-stack.js": {},
     // "parallel/test-inspector-heap-allocation-tracker.js": {},
-    "parallel/test-inspector-heapdump.js": {},
+    // "parallel/test-inspector-tracing-domain.js": {},
+    // "parallel/test-inspector-ip-detection.js": {},
+    // "parallel/test-inspector-already-activated-cli.js": {},
+    // "parallel/test-v8-coverage.js": {},
+    // "parallel/test-v8-stop-coverage.js": {},
+    // "parallel/test-v8-take-coverage-noop.js": {},
+    // "parallel/test-v8-take-coverage.js": {},
+    // "parallel/test-inspect-address-in-use.js": {},
     // "parallel/test-inspector-inspect-brk-node.js": {},
     // "parallel/test-inspector-invalid-args.js": {},
-    // "parallel/test-inspector-ip-detection.js": {},
-    "parallel/test-inspector-module.js": {},
+
+    "parallel/test-inspector-close-worker.js": {},
+
+    // TODO(bartlomieju): times out
+    // "parallel/test-inspector-connect-main-thread.js": {},
     // "parallel/test-inspector-multisession-js.js": {},
-    // "parallel/test-inspector-multisession-ws.js": {},
-    // "parallel/test-inspector-network-arbitrary-data.js": {},
-    // "parallel/test-inspector-network-fetch.js": {},
+    // "parallel/test-inspector-bindings.js": {},
+    // "parallel/test-inspector-async-context-brk.js": {},
+    // "parallel/test-inspector-wait-for-connection.js": {},
+
+    "parallel/test-inspector-connect-to-main-thread.js": {},
+
+    // TODO(bartlomieju): mismatch in name of the default context,
+    // requires changes to `deno_core`.
+    // "parallel/test-inspector-contexts.js": {},
+
+    // TODO(bartlomieju): mismatch in name of the eval context,
+    // requires changes to `deno_core`.
+    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
+
+    // TODO(bartlomieju): depends on internal APIs from Node like `process.bindings()`
+    // or `process._debugEnd`
+    // "parallel/test-inspector-enabled.js": {},
+    // "parallel/test-inspector-debug-end.js": {},
+
+    "parallel/test-inspector-has-idle.js": {},
+
+    "parallel/test-inspector-heapdump.js": {},
+    "parallel/test-inspector-module.js": {},
+
+    // TODO(bartlomieju): depends on `Network` CDP domain
     // "parallel/test-inspector-network-http.js": {},
-    // "parallel/test-inspector-not-blocked-on-idle.js": {},
+    // "parallel/test-inspector-network-arbitrary-data.js": {},
+    // "parallel/test-inspector-emit-protocol-event.js": {},
+
+    // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
+    // "parallel/test-inspector-esm.js": {},
+    // "parallel/test-inspector-console.js": {},
+    // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
+    // "parallel/test-inspector-exception.js": {},
+    // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
+    // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
+    // "parallel/test-inspector-scriptparsed-context.js": {},
+    // "parallel/test-inspector-break-e.js": {},
+    // "parallel/test-inspector-waiting-for-disconnect.js": {},
+    // "parallel/test-inspector-multisession-ws.js": {},
+    // "parallel/test-inspector-worker-target.js"
+    // "parallel/test-inspector-debug-brk-flag.js": {},
+    // "parallel/test-inspector-wait.mjs": {},
+    // "parallel/test-inspector-stop-profile-after-done.js": {},
+    // "parallel/test-inspector-break-when-eval.js": {},
+
+    // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
+    // "parallel/test-inspector-network-fetch.js": {},
+    "parallel/test-inspector-not-blocked-on-idle.js": {},
     "parallel/test-inspector-open-coverage.js": {},
     "parallel/test-inspector-open-port-integer-overflow.js": {},
     "parallel/test-inspector-open.js": {},
+
+    // TODO(bartlomieju): requires `cluster.fork` module
     // "parallel/test-inspector-port-zero-cluster.js": {},
+    // "parallel/test-inspect-support-for-node_options.js": {},
+
+    // TODO(bartlomieju):: easy, `--inspect` flag doesn't support `localhost`
     // "parallel/test-inspector-port-zero.js": {},
     "parallel/test-inspector-promises.js": {},
-    // "parallel/test-inspector-reported-host.js": {},
+    "parallel/test-inspector-reported-host.js": {},
     "parallel/test-inspector-resource-name-to-url.js": {
       "windows": false,
       "reason": "Uses lowercase 'a' instead of 'A' for drive letter"
     },
     "parallel/test-inspector-runtime-evaluate-with-timeout.js": {},
-    // "parallel/test-inspector-scriptparsed-context.js": {},
-    // "parallel/test-inspector-stop-profile-after-done.js": {},
     "parallel/test-inspector-stops-no-file.js": {},
     "parallel/test-inspector-stress-http.js": {},
     "parallel/test-inspector-strip-types.js": {},
-    // "parallel/test-inspector-tracing-domain.js": {},
     "parallel/test-inspector-vm-global-accessors-getter-sideeffect.js": {},
     "parallel/test-inspector-vm-global-accessors-sideeffects.js": {},
-    // "parallel/test-inspector-wait-for-connection.js": {},
-    // "parallel/test-inspector-wait.mjs": {},
-    // "parallel/test-inspector-waiting-for-disconnect.js": {},
+
     "parallel/test-inspector-workers-flat-list.js": {},
-    // "parallel/test-inspector.js": {},
     "parallel/test-instanceof.js": {},
     "parallel/test-internal-fs.js": {},
     "parallel/test-internal-modules.js": {},
@@ -1424,17 +1461,9 @@
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
     "parallel/test-uv-binding-constant.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    // "parallel/test-v8-coverage.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    // "parallel/test-v8-stop-coverage.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    // "parallel/test-v8-take-coverage-noop.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    // "parallel/test-v8-take-coverage.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
