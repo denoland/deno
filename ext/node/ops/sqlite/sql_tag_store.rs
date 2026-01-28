@@ -607,7 +607,6 @@ impl SQLTagStore {
   }
 
   #[getter]
-  #[global]
   fn db(&self) -> v8::Global<v8::Object> {
     self.db_object.clone()
   }
