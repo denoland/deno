@@ -2129,8 +2129,6 @@ fn napi_get_value_string_latin1(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
     let length = value.length().min(bufsize - 1);
     let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
     value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
@@ -2223,8 +2221,6 @@ fn napi_get_value_string_utf16(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
     let length = value.length().min(bufsize - 1);
     let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
     value.write_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
