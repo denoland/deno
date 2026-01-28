@@ -458,11 +458,11 @@ impl SQLTagStore {
       ),
     ))?;
 
-    let db = self.db.borrow();
-    let _ = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
-
+    {
+      let db = self.db.borrow();
+      let _ = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    }
     let sql = Self::parse_template(scope, args)?;
-    drop(db);
 
     {
       let mut cache = self.cache.borrow_mut();
@@ -473,39 +473,39 @@ impl SQLTagStore {
       }
     }
 
-    let db = self.db.borrow();
-    let db_ref = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    {
+      let db = self.db.borrow();
+      let db_ref = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+      if !self.cache.borrow().exists(&sql) {
+        // SAFETY: lifetime of the connection is guaranteed by reference counting.
+        let raw_handle = unsafe { db_ref.handle() };
 
-    if !self.cache.borrow().exists(&sql) {
-      // SAFETY: lifetime of the connection is guaranteed by reference counting.
-      let raw_handle = unsafe { db_ref.handle() };
+        let mut raw_stmt = std::ptr::null_mut();
 
-      let mut raw_stmt = std::ptr::null_mut();
+        // SAFETY: `sql` points to valid memory.
+        let r = unsafe {
+          libsqlite3_sys::sqlite3_prepare_v2(
+            raw_handle,
+            sql.as_ptr() as *const _,
+            sql.len() as i32,
+            &mut raw_stmt,
+            std::ptr::null_mut(),
+          )
+        };
+        check_error_code(r, raw_handle)?;
 
-      // SAFETY: `sql` points to valid memory.
-      let r = unsafe {
-        libsqlite3_sys::sqlite3_prepare_v2(
-          raw_handle,
-          sql.as_ptr() as *const _,
-          sql.len() as i32,
-          &mut raw_stmt,
-          std::ptr::null_mut(),
-        )
-      };
-      check_error_code(r, raw_handle)?;
+        let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
+        self.statements.borrow_mut().push(stmt_cell.clone());
 
-      let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
-      self.statements.borrow_mut().push(stmt_cell.clone());
+        let cached_stmt = CachedStatement {
+          inner: stmt_cell,
+          return_arrays: self.return_arrays,
+          use_big_ints: self.use_big_ints,
+        };
 
-      let cached_stmt = CachedStatement {
-        inner: stmt_cell,
-        return_arrays: self.return_arrays,
-        use_big_ints: self.use_big_ints,
-      };
-
-      self.cache.borrow_mut().put(sql.clone(), cached_stmt);
+        self.cache.borrow_mut().put(sql.clone(), cached_stmt);
+      }
     }
-    drop(db);
 
     {
       let mut stmt = self.get_cached_statement(&sql);
