@@ -466,10 +466,10 @@ impl SQLTagStore {
 
     {
       let mut cache = self.cache.borrow_mut();
-      if let Some(stmt) = cache.get_mut(&sql) {
-        if stmt.is_finalized() {
-          cache.erase(&sql);
-        }
+      if let Some(stmt) = cache.get_mut(&sql)
+        && stmt.is_finalized()
+      {
+        cache.erase(&sql);
       }
     }
 
