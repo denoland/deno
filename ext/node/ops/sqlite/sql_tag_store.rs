@@ -13,9 +13,8 @@ use rusqlite::ffi as libsqlite3_sys;
 use super::SqliteError;
 use super::lru_cache::LRUCache;
 use super::statement::InnerStatementPtr;
+use super::statement::StatementExecution;
 use super::statement::check_error_code;
-use crate::ops::sqlite::statement::statement_bind_value;
-use crate::ops::sqlite::statement::statement_column_value;
 
 struct CachedStatement {
   inner: InnerStatementPtr,
@@ -28,73 +27,12 @@ impl CachedStatement {
     self.inner.get().is_none()
   }
 
-  fn stmt_ptr(&self) -> Result<*mut libsqlite3_sys::sqlite3_stmt, SqliteError> {
-    let ptr = self.inner.get();
-    match ptr {
-      Some(p) => Ok(p),
-      None => Err(SqliteError::StatementFinalized),
-    }
-  }
-
   fn reset(&self) -> Result<(), SqliteError> {
     let raw = self.stmt_ptr()?;
     // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
     let r = unsafe { libsqlite3_sys::sqlite3_reset(raw) };
     if r != libsqlite3_sys::SQLITE_OK {
       return Err(SqliteError::StatementFinalized);
-    }
-    Ok(())
-  }
-
-  fn step(&self) -> Result<bool, SqliteError> {
-    let raw = self.stmt_ptr()?;
-    // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
-    unsafe {
-      let r = libsqlite3_sys::sqlite3_step(raw);
-      if r == libsqlite3_sys::SQLITE_DONE {
-        return Ok(true);
-      }
-      if r != libsqlite3_sys::SQLITE_ROW {
-        return Err(SqliteError::StatementFinalized);
-      }
-    }
-    Ok(false)
-  }
-
-  fn column_count(&self) -> Result<i32, SqliteError> {
-    let raw = self.stmt_ptr()?;
-    // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
-    let count = unsafe { libsqlite3_sys::sqlite3_column_count(raw) };
-    Ok(count)
-  }
-
-  fn column_name(&self, index: i32) -> Result<&[u8], SqliteError> {
-    let raw = self.stmt_ptr()?;
-    // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
-    unsafe {
-      let name = libsqlite3_sys::sqlite3_column_name(raw, index);
-      Ok(std::ffi::CStr::from_ptr(name as _).to_bytes())
-    }
-  }
-
-  fn column_value<'a>(
-    &self,
-    index: i32,
-    scope: &mut v8::PinScope<'a, '_>,
-  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
-    statement_column_value(self.stmt_ptr()?, index, self.use_big_ints, scope)
-  }
-
-  fn bind_value(
-    &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    value: v8::Local<v8::Value>,
-    index: i32,
-  ) -> Result<(), SqliteError> {
-    let r = statement_bind_value(self.stmt_ptr()?, index, value, scope)?;
-
-    if r != libsqlite3_sys::SQLITE_OK {
-      return Err(SqliteError::FailedBind("Failed to bind value"));
     }
     Ok(())
   }
@@ -131,39 +69,45 @@ impl CachedStatement {
 
     Ok(())
   }
+}
 
-  fn read_row<'a>(
-    &self,
-    scope: &mut v8::PinScope<'a, '_>,
-  ) -> Result<Option<v8::Local<'a, v8::Value>>, SqliteError> {
-    if self.step()? {
-      return Ok(None);
+impl StatementExecution for CachedStatement {
+  fn stmt_ptr(&self) -> Result<*mut libsqlite3_sys::sqlite3_stmt, SqliteError> {
+    let ptr = self.inner.get();
+    match ptr {
+      Some(p) => Ok(p),
+      None => Err(SqliteError::StatementFinalized),
     }
+  }
 
-    let num_cols = self.column_count()?;
-    let mut names = Vec::with_capacity(num_cols as usize);
-    let mut values = Vec::with_capacity(num_cols as usize);
-
-    for i in 0..num_cols {
-      let name = self.column_name(i)?;
-      let value = self.column_value(i, scope)?;
-      let name =
-        v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
-          .unwrap()
-          .into();
-      names.push(name);
-      values.push(value);
+  fn step(&self) -> Result<bool, SqliteError> {
+    let raw = self.stmt_ptr()?;
+    // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+    unsafe {
+      let r = libsqlite3_sys::sqlite3_step(raw);
+      if r == libsqlite3_sys::SQLITE_DONE {
+        return Ok(true);
+      }
+      if r != libsqlite3_sys::SQLITE_ROW {
+        return Err(SqliteError::StatementFinalized);
+      }
     }
+    Ok(false)
+  }
 
-    if self.return_arrays {
-      let result = v8::Array::new_with_elements(scope, &values);
-      Ok(Some(result.into()))
-    } else {
-      let null = v8::null(scope).into();
-      let result =
-        v8::Object::with_prototype_and_properties(scope, null, &names, &values);
-      Ok(Some(result.into()))
+  fn return_arrays(&self) -> bool {
+    self.return_arrays
+  }
+
+  fn use_big_ints(&self) -> bool {
+    self.use_big_ints
+  }
+
+  fn check_bind_result(&self, r: i32) -> Result<(), SqliteError> {
+    if r != libsqlite3_sys::SQLITE_OK {
+      return Err(SqliteError::FailedBind("Failed to bind value"));
     }
+    Ok(())
   }
 }
 
