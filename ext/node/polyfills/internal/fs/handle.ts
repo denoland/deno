@@ -19,10 +19,7 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
-import {
-  getRid,
-  unregisterFd,
-} from "ext:deno_node/internal/fs/fd_map.ts";
+import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,

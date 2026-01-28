@@ -1,10 +1,4 @@
-import {
-  closeSync,
-  fstatSync,
-  openSync,
-  readSync,
-  writeSync,
-} from "node:fs";
+import { closeSync, fstatSync, openSync, readSync, writeSync } from "node:fs";
 import { Buffer } from "node:buffer";
 
 const tempFile = Deno.makeTempFileSync();

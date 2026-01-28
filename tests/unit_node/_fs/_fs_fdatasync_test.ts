@@ -1,6 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, fail } from "@std/assert";
-import { closeSync, fdatasync, fdatasyncSync, openSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  fdatasync,
+  fdatasyncSync,
+  openSync,
+  writeSync,
+} from "node:fs";
 
 Deno.test({
   name:

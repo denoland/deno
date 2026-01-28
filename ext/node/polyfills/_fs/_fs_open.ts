@@ -10,11 +10,7 @@ import {
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import type { Buffer } from "node:buffer";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import {
-  op_node_get_fd,
-  op_node_open,
-  op_node_open_sync,
-} from "ext:core/ops";
+import { op_node_get_fd, op_node_open, op_node_open_sync } from "ext:core/ops";
 import { registerFd } from "ext:deno_node/internal/fs/fd_map.ts";
 
 const { Promise, PromisePrototypeThen } = primordials;
