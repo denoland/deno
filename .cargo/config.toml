@@ -36,3 +36,9 @@ rustflags = [
   "--cfg",
   "tokio_unstable",
 ]
+
+# common environment variables for building dav1d correctly
+# See details in: ext/image/build.rs
+[env]
+SYSTEM_DEPS_DAV1D_LIB = "dav1d"
+SYSTEM_DEPS_DAV1D_NO_PKG_CONFIG = "1"

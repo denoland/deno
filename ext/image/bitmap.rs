@@ -12,6 +12,7 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 use image::DynamicImage;
 use image::ImageDecoder;
 use image::RgbaImage;
+use image::codecs::avif::AvifDecoder;
 use image::codecs::bmp::BmpDecoder;
 use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
@@ -71,6 +72,7 @@ enum MimeType {
   Bmp,
   Ico,
   Webp,
+  Avif,
 }
 
 type DecodeBitmapDataReturn =
@@ -165,6 +167,19 @@ fn decode_bitmap_data(
             // The WebPDecoder decodes the first frame.
             let mut decoder =
               WebPDecoder::new(BufReader::new(Cursor::new(buf)))
+                .map_err(ImageError::image_error_to_invalid_image)?;
+            let orientation = decoder.orientation()?;
+            let icc_profile = decoder.icc_profile()?;
+            (
+              DynamicImage::from_decoder(decoder)
+                .map_err(ImageError::image_error_to_invalid_image)?,
+              orientation,
+              icc_profile,
+            )
+          }
+          MimeType::Avif => {
+            let mut decoder =
+              AvifDecoder::new(BufReader::new(Cursor::new(buf)))
                 .map_err(ImageError::image_error_to_invalid_image)?;
             let orientation = decoder.orientation()?;
             let icc_profile = decoder.icc_profile()?;
@@ -347,6 +362,7 @@ fn parse_args(
     4 => MimeType::Bmp,
     5 => MimeType::Ico,
     6 => MimeType::Webp,
+    7 => MimeType::Avif,
     _ => unreachable!(),
   };
   ParsedArgs {
@@ -471,7 +487,7 @@ pub(super) fn op_create_image_bitmap(
   };
 
   // 5.
-  let image = if !(width == surface_width
+  let mut image = if !(width == surface_width
     && height == surface_height
     && input_x == 0
     && input_y == 0)
@@ -492,17 +508,15 @@ pub(super) fn op_create_image_bitmap(
     ResizeQuality::Medium => FilterType::CatmullRom,
     ResizeQuality::High => FilterType::Lanczos3,
   };
-  // should use resize_exact
-  // https://github.com/image-rs/image/issues/1220#issuecomment-632060015
-  let mut image = image.resize_exact(output_width, output_height, filter_type);
+  image.resize_exact(output_width, output_height, filter_type);
 
   // 8.
   let image = match image_bitmap_source {
     ImageBitmapSource::Blob => {
       // Note: According to browser behavior and wpt results, if Exif contains image orientation,
       // it applies the rotation from it before following the value of imageOrientation.
-      // This is not stated in the spec but in MDN currently.
-      // https://github.com/mdn/content/pull/34366
+      // This is not stated in the spec currently.
+      // https://github.com/whatwg/html/issues/7210
 
       // SAFETY: The orientation is always Some if the image is from a Blob.
       let orientation = orientation.unwrap();
