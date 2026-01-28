@@ -526,6 +526,7 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),

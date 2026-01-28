@@ -98,14 +98,16 @@ Object.defineProperty(globalThis, "AbortController", {
 | structuredClone                  | messagePort.structuredClone              | true       | true         | true      |
 
 Then from rust, provide:
-`deno_web::deno_web::init::<Permissions>(Arc<BlobStore>, Option<Url>)` in the
-`extensions` field of your `RuntimeOptions`
+`deno_web::deno_web::init::<Permissions>(Arc<BlobStore>, Option<Url>, bool, InMemoryBroadcastChannel)`
+in the `extensions` field of your `RuntimeOptions`
 
 Where:
 
 - `Permissions` is a struct implementing `deno_web::TimersPermission`
 - `Arc<BlobStore>` can be provided by `Default::default()`
 - `Option<Url>` provides an optional base URL for certain ops
+- `bool` indicates whether window features are enabled at initialization
+- `InMemoryBroadcastChannel` can be provided by `Default::default()`
 
 ## Dependencies
 
@@ -141,6 +143,9 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_compression_finish
 - op_now
 - op_defer
+- op_geometry_get_enable_window_features
+- op_geometry_matrix_set_matrix_value
+- op_geometry_matrix_to_string
 - op_readable_stream_resource_allocate
 - op_readable_stream_resource_allocate_sized
 - op_readable_stream_resource_get_sink
@@ -149,3 +154,10 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_readable_stream_resource_write_sync
 - op_readable_stream_resource_close
 - op_readable_stream_resource_await_close
+- DOMPointReadOnly
+- DOMPoint
+- DOMRectReadOnly
+- DOMRect
+- DOMQuad
+- DOMMatrixReadOnly
+- DOMMatrix
