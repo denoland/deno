@@ -359,7 +359,7 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
             repl_session.set_last_thrown_error(&result).await?;
 
             ReplMessage::RunFailure {
-              text: exception_details.text,
+              text: session::exception_description(&exception_details),
             }
           } else {
             repl_session

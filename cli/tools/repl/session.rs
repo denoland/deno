@@ -472,18 +472,7 @@ impl ReplSession {
 
           Ok(if let Some(exception_details) = exception_details {
             session.set_last_thrown_error(&result).await?;
-            let description = match exception_details.exception {
-              Some(exception) => {
-                if let Some(description) = exception.description {
-                  description
-                } else if let Some(value) = exception.value {
-                  value.to_string()
-                } else {
-                  "undefined".to_string()
-                }
-              }
-              None => "Unknown exception".to_string(),
-            };
+            let description = exception_description(&exception_details);
             EvaluationOutput::Error(format!(
               "{} {}",
               exception_details.text, description
@@ -925,6 +914,24 @@ impl ReplSession {
       .await;
     serde_json::from_value(res).map_err(JsErrorBox::from_err)
   }
+}
+
+pub fn exception_description(
+  exception_details: &cdp::ExceptionDetails,
+) -> String {
+  let description = match &exception_details.exception {
+    Some(exception) => {
+      if let Some(description) = &exception.description {
+        description.to_string()
+      } else if let Some(value) = &exception.value {
+        value.to_string()
+      } else {
+        "undefined".to_string()
+      }
+    }
+    None => "Unknown exception".to_string(),
+  };
+  description
 }
 
 /// Walk an AST and get all import specifiers for analysis if any of them is
