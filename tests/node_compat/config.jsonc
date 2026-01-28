@@ -1413,12 +1413,7 @@
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
-    "parallel/test-util-isDeepStrictEqual.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "https://github.com/denoland/deno/issues/31632"
-    },
+    "parallel/test-util-isDeepStrictEqual.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
