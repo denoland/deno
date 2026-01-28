@@ -1858,6 +1858,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_canvas"
+version = "0.94.0"
+dependencies = [
+ "bytemuck",
+ "deno_core",
+ "deno_error",
+ "deno_image",
+ "deno_webgpu",
+ "raw-window-handle",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "deno_config"
 version = "0.78.0"
 dependencies = [
@@ -2836,6 +2849,7 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache",
+ "deno_canvas",
  "deno_core",
  "deno_cron",
  "deno_crypto",
@@ -3114,6 +3128,7 @@ version = "0.195.0"
 dependencies = [
  "deno_core",
  "deno_error",
+ "deno_image",
  "deno_unsync",
  "indexmap 2.9.0",
  "raw-window-handle",
