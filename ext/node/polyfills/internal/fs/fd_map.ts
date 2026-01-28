@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
+import { op_node_dup_fd } from "ext:core/ops";
 
 const { MapPrototypeGet, MapPrototypeSet, MapPrototypeDelete, SafeMap } =
   primordials;
@@ -19,12 +20,23 @@ export function registerFd(fd: number, rid: number): void {
 
 export function getRid(fd: number): number {
   const rid = MapPrototypeGet(fdMap, fd);
-  if (rid === undefined) {
-    // For backwards compatibility, if the FD is not in the map,
-    // assume the caller is using a RID directly (e.g., stdio FDs).
-    return fd;
+  if (rid !== undefined) {
+    return rid;
   }
-  return rid;
+  // The FD is not in the map. This can happen when a raw OS file descriptor
+  // is received from another thread (e.g. via worker_threads postMessage).
+  // OS file descriptors are process-wide, so we can create a local resource
+  // by dup'ing the fd. The dup'd fd is independently owned and closeable.
+  if (fd >= 3) {
+    try {
+      const newRid = op_node_dup_fd(fd);
+      MapPrototypeSet(fdMap, fd, newRid);
+      return newRid;
+    } catch {
+      // Fall through - fd may not be valid
+    }
+  }
+  return fd;
 }
 
 export function unregisterFd(fd: number): void {
