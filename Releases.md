@@ -6,6 +6,27 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.7 / 2026.01.27
+
+- fix: deno cross compile for intel mac target (#31714)
+- fix: fetch fd leak (#31375)
+- fix(bundle): avoid name clash in hack (#31409)
+- fix(bundle): do not error on failing to clean up esbuild dir (#31408)
+- fix(bundle): fix import.meta.main transform with jsr entrypoint (#31415)
+- fix(bundle): treat bun specifiers as external by default (#31411)
+- fix(check): fix nil deref with `--unstable-tsgo` (#31416)
+- fix(compile): ensure temp dir exists during x64 codesign (#31672)
+- fix(compile): intel mac compile fix (#31575)
+- fix(compile): sentinal conflict with strtab on intel mac (#31587)
+- fix(ext/node): autopadding behavior on `crypto.Cipheriv` (#31389)
+- fix(ext/node): prevent cipher operations after finalize (#31533)
+- fix(ext/node): truncate first non-hex value on Buffer.from (#31227)
+- fix(node): ensure process.argv is an array of strings (#31322)
+- fix(node): stub missing process.sourceMapsEnabled (#31358)
+- fix(node/crypto): respect authTagLength in createCipheriv for GCM cip…
+  (#31253)
+- fix(node/process): make `process.stdin.isTTY` writable (#31464)
+
 ### 2.6.6 / 2026.01.22
 
 - feat(cli/tsc): show progress bar for TSGO downloads (#31893)
