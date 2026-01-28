@@ -591,8 +591,7 @@ pub fn op_node_get_fd(
   })?;
   match handle {
     ResourceHandle::Fd(fd) => Ok(fd),
-    _ => Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::Other,
+    _ => Err(FsError::Io(std::io::Error::other(
       "Resource is not a file descriptor",
     ))),
   }

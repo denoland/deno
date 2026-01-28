@@ -2,11 +2,11 @@
 
 import { primordials } from "ext:core/mod.js";
 
-const { Map, MapPrototypeGet, MapPrototypeSet, MapPrototypeDelete } =
+const { MapPrototypeGet, MapPrototypeSet, MapPrototypeDelete, SafeMap } =
   primordials;
 
 // Maps OS file descriptors to Deno resource IDs.
-const fdMap = new Map<number, number>();
+const fdMap = new SafeMap();
 
 // Pre-populate with stdio (RIDs 0-2 map to FDs 0-2).
 MapPrototypeSet(fdMap, 0, 0);
