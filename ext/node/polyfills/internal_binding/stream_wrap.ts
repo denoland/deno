@@ -344,6 +344,10 @@ export class LibuvStreamWrap extends HandleWrap {
     this[kStreamBaseField] = stream;
   }
 
+  consume(rid) {
+    this[kStreamBaseField][internalRidSymbol] = rid;
+  }
+
   /** Internal method for reading from the attached stream. */
   async #read() {
     // Queue the read operation and allow TLS upgrades to complete.

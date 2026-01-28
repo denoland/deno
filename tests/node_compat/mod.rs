@@ -594,11 +594,15 @@ fn run_test(
     ))
   );
 
-  let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
-    20_000
-  } else {
-    10_000
-  });
+  let timeout = Duration::from_millis(
+    if let Ok(timeout) = std::env::var("NODE_COMPAT_TEST_TIMEOUT") {
+      timeout.parse::<u64>().unwrap()
+    } else if cfg!(target_os = "macos") {
+      20_000
+    } else {
+      10_000
+    },
+  );
 
   // Format v8_flags for reuse in both PTY and non-PTY paths
   let v8_flags_arg = if !v8_flags.is_empty() {

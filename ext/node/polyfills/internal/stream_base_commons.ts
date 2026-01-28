@@ -50,6 +50,7 @@ export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
 export const kHandle = Symbol("kHandle");
+export const kBoundSession = Symbol("kBoundSession");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");
 export const kBufferGen = Symbol("kBufferGen");
@@ -365,6 +366,7 @@ export function setStreamTimeout(
     if (this[kSession]) {
       this[kSession][kUpdateTimer]();
     }
+    if (this[kBoundSession]) this[kBoundSession][kUpdateTimer]();
 
     if (callback !== undefined) {
       validateFunction(callback, "callback");
