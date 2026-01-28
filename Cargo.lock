@@ -1667,6 +1667,7 @@ dependencies = [
  "memchr",
  "nix 0.27.1",
  "node_resolver",
+ "node_shim",
  "notify",
  "once_cell",
  "open",
