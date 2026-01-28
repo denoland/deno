@@ -145,6 +145,12 @@ impl ZlibInner {
           ));
         }
       }
+      Mode::BrotliDecode
+      | Mode::BrotliEncode
+      | Mode::ZstdCompress
+      | Mode::ZstdDecompress => {
+        // These modes are handled by separate classes
+      }
       _ => {}
     }
 
@@ -199,6 +205,12 @@ impl ZlibInner {
       Mode::Gzip | Mode::Gunzip => self.window_bits += 16,
       Mode::Unzip => self.window_bits += 32,
       Mode::DeflateRaw | Mode::InflateRaw => self.window_bits *= -1,
+      Mode::BrotliDecode
+      | Mode::BrotliEncode
+      | Mode::ZstdCompress
+      | Mode::ZstdDecompress => {
+        // These modes are handled by separate classes
+      }
       _ => {}
     }
 
@@ -211,6 +223,13 @@ impl ZlibInner {
       ),
       Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
         self.strm.inflate_init(self.window_bits)
+      }
+      Mode::BrotliDecode
+      | Mode::BrotliEncode
+      | Mode::ZstdCompress
+      | Mode::ZstdDecompress => {
+        // These modes are handled by separate classes, return OK
+        Z_OK
       }
       Mode::None => return Err(JsErrorBox::type_error("Unknown mode")),
     };
@@ -371,14 +390,10 @@ impl Zlib {
     let mut zlib = self.inner.borrow_mut();
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
-    if !((window_bits == 0)
-      && matches!(zlib.mode, Mode::Inflate | Mode::Gunzip | Mode::Unzip))
-    {
-      check((8..=15).contains(&window_bits), "invalid windowBits")?;
-    }
-
-    check((-1..=9).contains(&level), "invalid level")?;
-
+    check(
+      (window_bits == 0) || (8..=15).contains(&window_bits),
+      "invalid windowBits",
+    )?;
     check((1..=9).contains(&mem_level), "invalid memLevel")?;
 
     check(
@@ -919,6 +934,334 @@ impl BrotliDecoder {
         ffi::decompressor::ffi::BrotliDecoderDestroyInstance(ctx.inst);
       }
     }
+  }
+}
+
+// Zstd Encoder implementation
+struct ZstdCompressCtx {
+  write_result: *mut u32,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct ZstdCompress {
+  ctx: Rc<RefCell<Option<ZstdCompressCtx>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for ZstdCompress {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ZstdCompress"
+  }
+}
+
+#[op2]
+impl ZstdCompress {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] _mode: i32) -> ZstdCompress {
+    ZstdCompress {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] _params: &[u32],
+    #[smi] _pledged_src_size: Option<i32>,
+    #[buffer] write_result: &mut [u32],
+    #[global] callback: v8::Global<v8::Function>,
+  ) {
+    self.ctx.borrow_mut().replace(ZstdCompressCtx {
+      write_result: write_result.as_mut_ptr(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op for now
+  }
+
+  #[fast]
+  fn reset(&self) {}
+
+  #[fast]
+  #[reentrant]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[smi] _flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: i32,
+    #[smi] in_len: i32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: i32,
+    #[smi] out_len: i32,
+  ) -> Result<(), JsErrorBox> {
+    let callback = {
+      let mut ctx_borrow = self.ctx.borrow_mut();
+      let ctx = ctx_borrow.as_mut().expect("ZstdCompress not initialized");
+
+      let input_slice = &input[in_off as usize..(in_off + in_len) as usize];
+
+      // Compress the input data using stateless API (default level 3)
+      let compressed = zstd::bulk::compress(input_slice, 3).map_err(|e| {
+        JsErrorBox::type_error(format!("Zstd compression failed: {}", e))
+      })?;
+
+      let bytes_written = compressed.len().min(out_len as usize);
+      out[out_off as usize..out_off as usize + bytes_written]
+        .copy_from_slice(&compressed[..bytes_written]);
+
+      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+      unsafe {
+        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+        let avail_out_after =
+          (out_len as usize).saturating_sub(bytes_written) as u32;
+        result[0] = avail_out_after; // availOutAfter
+        result[1] = 0; // availInAfter - all input consumed
+      }
+
+      v8::Local::new(scope, &ctx.callback)
+    };
+
+    let this = v8::Local::new(scope, &this);
+    let _ = callback.call(scope, this.into(), &[]);
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn write_sync(
+    &self,
+    #[smi] _flush: u8,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    let mut ctx_borrow = self.ctx.borrow_mut();
+    let ctx = ctx_borrow.as_mut().expect("ZstdCompress not initialized");
+
+    let input_slice = &input[in_off as usize..(in_off + in_len) as usize];
+
+    // Compress the input data using stateless API (default level 3)
+    let compressed = zstd::bulk::compress(input_slice, 3).map_err(|e| {
+      JsErrorBox::type_error(format!("Zstd compression failed: {}", e))
+    })?;
+
+    let bytes_written = compressed.len().min(out_len as usize);
+    out[out_off as usize..out_off as usize + bytes_written]
+      .copy_from_slice(&compressed[..bytes_written]);
+
+    // SAFETY: `ctx.write_result` is a valid pointer to a mutable slice of u32 of length 2.
+    unsafe {
+      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+      let avail_out_after =
+        (out_len as usize).saturating_sub(bytes_written) as u32;
+      result[0] = avail_out_after; // availOutAfter
+      result[1] = 0; // availInAfter - all input consumed
+    }
+
+    Ok(())
+  }
+
+  #[fast]
+  fn close(&self) {
+    self.ctx.borrow_mut().take();
+  }
+}
+
+// Zstd Decoder implementation
+struct ZstdDecompressCtx {
+  buffer: Vec<u8>,
+  write_result: *mut u32,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct ZstdDecompress {
+  ctx: Rc<RefCell<Option<ZstdDecompressCtx>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for ZstdDecompress {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ZstdDecompress"
+  }
+}
+
+#[op2]
+impl ZstdDecompress {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] _mode: i32) -> ZstdDecompress {
+    ZstdDecompress {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] _params: &[u32],
+    #[smi] _pledged_src_size: Option<i64>,
+    #[buffer] write_result: &mut [u32],
+    #[global] callback: v8::Global<v8::Function>,
+  ) {
+    self.ctx.borrow_mut().replace(ZstdDecompressCtx {
+      buffer: Vec::new(),
+      write_result: write_result.as_mut_ptr(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op
+  }
+
+  #[fast]
+  fn reset(&self) {}
+
+  #[fast]
+  #[reentrant]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[smi] _flush: u8,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    let callback = {
+      let mut ctx_borrow = self.ctx.borrow_mut();
+      let ctx = ctx_borrow.as_mut().expect("ZstdDecompress not initialized");
+
+      let input_slice = &input[in_off as usize..(in_off + in_len) as usize];
+
+      // Buffer the input
+      ctx.buffer.extend_from_slice(input_slice);
+
+      // Try to decompress what we have
+      let mut bytes_written = 0;
+      let mut bytes_consumed = 0;
+
+      // Try to decompress as much as we can
+      match zstd::stream::Decoder::new(&ctx.buffer[..]) {
+        Ok(mut decompressor) => {
+          let mut decompressed = Vec::new();
+          use std::io::Read;
+          match decompressor.read_to_end(&mut decompressed) {
+            Ok(_) => {
+              bytes_written = decompressed.len().min(out_len as usize);
+              out[out_off as usize..out_off as usize + bytes_written]
+                .copy_from_slice(&decompressed[..bytes_written]);
+              bytes_consumed = ctx.buffer.len();
+              ctx.buffer.clear();
+            }
+            Err(_) => {
+              // Incomplete frame, keep buffering
+              bytes_consumed = 0;
+            }
+          }
+        }
+        Err(_) => {
+          // Invalid data, keep buffering
+          bytes_consumed = 0;
+        }
+      }
+
+      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+      unsafe {
+        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+        let avail_out_after =
+          (out_len as usize).saturating_sub(bytes_written) as u32;
+        result[0] = avail_out_after; // availOutAfter
+        result[1] = ((in_len as usize).saturating_sub(bytes_consumed)) as u32; // availInAfter
+      }
+
+      v8::Local::new(scope, &ctx.callback)
+    };
+
+    let this = v8::Local::new(scope, &this);
+    let _ = callback.call(scope, this.into(), &[]);
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn write_sync(
+    &self,
+    #[smi] _flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: i32,
+    #[smi] in_len: i32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: i32,
+    #[smi] out_len: i32,
+  ) -> Result<(), JsErrorBox> {
+    let mut ctx_borrow = self.ctx.borrow_mut();
+    let ctx = ctx_borrow.as_mut().expect("ZstdDecompress not initialized");
+
+    let input_slice = &input[in_off as usize..(in_off + in_len) as usize];
+
+    // Buffer the input
+    ctx.buffer.extend_from_slice(input_slice);
+
+    // Try to decompress what we have
+    let mut bytes_written = 0;
+    let mut bytes_consumed = 0;
+
+    // Try to decompress as much as we can
+    match zstd::stream::Decoder::new(&ctx.buffer[..]) {
+      Ok(mut decompressor) => {
+        let mut decompressed = Vec::new();
+        use std::io::Read;
+        match decompressor.read_to_end(&mut decompressed) {
+          Ok(_) => {
+            bytes_written = decompressed.len().min(out_len as usize);
+            out[out_off as usize..out_off as usize + bytes_written]
+              .copy_from_slice(&decompressed[..bytes_written]);
+            bytes_consumed = ctx.buffer.len();
+            ctx.buffer.clear();
+          }
+          Err(_) => {
+            // Incomplete frame, keep buffering
+            bytes_consumed = 0;
+          }
+        }
+      }
+      Err(_) => {
+        // Invalid data, keep buffering
+        bytes_consumed = 0;
+      }
+    }
+
+    // SAFETY: `ctx.write_result` is a valid pointer to a mutable slice of u32 of length 2.
+    unsafe {
+      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+      let avail_out_after =
+        (out_len as usize).saturating_sub(bytes_written) as u32;
+      result[0] = avail_out_after; // availOutAfter
+      result[1] = ((in_len as usize).saturating_sub(bytes_consumed)) as u32; // availInAfter
+    }
+
+    Ok(())
+  }
+
+  #[fast]
+  fn close(&self) {
+    self.ctx.borrow_mut().take();
   }
 }
 

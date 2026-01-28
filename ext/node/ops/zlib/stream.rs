@@ -4,6 +4,8 @@ use std::ffi::c_int;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use libz_sys::Z_OK;
+
 use super::mode::Flush;
 use super::mode::Mode;
 
@@ -59,6 +61,13 @@ impl StreamWrapper {
         Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
           zlib::inflateReset(&mut self.strm)
         }
+        Mode::BrotliDecode
+        | Mode::BrotliEncode
+        | Mode::ZstdCompress
+        | Mode::ZstdDecompress => {
+          // These modes are handled by separate classes
+          Z_OK
+        }
         Mode::None => unreachable!(),
       }
     }
@@ -73,6 +82,12 @@ impl StreamWrapper {
         }
         Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
           zlib::inflateEnd(&mut self.strm);
+        }
+        Mode::BrotliDecode
+        | Mode::BrotliEncode
+        | Mode::ZstdCompress
+        | Mode::ZstdDecompress => {
+          // These modes are handled by separate classes
         }
         Mode::None => {}
       }

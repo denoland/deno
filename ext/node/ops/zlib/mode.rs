@@ -40,6 +40,10 @@ repr_i32! {
     DeflateRaw,
     InflateRaw,
     Unzip,
+    BrotliDecode,
+    BrotliEncode,
+    ZstdCompress,
+    ZstdDecompress,
   }
 }
 

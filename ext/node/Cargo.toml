@@ -104,6 +104,7 @@ winapi.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 x509-parser.workspace = true
 yoke.workspace = true
+zstd.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 errno = "0.3.10"

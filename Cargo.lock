@@ -2548,6 +2548,7 @@ dependencies = [
  "x25519-dalek",
  "x509-parser",
  "yoke 0.7.4",
+ "zstd",
 ]
 
 [[package]]
