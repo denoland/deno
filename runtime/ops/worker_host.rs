@@ -313,7 +313,7 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
@@ -355,7 +355,7 @@ async fn op_host_recv_ctrl(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,

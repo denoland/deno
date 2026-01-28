@@ -2529,7 +2529,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn translate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2546,7 +2545,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn scale_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2574,7 +2572,6 @@ impl DOMMatrix {
 
   #[rename("scale3dSelf")]
   #[required(0)]
-  #[global]
   fn scale3d_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2599,7 +2596,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn rotate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2628,7 +2624,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn rotate_from_vector_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2643,7 +2638,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn rotate_axis_angle_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2662,7 +2656,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn skew_x_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2675,7 +2668,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn skew_y_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2688,7 +2680,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2720,7 +2711,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn pre_multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
@@ -2752,7 +2742,6 @@ impl DOMMatrix {
   }
 
   #[required(0)]
-  #[global]
   fn invert_self(
     &self,
     #[this] this: v8::Global<v8::Object>,

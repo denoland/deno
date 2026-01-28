@@ -85,8 +85,7 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -117,8 +116,7 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_net_connect_unix(
   state: Rc<RefCell<OpState>>,
   #[string] address_path: String,
@@ -146,7 +144,7 @@ pub async fn op_net_connect_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -168,7 +166,7 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
 pub async fn op_net_send_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -201,7 +199,6 @@ pub async fn op_net_send_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_unix(
   state: &mut OpState,
   #[string] address_path: &str,
@@ -250,7 +247,6 @@ pub fn net_listen_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,
@@ -260,7 +256,6 @@ pub fn op_net_listen_unixpacket(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_unstable_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,
