@@ -87,7 +87,7 @@ async function resolveDns(query, recordType, options) {
       query,
       recordType,
       options,
-    });
+    }, /* useEdns0 */ true);
     return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {

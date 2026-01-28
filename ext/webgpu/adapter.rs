@@ -79,7 +79,6 @@ impl GPUAdapter {
   }
 
   #[getter]
-  #[global]
   fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
@@ -89,7 +88,6 @@ impl GPUAdapter {
   }
 
   #[getter]
-  #[global]
   fn features(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -104,7 +102,6 @@ impl GPUAdapter {
   }
 
   #[getter]
-  #[global]
   fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let adapter_limits = self.instance.adapter_limits(self.id);
@@ -113,7 +110,6 @@ impl GPUAdapter {
   }
 
   #[async_method(fake)]
-  #[global]
   fn request_device(
     &self,
     state: &mut OpState,
@@ -428,7 +424,6 @@ impl GPUSupportedFeatures {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[global]
   #[symbol("setlike_set")]
   fn set(&self) -> v8::Global<v8::Value> {
     self.0.clone()
