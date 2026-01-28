@@ -53,7 +53,7 @@ extern "C" fn test_utf8_roundtrip(
   assert_napi_ok!(napi_get_value_string_utf8(
     env,
     args[0],
-    buf.as_mut_ptr() as *mut i8,
+    buf.as_mut_ptr() as *mut std::ffi::c_char,
     buf.len(),
     &mut copied
   ));
@@ -63,7 +63,7 @@ extern "C" fn test_utf8_roundtrip(
   let mut result: napi_value = std::ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    buf.as_ptr() as *const i8,
+    buf.as_ptr() as *const std::ffi::c_char,
     copied,
     &mut result
   ));
