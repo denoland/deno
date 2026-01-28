@@ -358,6 +358,10 @@ const kObjectType = 0;
 const kArrayType = 1;
 const kArrayExtrasType = 2;
 
+const coreModuleRegExp = new SafeRegExp(
+  /^ {4}at (?:[^/\\(]+ \(|)node:(.+):\d+:\d+\)?$/,
+);
+
 const kMinLineLength = 16;
 
 // Constants to map the iterator state.
