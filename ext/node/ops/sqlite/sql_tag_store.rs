@@ -440,7 +440,7 @@ impl SQLTagStore {
   fn iterate<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
     v8_static_strings! {
       ITERATOR = "Iterator",
@@ -449,9 +449,10 @@ impl SQLTagStore {
       RETURN = "return",
       DONE = "done",
       VALUE = "value",
+      __STATEMENT_REF = "__statement_ref",
     }
 
-    let args = args.ok_or(SqliteError::Validation(
+    let args = params.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
         "First argument must be an array of strings (template literal).",
       ),
@@ -625,10 +626,20 @@ impl SQLTagStore {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
+      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
 
+    // Get the cppgc wrapper object to keep the statement alive
+    // We store a reference to the statement object on the iterator to prevent
+    // the GC from collecting it while the iterator is still in use.
+    let statement_ref = if let Some(args) = params {
+      args.this().into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
     let values: &[v8::Local<v8::Value>] =
-      &[next_func.into(), return_func.into()];
+      &[next_func.into(), return_func.into(), statement_ref];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,
