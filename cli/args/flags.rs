@@ -555,6 +555,7 @@ pub struct UpgradeFlags {
   pub version: Option<String>,
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
+  pub checksum: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4432,6 +4433,13 @@ update to a different location, use the <c>--output</> flag:
           .action(ArgAction::Append)
           .trailing_var_arg(true),
       )
+      .arg(
+        Arg::new("checksum")
+          .long("checksum")
+          .help("Verify the downloaded archive against the provided SHA256 checksum")
+          .value_parser(value_parser!(String))
+          .help_heading(UPGRADE_HEADING),
+      )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
   })
@@ -6991,6 +6999,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let output = matches.remove_one::<String>("output");
   let version_or_hash_or_channel =
     matches.remove_one::<String>("version-or-hash-or-channel");
+  let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -6999,6 +7008,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     version,
     output,
     version_or_hash_or_channel,
+    checksum,
   });
 }
 
@@ -7698,6 +7708,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -7718,6 +7729,7 @@ mod tests {
           version: None,
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -11752,6 +11764,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -11773,6 +11786,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }

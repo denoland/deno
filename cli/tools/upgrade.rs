@@ -24,6 +24,7 @@ use deno_lib::version;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
+use sha2::Digest;
 
 use crate::args::Flags;
 use crate::args::UPGRADE_USAGE;
@@ -36,9 +37,9 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
-const CANARY_URL: &str = "https://dl.deno.land/canary";
-const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+static RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+static CANARY_URL: &str = "https://dl.deno.land/canary";
+static DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -546,6 +547,11 @@ pub async fn upgrade(
     deno_runtime::exit(1)
   };
 
+  // verify checksum if provided
+  if let Some(expected_checksum) = &upgrade_flags.checksum {
+    verify_checksum(&archive_data, expected_checksum)?;
+  }
+
   log::info!(
     "{}",
     colors::gray(format!(
@@ -870,7 +876,12 @@ fn get_download_url(
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
     ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+      let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+        "http://localhost:4545/deno-upgrade"
+      } else {
+        RELEASE_URL
+      };
+      format!("{}/download/v{}/{}", release_url, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Rc => {
       format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
@@ -939,6 +950,26 @@ async fn download_package(
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
   Ok(response.into_maybe_bytes()?)
+}
+
+fn verify_checksum(
+  data: &[u8],
+  expected_checksum: &str,
+) -> Result<(), AnyError> {
+  let computed = sha2::Sha256::digest(data);
+  let computed_hex = faster_hex::hex_string(&computed);
+
+  let expected_checksum = expected_checksum.trim().to_lowercase();
+  if computed_hex != expected_checksum {
+    bail!(
+      "Checksum verification failed.\n  Actual:   {}\n  Expected: {}",
+      expected_checksum,
+      computed_hex
+    );
+  }
+
+  log::info!("{}", colors::gray("Checksum verified"));
+  Ok(())
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -1151,6 +1182,7 @@ mod test {
       version: None,
       output: None,
       version_or_hash_or_channel: None,
+      checksum: None,
     };
 
     let req_ver =
