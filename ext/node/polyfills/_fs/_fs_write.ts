@@ -20,6 +20,7 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   customPromisifyArgs,
   kEmptyObject,
@@ -56,15 +57,16 @@ export function writeSync(
     length: number,
     position: number | null | undefined,
   ) => {
+    const rid = getRid(fd);
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number" && position >= 0) {
-      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+      op_fs_seek_sync(rid, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
       currentOffset += io.writeSync(
-        fd,
+        rid,
         (buffer as Uint8Array).subarray(currentOffset, end),
       );
     }
@@ -121,15 +123,16 @@ export function write(
     length: number,
     position: number | null | undefined,
   ) => {
+    const rid = getRid(fd);
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number" && position >= 0) {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
       currentOffset += await io.write(
-        fd,
+        rid,
         (buffer as Uint8Array).subarray(currentOffset, end),
       );
     }
