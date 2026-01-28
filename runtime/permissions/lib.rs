@@ -4202,8 +4202,8 @@ impl PermissionsContainer {
 
     // We allow /dev/tty access specifically for checking isatty() or reading input,
     // but we BLOCK write access to prevent "prompt spoofing" attacks.
-    if cfg!(unix) && path == OsStr::new("/dev/tty") {
-      if !access_kind.is_write() {
+    if cfg!(unix) && path == OsStr::new("/dev/tty")
+      && !access_kind.is_write() {
         return Ok(CheckedPath {
           path: PathWithRequested {
             path,
@@ -4212,7 +4212,6 @@ impl PermissionsContainer {
           canonicalized,
         });
       }
-    }
 
     /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
     ///
