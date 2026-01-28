@@ -24,6 +24,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { getRid as getFdRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -34,17 +35,18 @@ async function getRid(
   flag: string = "w",
 ): Promise<number> {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    return getFdRid(pathOrRid);
   }
   const fileHandle = await openPromise(pathOrRid, flag);
-  return fileHandle.fd;
+  return getFdRid(fileHandle.fd);
 }
 
 function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    return getFdRid(pathOrRid);
   }
-  return openSync(pathOrRid, flag);
+  const fd = openSync(pathOrRid, flag);
+  return getFdRid(fd);
 }
 
 export function writeFile(
