@@ -10,7 +10,8 @@ import {
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import type { Buffer } from "node:buffer";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { op_node_open, op_node_open_sync } from "ext:core/ops";
+import { op_node_get_fd, op_node_open, op_node_open_sync } from "ext:core/ops";
+import { registerFd } from "ext:deno_node/internal/fs/fd_map.ts";
 
 const { Promise, PromisePrototypeThen } = primordials;
 
@@ -69,7 +70,11 @@ export function open(
 
   PromisePrototypeThen(
     op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
+    (rid: number) => {
+      const fd = op_node_get_fd(rid);
+      registerFd(fd, rid);
+      callback(null, fd);
+    },
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "open", path })),
   );
@@ -109,7 +114,10 @@ export function openSync(
   const mode = parseFileMode(maybeMode, "mode", 0o666);
 
   try {
-    return op_node_open_sync(path, flags, mode);
+    const rid = op_node_open_sync(path, flags, mode);
+    const fd = op_node_get_fd(rid);
+    registerFd(fd, rid);
+    return fd;
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }

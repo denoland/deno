@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertThrows, fail } from "@std/assert";
-import { appendFile, appendFileSync } from "node:fs";
+import { appendFile, appendFileSync, closeSync, openSync } from "node:fs";
 import { fromFileUrl } from "@std/path";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
@@ -63,20 +63,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Async: Data is written to passed in rid",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
+  name: "Async: Data is written to passed in fd",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
-    using file = await Deno.open(tempFile, {
-      create: true,
-      write: true,
-      read: true,
-    });
+    const fd = openSync(tempFile, "a");
     await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      appendFile(file.rid, "hello world", (err) => {
+      appendFile(fd, "hello world", (err) => {
         if (err) reject();
         else resolve();
       });
@@ -88,6 +80,7 @@ Deno.test({
         fail("No error expected");
       })
       .finally(async () => {
+        closeSync(fd);
         await Deno.remove(tempFile);
       });
   },
@@ -156,19 +149,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Sync: Data is written to passed in rid",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
+  name: "Sync: Data is written to passed in fd",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    using file = Deno.openSync(tempFile, {
-      create: true,
-      write: true,
-      read: true,
-    });
-    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-    appendFileSync(file.rid, "hello world");
+    const fd = openSync(tempFile, "a");
+    appendFileSync(fd, "hello world");
+    closeSync(fd);
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync(tempFile);

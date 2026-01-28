@@ -21,6 +21,7 @@ import {
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   customPromisifyArgs,
   kEmptyObject,
@@ -144,27 +145,28 @@ export function read(
 
   (async () => {
     try {
+      const rid = getRid(fd);
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
         const currentPosition = await op_fs_seek_async(
-          fd,
+          rid,
           0,
           io.SeekMode.Current,
         );
         // We use sync calls below to avoid being affected by others during
         // these calls.
-        op_fs_seek_sync(fd, position, io.SeekMode.Start);
+        op_fs_seek_sync(rid, position, io.SeekMode.Start);
         nread = io.readSync(
-          fd,
+          rid,
           arrayBufferViewToUint8Array(buffer).subarray(
             offset,
             offset + (length as number),
           ),
         );
-        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
+        op_fs_seek_sync(rid, currentPosition, io.SeekMode.Start);
       } else {
         nread = await io.read(
-          fd,
+          rid,
           arrayBufferViewToUint8Array(buffer).subarray(
             offset,
             offset + (length as number),
@@ -248,19 +250,20 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
+  const rid = getRid(fd);
   let currentPosition = 0;
   if (typeof position === "number" && position >= 0) {
-    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    currentPosition = op_fs_seek_sync(rid, 0, io.SeekMode.Current);
+    op_fs_seek_sync(rid, position, io.SeekMode.Start);
   }
 
   const numberOfBytesRead = io.readSync(
-    fd,
+    rid,
     arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
   );
 
   if (typeof position === "number" && position >= 0) {
-    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
+    op_fs_seek_sync(rid, currentPosition, io.SeekMode.Start);
   }
 
   return numberOfBytesRead ?? 0;

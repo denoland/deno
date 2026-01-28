@@ -574,3 +574,84 @@ pub fn op_node_file_from_fd(
     "op_node_file_from_fd is not supported on this platform",
   )))
 }
+
+/// Create a file resource from a raw file descriptor by dup'ing it first.
+/// This is safe for cross-worker use because the dup'd fd is independently
+/// owned and can be closed without affecting the original.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<ResourceId, FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // SAFETY: dup() creates a new fd pointing to the same open file description.
+  let new_fd = unsafe { libc::dup(fd) };
+  if new_fd < 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // SAFETY: new_fd is a valid fd we just created via dup().
+  let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
+
+  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  _state: &mut OpState,
+  #[smi] _fd: i32,
+) -> Result<ResourceId, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "op_node_dup_fd is not supported on this platform",
+  )))
+}
+
+/// Retrieves the OS file descriptor for a given resource ID.
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_get_fd(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, FsError> {
+  use deno_core::ResourceHandle;
+  let handle = state.resource_table.get_handle(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "Bad resource ID",
+    ))
+  })?;
+  match handle {
+    ResourceHandle::Fd(fd) => Ok(fd),
+    _ => Err(FsError::Io(std::io::Error::other(
+      "Resource is not a file descriptor",
+    ))),
+  }
+}
+
+/// On non-Unix platforms, return the RID as-is for now.
+#[cfg(not(unix))]
+#[op2(fast)]
+pub fn op_node_get_fd(
+  _state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, FsError> {
+  Ok(rid as i32)
+}
