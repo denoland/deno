@@ -22,6 +22,24 @@ Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", (
 });
 
 Deno.test({
+  name: "[node/worker_threads] Worker stdin/stdout/stderr are null by default",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      parentPort.postMessage("ok");
+      `,
+      { eval: true },
+    );
+    assertEquals(worker.stdin, null);
+    assertEquals(worker.stdout, null);
+    assertEquals(worker.stderr, null);
+    await once(worker, "message");
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] isMainThread",
   fn() {
     assertEquals(workerThreads.isMainThread, true);

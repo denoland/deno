@@ -119,6 +119,13 @@ class NodeWorker extends EventEmitter {
     stackSizeMb: 4,
   };
 
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout = null;
+  // https://nodejs.org/api/worker_threads.html#workerstderr
+  stderr = null;
+
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
