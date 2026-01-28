@@ -14,6 +14,7 @@ import { readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   AbortError,
   denoErrorToNodeError,
@@ -202,7 +203,8 @@ export function readFile(
   if (typeof pathOrRid === "string") {
     p = readFileAsync(pathOrRid, options);
   } else {
-    const fsFile = new FsFile(pathOrRid, Symbol.for("Deno.internal.FsFile"));
+    const rid = getRid(pathOrRid);
+    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
     p = fsFileReadAll(fsFile, options);
   }
 
@@ -253,7 +255,8 @@ export function readFileSync(
 
   let data;
   if (typeof path === "number") {
-    const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
+    const rid = getRid(path);
+    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
     data = readAllSync(fsFile);
   } else {
     // Validate/convert path to string (throws on invalid types)

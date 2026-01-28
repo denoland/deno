@@ -6,16 +6,12 @@ import { setTimeout } from "node:timers/promises";
 
 Deno.test({
   name: "ASYNC: File is closed",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
-    const file: Deno.FsFile = await Deno.open(tempFile);
+    const fd = openSync(tempFile, "r");
 
     await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      close(file.rid, (err) => {
+      close(fd, (err) => {
         if (err !== null) reject();
         else resolve();
       });
@@ -38,17 +34,13 @@ Deno.test({
 
 Deno.test({
   name: "close callback should be asynchronous",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    const file: Deno.FsFile = Deno.openSync(tempFile);
+    const fd = openSync(tempFile, "r");
 
     let foo: string;
     const promise = new Promise<void>((resolve) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      close(file.rid, () => {
+      close(fd, () => {
         assert(foo === "bar");
         resolve();
       });
@@ -62,15 +54,11 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: File is closed",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    const file: Deno.FsFile = Deno.openSync(tempFile);
+    const fd = openSync(tempFile, "r");
 
-    // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-    closeSync(file.rid);
+    closeSync(fd);
     Deno.removeSync(tempFile);
   },
 });
@@ -84,19 +72,16 @@ Deno.test({
 
 Deno.test({
   name: "[std/node/fs] close callback isn't called twice if error is thrown",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
 }, async () => {
   const tempFile = await Deno.makeTempFile();
   const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `
-    import { close } from ${JSON.stringify(importUrl)};
+    import { close, openSync } from ${JSON.stringify(importUrl)};
 
-    const file = await Deno.open(${JSON.stringify(tempFile)});
+    const fd = openSync(${JSON.stringify(tempFile)}, "r");
     `,
-    invocation: "close(file.rid, ",
+    invocation: "close(fd, ",
     async cleanup() {
       await Deno.remove(tempFile);
     },
@@ -107,11 +92,11 @@ Deno.test({
   name: "[std/node/fs] close with default callback if none is provided",
 }, async () => {
   const tempFile = await Deno.makeTempFile();
-  const rid = openSync(tempFile, "r");
-  close(rid);
+  const fd = openSync(tempFile, "r");
+  close(fd);
   await setTimeout(1000);
   assertThrows(() => {
-    closeSync(rid), Deno.errors.BadResource;
+    closeSync(fd), Deno.errors.BadResource;
   });
   await Deno.remove(tempFile);
 });
