@@ -158,6 +158,9 @@
       "windows": false
     },
     "parallel/test-child-process-advanced-serialization-splitted-length-field.js": {},
+    "parallel/test-child-process-bad-stdio.js": {
+      "windows": false
+    },
     "parallel/test-child-process-can-write-to-stdout.js": {
       "flaky": true
     },
