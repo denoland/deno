@@ -762,9 +762,7 @@ async fn find_package_and_select_version_for_req(
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
-    } else if save_exact {
-      ""
-    } else if req.version_req.version_text() == nv.version.to_string() {
+    } else if save_exact || req.version_req.version_text() == nv.version.to_string() {
       ""
     } else {
       "^"
