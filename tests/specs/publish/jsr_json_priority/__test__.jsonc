@@ -1,0 +1,7 @@
+{
+  // Test that jsr.json takes priority over deno.json for publish
+  // when both exist in the same directory. This verifies the fix
+  // for https://github.com/denoland/deno/issues/22651
+  "args": "publish --dry-run --token 'sadfasdf'",
+  "output": "publish.out"
+}

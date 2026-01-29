@@ -1305,11 +1305,13 @@ impl ConfigFile {
     if additional_config_file_names.is_empty() {
       Cow::Borrowed(&CONFIG_FILE_NAMES)
     } else {
+      // Additional config file names come first so they take priority.
+      // This allows jsr.json to be preferred over deno.json for publish.
       Cow::Owned(
-        CONFIG_FILE_NAMES
+        additional_config_file_names
           .iter()
           .copied()
-          .chain(additional_config_file_names.iter().copied())
+          .chain(CONFIG_FILE_NAMES.iter().copied())
           .collect::<Vec<_>>(),
       )
     }
