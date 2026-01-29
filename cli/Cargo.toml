@@ -141,6 +141,7 @@ keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service"
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lol_html = "2.6.0"
 lsp-types.workspace = true
