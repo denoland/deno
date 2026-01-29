@@ -152,6 +152,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
+  pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
 }
 
 impl ModuleLoadPreparer {
@@ -190,12 +191,16 @@ impl ModuleLoadPreparer {
       ext_overwrite,
       allow_unknown_media_types,
       skip_graph_roots_validation,
+      file_content_overrides,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
+    if !file_content_overrides.is_empty() {
+      loader.set_file_content_overrides(file_content_overrides);
+    }
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
@@ -1076,7 +1081,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    _maybe_code: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
@@ -1146,6 +1151,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
+      let file_overrides = maybe_code
+        .map(|code| {
+          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+        })
+        .unwrap_or_default();
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1160,6 +1170,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
+              file_content_overrides: file_overrides,
             },
           )
           .await

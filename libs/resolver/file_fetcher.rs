@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_cache_dir::GlobalHttpCacheRc;
@@ -417,6 +418,7 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  file_content_overrides: Option<HashMap<Url, Arc<[u8]>>>,
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
@@ -448,7 +450,15 @@ impl<
       permissions: options.permissions,
       cache_info_enabled: false,
       reporter: options.reporter,
+      file_content_overrides: Default::default(),
     }
+  }
+
+  pub fn set_file_content_overrides(
+    &mut self,
+    overrides: HashMap<Url, Arc<[u8]>>,
+  ) {
+    self.file_content_overrides = Some(overrides);
   }
 
   pub fn insert_file_header_override(
@@ -639,6 +649,17 @@ impl<
         },
       ))));
     }
+    if let Some(overrides) = &self.file_content_overrides
+      && let Some(content) = overrides.get(specifier)
+    {
+      return std::future::ready(Ok(Some(LoadResponse::Module {
+        content: content.clone(),
+        mtime: None,
+        specifier: specifier.clone(),
+        maybe_headers: self.file_header_overrides.get(specifier).cloned(),
+      })))
+      .boxed_local();
+    }
 
     self.load_or_cache(
       LoadStrategy {
@@ -656,6 +677,15 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::EnsureCachedFuture {
+    if let Some(overrides) = &self.file_content_overrides
+      && overrides.contains_key(specifier)
+    {
+      return std::future::ready(Ok(Some(
+        deno_graph::source::CacheResponse::Cached,
+      )))
+      .boxed_local();
+    }
+
     self.load_or_cache(
       CacheStrategy {
         file_fetcher: self.file_fetcher.clone(),
