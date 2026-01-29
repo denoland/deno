@@ -41,6 +41,7 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayBuffer,
   ArrayBufferPrototype,
+  ArrayFrom,
   ArrayIsArray,
   ArrayPrototype,
   ArrayPrototypeFill,
@@ -1611,7 +1612,7 @@ function getDuplicateErrorFrameRanges(frames) {
       continue;
     }
 
-    const current = positions.indexOf(i) + 1;
+    const current = ArrayPrototypeIndexOf(positions, i) + 1;
     if (current === positions.length) {
       continue;
     }
@@ -1644,7 +1645,7 @@ function getDuplicateErrorFrameRanges(frames) {
       range = gcdRange;
       if (extraSteps) {
         extraSteps.delete(range);
-        extraSteps = [...extraSteps];
+        extraSteps = ArrayFrom(extraSteps);
       }
     }
     let maxRange = range;
@@ -1673,7 +1674,7 @@ function getDuplicateErrorFrameRanges(frames) {
           maxRange = range;
           maxDuplicates = duplicateRanges;
         }
-        range = extraSteps.pop();
+        range = ArrayPrototypePop(extraSteps);
         nextStart = i;
         duplicateRanges = 0;
         continue;
@@ -1689,7 +1690,7 @@ function getDuplicateErrorFrameRanges(frames) {
     }
 
     if (duplicateRanges * range >= 3) {
-      result.push(i + range, range, duplicateRanges);
+      ArrayPrototypePush(result, i + range, range, duplicateRanges);
       // Skip over the collapsed portion to avoid overlapping matches.
       i += range * (duplicateRanges + 1) - 1;
     }
