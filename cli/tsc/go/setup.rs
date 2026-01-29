@@ -53,6 +53,7 @@ pub enum DownloadError {
 fn verify_hash(platform: &str, data: &[u8]) -> Result<(), DownloadError> {
   let expected_hash = match platform {
     "windows-x64" => tsgo_version::HASHES.windows_x64,
+    "windows-arm64" => tsgo_version::HASHES.windows_arm64,
     "macos-x64" => tsgo_version::HASHES.macos_x64,
     "macos-arm64" => tsgo_version::HASHES.macos_arm64,
     "linux-x64" => tsgo_version::HASHES.linux_x64,
@@ -99,6 +100,7 @@ pub async fn ensure_tsgo(
 
   let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
     ("windows", "x86_64") => "windows-x64",
+    ("windows", "aarch64") => "windows-arm64",
     ("macos", "x86_64") => "macos-x64",
     ("macos", "aarch64") => "macos-arm64",
     ("linux", "x86_64") => "linux-x64",
