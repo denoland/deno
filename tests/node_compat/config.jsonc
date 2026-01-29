@@ -60,6 +60,7 @@
     "parallel/test-assert-checktag.js": {},
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
+    "parallel/test-assert-deep-with-error.js": {},
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
