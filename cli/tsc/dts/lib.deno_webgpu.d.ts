@@ -1696,23 +1696,3 @@ interface GPUExtent3DDict {
 
 /** @category GPU */
 type GPUExtent3D = number[] | GPUExtent3DDict;
-
-/** @category GPU */
-type GPUCanvasAlphaMode = "opaque" | "premultiplied";
-
-/** @category GPU */
-interface GPUCanvasConfiguration {
-  device: GPUDevice;
-  format: GPUTextureFormat;
-  usage?: GPUTextureUsageFlags;
-  viewFormats?: GPUTextureFormat[];
-  colorSpace?: "srgb" | "display-p3";
-  alphaMode?: GPUCanvasAlphaMode;
-}
-
-/** @category GPU */
-interface GPUCanvasContext {
-  configure(configuration: GPUCanvasConfiguration): undefined;
-  unconfigure(): undefined;
-  getCurrentTexture(): GPUTexture;
-}

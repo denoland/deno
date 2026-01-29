@@ -196,32 +196,6 @@ pub fn op_jupyter_create_png_from_texture(
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
 
-  // We only support the 8 bit per pixel formats with 4 channels
-  // as such a pixel has 4 bytes
-  const BYTES_PER_PIXEL: u32 = 4;
-
-  let unpadded_bytes_per_row = texture.size.width * BYTES_PER_PIXEL;
-  let padded_bytes_per_row_padding = (wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT
-    - (unpadded_bytes_per_row % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT))
-    % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT;
-  let padded_bytes_per_row =
-    unpadded_bytes_per_row + padded_bytes_per_row_padding;
-
-  let (buffer, maybe_err) = texture.instance.device_create_buffer(
-    texture.device_id,
-    &wgpu_types::BufferDescriptor {
-      label: None,
-      size: (padded_bytes_per_row * texture.size.height) as _,
-      usage: wgpu_types::BufferUsages::MAP_READ
-        | wgpu_types::BufferUsages::COPY_DST,
-      mapped_at_creation: false,
-    },
-    None,
-  );
-  if let Some(maybe_err) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
   let (command_encoder, maybe_err) =
     texture.instance.device_create_command_encoder(
       texture.device_id,
@@ -232,94 +206,14 @@ pub fn op_jupyter_create_png_from_texture(
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
 
-  texture
-    .instance
-    .command_encoder_copy_texture_to_buffer(
-      command_encoder,
-      &wgpu_types::TexelCopyTextureInfo {
-        texture: texture.id,
-        mip_level: 0,
-        origin: Default::default(),
-        aspect: Default::default(),
-      },
-      &wgpu_types::TexelCopyBufferInfo {
-        buffer,
-        layout: wgpu_types::TexelCopyBufferLayout {
-          offset: 0,
-          bytes_per_row: Some(padded_bytes_per_row),
-          rows_per_image: None,
-        },
-      },
-      &texture.size,
-    )
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  let (command_buffer, maybe_err) = texture.instance.command_encoder_finish(
+  let data = canvas::copy_texture_to_vec(
+    &texture.instance,
+    texture.device_id,
+    texture.queue_id,
     command_encoder,
-    &wgpu_types::CommandBufferDescriptor { label: None },
-    None,
-  );
-  if let Some((_, maybe_err)) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
-  let maybe_err = texture
-    .instance
-    .queue_submit(texture.queue_id, &[command_buffer])
-    .err();
-  if let Some((_, maybe_err)) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
-  let index = texture
-    .instance
-    .buffer_map_async(
-      buffer,
-      0,
-      None,
-      wgpu_core::resource::BufferMapOperation {
-        host: wgpu_core::device::HostMap::Read,
-        callback: None,
-      },
-    )
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  texture
-    .instance
-    .device_poll(
-      texture.device_id,
-      wgpu_types::PollType::Wait {
-        submission_index: Some(index),
-        timeout: None,
-      },
-    )
-    .unwrap();
-
-  let (slice_pointer, range_size) = texture
-    .instance
-    .buffer_get_mapped_range(buffer, 0, None)
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  let data = {
-    // SAFETY: creating a slice from pointer and length provided by wgpu and
-    // then dropping it before unmapping
-    let slice = unsafe {
-      std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
-    };
-
-    let mut unpadded =
-      Vec::with_capacity((unpadded_bytes_per_row * texture.size.height) as _);
-
-    for i in 0..texture.size.height {
-      unpadded.extend_from_slice(
-        &slice[((i * padded_bytes_per_row) as usize)
-          ..(((i + 1) * padded_bytes_per_row) as usize)]
-          [..(unpadded_bytes_per_row as usize)],
-      );
-    }
-
-    unpadded
-  };
+    texture.id,
+    &texture.size,
+  )?;
 
   let color_type = match texture.format {
     GPUTextureFormat::Rgba8unorm => ExtendedColorType::Rgba8,
@@ -344,12 +238,6 @@ pub fn op_jupyter_create_png_from_texture(
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
-
-  texture
-    .instance
-    .buffer_unmap(buffer)
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-  texture.instance.buffer_drop(buffer);
 
   Ok(deno_runtime::deno_web::forgiving_base64_encode(&out))
 }
