@@ -104,6 +104,44 @@ fn add_tilde() {
 }
 
 #[test]
+fn add_save_exact() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("add jsr:@denotest/add --save-exact")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add jsr:@denotest/add");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@denotest/add": "jsr:@denotest/add@1.0.0"
+    }
+  }));
+}
+
+#[test]
+fn add_exact_alias() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("add jsr:@denotest/add --exact")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add jsr:@denotest/add");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@denotest/add": "jsr:@denotest/add@1.0.0"
+    }
+  }));
+}
+
+#[test]
 fn add_multiple() {
   let starting_deno_json = json!({
     "name": "@foo/bar",
