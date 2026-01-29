@@ -20,8 +20,11 @@
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        # Pre-fetch rusty_v8 static library so the build works in Nix's sandbox
-        rustyV8Version = "145.0.0";
+        cargoToml = builtins.fromTOML (builtins.readFile ./cli/Cargo.toml);
+        denoVersion = cargoToml.package.version;
+
+        cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
+        rustyV8Version = (builtins.head (builtins.filter (p: p.name == "v8") cargoLock.package)).version;
         rustyV8Target = {
           "x86_64-linux" = "x86_64-unknown-linux-gnu";
           "aarch64-linux" = "aarch64-unknown-linux-gnu";
@@ -56,7 +59,7 @@
 
         buildDenoBin = { pname, binName ? pname }: pkgs.rustPlatform.buildRustPackage {
           inherit pname;
-          version = "2.6.6";
+          version = denoVersion;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
@@ -91,20 +94,13 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Rust toolchain (from rust-toolchain.toml)
             rustToolchain
-
-            # Compiler and linker
             llvmPackages_20.clang
             lld_20
             llvmPackages_20.libllvm
-
-            # Build tools
             pkg-config
             cmake
             protobuf
-
-            # System libraries
             openssl
           ] ++ lib.optionals stdenv.isLinux [
             glib
