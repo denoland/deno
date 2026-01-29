@@ -12,21 +12,21 @@ const cp = spawn("node", [], {
 console.log("stdout instanceof Socket:", cp.stdout instanceof Socket);
 console.log(
   "stdout has unref:",
-  "unref" in cp.stdout! && typeof cp.stdout!.unref === "function"
+  "unref" in cp.stdout! && typeof cp.stdout!.unref === "function",
 );
 
 // stderr should be a Socket instance
 console.log("stderr instanceof Socket:", cp.stderr instanceof Socket);
 console.log(
   "stderr has unref:",
-  "unref" in cp.stderr! && typeof cp.stderr!.unref === "function"
+  "unref" in cp.stderr! && typeof cp.stderr!.unref === "function",
 );
 
 // stdin should be a Socket instance
 console.log("stdin instanceof Socket:", cp.stdin instanceof Socket);
 console.log(
   "stdin has unref:",
-  "unref" in cp.stdin! && typeof cp.stdin!.unref === "function"
+  "unref" in cp.stdin! && typeof cp.stdin!.unref === "function",
 );
 
 // Verify that unref() can be called without error
