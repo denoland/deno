@@ -75,6 +75,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
@@ -181,6 +182,101 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     options: PrepareModuleLoadOptions<'_>,
   ) -> Result<(), PrepareModuleLoadError> {
+    struct FileHeaderOverridesLoader<'a> {
+      roots: &'a [ModuleSpecifier],
+      content_type: &'static str,
+      inner_loader: &'a dyn deno_graph::source::Loader,
+    }
+
+    impl<'a> deno_graph::source::Loader for FileHeaderOverridesLoader<'a> {
+      fn max_redirects(&self) -> usize {
+        self.inner_loader.max_redirects()
+      }
+
+      fn cache_info_enabled(&self) -> bool {
+        self.inner_loader.cache_info_enabled()
+      }
+
+      fn get_cache_info(
+        &self,
+        specifier: &ModuleSpecifier,
+      ) -> Option<deno_graph::source::CacheInfo> {
+        self.inner_loader.get_cache_info(specifier)
+      }
+
+      fn load(
+        &self,
+        specifier: &ModuleSpecifier,
+        options: deno_graph::source::LoadOptions,
+      ) -> deno_graph::source::LoadFuture {
+        let future = self.inner_loader.load(specifier, options);
+        if self.roots.contains(specifier) {
+          let content_type = self.content_type;
+          async {
+            let result = future.await?;
+            match result {
+              Some(result) => match result {
+                deno_graph::source::LoadResponse::Module {
+                  content,
+                  mtime,
+                  specifier,
+                  maybe_headers,
+                } => {
+                  let headers = match maybe_headers {
+                    Some(mut headers) => {
+                      headers
+                        .insert("content-type".into(), content_type.into());
+                      headers
+                    }
+                    None => HashMap::from([(
+                      "content-type".to_string(),
+                      content_type.to_string(),
+                    )]),
+                  };
+                  Ok(Some(deno_graph::source::LoadResponse::Module {
+                    content,
+                    mtime,
+                    specifier,
+                    maybe_headers: Some(headers),
+                  }))
+                }
+                deno_graph::source::LoadResponse::External { .. }
+                | deno_graph::source::LoadResponse::Redirect { .. } => {
+                  Ok(Some(result))
+                }
+              },
+              None => Ok(None),
+            }
+          }
+          .boxed_local()
+        } else {
+          future
+        }
+      }
+
+      fn ensure_cached(
+        &self,
+        specifier: &ModuleSpecifier,
+        options: deno_graph::source::LoadOptions,
+      ) -> deno_graph::source::EnsureCachedFuture {
+        self.inner_loader.ensure_cached(specifier, options)
+      }
+    }
+
+    enum PrepareModuleLoadLoader<'a> {
+      FileHeaderOverrides(FileHeaderOverridesLoader<'a>),
+      Ref(&'a dyn deno_graph::source::Loader),
+    }
+
+    impl<'a> PrepareModuleLoadLoader<'a> {
+      pub fn as_loader(&self) -> &dyn deno_graph::source::Loader {
+        match self {
+          PrepareModuleLoadLoader::FileHeaderOverrides(loader) => loader,
+          PrepareModuleLoadLoader::Ref(loader) => *loader,
+        }
+      }
+    }
+
     log::debug!("Preparing module load.");
     let PrepareModuleLoadOptions {
       is_dynamic,
@@ -192,29 +288,27 @@ impl ModuleLoadPreparer {
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
-    let mut loader = self
+    let loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
-    if let Some(ext) = ext_overwrite {
-      let maybe_content_type = match ext.as_str() {
+    let content_type_override =
+      ext_overwrite.and_then(|ext| match ext.as_str() {
         "ts" => Some("text/typescript"),
         "tsx" => Some("text/tsx"),
         "js" => Some("text/javascript"),
         "jsx" => Some("text/jsx"),
         _ => None,
-      };
-      if let Some(content_type) = maybe_content_type {
-        for root in roots {
-          loader.insert_file_header_override(
-            root.clone(),
-            std::collections::HashMap::from([(
-              "content-type".to_string(),
-              content_type.to_string(),
-            )]),
-          );
-        }
-      }
-    }
+      });
+    let loader = match content_type_override {
+      Some(content_type) => PrepareModuleLoadLoader::FileHeaderOverrides(
+        FileHeaderOverridesLoader {
+          content_type,
+          inner_loader: &loader,
+          roots,
+        },
+      ),
+      None => PrepareModuleLoadLoader::Ref(&loader),
+    };
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
@@ -225,7 +319,7 @@ impl ModuleLoadPreparer {
         roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          loader: Some(&mut loader),
+          loader: Some(loader.as_loader()),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -1075,6 +1169,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
+    _maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
@@ -1100,8 +1195,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let inner = self.0.clone();
+    let is_synchronous = options.is_synchronous;
 
-    async move {
+    let future = async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
       let permissions = if options.is_dynamic_import {
@@ -1185,8 +1281,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
 
       Ok(())
-    }
-    .boxed_local()
+    };
+
+    // when is_synchronous is true, the caller is only polling the future
+    // without a tokio runtime, so we need to run it in a new runtime
+    maybe_block_on_future(is_synchronous, future)
   }
 
   fn finish_load(&self) {
@@ -1568,6 +1667,59 @@ impl EszipModuleLoader {
         "Module not found",
       ))),
     }
+  }
+}
+
+/// Runs a future to completion in a new thread with its own tokio runtime.
+///
+/// This is used for synchronous module loading where there's already a tokio
+/// runtime on the current thread but we need to run async work to completion.
+/// Since we can't nest runtimes, we spawn a dedicated thread with its own runtime.
+///
+/// # Safety
+/// Uses `MaskFutureAsSend` to move a potentially non-Send future to the new thread.
+/// This is safe because:
+/// 1. The future is moved entirely to the new thread before any execution
+/// 2. The future executes exclusively on that single thread
+/// 3. The original thread waits (joins) until completion
+/// 4. No concurrent access to the future's captured state occurs
+fn run_future_in_new_thread_runtime<F, R>(future: F) -> R
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  // SAFETY: see function documentation above
+  let masked = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
+
+  std::thread::scope(|s| {
+    s.spawn(move || {
+      let rt = create_basic_runtime();
+      rt.block_on(async move { masked.await }).into_inner()
+    })
+    .join()
+    .unwrap()
+  })
+}
+
+/// Runs a future in a new tokio runtime if `run_in_new_runtime` is true,
+/// otherwise returns the future to be executed by the caller.
+///
+/// This is used for synchronous module loading where the caller is only
+/// polling the future without a tokio runtime context. In that case, we need
+/// to create a new runtime to actually drive the async work to completion.
+fn maybe_block_on_future<F, R>(
+  run_in_new_runtime: bool,
+  future: F,
+) -> Pin<Box<dyn Future<Output = R>>>
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  if run_in_new_runtime {
+    let result = run_future_in_new_thread_runtime(future);
+    Box::pin(std::future::ready(result))
+  } else {
+    Box::pin(future)
   }
 }
 

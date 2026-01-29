@@ -1254,6 +1254,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
@@ -1265,6 +1266,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
+      maybe_code,
       options,
     )
   }
