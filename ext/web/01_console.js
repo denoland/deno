@@ -1514,11 +1514,11 @@ function getStackString(ctx, error) {
     if (typeof stack === "string") {
       return stack;
     }
-    ctx.seen.push(error);
+    ArrayPrototypePush(ctx.seen, error);
     ctx.indentationLvl += 4;
     const result = formatValue(ctx, stack);
     ctx.indentationLvl -= 4;
-    ctx.seen.pop();
+    ArrayPrototypePop(ctx.seen);
     return `${ErrorPrototypeToString(error)}\n    ${result}`;
   }
   return ErrorPrototypeToString(error);
@@ -1549,10 +1549,10 @@ function improveStack(stack, constructor, name, tag) {
     let fallback = "Error";
     if (constructor === null) {
       const start = RegExpPrototypeExec(
-        /^([A-Z][a-z_ A-Z0-9[\]()-]+)(?::|\n {4}at)/,
+        new SafeRegExp(/^([A-Z][a-z_ A-Z0-9[\]()-]+)(?::|\n {4}at)/),
         stack,
       ) ||
-        RegExpPrototypeExec(/^([a-z_A-Z0-9-]*Error)$/, stack);
+        RegExpPrototypeExec(new SafeRegExp(/^([a-z_A-Z0-9-]*Error)$/), stack);
       fallback = (start?.[1]) || "";
       len = fallback.length;
       fallback ||= "Error";
@@ -1590,7 +1590,7 @@ function getStackFrames(ctx, err, stack) {
   // Remove stack frames identical to frames in cause.
   if (
     cause != null &&
-    (isNativeError(e) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, e))
+    (isNativeError(err) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, err))
   ) {
     const causeStack = getStackString(ctx, cause);
     const causeStackStart = StringPrototypeIndexOf(causeStack, "\n    at");
@@ -1603,7 +1603,12 @@ function getStackFrames(ctx, err, stack) {
       if (len > 0) {
         const skipped = len - 2;
         const msg = `    ... ${skipped} lines matching cause stack trace ...`;
-        frames.splice(offset + 1, skipped, ctx.stylize(msg, "undefined"));
+        ArrayPrototypeSplice(
+          frames,
+          offset + 1,
+          skipped,
+          ctx.stylize(msg, "undefined"),
+        );
       }
     }
   }
@@ -1623,7 +1628,8 @@ function getStackFrames(ctx, err, stack) {
         (duplicateRanges > 1
           ? `${length} lines ${duplicateRanges} times...`
           : "lines ...");
-      frames.splice(
+      ArrayPrototypeSplice(
+        frames,
         offset,
         length * duplicateRanges,
         ctx.stylize(msg, "undefined"),
@@ -1783,7 +1789,7 @@ function formatError(err, constructor, tag, ctx, keys) {
   name ??= "Error";
 
   if (
-    "cause" in err &&
+    ReflectHas(err, "cause") &&
     (keys.length === 0 || !ArrayPrototypeIncludes(keys, "cause"))
   ) {
     ArrayPrototypePush(keys, "cause");
@@ -1821,7 +1827,8 @@ function formatError(err, constructor, tag, ctx, keys) {
       // Highlight userland code and node modules.
       const workingDirectory = safeGetCWD();
       let esmWorkingDirectory;
-      for (let line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
         const core = RegExpPrototypeExec(coreModuleRegExp, line);
         if (core !== null && BuiltinModule.exists(core[1])) {
           newStack += `\n${ctx.stylize(line, "undefined")}`;
