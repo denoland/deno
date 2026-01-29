@@ -118,6 +118,7 @@ pub struct AddFlags {
   pub dev: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
+  pub save_exact: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2214,6 +2215,13 @@ Or multiple dependencies at once:
       .args(lock_args())
       .arg(lockfile_only_arg())
       .args(default_registry_args())
+      .arg(
+        Arg::new("save_exact")
+          .long("save-exact")
+          .alias("exact")
+          .help("Save exact version without the caret (^)")
+          .action(ArgAction::SetTrue),
+      )
   })
 }
 
@@ -5786,6 +5794,7 @@ fn add_parse_inner(
     dev,
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
+    save_exact: matches.get_flag("save_exact"),
   }
 }
 
@@ -13226,6 +13235,7 @@ mod tests {
             dev: false, // default is false
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           })
         );
       }
@@ -13243,6 +13253,7 @@ mod tests {
           dev: false,
           default_registry: None,
           lockfile_only: true,
+          save_exact: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -13256,6 +13267,7 @@ mod tests {
             dev: true,
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13268,6 +13280,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13280,6 +13293,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }

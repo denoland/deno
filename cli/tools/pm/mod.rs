@@ -404,6 +404,7 @@ pub async fn add(
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
+  let save_exact = add_flags.save_exact;
   let (cli_factory, mut npm_config, mut deno_config) =
     load_configs(&flags, || {
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
@@ -521,6 +522,7 @@ pub async fn add(
           jsr_resolver.clone(),
           npm_resolver.clone(),
           package_req,
+          save_exact,
         )
         .boxed_local()
       }
@@ -704,11 +706,13 @@ async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddRmPackageReq,
+  save_exact: bool,
 ) -> Result<PackageAndVersion, AnyError> {
   async fn select<T: PackageInfoProvider, S: PackageInfoProvider>(
     main_resolver: T,
     fallback_resolver: S,
     add_package_req: AddRmPackageReq,
+    save_exact: bool,
   ) -> Result<PackageAndVersion, AnyError> {
     let req = match &add_package_req.value {
       AddRmPackageReqValue::Jsr(req) => req,
@@ -758,6 +762,8 @@ async fn find_package_and_select_version_for_req(
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
+    } else if save_exact {
+      ""
     } else if req.version_req.version_text() == nv.version.to_string() {
       ""
     } else {
@@ -773,10 +779,10 @@ async fn find_package_and_select_version_for_req(
 
   match &add_package_req.value {
     AddRmPackageReqValue::Jsr(_) => {
-      select(jsr_resolver, npm_resolver, add_package_req).await
+      select(jsr_resolver, npm_resolver, add_package_req, save_exact).await
     }
     AddRmPackageReqValue::Npm(_) => {
-      select(npm_resolver, jsr_resolver, add_package_req).await
+      select(npm_resolver, jsr_resolver, add_package_req, save_exact).await
     }
   }
 }
