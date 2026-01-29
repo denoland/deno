@@ -288,7 +288,7 @@ impl ModuleLoadPreparer {
     );
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
-    let mut loader = self
+    let loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
     self
@@ -298,7 +298,7 @@ impl ModuleLoadPreparer {
         BuildGraphRequest::Reload(specifiers),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -1203,7 +1203,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     // when is_synchronous is true, the caller is only polling the future
     // without a tokio runtime, so we need to run it in a new runtime
-    maybe_block_on_future(is_synchronous, future)
+    if is_synchronous {
+      let result = run_future_in_new_runtime(future);
+      Box::pin(std::future::ready(result))
+    } else {
+      Box::pin(future)
+    }
   }
 
   fn finish_load(&self) {
@@ -1588,57 +1593,33 @@ impl EszipModuleLoader {
   }
 }
 
-/// Runs a future to completion in a new thread with its own tokio runtime.
+/// Runs the future to completion in a new tokio runtime.
 ///
-/// This is used for synchronous module loading where there's already a tokio
-/// runtime on the current thread but we need to run async work to completion.
-/// Since we can't nest runtimes, we spawn a dedicated thread with its own runtime.
-///
-/// # Safety
-/// Uses `MaskFutureAsSend` to move a potentially non-Send future to the new thread.
-/// This is safe because:
-/// 1. The future is moved entirely to the new thread before any execution
-/// 2. The future executes exclusively on that single thread
-/// 3. The original thread waits (joins) until completion
-/// 4. No concurrent access to the future's captured state occurs
-fn run_future_in_new_thread_runtime<F, R>(future: F) -> R
+/// This is used for synchronous module loading (require ESM) where deno_core is blocking
+/// the main thread and polling the future. In this case, tasks in the current runtime
+/// aren't being processed, so we can get around this by creating a new runtime.
+fn run_future_in_new_runtime<F, R>(future: F) -> R
 where
   F: Future<Output = R> + 'static,
   R: Send + 'static,
 {
-  // SAFETY: see function documentation above
+  // SAFETY: few points here...
+  // 1. The future is moved entirely to the new thread before any execution
+  // 2. The future executes exclusively on that single thread
+  // 3. The original thread waits (joins) until completion
+  // 4. No concurrent access to the future's captured state occurs
+  // 5. HOWEVER: Any thread local state won't work properly... which could
+  //    possibly cause issues.
   let masked = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
 
   std::thread::scope(|s| {
     s.spawn(move || {
       let rt = create_basic_runtime();
-      rt.block_on(async move { masked.await }).into_inner()
+      rt.block_on(masked).into_inner()
     })
     .join()
     .unwrap()
   })
-}
-
-/// Runs a future in a new tokio runtime if `run_in_new_runtime` is true,
-/// otherwise returns the future to be executed by the caller.
-///
-/// This is used for synchronous module loading where the caller is only
-/// polling the future without a tokio runtime context. In that case, we need
-/// to create a new runtime to actually drive the async work to completion.
-fn maybe_block_on_future<F, R>(
-  run_in_new_runtime: bool,
-  future: F,
-) -> Pin<Box<dyn Future<Output = R>>>
-where
-  F: Future<Output = R> + 'static,
-  R: Send + 'static,
-{
-  if run_in_new_runtime {
-    let result = run_future_in_new_thread_runtime(future);
-    Box::pin(std::future::ready(result))
-  } else {
-    Box::pin(future)
-  }
 }
 
 #[cfg(test)]

@@ -508,7 +508,7 @@ impl ModuleGraphCreator {
     let loader = self
       .module_graph_builder
       .create_graph_loader_with_root_permissions();
-    let mut publish_loader = PublishLoader(loader);
+    let publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
@@ -516,7 +516,7 @@ impl ModuleGraphCreator {
         roots,
         // do not include the tsconfig imports for `deno publish`
         imports: Vec::new(),
-        loader: Some(&mut publish_loader),
+        loader: Some(&publish_loader),
         npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
@@ -763,6 +763,7 @@ impl ModuleGraphBuilder {
     request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
+    #[allow(clippy::large_enum_variant)]
     enum LoaderRef<'a> {
       Borrowed(&'a dyn Loader),
       Owned(CliDenoGraphLoader),
