@@ -759,9 +759,7 @@ impl Decipher {
       }
       (Aes128Cbc(mut decryptor), false) => {
         if !input.is_empty() {
-          if input.len() != 16 {
-            return Err(DecipherError::InvalidFinalBlockLength);
-          }
+          assert_block_len!(input.len(), 16);
           decryptor.decrypt_block_b2b_mut(
             GenericArray::from_slice(input),
             GenericArray::from_mut_slice(output),
@@ -778,9 +776,7 @@ impl Decipher {
       }
       (Aes128Ecb(mut decryptor), false) => {
         if !input.is_empty() {
-          if input.len() != 16 {
-            return Err(DecipherError::InvalidFinalBlockLength);
-          }
+          assert_block_len!(input.len(), 16);
           decryptor.decrypt_block_b2b_mut(
             GenericArray::from_slice(input),
             GenericArray::from_mut_slice(output),
@@ -797,9 +793,7 @@ impl Decipher {
       }
       (Aes192Ecb(mut decryptor), false) => {
         if !input.is_empty() {
-          if input.len() != 16 {
-            return Err(DecipherError::InvalidFinalBlockLength);
-          }
+          assert_block_len!(input.len(), 16);
           decryptor.decrypt_block_b2b_mut(
             GenericArray::from_slice(input),
             GenericArray::from_mut_slice(output),
@@ -816,9 +810,7 @@ impl Decipher {
       }
       (Aes256Ecb(mut decryptor), false) => {
         if !input.is_empty() {
-          if input.len() != 16 {
-            return Err(DecipherError::InvalidFinalBlockLength);
-          }
+          assert_block_len!(input.len(), 16);
           decryptor.decrypt_block_b2b_mut(
             GenericArray::from_slice(input),
             GenericArray::from_mut_slice(output),
@@ -869,9 +861,7 @@ impl Decipher {
       }
       (Aes256Cbc(mut decryptor), false) => {
         if !input.is_empty() {
-          if input.len() != 16 {
-            return Err(DecipherError::InvalidFinalBlockLength);
-          }
+          assert_block_len!(input.len(), 16);
           decryptor.decrypt_block_b2b_mut(
             GenericArray::from_slice(input),
             GenericArray::from_mut_slice(output),
