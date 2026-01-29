@@ -18,6 +18,7 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
+use deno_core::FromV8;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -26,6 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::ToV8;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
@@ -82,7 +84,7 @@ pub struct WorkerMetadata {
 
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, FromV8, ToV8)]
 pub struct WorkerId(u32);
 impl WorkerId {
   pub fn new() -> WorkerId {
@@ -101,7 +103,7 @@ impl Default for WorkerId {
   }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToV8, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkerThreadType {
   // Used only for testing
@@ -113,22 +115,6 @@ pub enum WorkerThreadType {
   Node,
 }
 
-impl<'s> WorkerThreadType {
-  pub fn to_v8(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-  ) -> v8::Local<'s, v8::String> {
-    v8::String::new(
-      scope,
-      match self {
-        WorkerThreadType::Classic => "classic",
-        WorkerThreadType::Module => "module",
-        WorkerThreadType::Node => "node",
-      },
-    )
-    .unwrap()
-  }
-}
 /// Events that are sent to host from child
 /// worker.
 #[allow(clippy::large_enum_variant)]
@@ -784,7 +770,7 @@ impl WebWorker {
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
-        self.worker_type.to_v8(scope).into();
+        self.worker_type.to_v8(scope).unwrap();
       bootstrap_fn
         .call(
           scope,

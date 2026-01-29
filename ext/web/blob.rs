@@ -7,14 +7,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use serde::Deserialize;
-use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -190,8 +190,7 @@ pub fn op_blob_create_part(
   blob_store.insert_part(Arc::new(part))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct SliceOptions {
   start: usize,
   len: usize,
@@ -202,7 +201,7 @@ pub struct SliceOptions {
 pub fn op_blob_slice_part(
   state: &mut OpState,
   #[serde] id: Uuid,
-  #[serde] options: SliceOptions,
+  #[scoped] options: SliceOptions,
 ) -> Result<Uuid, BlobError> {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
@@ -281,20 +280,20 @@ pub fn op_blob_revoke_object_url(
   Ok(())
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 pub struct ReturnBlob {
   pub media_type: String,
   pub parts: Vec<ReturnBlobPart>,
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 pub struct ReturnBlobPart {
+  #[to_v8(serde)]
   pub uuid: Uuid,
   pub size: usize,
 }
 
 #[op2]
-#[serde]
 pub fn op_blob_from_object_url(
   state: &mut OpState,
   #[string] url: String,

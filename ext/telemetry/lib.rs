@@ -23,6 +23,7 @@ use std::time::SystemTime;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -1587,8 +1588,7 @@ impl OtelTracer {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct JsSpanContext {
   trace_id: Box<str>,
   span_id: Box<str>,
@@ -1633,7 +1633,6 @@ impl OtelSpan {
     Err(OtelSpanCannotBeConstructedError)
   }
 
-  #[serde]
   fn span_context(&self) -> JsSpanContext {
     let state = self.0.borrow();
     let span_context = match &**state {
@@ -1994,7 +1993,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-    #[serde] boundaries: Option<Vec<f64>>,
+    #[scoped] boundaries: Option<Vec<f64>>,
   ) -> Result<Instrument, JsErrorBox> {
     let name = owned_string(
       scope,

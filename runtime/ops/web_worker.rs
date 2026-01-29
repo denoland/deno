@@ -62,7 +62,6 @@ fn op_worker_close(state: &mut OpState) {
 }
 
 #[op2]
-#[serde]
 fn op_worker_get_type(state: &mut OpState) -> WorkerThreadType {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   handle.worker_type

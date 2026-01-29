@@ -5,6 +5,7 @@
 //! This module uses the node_shim crate to parse Node.js CLI arguments
 //! and translates them to Deno CLI arguments.
 
+use deno_core::ToV8;
 use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -33,10 +34,9 @@ pub use node_shim::parse_args;
 pub use node_shim::parse_node_options_env_var;
 pub use node_shim::translate_to_deno_args as translate_to_deno_args_impl;
 pub use node_shim::wrap_eval_code;
-use serde::Serialize;
 
 /// Result of translating Node.js CLI args to Deno args
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, ToV8)]
 pub struct TranslatedArgs {
   /// The Deno CLI arguments
   pub deno_args: Vec<String>,
@@ -67,9 +67,8 @@ fn translate_to_deno_args(
 /// Throws an error if parsing fails - this helps identify unsupported flags
 /// so they can be added to node_shim.
 #[op2]
-#[serde]
 pub fn op_node_translate_cli_args(
-  #[serde] args: Vec<String>,
+  #[scoped] args: Vec<String>,
   script_in_npm_package: bool,
 ) -> Result<TranslatedArgs, CliParserError> {
   // If no args, return early with run -A

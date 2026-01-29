@@ -6,9 +6,9 @@ use std::cell::RefCell;
 use base64::Engine;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
@@ -1729,33 +1729,29 @@ pub fn op_node_get_asymmetric_key_type(
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum AsymmetricKeyDetails {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   RsaPss {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
     hash_algorithm: &'static str,
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss")]
+  #[to_v8(rename = "rsaPss")]
   RsaPssBasic {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   Dsa {
     modulus_length: usize,
     divisor_length: usize,
   },
-  #[serde(rename_all = "camelCase")]
   Ec {
     named_curve: &'static str,
   },
@@ -1765,7 +1761,6 @@ pub enum AsymmetricKeyDetails {
 }
 
 #[op2]
-#[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
 ) -> Result<AsymmetricKeyDetails, JsErrorBox> {
@@ -1777,7 +1772,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -1786,7 +1781,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -1830,7 +1825,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPublicKey::RsaPss(key) => {
@@ -1839,7 +1834,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
