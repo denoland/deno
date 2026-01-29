@@ -721,19 +721,96 @@ Deno.test({
     "createDecipheriv - setAutoPadding(false) with invalid block length should error",
   fn() {
     // Invalid block length (10 bytes instead of 16) should throw an error, not panic
-    const decipher = crypto.createDecipheriv(
-      "aes-256-ecb",
-      Buffer.alloc(32),
-      "",
-    );
-    decipher.setAutoPadding(false);
-    decipher.update(Buffer.alloc(10));
-    assertThrows(
-      () => {
-        decipher.final();
-      },
-      RangeError,
-      "wrong final block length",
-    );
+    // Test all affected cipher modes
+
+    // aes-256-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-ecb",
+        Buffer.alloc(32),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-128-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-ecb",
+        Buffer.alloc(16),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-192-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-192-ecb",
+        Buffer.alloc(24),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-128-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-cbc",
+        Buffer.alloc(16),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-256-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        Buffer.alloc(32),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
   },
 });
