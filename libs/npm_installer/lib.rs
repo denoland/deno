@@ -369,15 +369,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
-        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_)
-        | deno_package_json::PackageJsonDepValueParseErrorKind::JsrVersionReq(
-          _,
-        ) => {
-          return Err(Box::new(err.clone()));
-        }
-        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme,
-        } if scheme == "jsr" => {
+        deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq { .. } => {
           return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
