@@ -1587,9 +1587,7 @@
     "pseudo-tty/test-set-raw-mode-reset.js": {},
     "pseudo-tty/test-tty-color-support-warning-2.js": {},
     "pseudo-tty/test-tty-color-support-warning.js": {},
-    // TODO: Enable once process.platform is configurable.
-    // The test tries to redefine process.platform which Deno doesn't support.
-    // "pseudo-tty/test-tty-color-support.js": {},
+    "pseudo-tty/test-tty-color-support.js": {},
     "pseudo-tty/test-tty-stdin-call-end.js": {},
     "pseudo-tty/test-tty-stdin-end.js": {},
     "pseudo-tty/test-tty-stdout-end.js": {},

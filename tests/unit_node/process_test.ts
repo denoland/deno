@@ -806,40 +806,6 @@ Deno.test({
   },
 });
 
-// Test for https://github.com/denoland/deno/issues/27278
-Deno.test({
-  name: "process.stdout.hasColors",
-  fn() {
-    // hasColors() should exist and be callable
-    assertEquals(typeof process.stdout.hasColors, "function");
-
-    // Default call (16 colors) should return true when colors are supported
-    assertEquals(process.stdout.hasColors(), !Deno.noColor);
-    assertEquals(process.stdout.hasColors({}), !Deno.noColor);
-
-    // hasColors(2) should always return true (2^depth >= 2)
-    assert(process.stdout.hasColors(2));
-    assert(process.stdout.hasColors(2, {}));
-  },
-});
-
-// Test for https://github.com/denoland/deno/issues/27278
-Deno.test({
-  name: "process.stderr.hasColors",
-  fn() {
-    // hasColors() should exist and be callable
-    assertEquals(typeof process.stderr.hasColors, "function");
-
-    // Default call (16 colors) should return true when colors are supported
-    assertEquals(process.stderr.hasColors(), !Deno.noColor);
-    assertEquals(process.stderr.hasColors({}), !Deno.noColor);
-
-    // hasColors(2) should always return true (2^depth >= 2)
-    assert(process.stderr.hasColors(2));
-    assert(process.stderr.hasColors(2, {}));
-  },
-});
-
 Deno.test({
   name: "process.nextTick",
   async fn() {
