@@ -1,5 +1,6 @@
+# This provides a Nix dev shell and Nix build for deno and denort binaries.
 {
-  description = "Deno development environment";
+  description = "Deno";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
