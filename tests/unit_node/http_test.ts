@@ -382,6 +382,40 @@ Deno.test("[node/http] request default protocol", async () => {
   assertEquals(clientRes!.complete, true);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/26733
+// res.complete should be true inside the 'end' event handler
+Deno.test("[node/http] res.complete is true in end event handler", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const server = http.createServer((_, res) => {
+    res.end("ok");
+  });
+
+  server.listen(() => {
+    http.request(
+      // deno-lint-ignore no-explicit-any
+      { host: "localhost", port: (server.address() as any).port },
+      (res) => {
+        res.on("data", () => {});
+        res.on("end", () => {
+          // This is the key assertion from issue #26733:
+          // res.complete MUST be true when 'end' event is emitted
+          if (!res.complete) {
+            reject(
+              new Error(
+                "The connection was terminated while the message was still being sent",
+              ),
+            );
+          } else {
+            server.close(() => resolve());
+          }
+        });
+      },
+    ).end();
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] request non-ws upgrade header", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {

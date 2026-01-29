@@ -1188,6 +1188,10 @@ export class IncomingMessageForClient extends NodeReadable {
         // This must happen before the stream ends, otherwise the socket
         // may already be marked as destroyed.
         await this.#tryReturnSocket();
+        // Mark message as complete BEFORE pushing null, matching Node.js behavior.
+        // This ensures `complete` is true when the 'end' event is emitted.
+        // See: https://github.com/denoland/deno/issues/26733
+        this.complete = true;
         this.push(null);
       } else {
         this.push(Buffer.from(buf.subarray(0, bytesRead)));
@@ -1276,11 +1280,15 @@ export class IncomingMessageForClient extends NodeReadable {
   // any messages, before ever calling this.  In that case, just skip
   // it, since something else is destroying this connection anyway.
   _destroy(err, cb) {
-    this.complete = true;
+    // Check if the message was incomplete before marking it complete.
+    // If the message wasn't fully received (complete is still false),
+    // mark it as aborted.
     if (!this.readableEnded || !this.complete) {
       this.aborted = true;
       this.emit("aborted");
     }
+    // Always mark as complete in _destroy to match Node.js behavior.
+    this.complete = true;
 
     core.tryClose(this._bodyRid);
 
