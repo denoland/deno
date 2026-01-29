@@ -715,3 +715,25 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "createDecipheriv - setAutoPadding(false) with invalid block length should error",
+  fn() {
+    // Invalid block length (10 bytes instead of 16) should throw an error, not panic
+    const decipher = crypto.createDecipheriv(
+      "aes-256-ecb",
+      Buffer.alloc(32),
+      "",
+    );
+    decipher.setAutoPadding(false);
+    decipher.update(Buffer.alloc(10));
+    assertThrows(
+      () => {
+        decipher.final();
+      },
+      RangeError,
+      "wrong final block length",
+    );
+  },
+});
