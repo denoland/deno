@@ -614,6 +614,7 @@ Object.defineProperty(process, "arch", {
   get() {
     return arch;
   },
+  configurable: true,
 });
 
 Object.defineProperty(process, "report", {
@@ -749,6 +750,7 @@ Object.defineProperty(process, "platform", {
   get() {
     return platform;
   },
+  configurable: true,
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
