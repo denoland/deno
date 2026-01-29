@@ -75,6 +75,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
@@ -151,6 +152,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
+  pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
 }
 
 impl ModuleLoadPreparer {
@@ -189,12 +191,16 @@ impl ModuleLoadPreparer {
       ext_overwrite,
       allow_unknown_media_types,
       skip_graph_roots_validation,
+      file_content_overrides,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
+    if !file_content_overrides.is_empty() {
+      loader.set_file_content_overrides(file_content_overrides);
+    }
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
@@ -225,7 +231,7 @@ impl ModuleLoadPreparer {
         roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -1075,6 +1081,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
@@ -1100,8 +1107,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let inner = self.0.clone();
+    let is_synchronous = options.is_synchronous;
 
-    async move {
+    let future = async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
       let permissions = if options.is_dynamic_import {
@@ -1143,6 +1151,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
+      let file_overrides = maybe_code
+        .map(|code| {
+          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+        })
+        .unwrap_or_default();
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1157,6 +1170,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
+              file_content_overrides: file_overrides,
             },
           )
           .await
@@ -1185,8 +1199,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
 
       Ok(())
-    }
-    .boxed_local()
+    };
+
+    // when is_synchronous is true, the caller is only polling the future
+    // without a tokio runtime, so we need to run it in a new runtime
+    maybe_block_on_future(is_synchronous, future)
   }
 
   fn finish_load(&self) {
@@ -1568,6 +1585,59 @@ impl EszipModuleLoader {
         "Module not found",
       ))),
     }
+  }
+}
+
+/// Runs a future to completion in a new thread with its own tokio runtime.
+///
+/// This is used for synchronous module loading where there's already a tokio
+/// runtime on the current thread but we need to run async work to completion.
+/// Since we can't nest runtimes, we spawn a dedicated thread with its own runtime.
+///
+/// # Safety
+/// Uses `MaskFutureAsSend` to move a potentially non-Send future to the new thread.
+/// This is safe because:
+/// 1. The future is moved entirely to the new thread before any execution
+/// 2. The future executes exclusively on that single thread
+/// 3. The original thread waits (joins) until completion
+/// 4. No concurrent access to the future's captured state occurs
+fn run_future_in_new_thread_runtime<F, R>(future: F) -> R
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  // SAFETY: see function documentation above
+  let masked = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
+
+  std::thread::scope(|s| {
+    s.spawn(move || {
+      let rt = create_basic_runtime();
+      rt.block_on(async move { masked.await }).into_inner()
+    })
+    .join()
+    .unwrap()
+  })
+}
+
+/// Runs a future in a new tokio runtime if `run_in_new_runtime` is true,
+/// otherwise returns the future to be executed by the caller.
+///
+/// This is used for synchronous module loading where the caller is only
+/// polling the future without a tokio runtime context. In that case, we need
+/// to create a new runtime to actually drive the async work to completion.
+fn maybe_block_on_future<F, R>(
+  run_in_new_runtime: bool,
+  future: F,
+) -> Pin<Box<dyn Future<Output = R>>>
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  if run_in_new_runtime {
+    let result = run_future_in_new_thread_runtime(future);
+    Box::pin(std::future::ready(result))
+  } else {
+    Box::pin(future)
   }
 }
 

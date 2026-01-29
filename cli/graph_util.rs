@@ -389,7 +389,7 @@ pub struct CreateGraphOptions<'a> {
   pub imports: Vec<deno_graph::ReferrerImports>,
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
-  pub loader: Option<&'a mut dyn Loader>,
+  pub loader: Option<&'a dyn Loader>,
   pub npm_caching: NpmCachingStrategy,
 }
 
@@ -659,7 +659,7 @@ pub enum BuildGraphRequest {
 pub struct BuildGraphWithNpmOptions<'a> {
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
-  pub loader: Option<&'a mut dyn Loader>,
+  pub loader: Option<&'a dyn Loader>,
   pub npm_caching: NpmCachingStrategy,
 }
 
@@ -763,13 +763,13 @@ impl ModuleGraphBuilder {
     request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
-    enum MutLoaderRef<'a> {
-      Borrowed(&'a mut dyn Loader),
+    enum LoaderRef<'a> {
+      Borrowed(&'a dyn Loader),
       Owned(CliDenoGraphLoader),
     }
 
-    impl MutLoaderRef<'_> {
-      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+    impl LoaderRef<'_> {
+      pub fn as_loader(&mut self) -> &dyn Loader {
         match self {
           Self::Borrowed(loader) => *loader,
           Self::Owned(loader) => loader,
@@ -780,9 +780,9 @@ impl ModuleGraphBuilder {
     let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
-      Some(loader) => MutLoaderRef::Borrowed(loader),
+      Some(loader) => LoaderRef::Borrowed(loader),
       None => {
-        MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
+        LoaderRef::Owned(self.create_graph_loader_with_root_permissions())
       }
     };
     let jsx_import_source_config_resolver =
@@ -799,7 +799,7 @@ impl ModuleGraphBuilder {
       .build_graph_with_npm_resolution_and_build_options(
         graph,
         request,
-        loader.as_mut_loader(),
+        loader.as_loader(),
         deno_graph::BuildOptions {
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
@@ -832,7 +832,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     request: BuildGraphRequest,
-    loader: &'a mut dyn deno_graph::source::Loader,
+    loader: &'a dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
