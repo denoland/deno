@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -15,6 +17,7 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
+use deno_core::serde_json;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::deno_permissions::Permissions;
@@ -31,6 +34,7 @@ use super::server::TestServerTests;
 use crate::args::DenoSubcommand;
 use crate::args::flags_from_vec;
 use crate::args::parallelism_count;
+use crate::cdp;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -129,6 +133,126 @@ fn failure_to_test_message(failure: &TestFailure) -> lsp_custom::TestMessage {
     actual_output: None,
     location,
   }
+}
+
+fn char_offset_to_line(source: &str, char_offset: usize) -> u32 {
+  let mut line = 1u32;
+  for (i, ch) in source.chars().enumerate() {
+    if i >= char_offset {
+      break;
+    }
+    if ch == '\n' {
+      line += 1;
+    }
+  }
+  line
+}
+
+fn collect_coverage_from_dir(
+  coverage_dir: &Path,
+) -> Result<Vec<lsp_custom::FileCoverage>, AnyError> {
+  let mut file_coverages: HashMap<String, (Vec<u32>, Vec<u32>, u32, u32)> =
+    HashMap::new();
+
+  if !coverage_dir.exists() {
+    return Ok(Vec::new());
+  }
+
+  for entry in fs::read_dir(coverage_dir)? {
+    let entry = entry?;
+    let path = entry.path();
+    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+      let content = fs::read_to_string(&path)?;
+      if let Ok(script_coverage) =
+        serde_json::from_str::<cdp::ScriptCoverage>(&content)
+      {
+        // Skip internal/test files
+        if script_coverage.url.starts_with("ext:")
+          || script_coverage.url.starts_with("data:")
+          || script_coverage.url.ends_with("__anonymous__")
+          || script_coverage.url.ends_with("$deno$test.mjs")
+        {
+          continue;
+        }
+
+        let source_content = if script_coverage.url.starts_with("file://") {
+          let file_path = script_coverage
+            .url
+            .strip_prefix("file://")
+            .unwrap_or(&script_coverage.url);
+          fs::read_to_string(file_path).ok()
+        } else {
+          None
+        };
+
+        let mut line_hits: HashMap<u32, i64> = HashMap::new();
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            let (start_line, end_line) = if let Some(ref source) =
+              source_content
+            {
+              let start = char_offset_to_line(source, range.start_char_offset);
+              let end = char_offset_to_line(source, range.end_char_offset);
+              (start, end)
+            } else {
+              // Fallback: approximate line from character offset
+              let start = (range.start_char_offset / 80) as u32 + 1;
+              let end = (range.end_char_offset / 80) as u32 + 1;
+              (start, end)
+            };
+
+            for line in start_line..=end_line {
+              let count = line_hits.entry(line).or_insert(0);
+              if range.count > 0 {
+                *count += range.count;
+              }
+            }
+          }
+        }
+
+        let entry = file_coverages
+          .entry(script_coverage.url.clone())
+          .or_insert_with(|| (Vec::new(), Vec::new(), 0, 0));
+
+        for (line, count) in line_hits {
+          if count > 0 {
+            if !entry.0.contains(&line) {
+              entry.0.push(line);
+              entry.2 += 1; // covered count
+            }
+          } else if !entry.1.contains(&line) {
+            entry.1.push(line);
+            entry.3 += 1; // uncovered count
+          }
+        }
+      }
+    }
+  }
+
+  let mut result = Vec::new();
+  for (url, (mut covered, mut uncovered, covered_count, uncovered_count)) in
+    file_coverages
+  {
+    covered.sort();
+    uncovered.sort();
+    let total = covered_count + uncovered_count;
+    let coverage_percent = if total > 0 {
+      (covered_count as f64 / total as f64) * 100.0
+    } else {
+      0.0
+    };
+
+    if let Ok(uri) = uri_parse_unencoded(&url) {
+      result.push(lsp_custom::FileCoverage {
+        uri,
+        covered_lines: covered,
+        uncovered_lines: uncovered,
+        coverage_percent,
+      });
+    }
+  }
+
+  Ok(result)
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -468,6 +592,27 @@ impl TestRun {
 
     result??;
 
+    // If coverage mode is enabled, collect and send coverage data
+    if let Some(coverage_dir) = self.coverage_dir() {
+      match collect_coverage_from_dir(&coverage_dir) {
+        Ok(files) => {
+          if !files.is_empty() {
+            client.send_test_notification(TestingNotification::Coverage(
+              lsp_custom::CoverageNotificationParams { id: self.id, files },
+            ));
+          }
+        }
+        Err(err) => {
+          lsp_log!("Failed to collect coverage data: {}", err);
+        }
+      }
+
+      // Clean up coverage directory
+      if let Err(err) = fs::remove_dir_all(&coverage_dir) {
+        lsp_log!("Failed to clean up coverage directory: {}", err);
+      }
+    }
+
     Ok(())
   }
 
@@ -507,7 +652,21 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    if self.kind == lsp_custom::TestRunKind::Coverage
+      && let Some(coverage_dir) = self.coverage_dir()
+    {
+      args.push(Cow::Owned(format!("--coverage={}", coverage_dir.display())));
+    }
     args
+  }
+
+  /// Returns the coverage directory path if coverage mode is enabled
+  pub fn coverage_dir(&self) -> Option<std::path::PathBuf> {
+    if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(std::env::temp_dir().join(format!("deno_lsp_coverage_{}", self.id)))
+    } else {
+      None
+    }
   }
 }
 
