@@ -413,6 +413,16 @@ pub async fn uninstall(
     // (e.g., .name.deno.json)
     let hidden_file = get_hidden_file_with_ext(&base_file, ext);
     remove_file_if_exists(&hidden_file)?;
+
+    // On Windows, installs use a shim with a .cmd extension, which means the
+    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+    // those as well to be thorough.
+    #[cfg(windows)]
+    {
+      let base_with_cmd = base_file.with_extension("cmd");
+      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+      remove_file_if_exists(&hidden_cmd_file)?;
+    }
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
@@ -1950,11 +1960,13 @@ mod tests {
 
     // create hidden per-command copies as produced by install
     {
-      let hidden_file = get_hidden_file_with_ext(&shim_path, "deno.json");
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
       File::create(hidden_file).unwrap();
     }
     {
-      let hidden_file = get_hidden_file_with_ext(&shim_path, "lock.json");
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
       File::create(hidden_file).unwrap();
     }
 
@@ -1976,8 +1988,12 @@ mod tests {
     assert!(!file_path.with_extension("lock.json").exists());
 
     // hidden per-command files should also be removed
-    assert!(!get_hidden_file_with_ext(&shim_path, "deno.json").exists());
-    assert!(!get_hidden_file_with_ext(&shim_path, "lock.json").exists());
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+    );
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+    );
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
