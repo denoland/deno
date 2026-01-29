@@ -182,101 +182,6 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     options: PrepareModuleLoadOptions<'_>,
   ) -> Result<(), PrepareModuleLoadError> {
-    struct FileHeaderOverridesLoader<'a> {
-      roots: &'a [ModuleSpecifier],
-      content_type: &'static str,
-      inner_loader: &'a dyn deno_graph::source::Loader,
-    }
-
-    impl<'a> deno_graph::source::Loader for FileHeaderOverridesLoader<'a> {
-      fn max_redirects(&self) -> usize {
-        self.inner_loader.max_redirects()
-      }
-
-      fn cache_info_enabled(&self) -> bool {
-        self.inner_loader.cache_info_enabled()
-      }
-
-      fn get_cache_info(
-        &self,
-        specifier: &ModuleSpecifier,
-      ) -> Option<deno_graph::source::CacheInfo> {
-        self.inner_loader.get_cache_info(specifier)
-      }
-
-      fn load(
-        &self,
-        specifier: &ModuleSpecifier,
-        options: deno_graph::source::LoadOptions,
-      ) -> deno_graph::source::LoadFuture {
-        let future = self.inner_loader.load(specifier, options);
-        if self.roots.contains(specifier) {
-          let content_type = self.content_type;
-          async {
-            let result = future.await?;
-            match result {
-              Some(result) => match result {
-                deno_graph::source::LoadResponse::Module {
-                  content,
-                  mtime,
-                  specifier,
-                  maybe_headers,
-                } => {
-                  let headers = match maybe_headers {
-                    Some(mut headers) => {
-                      headers
-                        .insert("content-type".into(), content_type.into());
-                      headers
-                    }
-                    None => HashMap::from([(
-                      "content-type".to_string(),
-                      content_type.to_string(),
-                    )]),
-                  };
-                  Ok(Some(deno_graph::source::LoadResponse::Module {
-                    content,
-                    mtime,
-                    specifier,
-                    maybe_headers: Some(headers),
-                  }))
-                }
-                deno_graph::source::LoadResponse::External { .. }
-                | deno_graph::source::LoadResponse::Redirect { .. } => {
-                  Ok(Some(result))
-                }
-              },
-              None => Ok(None),
-            }
-          }
-          .boxed_local()
-        } else {
-          future
-        }
-      }
-
-      fn ensure_cached(
-        &self,
-        specifier: &ModuleSpecifier,
-        options: deno_graph::source::LoadOptions,
-      ) -> deno_graph::source::EnsureCachedFuture {
-        self.inner_loader.ensure_cached(specifier, options)
-      }
-    }
-
-    enum PrepareModuleLoadLoader<'a> {
-      FileHeaderOverrides(FileHeaderOverridesLoader<'a>),
-      Ref(&'a dyn deno_graph::source::Loader),
-    }
-
-    impl<'a> PrepareModuleLoadLoader<'a> {
-      pub fn as_loader(&self) -> &dyn deno_graph::source::Loader {
-        match self {
-          PrepareModuleLoadLoader::FileHeaderOverrides(loader) => loader,
-          PrepareModuleLoadLoader::Ref(loader) => *loader,
-        }
-      }
-    }
-
     log::debug!("Preparing module load.");
     let PrepareModuleLoadOptions {
       is_dynamic,
@@ -288,27 +193,29 @@ impl ModuleLoadPreparer {
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
-    let loader = self
+    let mut loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
-    let content_type_override =
-      ext_overwrite.and_then(|ext| match ext.as_str() {
+    if let Some(ext) = ext_overwrite {
+      let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
         "tsx" => Some("text/tsx"),
         "js" => Some("text/javascript"),
         "jsx" => Some("text/jsx"),
         _ => None,
-      });
-    let loader = match content_type_override {
-      Some(content_type) => PrepareModuleLoadLoader::FileHeaderOverrides(
-        FileHeaderOverridesLoader {
-          content_type,
-          inner_loader: &loader,
-          roots,
-        },
-      ),
-      None => PrepareModuleLoadLoader::Ref(&loader),
-    };
+      };
+      if let Some(content_type) = maybe_content_type {
+        for root in roots {
+          loader.insert_file_header_override(
+            root.clone(),
+            std::collections::HashMap::from([(
+              "content-type".to_string(),
+              content_type.to_string(),
+            )]),
+          );
+        }
+      }
+    }
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
@@ -319,7 +226,7 @@ impl ModuleLoadPreparer {
         roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          loader: Some(loader.as_loader()),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )

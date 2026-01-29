@@ -451,6 +451,14 @@ impl<
     }
   }
 
+  pub fn insert_file_header_override(
+    &mut self,
+    specifier: Url,
+    headers: HashMap<String, String>,
+  ) {
+    self.file_header_overrides.insert(specifier, headers);
+  }
+
   /// The cache information takes a bit of time to fetch and it's
   /// not always necessary. It should only be enabled for deno info.
   pub fn enable_loading_cache_info(&mut self) {
