@@ -422,8 +422,7 @@ export class ChildProcess extends EventEmitter {
             ),
             writable: true,
             readable: false,
-            // deno-lint-ignore no-explicit-any
-          } as any);
+          });
         } else {
           // Fallback to web stream conversion
           this.stdin = Writable.fromWeb(this.#process.stdin);
@@ -452,8 +451,7 @@ export class ChildProcess extends EventEmitter {
             ),
             writable: false,
             readable: true,
-            // deno-lint-ignore no-explicit-any
-          } as any);
+          });
         } else {
           // Fallback to web stream conversion
           this.stdout = Readable.fromWeb(this.#process.stdout);
@@ -475,8 +473,7 @@ export class ChildProcess extends EventEmitter {
             ),
             writable: false,
             readable: true,
-            // deno-lint-ignore no-explicit-any
-          } as any);
+          });
         } else {
           // Fallback to web stream conversion
           this.stderr = Readable.fromWeb(this.#process.stderr);
