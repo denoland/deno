@@ -758,10 +758,12 @@ impl Decipher {
         Ok(())
       }
       (Aes128Cbc(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes128Ecb(decryptor), true) => {
@@ -772,10 +774,12 @@ impl Decipher {
         Ok(())
       }
       (Aes128Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes192Ecb(decryptor), true) => {
@@ -786,10 +790,12 @@ impl Decipher {
         Ok(())
       }
       (Aes192Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes256Ecb(decryptor), true) => {
@@ -800,10 +806,12 @@ impl Decipher {
         Ok(())
       }
       (Aes256Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes128Gcm(decipher, auth_tag_length), true) => {
@@ -848,10 +856,12 @@ impl Decipher {
         Ok(())
       }
       (Aes256Cbc(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes256Ctr(mut decryptor), _) => {
