@@ -174,8 +174,7 @@ pub fn op_ffi_load<'scope>(
   };
   let obj = v8::Object::new(scope);
 
-  // Lazily-initialised Cranelift contexts — only allocated when the first
-  // non-trivial symbol is encountered, then reused across remaining symbols.
+  // Lazily-initialised Cranelift context
   let mut cl_state: turbocall::CraneliftState = None;
 
   for (symbol_key, foreign_symbol) in symbols {
