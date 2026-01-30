@@ -160,10 +160,13 @@ struct Predicate {
 
 impl Predicate {
   pub fn new_github_actions() -> Result<Self, AnyError> {
-    let repo = std::env::var("GITHUB_REPOSITORY")
-      .map_err(|_| anyhow::anyhow!("GITHUB_REPOSITORY environment variable is not set"))?;
-    let workflow_ref_raw = std::env::var("GITHUB_WORKFLOW_REF")
-      .map_err(|_| anyhow::anyhow!("GITHUB_WORKFLOW_REF environment variable is not set"))?;
+    let repo = std::env::var("GITHUB_REPOSITORY").map_err(|_| {
+      anyhow::anyhow!("GITHUB_REPOSITORY environment variable is not set")
+    })?;
+    let workflow_ref_raw =
+      std::env::var("GITHUB_WORKFLOW_REF").map_err(|_| {
+        anyhow::anyhow!("GITHUB_WORKFLOW_REF environment variable is not set")
+      })?;
     let rel_ref = workflow_ref_raw.replace(&format!("{}/", &repo), "");
 
     let delimn = rel_ref.find('@').ok_or_else(|| {
@@ -175,19 +178,27 @@ impl Predicate {
     let (workflow_path, mut workflow_ref) = rel_ref.split_at(delimn);
     workflow_ref = &workflow_ref[1..];
 
-    let server_url = std::env::var("GITHUB_SERVER_URL")
-      .map_err(|_| anyhow::anyhow!("GITHUB_SERVER_URL environment variable is not set"))?;
+    let server_url = std::env::var("GITHUB_SERVER_URL").map_err(|_| {
+      anyhow::anyhow!("GITHUB_SERVER_URL environment variable is not set")
+    })?;
 
-    let github_ref = std::env::var("GITHUB_REF")
-      .map_err(|_| anyhow::anyhow!("GITHUB_REF environment variable is not set"))?;
-    let github_sha = std::env::var("GITHUB_SHA")
-      .map_err(|_| anyhow::anyhow!("GITHUB_SHA environment variable is not set"))?;
-    let runner_environment = std::env::var("RUNNER_ENVIRONMENT")
-      .map_err(|_| anyhow::anyhow!("RUNNER_ENVIRONMENT environment variable is not set"))?;
-    let github_run_id = std::env::var("GITHUB_RUN_ID")
-      .map_err(|_| anyhow::anyhow!("GITHUB_RUN_ID environment variable is not set"))?;
-    let github_run_attempt = std::env::var("GITHUB_RUN_ATTEMPT")
-      .map_err(|_| anyhow::anyhow!("GITHUB_RUN_ATTEMPT environment variable is not set"))?;
+    let github_ref = std::env::var("GITHUB_REF").map_err(|_| {
+      anyhow::anyhow!("GITHUB_REF environment variable is not set")
+    })?;
+    let github_sha = std::env::var("GITHUB_SHA").map_err(|_| {
+      anyhow::anyhow!("GITHUB_SHA environment variable is not set")
+    })?;
+    let runner_environment =
+      std::env::var("RUNNER_ENVIRONMENT").map_err(|_| {
+        anyhow::anyhow!("RUNNER_ENVIRONMENT environment variable is not set")
+      })?;
+    let github_run_id = std::env::var("GITHUB_RUN_ID").map_err(|_| {
+      anyhow::anyhow!("GITHUB_RUN_ID environment variable is not set")
+    })?;
+    let github_run_attempt =
+      std::env::var("GITHUB_RUN_ATTEMPT").map_err(|_| {
+        anyhow::anyhow!("GITHUB_RUN_ATTEMPT environment variable is not set")
+      })?;
 
     Ok(Self {
       build_definition: BuildDefinition {
@@ -209,10 +220,7 @@ impl Predicate {
           },
         },
         resolved_dependencies: [ResourceDescriptor {
-          uri: format!(
-            "git+{}/{}@{}",
-            server_url, &repo, github_ref
-          ),
+          uri: format!("git+{}/{}@{}", server_url, &repo, github_ref),
           digest: Some(GhaResourceDigest {
             git_commit: github_sha,
           }),
@@ -220,10 +228,7 @@ impl Predicate {
       },
       run_details: RunDetails {
         builder: Builder {
-          id: format!(
-            "{}/{}",
-            &GITHUB_BUILDER_ID_PREFIX, runner_environment
-          ),
+          id: format!("{}/{}", &GITHUB_BUILDER_ID_PREFIX, runner_environment),
         },
         metadata: Metadata {
           invocation_id: format!(
@@ -247,9 +252,7 @@ struct ProvenanceAttestation {
 }
 
 impl ProvenanceAttestation {
-  pub fn new_github_actions(
-    subjects: Vec<Subject>,
-  ) -> Result<Self, AnyError> {
+  pub fn new_github_actions(subjects: Vec<Subject>) -> Result<Self, AnyError> {
     Ok(Self {
       _type: INTOTO_STATEMENT_TYPE,
       subject: subjects,
@@ -356,10 +359,9 @@ pub async fn attest(
     testify(http_client, &content, &key_material.certificate).await?;
 
   // First log entry is the one we're interested in
-  let (_, log_entry) = transparency_logs
-    .iter()
-    .next()
-    .ok_or_else(|| anyhow::anyhow!("No transparency log entries returned from Rekor"))?;
+  let (_, log_entry) = transparency_logs.iter().next().ok_or_else(|| {
+    anyhow::anyhow!("No transparency log entries returned from Rekor")
+  })?;
 
   let bundle = ProvenanceBundle {
     media_type: "application/vnd.in-toto+json",
