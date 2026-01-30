@@ -35,13 +35,13 @@ pub struct SurfaceBitmap {
 
 impl Drop for SurfaceBitmap {
   fn drop(&mut self) {
-    self.instance.device_drop(self.device);
-    self.instance.queue_drop(self.queue);
     self.instance.render_pipeline_drop(self.render_pipeline);
     self.instance.buffer_drop(self.vertex_buffer);
     self.instance.buffer_drop(self.index_buffer);
     self.instance.bind_group_layout_drop(self.bind_group_layout);
     self.instance.sampler_drop(self.sampler);
+    self.instance.queue_drop(self.queue);
+    self.instance.device_drop(self.device);
   }
 }
 

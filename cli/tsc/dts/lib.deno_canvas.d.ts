@@ -208,7 +208,13 @@ interface ImageEncodeOptions {
 type GPUCanvasAlphaMode = "opaque" | "premultiplied";
 
 /** @category Canvas */
-type GPUPresentMode = "auto-vsync" | "auto-no-vsync" | "fifo" | "fifo-relaxed" | "immediate" | "mailbox";
+type GPUPresentMode =
+  | "auto-vsync"
+  | "auto-no-vsync"
+  | "fifo"
+  | "fifo-relaxed"
+  | "immediate"
+  | "mailbox";
 
 /** @category Canvas */
 interface GPUCanvasConfiguration {

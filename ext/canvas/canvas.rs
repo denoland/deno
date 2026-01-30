@@ -160,14 +160,13 @@ impl OffscreenCanvas {
     &self,
     scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<ImageBitmap, JsErrorBox> {
-    if self.active_context.get().is_none() {
+    let Some(active_context) = self.active_context.get() else {
       return Err(JsErrorBox::new(
         "DOMExceptionInvalidStateError",
         "Canvas hasn't been initialized yet",
       ));
-    }
+    };
 
-    let active_context = self.active_context.get().unwrap();
     let active_context_local = v8::Local::new(scope, &active_context.1);
     let context = get_context(&active_context.0, scope, active_context_local);
     match &context {
@@ -201,7 +200,14 @@ impl OffscreenCanvas {
     #[webidl] options: ImageEncodeOptions,
   ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
     let state = state.borrow();
-    let active_context = self.active_context.get().unwrap();
+
+    let Some(active_context) = self.active_context.get() else {
+      return Err(JsErrorBox::new(
+        "DOMExceptionInvalidStateError",
+        "Canvas hasn't been initialized yet",
+      ));
+    };
+
     let active_context_local = v8::Local::new(scope, &active_context.1);
     match get_context(&active_context.0, scope, active_context_local) {
       Context::Bitmap(_) => {}

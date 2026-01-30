@@ -111,9 +111,8 @@ impl GPUCanvasContext {
   }
 
   #[fast]
-  fn get_configuration(&self) {
-    let _configuration = self.configuration.borrow();
-    todo!()
+  fn get_configuration(&self) -> Result<(), JsErrorBox> {
+    Err(JsErrorBox::generic("not implemented"))
   }
 
   fn get_current_texture(
