@@ -10,6 +10,7 @@ const {
   ObjectPrototypeHasOwnProperty,
   RegExpPrototypeExec,
   SafeMap,
+  SafeMapIterator,
   SafeRegExp,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
@@ -169,7 +170,7 @@ function getColorDepth(env = process.env) {
   }
 
   if (ObjectPrototypeHasOwnProperty(env, "CI")) {
-    for (const { 0: envName, 1: colors } of CI_ENVS_MAP) {
+    for (const { 0: envName, 1: colors } of new SafeMapIterator(CI_ENVS_MAP)) {
       if (ObjectPrototypeHasOwnProperty(env, envName)) {
         return colors;
       }
@@ -180,9 +181,9 @@ function getColorDepth(env = process.env) {
     return COLORS_2;
   }
 
-  if ("TEAMCITY_VERSION" in env) {
+  if (ObjectPrototypeHasOwnProperty(env, "TEAMCITY_VERSION")) {
     return RegExpPrototypeExec(
-        /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/,
+        new SafeRegExp("^(9\\.(0*[1-9]\\d*)\\.|\\d{2,}\\.)"),
         env.TEAMCITY_VERSION,
       ) !== null
       ? COLORS_16
@@ -193,7 +194,7 @@ function getColorDepth(env = process.env) {
     case "iTerm.app":
       if (
         !env.TERM_PROGRAM_VERSION ||
-        RegExpPrototypeExec(/^[0-2]\./, env.TERM_PROGRAM_VERSION) !== null
+        RegExpPrototypeExec(new SafeRegExp("^[0-2]\\."), env.TERM_PROGRAM_VERSION) !== null
       ) {
         return COLORS_256;
       }
@@ -210,11 +211,11 @@ function getColorDepth(env = process.env) {
   }
 
   if (env.TERM) {
-    if (RegExpPrototypeExec(/truecolor/, env.TERM) !== null) {
+    if (RegExpPrototypeExec(new SafeRegExp("truecolor"), env.TERM) !== null) {
       return COLORS_16m;
     }
 
-    if (RegExpPrototypeExec(/^xterm-256/, env.TERM) !== null) {
+    if (RegExpPrototypeExec(new SafeRegExp("^xterm-256"), env.TERM) !== null) {
       return COLORS_256;
     }
 
