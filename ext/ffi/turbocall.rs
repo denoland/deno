@@ -18,13 +18,16 @@ static TRACE_TURBO: LazyLock<bool> = LazyLock::new(|| {
 });
 
 pub(crate) static CRANELIFT_ISA: LazyLock<
-  Arc<dyn cranelift::codegen::isa::TargetIsa>,
+  Result<Arc<dyn cranelift::codegen::isa::TargetIsa>, TurbocallError>,
 > = LazyLock::new(|| {
   let mut flag_builder = cranelift::prelude::settings::builder();
   flag_builder.set("is_pic", "true").unwrap();
   flag_builder.set("opt_level", "speed").unwrap();
   let flags = cranelift::prelude::settings::Flags::new(flag_builder);
-  cranelift_native::builder().unwrap().finish(flags).unwrap()
+  let isa = cranelift_native::builder()
+    .map_err(TurbocallError::IsaError)?
+    .finish(flags)?;
+  Ok(isa)
 });
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -41,6 +44,7 @@ pub enum TurbocallError {
   #[error(transparent)]
   CodegenError(#[from] cranelift::codegen::CodegenError),
 
+  #[cfg(debug_assertions)]
   #[class(generic)]
   #[error(transparent)]
   VerifierError(#[from] cranelift::codegen::verifier::VerifierErrors),
@@ -228,10 +232,12 @@ pub(crate) fn compile_trampoline(
     }
   }
 
-  let isa = CRANELIFT_ISA.clone();
+  let isa = CRANELIFT_ISA
+    .as_ref()
+    .map_err(|e| TurbocallError::CompileError(format!("{e}")))?;
   let mut ctx = cranelift::codegen::Context::new();
   let mut fn_builder_ctx = cranelift::prelude::FunctionBuilderContext::new();
-  compile_cranelift_trampoline(sym, &isa, &mut ctx, &mut fn_builder_ctx)
+  compile_cranelift_trampoline(sym, isa, &mut ctx, &mut fn_builder_ctx)
 }
 
 pub(crate) type CraneliftState = Option<(
@@ -260,13 +266,18 @@ pub(crate) fn compile_trampoline_reuse(
     }
   }
 
-  let (isa, ctx, fn_builder_ctx) = cl_state.get_or_insert_with(|| {
-    (
-      CRANELIFT_ISA.clone(),
+  if cl_state.is_none() {
+    let isa = CRANELIFT_ISA
+      .as_ref()
+      .map_err(|e| TurbocallError::CompileError(format!("{e}")))?
+      .clone();
+    *cl_state = Some((
+      isa,
       cranelift::codegen::Context::new(),
       cranelift::prelude::FunctionBuilderContext::new(),
-    )
-  });
+    ));
+  }
+  let (isa, ctx, fn_builder_ctx) = cl_state.as_mut().unwrap();
   compile_cranelift_trampoline(sym, isa, ctx, fn_builder_ctx)
 }
 
