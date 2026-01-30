@@ -515,9 +515,7 @@ const ci = {
         // Don't fast-fail on tag build because publishing binaries shouldn't be
         // prevented if any of the stages fail (which can be a false negative).
         "fail-fast":
-          // TODO(bartlomieju): remove before landing
-          // "${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}",
-          false,
+          "${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}",
       },
       env: {
         CARGO_TERM_COLOR: "always",
