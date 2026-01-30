@@ -10,6 +10,7 @@ const {
   ObjectPrototypeHasOwnProperty,
   RegExpPrototypeExec,
   SafeMap,
+  SafeRegExp,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
 } = primordials;
@@ -67,16 +68,16 @@ const CI_ENVS_MAP = new SafeMap(ObjectEntries({
 
 // Regular expressions for terminal types
 const TERM_ENVS_REG_EXP = [
-  /ansi/,
-  /color/,
-  /linux/,
-  /direct/,
-  /^con[0-9]*x[0-9]/,
-  /^rxvt/,
-  /^screen/,
-  /^xterm/,
-  /^vt100/,
-  /^vt220/,
+  new SafeRegExp("ansi"),
+  new SafeRegExp("color"),
+  new SafeRegExp("linux"),
+  new SafeRegExp("direct"),
+  new SafeRegExp("^con[0-9]*x[0-9]"),
+  new SafeRegExp("^rxvt"),
+  new SafeRegExp("^screen"),
+  new SafeRegExp("^xterm"),
+  new SafeRegExp("^vt100"),
+  new SafeRegExp("^vt220"),
 ];
 
 let warned = false;
