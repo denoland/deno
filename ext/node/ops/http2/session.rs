@@ -1670,17 +1670,17 @@ impl Http2Session {
 #[op2]
 pub fn op_http2_callbacks(
   state: &mut OpState,
-  #[global] session_internal_error_cb: v8::Global<v8::Function>,
-  #[global] priority_frame_cb: v8::Global<v8::Function>,
-  #[global] settings_frame_cb: v8::Global<v8::Function>,
-  #[global] ping_frame_cb: v8::Global<v8::Function>,
-  #[global] headers_frame_cb: v8::Global<v8::Function>,
-  #[global] frame_error_cb: v8::Global<v8::Function>,
-  #[global] goaway_data_cb: v8::Global<v8::Function>,
-  #[global] alt_svc_cb: v8::Global<v8::Function>,
-  #[global] origin_frame_cb: v8::Global<v8::Function>,
-  #[global] stream_trailers_cb: v8::Global<v8::Function>,
-  #[global] stream_close_cb: v8::Global<v8::Function>,
+  #[scoped] session_internal_error_cb: v8::Global<v8::Function>,
+  #[scoped] priority_frame_cb: v8::Global<v8::Function>,
+  #[scoped] settings_frame_cb: v8::Global<v8::Function>,
+  #[scoped] ping_frame_cb: v8::Global<v8::Function>,
+  #[scoped] headers_frame_cb: v8::Global<v8::Function>,
+  #[scoped] frame_error_cb: v8::Global<v8::Function>,
+  #[scoped] goaway_data_cb: v8::Global<v8::Function>,
+  #[scoped] alt_svc_cb: v8::Global<v8::Function>,
+  #[scoped] origin_frame_cb: v8::Global<v8::Function>,
+  #[scoped] stream_trailers_cb: v8::Global<v8::Function>,
+  #[scoped] stream_close_cb: v8::Global<v8::Function>,
 ) {
   state.put(SessionCallbacks {
     session_internal_error_cb,
