@@ -22,6 +22,7 @@ use crate::CronSpec;
 use crate::Traceparent;
 
 pub struct SocketCronHandler {
+  socket_addr: String,
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
   socket_task_handle: deno_core::unsync::JoinHandle<()>,
   socket_task_exit_error: Rc<OnceCell<CronError>>,
@@ -73,18 +74,23 @@ impl SocketCronHandler {
     let socket_task_exit_error = Rc::new(OnceCell::new());
     let reject_reason = Rc::new(OnceCell::new());
     let socket_task_handle = spawn(Self::socket_task(
-      socket_addr,
+      socket_addr.clone(),
       socket_task_rx,
       socket_task_exit_error.clone(),
       reject_reason.clone(),
     ));
 
     Self {
+      socket_addr,
       socket_task_tx,
       socket_task_handle,
       socket_task_exit_error,
       reject_reason,
     }
+  }
+
+  pub fn socket_addr(&self) -> &str {
+    &self.socket_addr
   }
 
   async fn socket_task(
