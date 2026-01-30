@@ -174,6 +174,10 @@ pub fn op_ffi_load<'scope>(
   };
   let obj = v8::Object::new(scope);
 
+  // Lazily-initialised Cranelift contexts — only allocated when the first
+  // non-trivial symbol is encountered, then reused across remaining symbols.
+  let mut cl_state: turbocall::CraneliftState = None;
+
   for (symbol_key, foreign_symbol) in symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
@@ -228,7 +232,20 @@ pub fn op_ffi_load<'scope>(
         match foreign_fn.non_blocking {
           // Generate functions for synchronous calls.
           Some(false) | None => {
-            let function = make_sync_fn(scope, sym);
+            let turbocall = if turbocall::is_compatible(&sym) {
+              match turbocall::compile_trampoline_reuse(&sym, &mut cl_state) {
+                Ok(trampoline) => {
+                  Some(turbocall::make_template(&sym, trampoline))
+                }
+                Err(e) => {
+                  log::warn!("Failed to compile FFI turbocall: {e}");
+                  None
+                }
+              }
+            } else {
+              None
+            };
+            let function = make_sync_fn(scope, sym, turbocall);
             obj.set(scope, func_key.into(), function.into());
           }
           // This optimization is not yet supported for non-blocking calls.
@@ -270,22 +287,8 @@ unsafe impl GarbageCollected for FunctionData {
 fn make_sync_fn<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   symbol: Box<Symbol>,
+  turbocall: Option<Turbocall>,
 ) -> v8::Local<'s, v8::Function> {
-  let turbocall = if turbocall::is_compatible(&symbol) {
-    match turbocall::compile_trampoline(&symbol) {
-      Ok(trampoline) => {
-        let turbocall = turbocall::make_template(&symbol, trampoline);
-        Some(turbocall)
-      }
-      Err(e) => {
-        log::warn!("Failed to compile FFI turbocall: {e}");
-        None
-      }
-    }
-  } else {
-    None
-  };
-
   let c_function = turbocall.as_ref().map(|turbocall| {
     v8::fast_api::CFunction::new(
       turbocall.trampoline.ptr(),

@@ -767,3 +767,54 @@ Deno.bench("Deno.UnsafePointerView#getFloat32", () => {
 Deno.bench("Deno.UnsafePointerView#getFloat64", () => {
   bufferPointerView.getFloat64();
 });
+
+// Measures dlopen + trampoline compilation time.
+const trivialSymbols1 = {
+  "nop": { parameters: [], result: "void" },
+};
+const trivialSymbols25 = {};
+const mixedSymbols25 = {};
+
+for (let i = 0; i < 25; i++) {
+  trivialSymbols25[`nop_t_${i}`] = {
+    name: "nop",
+    parameters: [],
+    result: "void",
+  };
+}
+for (let i = 0; i < 25; i++) {
+  if (i % 3 === 0) {
+    mixedSymbols25[`sym_${i}`] = {
+      name: "nop_u8",
+      parameters: ["u8"],
+      result: "void",
+    };
+  } else if (i % 3 === 1) {
+    mixedSymbols25[`sym_${i}`] = {
+      name: "nop_buffer",
+      parameters: ["buffer"],
+      result: "void",
+    };
+  } else {
+    mixedSymbols25[`sym_${i}`] = {
+      name: "nop",
+      parameters: [],
+      result: "void",
+    };
+  }
+}
+
+Deno.bench("dlopen() trivial (1 symbol)", () => {
+  const lib = Deno.dlopen(libPath, trivialSymbols1);
+  lib.close();
+});
+
+Deno.bench("dlopen() trivial (25 symbols)", () => {
+  const lib = Deno.dlopen(libPath, trivialSymbols25);
+  lib.close();
+});
+
+Deno.bench("dlopen() mixed (25 symbols)", () => {
+  const lib = Deno.dlopen(libPath, mixedSymbols25);
+  lib.close();
+});
