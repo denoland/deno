@@ -668,6 +668,23 @@ impl Body for HttpRecordResponse {
       return Poll::Ready(None);
     };
 
+    // For HEAD requests, strip the response body. This avoids sending DATA
+    // frames over HTTP/2, which would cause a PROTOCOL_ERROR.
+    if record.request_parts().method == http::Method::HEAD {
+      let mut inner = record.self_mut();
+      if !matches!(
+        inner.response_body,
+        ResponseBytesInner::Done | ResponseBytesInner::Empty
+      ) {
+        if let Some(trailers) = inner.trailers.take() {
+          inner.response_body = ResponseBytesInner::Done;
+          return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+        }
+        inner.response_body = ResponseBytesInner::Done;
+      }
+      return Poll::Ready(None);
+    }
+
     let res = loop {
       let mut inner = record.self_mut();
       let res = match &mut inner.response_body {
