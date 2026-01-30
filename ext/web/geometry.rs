@@ -14,8 +14,8 @@ use deno_core::WebIDL;
 use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::webidl;
 use deno_core::webidl::ContextFn;
+use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use lightningcss::properties::transform::Matrix as CSSMatrix;
@@ -33,6 +33,37 @@ use nalgebra::Rotation3;
 use nalgebra::UnitVector3;
 use nalgebra::Vector3;
 use nalgebra::Vector4;
+
+macro_rules! define_obj {
+  ($scope:ident => { $( $modifier:ident $key:literal: $value:expr ),*, }) => {
+    {
+      let proto = v8::null($scope).into();
+      let keys = [
+        $( v8::String::new($scope, $key).unwrap().into() ),*
+      ];
+      let values = [
+        $(
+          define_obj!(@modifier $modifier $scope => $value)
+        ),*
+      ];
+      v8::Object::with_prototype_and_properties(
+        $scope,
+        proto,
+        &keys,
+        &values,
+      )
+    }
+  };
+  (@modifier bool $scope:ident => $value:expr) => {
+    v8::Boolean::new($scope, $value).into()
+  };
+  (@modifier num $scope:ident => $value:expr) => {
+    v8::Number::new($scope, $value).into()
+  };
+  (@modifier raw $_scope:ident => $value:expr) => {
+    $value.into()
+  };
+}
 
 pub(crate) struct State {
   enable_window_features: bool,
@@ -84,14 +115,14 @@ pub enum GeometryError {
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMPointInit {
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  x: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  y: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  z: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
-  w: webidl::UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  x: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  y: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  z: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(1.0))]
+  w: UnrestrictedDouble,
 }
 
 #[derive(Debug)]
@@ -123,17 +154,17 @@ impl DOMPointReadOnly {
   #[required(0)]
   #[cppgc]
   fn constructor(
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] z: Option<webidl::UnrestrictedDouble>,
-    #[webidl] w: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] z: Option<UnrestrictedDouble>,
+    #[webidl] w: Option<UnrestrictedDouble>,
   ) -> DOMPointReadOnly {
     DOMPointReadOnly {
       inner: RefCell::new(Vector4::new(
-        *x.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *w.unwrap_or(webidl::UnrestrictedDouble(1.0)),
+        *x.unwrap_or(UnrestrictedDouble(0.0)),
+        *y.unwrap_or(UnrestrictedDouble(0.0)),
+        *z.unwrap_or(UnrestrictedDouble(0.0)),
+        *w.unwrap_or(UnrestrictedDouble(1.0)),
       )),
     }
   }
@@ -176,12 +207,12 @@ impl DOMPointReadOnly {
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
-    let mut obj = v8::Object::new(scope);
-    set_f64(scope, &mut obj, "x", self.inner.borrow().x);
-    set_f64(scope, &mut obj, "y", self.inner.borrow().y);
-    set_f64(scope, &mut obj, "z", self.inner.borrow().z);
-    set_f64(scope, &mut obj, "w", self.inner.borrow().w);
-    obj
+    define_obj!(scope => {
+      num "x": self.inner.borrow().x,
+      num "y": self.inner.borrow().y,
+      num "z": self.inner.borrow().z,
+      num "w": self.inner.borrow().w,
+    })
   }
 
   #[reentrant]
@@ -218,17 +249,17 @@ impl DOMPoint {
   #[required(0)]
   #[cppgc]
   fn constructor(
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] z: Option<webidl::UnrestrictedDouble>,
-    #[webidl] w: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] z: Option<UnrestrictedDouble>,
+    #[webidl] w: Option<UnrestrictedDouble>,
   ) -> (DOMPointReadOnly, DOMPoint) {
     let ro = DOMPointReadOnly {
       inner: RefCell::new(Vector4::new(
-        *x.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-        *w.unwrap_or(webidl::UnrestrictedDouble(1.0)),
+        *x.unwrap_or(UnrestrictedDouble(0.0)),
+        *y.unwrap_or(UnrestrictedDouble(0.0)),
+        *z.unwrap_or(UnrestrictedDouble(0.0)),
+        *w.unwrap_or(UnrestrictedDouble(1.0)),
       )),
     };
     (ro, DOMPoint {})
@@ -255,7 +286,7 @@ impl DOMPoint {
   #[setter]
   fn x(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
   ) {
     ro.inner.borrow_mut().x = *value
@@ -270,7 +301,7 @@ impl DOMPoint {
   #[setter]
   fn y(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
   ) {
     ro.inner.borrow_mut().y = *value
@@ -285,7 +316,7 @@ impl DOMPoint {
   #[setter]
   fn z(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
   ) {
     ro.inner.borrow_mut().z = *value
@@ -300,7 +331,7 @@ impl DOMPoint {
   #[setter]
   fn w(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
   ) {
     ro.inner.borrow_mut().w = *value
@@ -310,14 +341,14 @@ impl DOMPoint {
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMRectInit {
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  x: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  y: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  width: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  height: webidl::UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  x: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  y: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  width: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  height: UnrestrictedDouble,
 }
 
 #[derive(Debug)]
@@ -383,16 +414,16 @@ impl DOMRectReadOnly {
   #[required(0)]
   #[cppgc]
   fn constructor(
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] width: Option<webidl::UnrestrictedDouble>,
-    #[webidl] height: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] width: Option<UnrestrictedDouble>,
+    #[webidl] height: Option<UnrestrictedDouble>,
   ) -> DOMRectReadOnly {
     DOMRectReadOnly {
-      x: Cell::new(*x.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      y: Cell::new(*y.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      width: Cell::new(*width.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      height: Cell::new(*height.unwrap_or(webidl::UnrestrictedDouble(0.0))),
+      x: Cell::new(*x.unwrap_or(UnrestrictedDouble(0.0))),
+      y: Cell::new(*y.unwrap_or(UnrestrictedDouble(0.0))),
+      width: Cell::new(*width.unwrap_or(UnrestrictedDouble(0.0))),
+      height: Cell::new(*height.unwrap_or(UnrestrictedDouble(0.0))),
     }
   }
 
@@ -458,16 +489,16 @@ impl DOMRectReadOnly {
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
-    let mut obj = v8::Object::new(scope);
-    set_f64(scope, &mut obj, "x", self.x.get());
-    set_f64(scope, &mut obj, "y", self.y.get());
-    set_f64(scope, &mut obj, "width", self.width.get());
-    set_f64(scope, &mut obj, "height", self.height.get());
-    set_f64(scope, &mut obj, "top", self.get_top());
-    set_f64(scope, &mut obj, "right", self.get_right());
-    set_f64(scope, &mut obj, "bottom", self.get_bottom());
-    set_f64(scope, &mut obj, "left", self.get_left());
-    obj
+    define_obj!(scope => {
+      num "x": self.x.get(),
+      num "y": self.y.get(),
+      num "width": self.width.get(),
+      num "height": self.height.get(),
+      num "top": self.get_top(),
+      num "right": self.get_right(),
+      num "bottom": self.get_bottom(),
+      num "left": self.get_left(),
+    })
   }
 }
 
@@ -488,16 +519,16 @@ impl DOMRect {
   #[required(0)]
   #[cppgc]
   fn constructor(
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] width: Option<webidl::UnrestrictedDouble>,
-    #[webidl] height: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] width: Option<UnrestrictedDouble>,
+    #[webidl] height: Option<UnrestrictedDouble>,
   ) -> (DOMRectReadOnly, DOMRect) {
     let ro = DOMRectReadOnly {
-      x: Cell::new(*x.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      y: Cell::new(*y.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      width: Cell::new(*width.unwrap_or(webidl::UnrestrictedDouble(0.0))),
-      height: Cell::new(*height.unwrap_or(webidl::UnrestrictedDouble(0.0))),
+      x: Cell::new(*x.unwrap_or(UnrestrictedDouble(0.0))),
+      y: Cell::new(*y.unwrap_or(UnrestrictedDouble(0.0))),
+      width: Cell::new(*width.unwrap_or(UnrestrictedDouble(0.0))),
+      height: Cell::new(*height.unwrap_or(UnrestrictedDouble(0.0))),
     };
     (ro, DOMRect {})
   }
@@ -523,7 +554,7 @@ impl DOMRect {
   #[setter]
   fn x(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
   ) {
     ro.x.set(*value)
@@ -538,7 +569,7 @@ impl DOMRect {
   #[setter]
   fn y(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
   ) {
     ro.y.set(*value)
@@ -553,7 +584,7 @@ impl DOMRect {
   #[setter]
   fn width(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
   ) {
     ro.width.set(*value)
@@ -568,7 +599,7 @@ impl DOMRect {
   #[setter]
   fn height(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
   ) {
     ro.height.set(*value)
@@ -788,24 +819,12 @@ impl DOMQuad {
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
-    #[inline]
-    fn set_object(
-      scope: &mut v8::PinScope<'_, '_>,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: &v8::TracedReference<v8::Object>,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = value.get(scope).unwrap();
-      object.create_data_property(scope, key.into(), value.into());
-    }
-
-    let mut obj = v8::Object::new(scope);
-    set_object(scope, &mut obj, "p1", &self.p1);
-    set_object(scope, &mut obj, "p2", &self.p2);
-    set_object(scope, &mut obj, "p3", &self.p3);
-    set_object(scope, &mut obj, "p4", &self.p4);
-    obj
+    define_obj!(scope => {
+      raw "p1": self.p1.get(scope).unwrap(),
+      raw "p2": self.p2.get(scope).unwrap(),
+      raw "p3": self.p3.get(scope).unwrap(),
+      raw "p4": self.p4.get(scope).unwrap(),
+    })
   }
 }
 
@@ -814,50 +833,50 @@ impl DOMQuad {
 pub struct DOMMatrixInit {
   // Need to place the inherited DOMMatrixInit2D first
   #[webidl(default = None)]
-  a: Option<webidl::UnrestrictedDouble>,
+  a: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  b: Option<webidl::UnrestrictedDouble>,
+  b: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  c: Option<webidl::UnrestrictedDouble>,
+  c: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  d: Option<webidl::UnrestrictedDouble>,
+  d: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  e: Option<webidl::UnrestrictedDouble>,
+  e: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  f: Option<webidl::UnrestrictedDouble>,
+  f: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m11: Option<webidl::UnrestrictedDouble>,
+  m11: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m12: Option<webidl::UnrestrictedDouble>,
+  m12: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m21: Option<webidl::UnrestrictedDouble>,
+  m21: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m22: Option<webidl::UnrestrictedDouble>,
+  m22: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m41: Option<webidl::UnrestrictedDouble>,
+  m41: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
-  m42: Option<webidl::UnrestrictedDouble>,
+  m42: Option<UnrestrictedDouble>,
 
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m13: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m14: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m23: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m24: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m31: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m32: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
-  m33: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m34: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m43: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
-  m44: webidl::UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m13: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m14: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m23: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m24: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m31: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m32: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(1.0))]
+  m33: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m34: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(0.0))]
+  m43: UnrestrictedDouble,
+  #[webidl(default = UnrestrictedDouble(1.0))]
+  m44: UnrestrictedDouble,
   #[webidl(default = None)]
   is_2d: Option<bool>,
 }
@@ -934,7 +953,7 @@ impl DOMMatrixReadOnly {
 
     // sequence
     if value.is_object()
-      && let Ok(seq) = Vec::<webidl::UnrestrictedDouble>::convert(
+      && let Ok(seq) = Vec::<UnrestrictedDouble>::convert(
         scope,
         value,
         prefix,
@@ -981,7 +1000,7 @@ impl DOMMatrixReadOnly {
         } else if let Some(value2d) = $value2d {
           value2d
         } else {
-          webidl::UnrestrictedDouble($default)
+          UnrestrictedDouble($default)
         }
       }};
     }
@@ -1803,13 +1822,13 @@ impl DOMMatrixReadOnly {
   fn translate<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] tx: Option<webidl::UnrestrictedDouble>,
-    #[webidl] ty: Option<webidl::UnrestrictedDouble>,
-    #[webidl] tz: Option<webidl::UnrestrictedDouble>,
+    #[webidl] tx: Option<UnrestrictedDouble>,
+    #[webidl] ty: Option<UnrestrictedDouble>,
+    #[webidl] tz: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let tx = *tx.unwrap_or(UnrestrictedDouble(0.0));
+    let ty = *ty.unwrap_or(UnrestrictedDouble(0.0));
+    let tz = *tz.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     out.translate_self_inner(tx, ty, tz);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -1820,19 +1839,19 @@ impl DOMMatrixReadOnly {
   fn scale<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
-    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
-    #[webidl] sz: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sx: Option<UnrestrictedDouble>,
+    #[webidl] sy: Option<UnrestrictedDouble>,
+    #[webidl] sz: Option<UnrestrictedDouble>,
+    #[webidl] origin_x: Option<UnrestrictedDouble>,
+    #[webidl] origin_y: Option<UnrestrictedDouble>,
+    #[webidl] origin_z: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
-    let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let sx = *sx.unwrap_or(UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(UnrestrictedDouble(sx));
+    let sz = *sz.unwrap_or(UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
       out.scale_without_origin_self_inner(sx, sy, sz);
@@ -1848,11 +1867,11 @@ impl DOMMatrixReadOnly {
   fn scale_non_uniform<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
-    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sx: Option<UnrestrictedDouble>,
+    #[webidl] sy: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(1.0));
+    let sx = *sx.unwrap_or(UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(UnrestrictedDouble(1.0));
     let out = self.clone();
     out.scale_without_origin_self_inner(sx, sy, 1.0);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -1864,15 +1883,15 @@ impl DOMMatrixReadOnly {
   fn scale3d<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] scale: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] scale: Option<UnrestrictedDouble>,
+    #[webidl] origin_x: Option<UnrestrictedDouble>,
+    #[webidl] origin_y: Option<UnrestrictedDouble>,
+    #[webidl] origin_z: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let scale = *scale.unwrap_or(UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
       out.scale_without_origin_self_inner(scale, scale, scale);
@@ -1889,19 +1908,19 @@ impl DOMMatrixReadOnly {
   fn rotate<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_x: Option<UnrestrictedDouble>,
+    #[webidl] rotate_y: Option<UnrestrictedDouble>,
+    #[webidl] rotate_z: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let rotate_x = *rotate_x.unwrap_or(UnrestrictedDouble(0.0));
     let (roll_deg, pitch_deg, yaw_deg) =
       if rotate_y.is_none() && rotate_z.is_none() {
         (0.0, 0.0, rotate_x)
       } else {
         (
           rotate_x,
-          *rotate_y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-          *rotate_z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+          *rotate_y.unwrap_or(UnrestrictedDouble(0.0)),
+          *rotate_z.unwrap_or(UnrestrictedDouble(0.0)),
         )
       };
     let out = self.clone();
@@ -1918,11 +1937,11 @@ impl DOMMatrixReadOnly {
   fn rotate_from_vector<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x = *x.unwrap_or(UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     out.rotate_from_vector_self_inner(x, y);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -1933,15 +1952,15 @@ impl DOMMatrixReadOnly {
   fn rotate_axis_angle<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] z: Option<webidl::UnrestrictedDouble>,
-    #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] z: Option<UnrestrictedDouble>,
+    #[webidl] angle_deg: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x = *x.unwrap_or(UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(UnrestrictedDouble(0.0));
+    let z = *z.unwrap_or(UnrestrictedDouble(0.0));
+    let angle_deg = *angle_deg.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     out.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -1952,9 +1971,9 @@ impl DOMMatrixReadOnly {
   fn skew_x<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x_deg: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x_deg = *x_deg.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     out.skew_self_inner(x_deg.to_radians(), 0.0);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -1965,9 +1984,9 @@ impl DOMMatrixReadOnly {
   fn skew_y<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
-    #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y_deg: Option<UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
-    let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y_deg = *y_deg.unwrap_or(UnrestrictedDouble(0.0));
     let out = self.clone();
     out.skew_self_inner(0.0, y_deg.to_radians());
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
@@ -2068,32 +2087,32 @@ impl DOMMatrixReadOnly {
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
-    let mut obj = v8::Object::new(scope);
-    set_f64(scope, &mut obj, "a", self.a_inner());
-    set_f64(scope, &mut obj, "b", self.b_inner());
-    set_f64(scope, &mut obj, "c", self.c_inner());
-    set_f64(scope, &mut obj, "d", self.d_inner());
-    set_f64(scope, &mut obj, "e", self.e_inner());
-    set_f64(scope, &mut obj, "f", self.f_inner());
-    set_f64(scope, &mut obj, "m11", self.m11_inner());
-    set_f64(scope, &mut obj, "m12", self.m12_inner());
-    set_f64(scope, &mut obj, "m13", self.m13_inner());
-    set_f64(scope, &mut obj, "m14", self.m14_inner());
-    set_f64(scope, &mut obj, "m21", self.m21_inner());
-    set_f64(scope, &mut obj, "m22", self.m22_inner());
-    set_f64(scope, &mut obj, "m23", self.m23_inner());
-    set_f64(scope, &mut obj, "m24", self.m24_inner());
-    set_f64(scope, &mut obj, "m31", self.m31_inner());
-    set_f64(scope, &mut obj, "m32", self.m32_inner());
-    set_f64(scope, &mut obj, "m33", self.m33_inner());
-    set_f64(scope, &mut obj, "m34", self.m34_inner());
-    set_f64(scope, &mut obj, "m41", self.m41_inner());
-    set_f64(scope, &mut obj, "m42", self.m42_inner());
-    set_f64(scope, &mut obj, "m43", self.m43_inner());
-    set_f64(scope, &mut obj, "m44", self.m44_inner());
-    set_boolean(scope, &mut obj, "is2D", self.is_2d.get());
-    set_boolean(scope, &mut obj, "isIdentity", self.is_identity_inner());
-    obj
+    define_obj!(scope => {
+      num "a": self.a_inner(),
+      num "b": self.b_inner(),
+      num "c": self.c_inner(),
+      num "d": self.d_inner(),
+      num "e": self.e_inner(),
+      num "f": self.f_inner(),
+      num "m11": self.m11_inner(),
+      num "m12": self.m12_inner(),
+      num "m13": self.m13_inner(),
+      num "m14": self.m14_inner(),
+      num "m21": self.m21_inner(),
+      num "m22": self.m22_inner(),
+      num "m23": self.m23_inner(),
+      num "m24": self.m24_inner(),
+      num "m31": self.m31_inner(),
+      num "m32": self.m32_inner(),
+      num "m33": self.m33_inner(),
+      num "m34": self.m34_inner(),
+      num "m41": self.m41_inner(),
+      num "m42": self.m42_inner(),
+      num "m43": self.m43_inner(),
+      num "m44": self.m44_inner(),
+      bool "is2D": self.is_2d.get(),
+      bool "isIdentity": self.is_identity_inner(),
+    })
   }
 }
 
@@ -2177,7 +2196,7 @@ impl DOMMatrix {
   #[setter]
   fn a(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_A] = *value;
@@ -2192,7 +2211,7 @@ impl DOMMatrix {
   #[setter]
   fn b(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_B] = *value;
@@ -2207,7 +2226,7 @@ impl DOMMatrix {
   #[setter]
   fn c(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_C] = *value;
@@ -2222,7 +2241,7 @@ impl DOMMatrix {
   #[setter]
   fn d(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_D] = *value;
@@ -2237,7 +2256,7 @@ impl DOMMatrix {
   #[setter]
   fn e(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_E] = *value;
@@ -2252,7 +2271,7 @@ impl DOMMatrix {
   #[setter]
   fn f(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_F] = *value;
@@ -2267,7 +2286,7 @@ impl DOMMatrix {
   #[setter]
   fn m11(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M11] = *value;
@@ -2282,7 +2301,7 @@ impl DOMMatrix {
   #[setter]
   fn m12(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M12] = *value;
@@ -2297,7 +2316,7 @@ impl DOMMatrix {
   #[setter]
   fn m13(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M13] = *value;
@@ -2315,7 +2334,7 @@ impl DOMMatrix {
   #[setter]
   fn m14(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M14] = *value;
@@ -2333,7 +2352,7 @@ impl DOMMatrix {
   #[setter]
   fn m21(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M21] = *value;
@@ -2348,7 +2367,7 @@ impl DOMMatrix {
   #[setter]
   fn m22(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M22] = *value;
@@ -2363,7 +2382,7 @@ impl DOMMatrix {
   #[setter]
   fn m23(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M23] = *value;
@@ -2381,7 +2400,7 @@ impl DOMMatrix {
   #[setter]
   fn m24(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M24] = *value;
@@ -2399,7 +2418,7 @@ impl DOMMatrix {
   #[setter]
   fn m31(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M31] = *value;
@@ -2417,7 +2436,7 @@ impl DOMMatrix {
   #[setter]
   fn m32(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M32] = *value;
@@ -2435,7 +2454,7 @@ impl DOMMatrix {
   #[setter]
   fn m33(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M33] = *value;
@@ -2453,7 +2472,7 @@ impl DOMMatrix {
   #[setter]
   fn m34(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M34] = *value;
@@ -2471,7 +2490,7 @@ impl DOMMatrix {
   #[setter]
   fn m41(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M41] = *value;
@@ -2486,7 +2505,7 @@ impl DOMMatrix {
   #[setter]
   fn m42(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M42] = *value;
@@ -2501,7 +2520,7 @@ impl DOMMatrix {
   #[setter]
   fn m43(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M43] = *value;
@@ -2519,7 +2538,7 @@ impl DOMMatrix {
   #[setter]
   fn m44(
     &self,
-    #[webidl] value: webidl::UnrestrictedDouble,
+    #[webidl] value: UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     ro.inner.borrow_mut()[INDEX_M44] = *value;
@@ -2532,14 +2551,14 @@ impl DOMMatrix {
   fn translate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] tx: Option<webidl::UnrestrictedDouble>,
-    #[webidl] ty: Option<webidl::UnrestrictedDouble>,
-    #[webidl] tz: Option<webidl::UnrestrictedDouble>,
+    #[webidl] tx: Option<UnrestrictedDouble>,
+    #[webidl] ty: Option<UnrestrictedDouble>,
+    #[webidl] tz: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let tx = *tx.unwrap_or(UnrestrictedDouble(0.0));
+    let ty = *ty.unwrap_or(UnrestrictedDouble(0.0));
+    let tz = *tz.unwrap_or(UnrestrictedDouble(0.0));
     ro.translate_self_inner(tx, ty, tz);
     this
   }
@@ -2548,20 +2567,20 @@ impl DOMMatrix {
   fn scale_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] sx: Option<webidl::UnrestrictedDouble>,
-    #[webidl] sy: Option<webidl::UnrestrictedDouble>,
-    #[webidl] sz: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] sx: Option<UnrestrictedDouble>,
+    #[webidl] sy: Option<UnrestrictedDouble>,
+    #[webidl] sz: Option<UnrestrictedDouble>,
+    #[webidl] origin_x: Option<UnrestrictedDouble>,
+    #[webidl] origin_y: Option<UnrestrictedDouble>,
+    #[webidl] origin_z: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
-    let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let sx = *sx.unwrap_or(UnrestrictedDouble(1.0));
+    let sy = *sy.unwrap_or(UnrestrictedDouble(sx));
+    let sz = *sz.unwrap_or(UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
       ro.scale_without_origin_self_inner(sx, sy, sz);
     } else {
@@ -2575,16 +2594,16 @@ impl DOMMatrix {
   fn scale3d_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] scale: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] scale: Option<UnrestrictedDouble>,
+    #[webidl] origin_x: Option<UnrestrictedDouble>,
+    #[webidl] origin_y: Option<UnrestrictedDouble>,
+    #[webidl] origin_z: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
-    let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let origin_z = *origin_z.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let scale = *scale.unwrap_or(UnrestrictedDouble(1.0));
+    let origin_x = *origin_x.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
+    let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
       ro.scale_without_origin_self_inner(scale, scale, scale);
     } else {
@@ -2599,20 +2618,20 @@ impl DOMMatrix {
   fn rotate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
+    #[webidl] rotate_x: Option<UnrestrictedDouble>,
+    #[webidl] rotate_y: Option<UnrestrictedDouble>,
+    #[webidl] rotate_z: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let rotate_x = *rotate_x.unwrap_or(UnrestrictedDouble(0.0));
     let (roll_deg, pitch_deg, yaw_deg) =
       if rotate_y.is_none() && rotate_z.is_none() {
         (0.0, 0.0, rotate_x)
       } else {
         (
           rotate_x,
-          *rotate_y.unwrap_or(webidl::UnrestrictedDouble(0.0)),
-          *rotate_z.unwrap_or(webidl::UnrestrictedDouble(0.0)),
+          *rotate_y.unwrap_or(UnrestrictedDouble(0.0)),
+          *rotate_z.unwrap_or(UnrestrictedDouble(0.0)),
         )
       };
     ro.rotate_self_inner(
@@ -2627,12 +2646,12 @@ impl DOMMatrix {
   fn rotate_from_vector_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x = *x.unwrap_or(UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(UnrestrictedDouble(0.0));
     ro.rotate_from_vector_self_inner(x, y);
     this
   }
@@ -2641,16 +2660,16 @@ impl DOMMatrix {
   fn rotate_axis_angle_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] x: Option<webidl::UnrestrictedDouble>,
-    #[webidl] y: Option<webidl::UnrestrictedDouble>,
-    #[webidl] z: Option<webidl::UnrestrictedDouble>,
-    #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x: Option<UnrestrictedDouble>,
+    #[webidl] y: Option<UnrestrictedDouble>,
+    #[webidl] z: Option<UnrestrictedDouble>,
+    #[webidl] angle_deg: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
-    let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x = *x.unwrap_or(UnrestrictedDouble(0.0));
+    let y = *y.unwrap_or(UnrestrictedDouble(0.0));
+    let z = *z.unwrap_or(UnrestrictedDouble(0.0));
+    let angle_deg = *angle_deg.unwrap_or(UnrestrictedDouble(0.0));
     ro.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     this
   }
@@ -2659,10 +2678,10 @@ impl DOMMatrix {
   fn skew_x_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] x_deg: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let x_deg = *x_deg.unwrap_or(UnrestrictedDouble(0.0));
     ro.skew_self_inner(x_deg.to_radians(), 0.0);
     this
   }
@@ -2671,10 +2690,10 @@ impl DOMMatrix {
   fn skew_y_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
+    #[webidl] y_deg: Option<UnrestrictedDouble>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
+    let y_deg = *y_deg.unwrap_or(UnrestrictedDouble(0.0));
     ro.skew_self_inner(0.0, y_deg.to_radians());
     this
   }
@@ -2750,30 +2769,6 @@ impl DOMMatrix {
     ro.invert_self_inner();
     this
   }
-}
-
-#[inline]
-fn set_f64(
-  scope: &mut v8::PinScope<'_, '_>,
-  object: &mut v8::Local<v8::Object>,
-  key: &str,
-  value: f64,
-) {
-  let key = v8::String::new(scope, key).unwrap();
-  let value = v8::Number::new(scope, value);
-  object.create_data_property(scope, key.into(), value.into());
-}
-
-#[inline]
-fn set_boolean(
-  scope: &mut v8::PinScope<'_, '_>,
-  object: &mut v8::Local<v8::Object>,
-  key: &str,
-  value: bool,
-) {
-  let key = v8::String::new(scope, key).unwrap();
-  let value = v8::Boolean::new(scope, value);
-  object.create_data_property(scope, key.into(), value.into());
 }
 
 // TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
