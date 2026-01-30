@@ -2179,7 +2179,6 @@ fn napi_get_value_string_utf8(
       v8::WriteFlags::kReplaceInvalidUtf8,
       None,
     );
-    let copied = nchars;
     unsafe {
       buf.add(copied).write(0);
     }
