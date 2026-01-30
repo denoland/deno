@@ -310,7 +310,7 @@ fn get_esbuild_platform_info(
     "darwin-x64" => Some(("esbuild-x64", "mac", false)),
     "darwin-arm64" => Some(("esbuild-aarch64", "mac", false)),
     "win32-x64" => Some(("esbuild-x64.exe", "win", true)),
-    "win32-arm64" => Some(("esbuild-arm64.exe", "win", true)),
+    "win32-arm64" => Some(("esbuild-aarch64.exe", "win", true)),
     _ => None,
   }
 }
