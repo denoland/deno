@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.6.6"
+version = "2.6.7"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -96,6 +96,7 @@ deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
+node_shim.workspace = true
 
 anstream.workspace = true
 async-trait.workspace = true
@@ -140,6 +141,7 @@ keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service"
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lol_html = "2.6.0"
 lsp-types.workspace = true

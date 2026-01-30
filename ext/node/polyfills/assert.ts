@@ -519,46 +519,34 @@ function expectsNoError(
 
 function throws(
   fn: () => void,
-  message?: string,
-): void;
-function throws(
-  fn: () => void,
-  error?: Function,
   message?: string | Error,
 ): void;
 function throws(
   fn: () => void,
-  error?: RegExp,
-  message?: string,
+  error?: AssertPredicate,
+  message?: string | Error,
 ): void;
 function throws(
   fn: () => void,
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsError(throws, getActual(fn), expected, message);
+  expectsError(throws, getActual(fn), ...args);
 }
 
 function doesNotThrow(
   fn: () => void,
-  message?: string,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  error?: Function,
   message?: string | Error,
 ): void;
 function doesNotThrow(
   fn: () => void,
-  error?: RegExp,
-  message?: string,
+  error?: AssertPredicate,
+  message?: string | Error,
 ): void;
 function doesNotThrow(
   fn: () => void,
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsNoError(() => {}, getActual(fn), expected, message);
+  expectsNoError(() => {}, getActual(fn), ...args);
 }
 
 function equal(
@@ -871,52 +859,33 @@ function strict(actual: unknown, message?: string | Error): asserts actual {
 }
 
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  error?: RegExp | Function | Error,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  error?: AssertPredicate,
 ): Promise<void>;
-
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  message?: string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  message?: string | Error,
 ): Promise<void>;
-
-// Intentionally avoid using async/await because test-assert-async.js requires it
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsError(rejects, await waitForActual(asyncFn), expected, message);
+  expectsError(rejects, await waitForActual(asyncFn), ...args);
 }
 
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  error?: RegExp | Function,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  error?: AssertPredicate,
 ): Promise<void>;
-
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  message?: string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  message?: string | Error,
 ): Promise<void>;
-
-// Intentionally avoid using async/await because test-assert-async.js requires it
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsNoError(
-    doesNotReject,
-    await waitForActual(asyncFn),
-    expected,
-    message,
-  );
+  expectsNoError(doesNotReject, await waitForActual(asyncFn), ...args);
 }
 
 /**

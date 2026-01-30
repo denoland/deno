@@ -401,9 +401,28 @@ pub async fn uninstall(
   // There might be some extra files to delete
   // Note: tsconfig.json is legacy. We renamed it to deno.json.
   // Remove cleaning it up after January 2024
+  // Use the base file path (without extension) to compute related files
+  let base_file = installation_dir.join(&uninstall_flags.name);
+
   for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    let file_path = file_path.with_extension(ext);
-    remove_file_if_exists(&file_path)?;
+    // remove the plain extension files (e.g., name.deno.json, name.lock.json)
+    let file_path_ext = base_file.with_extension(ext);
+    remove_file_if_exists(&file_path_ext)?;
+
+    // also remove the hidden per-command copies created at install time
+    // (e.g., .name.deno.json)
+    let hidden_file = get_hidden_file_with_ext(&base_file, ext);
+    remove_file_if_exists(&hidden_file)?;
+
+    // On Windows, installs use a shim with a .cmd extension, which means the
+    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+    // those as well to be thorough.
+    #[cfg(windows)]
+    {
+      let base_with_cmd = base_file.with_extension("cmd");
+      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+      remove_file_if_exists(&hidden_cmd_file)?;
+    }
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
@@ -1922,6 +1941,7 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       File::create(&file_path).unwrap();
     }
+    let shim_path = file_path.clone();
 
     // create extra files
     {
@@ -1936,6 +1956,18 @@ mod tests {
     {
       let file_path = file_path.with_extension("lock.json");
       File::create(file_path).unwrap();
+    }
+
+    // create hidden per-command copies as produced by install
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
+      File::create(hidden_file).unwrap();
+    }
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
+      File::create(hidden_file).unwrap();
     }
 
     uninstall(
@@ -1954,6 +1986,14 @@ mod tests {
     assert!(!file_path.with_extension("tsconfig.json").exists());
     assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
+
+    // hidden per-command files should also be removed
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+    );
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+    );
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
