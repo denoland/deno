@@ -157,8 +157,7 @@ function flushStdio(subprocess: ChildProcess) {
 class StreamResource implements StreamBase {
   #rid: number;
   #isUnref = false;
-  #pendingReadPromise: Promise<number> | null = null;
-  #pendingWritePromise: Promise<number> | null = null;
+  #pendingPromises: Set<Promise<number>> = new Set();
   constructor(rid: number) {
     this.#rid = rid;
   }
@@ -167,7 +166,7 @@ class StreamResource implements StreamBase {
   }
   async read(p: Uint8Array): Promise<number | null> {
     const readPromise = core.read(this.#rid, p);
-    this.#pendingReadPromise = readPromise;
+    this.#pendingPromises.add(readPromise);
     if (this.#isUnref) {
       core.unrefOpPromise(readPromise);
     }
@@ -175,37 +174,31 @@ class StreamResource implements StreamBase {
       const nread = await readPromise;
       return nread > 0 ? nread : null;
     } finally {
-      this.#pendingReadPromise = null;
+      this.#pendingPromises.delete(readPromise);
     }
   }
   ref(): void {
     this.#isUnref = false;
-    if (this.#pendingReadPromise) {
-      core.refOpPromise(this.#pendingReadPromise);
-    }
-    if (this.#pendingWritePromise) {
-      core.refOpPromise(this.#pendingWritePromise);
+    for (const promise of this.#pendingPromises) {
+      core.refOpPromise(promise);
     }
   }
   unref(): void {
     this.#isUnref = true;
-    if (this.#pendingReadPromise) {
-      core.unrefOpPromise(this.#pendingReadPromise);
-    }
-    if (this.#pendingWritePromise) {
-      core.unrefOpPromise(this.#pendingWritePromise);
+    for (const promise of this.#pendingPromises) {
+      core.unrefOpPromise(promise);
     }
   }
   async write(p: Uint8Array): Promise<number> {
     const writePromise = core.write(this.#rid, p);
-    this.#pendingWritePromise = writePromise;
+    this.#pendingPromises.add(writePromise);
     if (this.#isUnref) {
       core.unrefOpPromise(writePromise);
     }
     try {
       return await writePromise;
     } finally {
-      this.#pendingWritePromise = null;
+      this.#pendingPromises.delete(writePromise);
     }
   }
 }
