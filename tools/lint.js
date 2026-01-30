@@ -359,6 +359,8 @@ async function ensureNoNewTopLevelFiles() {
     "Releases.md",
     "import_map.json",
     "rust-toolchain.toml",
+    "flake.nix",
+    "flake.lock",
   ].sort();
 
   const newFiles = currentFiles.filter((file) => !allowedFiles.includes(file));

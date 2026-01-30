@@ -33,6 +33,7 @@ use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use super::session::SessionOptions;
+use super::sql_tag_store::SQLTagStore;
 use super::statement::InnerStatementPtr;
 use super::statement::check_error_code;
 use super::statement::check_error_code2;
@@ -654,7 +655,7 @@ impl DatabaseSync {
   fn new(
     state: &mut OpState,
     #[string] location: String,
-    #[from_v8] options: DatabaseSyncOptions,
+    #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
       let db = open_db(state, &location, &options)?;
@@ -1255,7 +1256,7 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[from_v8] options: OptionUndefined<SessionOptions>,
+    #[scoped] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
     let db = self.conn.borrow();
@@ -1493,6 +1494,38 @@ impl DatabaseSync {
     check_error_code(r, raw_handle)?;
 
     Ok(())
+  }
+
+  #[validate(is_open)]
+  #[cppgc]
+  fn create_tag_store(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<SQLTagStore, SqliteError> {
+    let capacity = if let Some(args) = args
+      && args.length() > 0
+    {
+      let val = args.get(0);
+      if val.is_number() {
+        val.uint32_value(scope).unwrap_or(1000)
+      } else {
+        1000
+      }
+    } else {
+      1000
+    };
+
+    let db_object = args.map(|a| a.this()).ok_or(SqliteError::AlreadyClosed)?;
+
+    Ok(SQLTagStore::create(
+      self.conn.clone(),
+      self.statements.clone(),
+      capacity,
+      self.options.return_arrays,
+      self.options.use_big_int_arguments,
+      v8::Global::new(scope, db_object),
+    ))
   }
 }
 

@@ -35,7 +35,7 @@ use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -1055,7 +1055,7 @@ fn common_extensions<
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(LocalCronHandler::new()),
+    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),

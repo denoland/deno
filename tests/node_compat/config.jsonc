@@ -158,6 +158,9 @@
       "windows": false
     },
     "parallel/test-child-process-advanced-serialization-splitted-length-field.js": {},
+    "parallel/test-child-process-bad-stdio.js": {
+      "windows": false
+    },
     "parallel/test-child-process-can-write-to-stdout.js": {
       "flaky": true
     },
@@ -170,7 +173,9 @@
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},
     "parallel/test-child-process-exec-kill-throws.js": {},
+    "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
+    "parallel/test-child-process-exec-timeout-not-expired.js": {},
     "parallel/test-child-process-execFile-promisified-abortController.js": {},
     "parallel/test-child-process-execfile-maxbuf.js": {},
     "parallel/test-child-process-execfilesync-maxbuf.js": {},
@@ -1447,12 +1452,7 @@
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
-    "parallel/test-util-isDeepStrictEqual.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "https://github.com/denoland/deno/issues/31632"
-    },
+    "parallel/test-util-isDeepStrictEqual.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
