@@ -536,9 +536,6 @@ fn categorize_installed_npm_deps(
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
 
@@ -558,9 +555,6 @@ fn categorize_installed_npm_deps(
           _package_json_dep_workspace_req,
         ) => {
           // ignore workspace deps
-        }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
         }
       }
     }
