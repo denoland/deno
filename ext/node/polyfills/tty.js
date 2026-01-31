@@ -195,9 +195,9 @@ function getColorDepth(env = process.env) {
       if (
         !env.TERM_PROGRAM_VERSION ||
         RegExpPrototypeExec(
-          new SafeRegExp("^[0-2]\\."),
-          env.TERM_PROGRAM_VERSION,
-        ) !== null
+            new SafeRegExp("^[0-2]\\."),
+            env.TERM_PROGRAM_VERSION,
+          ) !== null
       ) {
         return COLORS_256;
       }
