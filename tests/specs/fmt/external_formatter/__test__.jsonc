@@ -29,6 +29,10 @@
       "args": "fmt syntax_error_but_fmt_ignored.js",
       "output": "Checked 1 file\n",
       "exitCode": 0
+    },
+    "html_tag_spacing": {
+      "args": "fmt html_tag_spacing.js",
+      "output": "html_tag_spacing.out"
     }
   }
 }
