@@ -65,16 +65,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.52.0", features = ["transpiling"] }
+deno_ast = { version = "=0.53.0", features = ["transpiling"] }
 deno_core = { version = "0.382.0" }
 
-deno_cache_dir = "=0.26.3"
+deno_cache_dir = "=0.27.0"
 deno_doc = "=0.189.1"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.106.0", default-features = false }
+deno_graph = { version = "=0.107.0", default-features = false }
 deno_lint = "=0.82.0"
 deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
+deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.43.0"
 deno_path_util = "=0.6.4"
@@ -166,6 +166,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 color-print = "0.3.5"
+comrak = "0.29.0"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
@@ -547,3 +548,9 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_doc = { path = "../deno_doc" }
+eszip = { path = "../eszip" }
+deno_lint = { path = "../deno_lint" }
+dprint-plugin-typescript = { path = "../dprint-plugin-typescript" }

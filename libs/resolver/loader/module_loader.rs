@@ -26,20 +26,12 @@ use crate::emit::EmitParsedSourceHelperError;
 use crate::emit::EmitterRc;
 use crate::factory::DenoNodeCodeTranslatorRc;
 use crate::graph::EnhanceGraphErrorMode;
+use crate::graph::EnhancedGraphError;
 use crate::graph::enhance_graph_error;
 use crate::npm::DenoInNpmPackageChecker;
 
 #[allow(clippy::disallowed_types)]
 type ArcStr = std::sync::Arc<str>;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("{message}")]
-#[class(inherit)]
-pub struct EnhancedGraphError {
-  #[inherit]
-  pub error: deno_graph::ModuleError,
-  pub message: String,
-}
 
 #[derive(Debug, deno_error::JsError, Boxed)]
 #[class(inherit)]
@@ -399,13 +391,12 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     requested_module_type: &RequestedModuleType,
   ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
     let maybe_module =
-      graph.try_get(specifier).map_err(|err| EnhancedGraphError {
-        message: enhance_graph_error(
+      graph.try_get(specifier).map_err(|err| {
+        enhance_graph_error(
           &self.sys,
-          &deno_graph::ModuleGraphError::ModuleError(err.clone()),
+          deno_graph::ModuleGraphError::ModuleError(err.clone()),
           EnhanceGraphErrorMode::ShowRange,
-        ),
-        error: err.clone(),
+        )
       })?;
 
     match maybe_module {
@@ -499,6 +490,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
             | MediaType::Html
             | MediaType::Jsonc
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Wasm
             | MediaType::SourceMap => {
