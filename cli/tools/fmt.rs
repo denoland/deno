@@ -770,20 +770,61 @@ fn format_embedded_html(
   };
   // Preserve original leading/trailing newline semantics so formatting embedded
   // HTML doesn't inadvertently add or remove newlines that affect surrounding code.
-  let formatted_raw = markup_fmt::format_text(text, language, &options, |code, _| {
-    Ok::<_, std::convert::Infallible>(code.into())
-  })?;
-  // If the original text did NOT end with a newline, but the formatted text DOES,
-  // we must remove the trailing newline. This prevents the closing backtick from
-  // moving to a new line, which causes the indentation bug in the next function.
-  let result = if !text.ends_with('\n') && formatted_raw.ends_with('\n') {
-    formatted_raw.trim_end_matches('\n').to_string()
-  } else {
-    formatted_raw
-  };
+  let formatted_raw =
+    markup_fmt::format_text(text, language, &options, |code, _| {
+      Ok::<_, std::convert::Infallible>(code.into())
+    })?;
 
-  Ok(Some(result))
-} 
+  // Start from the raw formatted value and adapt it to the original template
+  // semantics to avoid changing indentation or introducing a trailing newline
+  // that would push the closing backtick to a new line (which causes dprint
+  // printer invariants to trigger a panic in some environments).
+  let mut formatted = formatted_raw.to_string();
+
+  // If the original did not start with a newline, remove leading newlines
+  // introduced by the HTML formatter and re-apply the original first-line
+  // indentation to keep inline templates' relative indentation intact.
+  let original_starts_with_newline =
+    text.starts_with('\n') || text.starts_with("\r\n");
+  if !original_starts_with_newline {
+    formatted = formatted
+      .trim_start_matches(|c| c == '\n' || c == '\r')
+      .to_string();
+
+    let indent_prefix = text
+      .lines()
+      .next()
+      .map(|l| {
+        l.chars()
+          .take_while(|c| *c == ' ' || *c == '\t')
+          .collect::<String>()
+      })
+      .unwrap_or_default();
+
+    if !indent_prefix.is_empty() {
+      formatted = formatted
+        .lines()
+        .map(|line| {
+          if line.is_empty() {
+            "".to_string()
+          } else {
+            format!("{}{}", indent_prefix, line)
+          }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    }
+  }
+
+  // If the formatter added a trailing newline but the original didn't end with one,
+  // strip it so the closing backtick remains inline and dprint's printer keeps
+  // indentation balanced.
+  if !text.ends_with('\n') && formatted.ends_with('\n') {
+    formatted = formatted.trim_end_matches('\n').to_string();
+  }
+
+  Ok(Some(formatted))
+}
 
 /// Formats the embedded SQL code blocks in JavaScript and TypeScript.
 fn format_embedded_sql(
@@ -1219,6 +1260,7 @@ fn format_ensure_stable(
 /// Format stdin and write result to stdout.
 /// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
+#[allow(clippy::print_stdout)]
 fn format_stdin(
   fmt_flags: &FmtFlags,
   fmt_options: FmtOptions,
@@ -1229,74 +1271,21 @@ fn format_stdin(
     bail!("Failed to read from stdin");
   }
 
-  // Fast, safe fallback: if stdin contains tagged embedded content like html`...`,
-  // avoid running the full formatter here because the dprint printer may panic
-  // in some stdin cases. Instead, echo the original content and warn the user.
-  if source.contains("html`")
-    || source.contains("css`")
-    || source.contains("sql`")
-    || source.contains("svg`")
-    || source.contains("xml`")
-  {
-    eprintln!(
-      "Warning: formatting from stdin for files with embedded templates (html/css/sql/svg/xml) is disabled due to an intermittent formatter issue. Please run `deno fmt <file>` instead."
-    );
-    #[allow(clippy::print_stdout)]
-    print!("{}", source);
-    return Ok(());
-  }
-
-  // Write stdin contents to a temporary file and format that file. Using a real
-  // file on disk ensures the file-based formatting path is exercised, which
-  // avoids an edge-case panic observed when formatting from stdin directly.
-  let mut tmp_path = std::env::temp_dir();
-  let pid = std::process::id();
-  let ts = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .map(|d| d.as_nanos())
-    .unwrap_or_default();
-  let filename = format!("deno_fmt_stdin_{}_{}.{}", pid, ts, ext);
-  tmp_path.push(filename);
-
-  // Write the source to the temp file
-  std::fs::write(&tmp_path, source.as_bytes())
-    .with_context(|| format!("Failed to write to temp file: {}", tmp_path.display()))?;
-
-  // Read it back via the same helper as file-based flow
-  let file = read_file_contents(&tmp_path)?;
-
-  // Format using the normal file-based path
-  // Try formatting normally. If the call panics (observed in some stdin
-  // scenarios due to a printer invariant in dprint), catch it and retry
-  // without external embedded formatters as a safer fallback.
-  let formatted_text = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-    format_file(&tmp_path, &file, &fmt_options.options, &fmt_options.unstable, None)
-  })) {
-    Ok(r) => r?,
-    Err(_) => {
-      log::warn!("External formatter panicked when formatting stdin; retrying without embedded formatters");
-      // Retry using dprint typescript formatter without external embedded formatting
-      let ext = get_extension(&tmp_path).unwrap_or("ts".to_string());
-      let config = get_resolved_typescript_config(&fmt_options.options);
-      dprint_plugin_typescript::format_text(
-        dprint_plugin_typescript::FormatTextOptions {
-          path: &tmp_path,
-          extension: Some(&ext),
-          text: file.text.to_string(),
-          config: &config,
-          external_formatter: None,
-        },
-      )?
-    }
+  let file = FileContents {
+    had_bom: false,
+    text: source.into(),
   };
 
-  // Cleanup the temp file; ignore errors on remove but log them
-  if let Err(e) = std::fs::remove_file(&tmp_path) {
-    log::warn!("Failed to remove temp file {}: {}", tmp_path.display(), e);
-  }
+  let file_path = PathBuf::from(format!("_stdin.{ext}"));
+  let formatted_text = format_file(
+    &file_path,
+    &file,
+    &fmt_options.options,
+    &fmt_options.unstable,
+    None,
+  )?;
 
   if fmt_flags.check {
-    #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -2026,9 +2015,12 @@ mod test {
 
   #[test]
   fn test_format_embedded_html_preserve_inline() {
-    let input = "  <form>\n    <label>Width:\n      <input /></label>\n    </form>\n  ";
+    let input =
+      "  <form>\n    <label>Width:\n      <input /></label>\n    </form>\n  ";
     let config = get_resolved_typescript_config(&FmtOptionsConfig::default());
-    let formatted = format_embedded_html("html", input, &config).unwrap().unwrap();
+    let formatted = format_embedded_html("html", input, &config)
+      .unwrap()
+      .unwrap();
     // The formatter should preserve the original indentation and not add a
     // trailing newline when the original did not have one.
     assert!(formatted.starts_with("  <form>"));
@@ -2040,7 +2032,9 @@ mod test {
   fn test_format_embedded_html_preserve_leading_newline() {
     let input = "\n<form>\n  <div></div>\n";
     let config = get_resolved_typescript_config(&FmtOptionsConfig::default());
-    let formatted = format_embedded_html("html", input, &config).unwrap().unwrap();
+    let formatted = format_embedded_html("html", input, &config)
+      .unwrap()
+      .unwrap();
     assert!(formatted.starts_with('\n'));
     assert!(formatted.contains("<form>"));
   }
