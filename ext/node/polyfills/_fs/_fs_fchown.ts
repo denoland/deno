@@ -29,7 +29,7 @@ export function fchown(
   PromisePrototypeThen(
     op_fs_fchown_async(fd, uid, gid),
     () => callback(null),
-    callback
+    callback,
   );
 }
 
