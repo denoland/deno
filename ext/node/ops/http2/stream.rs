@@ -331,12 +331,32 @@ impl Http2Stream {
   }
 
   #[fast]
-  fn shutdown(&self) {
+  fn write_buffer(
+    &self,
+    _req: v8::Local<v8::Object>,
+    #[buffer] data: &[u8],
+  ) -> i32 {
+    let session_ptr = self.nghttp2_session();
+
+    self.pending_data.borrow_mut().extend_from_slice(data);
+    *self.available_outbound_length.borrow_mut() += data.len();
+
+    // SAFETY: session pointer is valid
+    unsafe {
+      ffi::nghttp2_session_resume_data(session_ptr, self.id);
+    }
+    0
+  }
+
+  #[fast]
+  fn shutdown(&self, _req: v8::Local<v8::Object>) -> i32 {
     let session_ptr = self.nghttp2_session();
     // SAFETY: session pointer is valid
     unsafe {
       ffi::nghttp2_session_resume_data(session_ptr, self.id);
     }
+    // Return 1 to signal synchronous completion
+    1
   }
 
   fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {

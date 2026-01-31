@@ -91,6 +91,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
+  aggregateTwoErrors,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -1096,14 +1097,18 @@ function streamOnPause() {
 }
 
 function afterShutdown(status) {
+  console.error("DEBUG afterShutdown: status=" + status);
   const stream = this.handle[kOwner];
+  console.error("DEBUG afterShutdown: stream=" + !!stream);
   if (stream) {
     stream.on("finish", () => {
       stream[kMaybeDestroy]();
     });
   }
   // Currently this status value is unused
+  console.error("DEBUG afterShutdown: calling callback");
   this.callback();
+  console.error("DEBUG afterShutdown: callback returned");
 }
 
 function shutdownWritable(callback) {
@@ -1273,6 +1278,61 @@ class Http2Stream extends Duplex {
     //this[async_id_symbol] = handle.getAsyncId();
     handle[kOwner] = this;
     this[kHandle] = handle;
+
+    // Add missing StreamBase write methods and wrap existing ones.
+    // Deno sets streamBaseState[kLastWriteWasAsync] = 1 globally, which
+    // means afterWriteDispatched won't call req.callback synchronously.
+    // HTTP2 stream writes are synchronous (they buffer data), so we need
+    // to call req.oncomplete(0) to signal write completion.
+    const nativeWriteUtf8String = handle.writeUtf8String.bind(handle);
+    const nativeWriteBuffer = handle.writeBuffer.bind(handle);
+    function completeWrite(req, err) {
+      console.error("DEBUG completeWrite: err=" + err + " oncomplete=" + typeof req.oncomplete);
+      if (err === 0 && typeof req.oncomplete === "function") {
+        process.nextTick(() => {
+          console.error("DEBUG completeWrite: calling oncomplete");
+          req.oncomplete.call(req, 0);
+          console.error("DEBUG completeWrite: oncomplete returned");
+        });
+      }
+      return err;
+    }
+    handle.writeUtf8String = function (req, data) {
+      return completeWrite(req, nativeWriteUtf8String(req, data));
+    };
+    handle.writeBuffer = function (req, data) {
+      return completeWrite(req, nativeWriteBuffer(req, data));
+    };
+    handle.writev = function (req, chunks, allBuffers) {
+      const count = allBuffers ? chunks.length : chunks.length >> 1;
+      const buffers = new Array(count);
+      if (!allBuffers) {
+        for (let i = 0; i < count; i++) {
+          const chunk = chunks[i * 2];
+          if (Buffer.isBuffer(chunk)) {
+            buffers[i] = chunk;
+          } else {
+            const encoding = chunks[i * 2 + 1];
+            buffers[i] = Buffer.from(chunk, encoding);
+          }
+        }
+      } else {
+        for (let i = 0; i < count; i++) {
+          buffers[i] = chunks[i];
+        }
+      }
+      return handle.writeBuffer(req, Buffer.concat(buffers));
+    };
+    handle.writeLatin1String = function (req, data) {
+      return handle.writeBuffer(req, Buffer.from(data, "latin1"));
+    };
+    handle.writeAsciiString = function (req, data) {
+      return handle.writeBuffer(req, new TextEncoder().encode(data));
+    };
+    handle.writeUcs2String = function (req, data) {
+      return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
+    };
+
     handle.onread = onStreamRead;
     this.uncork();
     this.emit("ready");
@@ -1412,6 +1472,7 @@ class Http2Stream extends Duplex {
     // uncork() before that happens, the Duplex will attempt to pass
     // writes through. Those need to be queued up here.
     if (this.pending) {
+      console.error("DEBUG kWriteGeneric: pending, deferring to ready");
       this.once(
         "ready",
         this[kWriteGeneric].bind(this, writev, data, encoding, cb),
@@ -1464,22 +1525,31 @@ class Http2Stream extends Duplex {
     // Shutdown write stream right after last chunk is sent
     // so final DATA frame can include END_STREAM flag
     process.nextTick(() => {
+      console.error("DEBUG endCheck nextTick: writeCallbackErr=" + writeCallbackErr + " ending=" + this._writableState.ending + " buffered=" + this._writableState.buffered.length);
       if (
         writeCallbackErr ||
         !this._writableState.ending ||
         this._writableState.buffered.length ||
         (this[kState].flags & STREAM_FLAGS_HAS_TRAILERS)
       ) {
+        console.error("DEBUG endCheck: calling endCheckCallback directly");
         return endCheckCallback();
       }
-      debugStreamObj(this, "shutting down writable on last write");
+      console.error("DEBUG endCheck: calling shutdownWritable");
       shutdownWritable.call(this, endCheckCallback);
+      console.error("DEBUG endCheck: shutdownWritable returned");
     });
 
-    if (writev) {
-      req = writevGeneric(this, data, writeCallback);
-    } else {
-      req = writeGeneric(this, data, encoding, writeCallback);
+    try {
+      if (writev) {
+        req = writevGeneric(this, data, writeCallback);
+      } else {
+        req = writeGeneric(this, data, encoding, writeCallback);
+      }
+      console.error("DEBUG kWriteGeneric: write succeeded, req.bytes=" + req.bytes + " req.async=" + req.async);
+    } catch (e) {
+      console.error("DEBUG kWriteGeneric: write threw:", e.message, e.stack);
+      throw e;
     }
 
     trackWriteState(this, req.bytes);
