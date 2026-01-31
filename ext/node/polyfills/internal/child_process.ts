@@ -970,7 +970,7 @@ export function normalizeSpawnArguments(
   if (options.shell) {
     let command = ArrayPrototypeJoin([file, ...args], " ");
     // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
-    command = transformDenoShellCommand(command);
+    command = transformDenoShellCommand(command, options.env);
     // Set the shell, switches, and commands.
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
@@ -1087,10 +1087,45 @@ function waitForStreamToClose(stream: Stream) {
 }
 
 /**
- * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Handles cases like: `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
+ * Simple shell argument splitter that handles double and single quotes.
+ * Used to parse the arguments portion of a shell command string.
  */
-function transformDenoShellCommand(command: string): string {
+function splitShellArgs(str: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let inDouble = false;
+  let inSingle = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === " " && !inDouble && !inSingle) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current.length > 0) {
+    args.push(current);
+  }
+  return args;
+}
+
+/**
+ * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
+ * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
+ * including subcommand detection, -c/--check flag handling, and adding "run -A".
+ */
+function transformDenoShellCommand(
+  command: string,
+  env?: Record<string, string | number | boolean>,
+): string {
   const denoPath = Deno.execPath();
 
   // Check if the command starts with the Deno executable (possibly quoted)
@@ -1099,6 +1134,7 @@ function transformDenoShellCommand(command: string): string {
 
   let startsWithDeno = false;
   let denoPathLength = 0;
+  let shellVarPrefix = "";
 
   if (command.startsWith(quotedDenoPath)) {
     startsWithDeno = true;
@@ -1109,6 +1145,22 @@ function transformDenoShellCommand(command: string): string {
   } else if (command.startsWith(denoPath)) {
     startsWithDeno = true;
     denoPathLength = denoPath.length;
+  } else if (env) {
+    // Check for shell variable that references the Deno path
+    // Pattern: "${VARNAME}" or $VARNAME at start of command
+    const shellVarMatch = command.match(
+      /^(?:"\$\{([^}]+)\}"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
+    );
+    if (shellVarMatch) {
+      const varName = shellVarMatch[1] || shellVarMatch[2] ||
+        shellVarMatch[3];
+      const varValue = env[varName];
+      if (varValue !== undefined && String(varValue) === denoPath) {
+        startsWithDeno = true;
+        shellVarPrefix = shellVarMatch[0];
+        denoPathLength = shellVarMatch[0].length;
+      }
+    }
   }
 
   if (!startsWithDeno) {
@@ -1118,17 +1170,28 @@ function transformDenoShellCommand(command: string): string {
   // Extract the rest of the command after the Deno path
   const rest = command.slice(denoPathLength).trimStart();
 
-  // Transform Node.js -c/--check flag to Deno run subcommand
-  // Node's -c does syntax checking (parse without execute). Deno doesn't have an exact equivalent,
-  // but deno run will fail fast on syntax errors during parsing, achieving similar behavior.
-  const checkFlagRegex = /^(-c|--check)\s+(.*)$/;
-  const match = rest.match(checkFlagRegex);
-
-  if (match) {
-    return command.slice(0, denoPathLength) + " run " + match[2];
+  if (rest.length === 0) {
+    return command;
   }
 
-  return command;
+  // Split the remaining args and use the Rust parser to translate them
+  const args = splitShellArgs(rest);
+
+  try {
+    const result = op_node_translate_cli_args(args, false);
+    // Check if any translated arg contains shell metacharacters (e.g. from eval
+    // wrapping). If so, the result can't be safely used in a shell command.
+    for (let i = 0; i < result.deno_args.length; i++) {
+      if (/[();&|<>`!]/.test(result.deno_args[i])) {
+        return command;
+      }
+    }
+    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
+    return prefix + " " + result.deno_args.join(" ");
+  } catch {
+    // If the Rust parser fails (unknown flags), return the original command
+    return command;
+  }
 }
 
 /**

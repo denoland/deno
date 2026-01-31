@@ -1,0 +1,11 @@
+[ISOLATE] Starting
+[ISOLATE] Registering early-cron (before serve)
+[ISOLATE] early-cron registered successfully
+Listening on http://0.0.0.0:8000/ (http://localhost:8000/)
+[ISOLATE] Deno.serve started
+[CRON SERVER] Registered: early-cron
+[CONTROL CLIENT] Received Serving signal from Deno
+[CRON SERVER] Sent rejection
+[ISOLATE] late-cron rejected as expected with error: Error registering cron: No crons after serve
+[CRON SERVER] Registered crons: early-cron
+[CRON SERVER] SUCCESS: Only early cron was registered
