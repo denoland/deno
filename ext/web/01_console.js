@@ -1735,7 +1735,7 @@ function getStackFrames(ctx, err, stack) {
   // Remove stack frames identical to frames in cause.
   if (
     cause != null &&
-    (isNativeError(err) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, err))
+    (isNativeError(cause) || FunctionPrototypeSymbolHasInstance(Error, cause))
   ) {
     const causeStack = getStackString(ctx, cause);
     const causeStackStart = StringPrototypeIndexOf(causeStack, "\n    at");
