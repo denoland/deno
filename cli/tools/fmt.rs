@@ -702,7 +702,6 @@ fn format_embedded_html(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
-  // 🛡️ SAFETY GUARD:
   // Skip formatting for inline templates (no leading newline).
   // This prevents the "writer indentation level" panic in dprint
   // on specific architectures (like linux-aarch64).
