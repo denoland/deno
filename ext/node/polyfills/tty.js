@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com). MIT license.
 
-import { op_bootstrap_color_depth } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
@@ -10,6 +9,8 @@ const {
   ObjectPrototypeHasOwnProperty,
   RegExpPrototypeExec,
   SafeMap,
+  SafeMapIterator,
+  SafeRegExp,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
 } = primordials;
@@ -30,6 +31,7 @@ import process from "node:process";
 const COLORS_2 = 1;
 const COLORS_16 = 4;
 const COLORS_256 = 8;
+// deno-lint-ignore camelcase
 const COLORS_16m = 24;
 
 // Terminal environments supporting specific color depths
@@ -67,16 +69,16 @@ const CI_ENVS_MAP = new SafeMap(ObjectEntries({
 
 // Regular expressions for terminal types
 const TERM_ENVS_REG_EXP = [
-  /ansi/,
-  /color/,
-  /linux/,
-  /direct/,
-  /^con[0-9]*x[0-9]/,
-  /^rxvt/,
-  /^screen/,
-  /^xterm/,
-  /^vt100/,
-  /^vt220/,
+  new SafeRegExp("ansi"),
+  new SafeRegExp("color"),
+  new SafeRegExp("linux"),
+  new SafeRegExp("direct"),
+  new SafeRegExp("^con[0-9]*x[0-9]"),
+  new SafeRegExp("^rxvt"),
+  new SafeRegExp("^screen"),
+  new SafeRegExp("^xterm"),
+  new SafeRegExp("^vt100"),
+  new SafeRegExp("^vt220"),
 ];
 
 let warned = false;
@@ -168,7 +170,7 @@ function getColorDepth(env = process.env) {
   }
 
   if (ObjectPrototypeHasOwnProperty(env, "CI")) {
-    for (const { 0: envName, 1: colors } of CI_ENVS_MAP) {
+    for (const { 0: envName, 1: colors } of new SafeMapIterator(CI_ENVS_MAP)) {
       if (ObjectPrototypeHasOwnProperty(env, envName)) {
         return colors;
       }
@@ -179,9 +181,9 @@ function getColorDepth(env = process.env) {
     return COLORS_2;
   }
 
-  if ("TEAMCITY_VERSION" in env) {
+  if (ObjectPrototypeHasOwnProperty(env, "TEAMCITY_VERSION")) {
     return RegExpPrototypeExec(
-        /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/,
+        new SafeRegExp("^(9\\.(0*[1-9]\\d*)\\.|(\\d{2,})\\.)"),
         env.TEAMCITY_VERSION,
       ) !== null
       ? COLORS_16
@@ -192,7 +194,7 @@ function getColorDepth(env = process.env) {
     case "iTerm.app":
       if (
         !env.TERM_PROGRAM_VERSION ||
-        RegExpPrototypeExec(/^[0-2]\./, env.TERM_PROGRAM_VERSION) !== null
+        RegExpPrototypeExec(new SafeRegExp("^[0-2]\\."), env.TERM_PROGRAM_VERSION) !== null
       ) {
         return COLORS_256;
       }
@@ -209,11 +211,11 @@ function getColorDepth(env = process.env) {
   }
 
   if (env.TERM) {
-    if (RegExpPrototypeExec(/truecolor/, env.TERM) !== null) {
+    if (RegExpPrototypeExec(new SafeRegExp("truecolor"), env.TERM) !== null) {
       return COLORS_16m;
     }
 
-    if (RegExpPrototypeExec(/^xterm-256/, env.TERM) !== null) {
+    if (RegExpPrototypeExec(new SafeRegExp("^xterm-256"), env.TERM) !== null) {
       return COLORS_256;
     }
 
