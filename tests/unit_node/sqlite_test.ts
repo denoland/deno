@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import sqlite, { backup, DatabaseSync } from "node:sqlite";
+import sqlite, { backup, constants, DatabaseSync } from "node:sqlite";
 import {
   assert,
   assertEquals,
@@ -9,6 +9,7 @@ import {
 import * as nodeAssert from "node:assert";
 import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
+import { spy } from "@std/testing/mock";
 
 const tempDir = Deno.makeTempDirSync();
 
@@ -1235,4 +1236,320 @@ Deno.test("sql.db returns the associated DatabaseSync instance", () => {
   db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
   sql.clear();
   assertStrictEquals(sql.db, db);
+});
+
+const createTestDatabase = () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+  return db;
+};
+
+Deno.test("receives correct parameters for SELECT operations", () => {
+  // @ts-expect-error accessing constants property is valid
+  const authorizer = spy(() => constants.SQLITE_OK);
+  const db = createTestDatabase();
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(authorizer);
+  db.prepare("SELECT id FROM users").get();
+
+  nodeAssert.strictEqual(authorizer.calls.length, 2);
+  const callArguments = authorizer.calls.map((call) => call.args);
+
+  nodeAssert.deepStrictEqual(
+    callArguments,
+    [
+      // @ts-expect-error accessing constants property is valid
+      [constants.SQLITE_SELECT, null, null, null, null],
+      // @ts-expect-error accessing constants property is valid
+      [constants.SQLITE_READ, "users", "id", "main", null],
+    ],
+  );
+});
+
+Deno.test("receives correct parameters for INSERT operations", () => {
+  // @ts-expect-error accessing constants property is valid
+  const authorizer = spy(() => constants.SQLITE_OK);
+  const db = createTestDatabase();
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(authorizer);
+  db.prepare("INSERT INTO users (id, name) VALUES (?, ?)").run(1, "node");
+
+  nodeAssert.strictEqual(authorizer.calls.length, 1);
+
+  const callArguments = authorizer.calls.map((call) => call.args);
+  nodeAssert.deepStrictEqual(
+    callArguments,
+    // @ts-expect-error accessing constants property is valid
+    [[constants.SQLITE_INSERT, "users", null, "main", null]],
+  );
+});
+
+Deno.test("allows operations when authorizer returns SQLITE_OK", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => constants.SQLITE_OK);
+
+  db.exec("CREATE TABLE users (id INTEGER, name TEXT)");
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all();
+
+  assertEquals(tables[0].name, "users");
+});
+
+Deno.test("blocks operations when authorizer returns SQLITE_DENY", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => constants.SQLITE_DENY);
+
+  nodeAssert.throws(() => {
+    db.exec("SELECT 1");
+  }, {
+    code: "ERR_SQLITE_ERROR",
+    message: /not authorized/,
+  });
+});
+
+Deno.test("ignores SELECT operations when authorizer returns SQLITE_IGNORE", () => {
+  const db = createTestDatabase();
+  db.prepare("INSERT INTO users (id, name) VALUES (?, ?)").run(1, "Alice");
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer((actionCode) => {
+    // @ts-expect-error accessing constants property is valid
+    if (actionCode === constants.SQLITE_SELECT) {
+      // @ts-expect-error accessing constants property is valid
+      return constants.SQLITE_IGNORE;
+    }
+    // @ts-expect-error accessing constants property is valid
+    return constants.SQLITE_OK;
+  });
+
+  // SELECT should be ignored and return no results
+  const result = db.prepare("SELECT * FROM users").all();
+  assertEquals(result, []);
+});
+
+Deno.test("ignores READ operations when authorizer returns SQLITE_IGNORE", () => {
+  const db = createTestDatabase();
+  db.prepare("INSERT INTO users (id, name) VALUES (?, ?)").run(1, "Alice");
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer((actionCode, arg1, arg2) => {
+    if (
+      // @ts-expect-error accessing constants property is valid
+      actionCode === constants.SQLITE_READ && arg1 === "users" &&
+      arg2 === "name"
+    ) {
+      // @ts-expect-error accessing constants property is valid
+      return constants.SQLITE_IGNORE;
+    }
+    // @ts-expect-error accessing constants property is valid
+    return constants.SQLITE_OK;
+  });
+
+  // Reading the 'name' column should be ignored, returning NULL
+  const result = db.prepare("SELECT id, name FROM users WHERE id = 1").get();
+  // @ts-expect-error result.name is valid
+  assertEquals(result.id, 1);
+  // @ts-expect-error result.name is valid
+  assertEquals(result.name, null);
+});
+
+Deno.test("ignores INSERT operations when authorizer returns SQLITE_IGNORE", () => {
+  const db = createTestDatabase();
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer((actionCode) => {
+    // @ts-expect-error accessing constants property is valid
+    if (actionCode === constants.SQLITE_INSERT) {
+      // @ts-expect-error accessing constants property is valid
+      return constants.SQLITE_IGNORE;
+    }
+    // @ts-expect-error accessing constants property is valid
+    return constants.SQLITE_OK;
+  });
+
+  db.prepare("INSERT INTO users (id, name) VALUES (?, ?)").run(1, "Alice");
+
+  // Verify no data was inserted
+  const count = db.prepare("SELECT COUNT(*) as count FROM users").get();
+  // @ts-expect-error count.count is valid
+  assertEquals(count.count, 0);
+});
+
+Deno.test("ignores UPDATE operations when authorizer returns SQLITE_IGNORE", () => {
+  const db = createTestDatabase();
+  db.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer((actionCode) => {
+    // @ts-expect-error accessing constants property is valid
+    if (actionCode === constants.SQLITE_UPDATE) {
+      // @ts-expect-error accessing constants property is valid
+      return constants.SQLITE_IGNORE;
+    }
+    // @ts-expect-error accessing constants property is valid
+    return constants.SQLITE_OK;
+  });
+
+  db.prepare("UPDATE users SET name = ? WHERE id = ?").run("Bob", 1);
+
+  // Verify data was not updated
+  const result = db.prepare("SELECT name FROM users WHERE id = 1").get();
+  // @ts-expect-error result.name is valid
+  assertEquals(result.name, "Alice");
+});
+
+Deno.test("ignores DELETE operations when authorizer returns SQLITE_IGNORE", () => {
+  const db = createTestDatabase();
+  db.exec("INSERT INTO users (id, name) VALUES (1, 'Alice')");
+
+  // @ts-expect-error accessing constants property is valid
+  db.setAuthorizer(() => constants.SQLITE_IGNORE);
+
+  db.prepare("DELETE FROM users WHERE id = ?").run(1);
+
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(null);
+
+  // Verify data was not deleted
+  const count = db.prepare("SELECT COUNT(*) as count FROM users").get();
+  // @ts-expect-error count.count is valid
+  assertEquals(count.count, 1);
+});
+
+Deno.test("rethrows error when authorizer throws error", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => {
+    throw new Error("Unknown error");
+  });
+
+  nodeAssert.throws(() => {
+    db.exec("SELECT 1");
+  }, {
+    message: "Unknown error",
+  });
+});
+
+Deno.test("throws error when authorizer returns nothing", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => {
+  });
+
+  nodeAssert.throws(() => {
+    db.exec("SELECT 1");
+  }, {
+    message: "Authorizer callback must return an integer authorization code",
+  });
+});
+
+Deno.test("throws error when authorizer returns NaN", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => {
+    return "1";
+  });
+
+  nodeAssert.throws(() => {
+    db.exec("SELECT 1");
+  }, {
+    message: "Authorizer callback must return an integer authorization code",
+  });
+});
+
+Deno.test("throws error when authorizer returns a invalid code", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(() => {
+    return 3;
+  });
+
+  nodeAssert.throws(() => {
+    db.exec("SELECT 1");
+  }, {
+    message: "Authorizer callback returned a invalid authorization code",
+  });
+});
+
+Deno.test("clears authorizer when set to null", () => {
+  // @ts-expect-error accessing constants property is valid
+  const authorizer = spy(() => constants.SQLITE_OK);
+  const db = new DatabaseSync(":memory:");
+  const statement = db.prepare("SELECT 1");
+
+  // Set authorizer and verify it's called
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(authorizer);
+  statement.run();
+  assertEquals(authorizer.calls.length, 1);
+
+  // Clear authorizer and verify it's no longer called
+  // @ts-expect-error setAuthorizer is a valid method
+  db.setAuthorizer(null);
+  statement.run();
+  assertEquals(authorizer.calls.length, 1);
+});
+
+Deno.test("throws when callback is a string", () => {
+  const db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error setAuthorizer is a valid method
+    db.setAuthorizer("not a function");
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "callback" argument must be a function/,
+  });
+});
+
+Deno.test("throws when callback is a number", () => {
+  const db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error setAuthorizer is a valid method
+    db.setAuthorizer(1);
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "callback" argument must be a function/,
+  });
+});
+
+Deno.test("throws when callback is an object", () => {
+  const db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error setAuthorizer is a valid method
+    db.setAuthorizer({});
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "callback" argument must be a function/,
+  });
+});
+
+Deno.test("throws when callback is an array", () => {
+  const db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error setAuthorizer is a valid method
+    db.setAuthorizer([]);
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "callback" argument must be a function/,
+  });
+});
+
+Deno.test("throws when callback is undefined", () => {
+  const db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => {
+    // @ts-expect-error setAuthorizer is a valid method
+    db.setAuthorizer();
+  }, {
+    code: "ERR_INVALID_ARG_TYPE",
+    message: /The "callback" argument must be a function/,
+  });
 });
