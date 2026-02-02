@@ -540,6 +540,7 @@ impl ModuleGraphCreator {
           workspace_fast_check: WorkspaceFastCheckOption::Enabled(
             &fast_check_workspace_members,
           ),
+          fast_check_dts: false,
         },
       )?;
     }
@@ -624,6 +625,8 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files during fast check.
+  pub fast_check_dts: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -953,7 +956,7 @@ impl ModuleGraphBuilder {
       deno_graph::BuildFastCheckTypeGraphOptions {
         es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
-        fast_check_dts: false,
+        fast_check_dts: options.fast_check_dts,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
         workspace_fast_check: options.workspace_fast_check,
