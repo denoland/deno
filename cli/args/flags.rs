@@ -437,7 +437,7 @@ pub enum DenoXShimName {
 impl DenoXShimName {
   pub fn name(&self) -> &str {
     match self {
-      Self::Dx => "dx",
+      Self::Dx => "denodx",
       Self::Denox => "denox",
       Self::Dnx => "dnx",
       Self::Other(name) => name,
@@ -1666,7 +1666,7 @@ pub fn flags_from_vec_with_initial_cwd(
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
   let args = if !args.is_empty()
-    && (args[0].as_encoded_bytes().ends_with(b"dx")
+    && (args[0].as_encoded_bytes().ends_with(b"denodx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
       || args[0].as_encoded_bytes().ends_with(b"dnx"))
   {
@@ -3677,7 +3677,7 @@ The installation root is determined, in order of precedence:
 
 fn deno_x_shim_name_parser(value: &str) -> Result<DenoXShimName, String> {
   match value {
-    "dx" => Ok(DenoXShimName::Dx),
+    "denodx" => Ok(DenoXShimName::Dx),
     "denox" => Ok(DenoXShimName::Denox),
     "dnx" => Ok(DenoXShimName::Dnx),
     _ => Ok(DenoXShimName::Other(value.to_string())),
@@ -3706,9 +3706,9 @@ fn x_subcommand() -> Command {
       .arg(
         Arg::new("install-alias")
           .long("install-alias")
-          .help("Creates a dx alias so you can run dx <command> instead of deno x <command>")
+          .help("Creates a dx alias so you can run denodx <command> instead of deno x <command>")
           .num_args(0..=1)
-          .default_missing_value("dx")
+          .default_missing_value("denodx")
           .value_parser(deno_x_shim_name_parser)
           .action(ArgAction::Set)
           .conflicts_with("script_arg"),
