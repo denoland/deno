@@ -169,6 +169,20 @@ function closeIdleConnections() {
     // Ignore - module may not be loaded
   }
 
+  // Phase 1c: Collect TLS RIDs from HTTP ClientRequest (HTTPS connections)
+  // These are created directly via op_tls_start, not through TLSSocket
+  try {
+    const http = nativeModuleExports["http"];
+    if (http?.allTlsRids) {
+      for (const rid of http.allTlsRids) {
+        ridsToClose.push(rid);
+      }
+      http.allTlsRids.clear();
+    }
+  } catch {
+    // Ignore - module may not be loaded
+  }
+
   // Phase 2: Force close any remaining resources
   // This handles the case where socket.destroy() is a no-op due to HandleWrap state
   for (const rid of ridsToClose) {

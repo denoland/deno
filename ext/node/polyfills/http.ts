@@ -98,6 +98,10 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
+
+// Track TLS resource IDs created by ClientRequest for HTTPS connections.
+// These are created via op_tls_start and need to be cleaned up by the test sanitizer.
+const allTlsRids = new Set<number>();
 const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
   primordials;
 
@@ -553,6 +557,9 @@ class ClientRequest extends OutgoingMessage {
             caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
           }, keyPair);
+
+          // Track TLS RID for test sanitizer cleanup
+          allTlsRids.add(baseConnRid);
 
           // Simulates "secure" event on TLSSocket
           // This makes yarn v1's https client working
@@ -2412,6 +2419,7 @@ export const maxHeaderSize = 16_384;
 
 export {
   Agent,
+  allTlsRids,
   ClientRequest,
   globalAgent,
   IncomingMessageForServer as IncomingMessage,
@@ -2423,6 +2431,7 @@ export {
 };
 export default {
   Agent,
+  allTlsRids,
   globalAgent,
   ClientRequest,
   STATUS_CODES,
