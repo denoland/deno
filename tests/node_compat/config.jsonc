@@ -60,6 +60,7 @@
     "parallel/test-assert-checktag.js": {},
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
+    "parallel/test-assert-deep-with-error.js": {},
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
@@ -1131,6 +1132,7 @@
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
+    "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
@@ -1442,12 +1444,7 @@
     "parallel/test-url-parse-format.js": {},
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-relative.js": {},
-    "parallel/test-url-urltooptions.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "https://github.com/denoland/deno/issues/31633"
-    },
+    "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},

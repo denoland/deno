@@ -23,6 +23,7 @@ use deno_core::v8_static_strings;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::ffi::SQLITE_DBCONFIG_DEFENSIVE;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::ffi::sqlite3_create_window_function;
@@ -33,6 +34,7 @@ use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use super::session::SessionOptions;
+use super::sql_tag_store::SQLTagStore;
 use super::statement::InnerStatementPtr;
 use super::statement::check_error_code;
 use super::statement::check_error_code2;
@@ -52,6 +54,7 @@ struct DatabaseSyncOptions {
   allow_bare_named_params: bool,
   return_arrays: bool,
   allow_unknown_named_params: bool,
+  is_defensive_mode: bool,
   timeout: u64,
 }
 
@@ -87,6 +90,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       RETURN_ARRAYS = "returnArrays",
       ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
       ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
+      DEFENSIVE_STRING = "defensive",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -242,6 +246,20 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
           .is_true();
     }
 
+    let defensive_string = DEFENSIVE_STRING.v8_string(scope).unwrap();
+    if let Some(is_defensive_mode) = obj.get(scope, defensive_string.into())
+      && !is_defensive_mode.is_undefined()
+    {
+      options.is_defensive_mode =
+        v8::Local::<v8::Boolean>::try_from(is_defensive_mode)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.defensive\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
     Ok(options)
   }
 }
@@ -258,6 +276,7 @@ impl Default for DatabaseSyncOptions {
       return_arrays: false,
       allow_bare_named_params: true,
       allow_unknown_named_params: false,
+      is_defensive_mode: false,
       timeout: 0,
     }
   }
@@ -563,6 +582,12 @@ fn open_db(
       ));
     }
 
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_DEFENSIVE,
+      options.is_defensive_mode,
+    ));
+
     return Ok(conn);
   }
 
@@ -601,6 +626,12 @@ fn open_db(
       ));
     }
 
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_DEFENSIVE,
+      options.is_defensive_mode,
+    ));
+
     return Ok(conn);
   }
 
@@ -620,6 +651,12 @@ fn open_db(
   if disable_attach {
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
   }
+
+  assert!(set_db_config(
+    &conn,
+    SQLITE_DBCONFIG_DEFENSIVE,
+    options.is_defensive_mode,
+  ));
 
   Ok(conn)
 }
@@ -1355,6 +1392,18 @@ impl DatabaseSync {
     Ok(filename.into())
   }
 
+  #[fast]
+  #[validate(is_open)]
+  fn enable_defensive(
+    &self,
+    #[validate(validators::active_bool)] is_enabled: bool,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    assert!(set_db_config(conn, SQLITE_DBCONFIG_DEFENSIVE, is_enabled));
+    Ok(())
+  }
+
   #[getter]
   fn is_open(&self) -> bool {
     self.conn.borrow().is_some()
@@ -1493,6 +1542,38 @@ impl DatabaseSync {
     check_error_code(r, raw_handle)?;
 
     Ok(())
+  }
+
+  #[validate(is_open)]
+  #[cppgc]
+  fn create_tag_store(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<SQLTagStore, SqliteError> {
+    let capacity = if let Some(args) = args
+      && args.length() > 0
+    {
+      let val = args.get(0);
+      if val.is_number() {
+        val.uint32_value(scope).unwrap_or(1000)
+      } else {
+        1000
+      }
+    } else {
+      1000
+    };
+
+    let db_object = args.map(|a| a.this()).ok_or(SqliteError::AlreadyClosed)?;
+
+    Ok(SQLTagStore::create(
+      self.conn.clone(),
+      self.statements.clone(),
+      capacity,
+      self.options.return_arrays,
+      self.options.use_big_int_arguments,
+      v8::Global::new(scope, db_object),
+    ))
   }
 }
 
