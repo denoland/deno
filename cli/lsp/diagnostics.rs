@@ -49,14 +49,13 @@ use super::documents::DocumentModules;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
-use super::tsc::TsServer;
+use super::tsc_mod::TsModServer;
 use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
-use crate::tsc::DiagnosticCategory;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
@@ -173,7 +172,7 @@ pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<DiagnosticsUpdateMessage>>,
   client: Client,
   performance: Arc<Performance>,
-  ts_server: Arc<TsServer>,
+  ts_server: Arc<TsModServer>,
   pub state: Arc<DiagnosticsState>,
 }
 
@@ -193,7 +192,7 @@ impl DiagnosticsServer {
   pub fn new(
     client: Client,
     performance: Arc<Performance>,
-    ts_server: Arc<TsServer>,
+    ts_server: Arc<TsModServer>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -1215,7 +1214,7 @@ async fn publish_document_diagnostics(
 async fn generate_document_diagnostics(
   document: &Arc<OpenDocument>,
   snapshot: &Arc<StateSnapshot>,
-  ts_server: &TsServer,
+  ts_server: &TsModServer,
   ambient_modules_regex_cache: &OnceCellMap<
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
@@ -1263,7 +1262,7 @@ async fn generate_document_diagnostics(
 pub async fn generate_module_diagnostics(
   module: &Arc<DocumentModule>,
   snapshot: &Arc<StateSnapshot>,
-  ts_server: &TsServer,
+  ts_server: &TsModServer,
   ambient_modules_regex_cache: &OnceCellMap<
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
@@ -1320,25 +1319,9 @@ pub async fn generate_module_diagnostics(
     }
   });
 
-  let mut ts_diagnostics = ts_server
-    .get_diagnostics(snapshot.clone(), module, token)
+  let mut diagnostics = ts_server
+    .provide_diagnostics(module, snapshot.clone(), token)
     .await?;
-  let suggestion_actions_settings = snapshot
-    .config
-    .language_settings_for_specifier(&module.specifier)
-    .map(|s| s.suggestion_actions.clone())
-    .unwrap_or_default();
-  if !suggestion_actions_settings.enabled {
-    ts_diagnostics.retain(|d| {
-      d.category != DiagnosticCategory::Suggestion
-        // Still show deprecated and unused diagnostics.
-        // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
-        || d.reports_deprecated == Some(true)
-        || d.reports_unnecessary == Some(true)
-    });
-  }
-  let mut diagnostics =
-    ts_json_to_diagnostics(ts_diagnostics, module, &snapshot.document_modules);
 
   let (deps_diagnostics, deferred_deps_diagnostics) = deps_handle
     .await
@@ -1356,27 +1339,32 @@ pub async fn generate_module_diagnostics(
     .clone();
   let ambient_modules_regex = ambient_modules_regex_cell
     .get_or_init(async || {
-      ts_server
-        .get_ambient_modules(
-          snapshot.clone(),
-          &module.compiler_options_key,
-          module.notebook_uri.as_ref(),
-          token,
-        )
-        .await
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            lsp_warn!("Unable to get ambient modules: {:#}", err);
-          }
-        })
-        .ok()
-        .filter(|a| !a.is_empty())
-        .and_then(|ambient_modules| {
-          let regex_string = ambient_modules_to_regex_string(&ambient_modules);
-          regex::Regex::new(&regex_string).inspect_err(|err| {
-            lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
-          }).ok()
-        })
+      match ts_server {
+        TsModServer::Js(ts_server) => {
+          ts_server
+            .get_ambient_modules(
+              snapshot.clone(),
+              &module.compiler_options_key,
+              module.notebook_uri.as_ref(),
+              token,
+            )
+            .await
+            .inspect_err(|err| {
+              if !token.is_cancelled() {
+                lsp_warn!("Unable to get ambient modules: {:#}", err);
+              }
+            })
+            .ok()
+            .filter(|a| !a.is_empty())
+            .and_then(|ambient_modules| {
+              let regex_string = ambient_modules_to_regex_string(&ambient_modules);
+              regex::Regex::new(&regex_string).inspect_err(|err| {
+                lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
+              }).ok()
+            })
+        }
+        TsModServer::Go(_) => todo!(),
+      }
     }).await;
   if let Some(ambient_modules_regex) = ambient_modules_regex {
     diagnostics.extend(deferred_deps_diagnostics.into_iter().filter_map(

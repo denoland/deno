@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// TODO(nayeemrmn): Move to `cli/lsp/tsc/js.rs`.
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
@@ -252,6 +254,7 @@ pub struct TsServer {
   pending_change: Mutex<Option<PendingChange>>,
   enable_tracing: Arc<AtomicBool>,
   start_once: std::sync::Once,
+  supported_code_fixes: tokio::sync::OnceCell<Vec<String>>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -435,6 +438,7 @@ impl TsServer {
       pending_change: Mutex::new(None),
       enable_tracing: Default::default(),
       start_once: std::sync::Once::new(),
+      supported_code_fixes: Default::default(),
     }
   }
 
@@ -658,42 +662,50 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
     token: &CancellationToken,
-  ) -> Result<NavigationTree, AnyError> {
-    let req = TscRequest::GetNavigationTree((self
-      .specifier_map
-      .denormalize(&module.specifier, module.media_type),));
-    self
-      .request(
-        snapshot,
-        req,
-        &module.compiler_options_key,
-        module.scope.as_ref(),
-        module.notebook_uri.as_ref(),
-        token,
-      )
+  ) -> Result<Arc<NavigationTree>, AnyError> {
+    module
+      .navigation_tree
+      .get_or_try_init(|| async {
+        let req = TscRequest::GetNavigationTree((self
+          .specifier_map
+          .denormalize(&module.specifier, module.media_type),));
+        self
+          .request(
+            snapshot,
+            req,
+            &module.compiler_options_key,
+            module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
+            token,
+          )
+          .await
+          .map(Arc::new)
+      })
       .await
+      .map(Clone::clone)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_supported_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
-  ) -> Result<Vec<String>, LspError> {
-    let req = TscRequest::GetSupportedCodeFixes;
+  ) -> Result<&Vec<String>, AnyError> {
     self
-      .request(
-        snapshot,
-        req,
-        &Default::default(),
-        None,
-        None,
-        &Default::default(),
-      )
-      .await
-      .map_err(|err| {
-        log::error!("Unable to get fixable diagnostics: {}", err);
-        LspError::internal_error()
+      .supported_code_fixes
+      .get_or_try_init(|| async move {
+        let req = TscRequest::GetSupportedCodeFixes;
+        self
+          .request(
+            snapshot,
+            req,
+            &Default::default(),
+            None,
+            None,
+            &Default::default(),
+          )
+          .await
       })
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1609,12 +1621,12 @@ impl TsServer {
 fn get_tag_body_text(
   tag: &JsDocTagInfo,
   module: &DocumentModule,
-  language_server: &language_server::Inner,
+  snapshot: &StateSnapshot,
 ) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts, module, language_server);
+    let text = display_parts_to_string(display_parts, module, snapshot);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -1639,15 +1651,14 @@ fn get_tag_body_text(
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
   module: &DocumentModule,
-  language_server: &language_server::Inner,
+  snapshot: &StateSnapshot,
 ) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text =
-          display_parts_to_string(display_parts, module, language_server);
+        let text = display_parts_to_string(display_parts, module, snapshot);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -1667,7 +1678,7 @@ fn get_tag_documentation(
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, module, language_server);
+  let maybe_text = get_tag_body_text(tag, module, snapshot);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{label}  \n{text}")
@@ -1722,6 +1733,22 @@ fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
 pub enum OneOrMany<T> {
   One(T),
   Many(Vec<T>),
+}
+
+impl<T> OneOrMany<T> {
+  pub fn len(&self) -> usize {
+    match self {
+      Self::One(_) => 1,
+      Self::Many(v) => v.len(),
+    }
+  }
+
+  pub fn into_vec(self) -> Vec<T> {
+    match self {
+      Self::One(i) => vec![i],
+      Self::Many(v) => v,
+    }
+  }
 }
 
 /// Aligns with ts.ScriptElementKind
@@ -1921,7 +1948,7 @@ pub struct TextSpan {
 
 impl TextSpan {
   pub fn from_range(
-    range: &lsp::Range,
+    range: lsp::Range,
     line_index: Arc<LineIndex>,
   ) -> Result<Self, AnyError> {
     let start = line_index.offset_tsc(range.start)?;
@@ -1985,7 +2012,7 @@ struct Link {
 fn display_parts_to_string(
   parts: &[SymbolDisplayPart],
   module: &DocumentModule,
-  language_server: &language_server::Inner,
+  snapshot: &StateSnapshot,
 ) -> String {
   let mut out = Vec::<String>::new();
 
@@ -1995,7 +2022,7 @@ fn display_parts_to_string(
       "link" => {
         if let Some(link) = current_link.as_mut() {
           if let Some(target) = &link.target {
-            if let Some(specifier) = target.to_target(module, language_server) {
+            if let Some(specifier) = target.to_target(module, snapshot) {
               let link_text = link.text.clone().unwrap_or_else(|| {
                 link
                   .name
@@ -2095,13 +2122,13 @@ impl QuickInfo {
   pub fn to_hover(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> lsp::Hover {
     let mut parts = Vec::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p, module, language_server))
+      .map(|p| display_parts_to_string(&p, module, snapshot))
       && !display_string.is_empty()
     {
       parts.push(format!("```typescript\n{}\n```", display_string));
@@ -2109,7 +2136,7 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p, module, language_server))
+      .map(|p| display_parts_to_string(&p, module, snapshot))
       && !documentation.is_empty()
     {
       parts.push(documentation);
@@ -2117,9 +2144,7 @@ impl QuickInfo {
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(|tag_info| {
-          get_tag_documentation(tag_info, module, language_server)
-        })
+        .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
@@ -2162,10 +2187,10 @@ impl DocumentSpan {
   pub fn to_link(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server.document_modules.module_for_specifier(
+    let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
       module.scope.as_deref(),
       Some(&module.compiler_options_key),
@@ -2205,10 +2230,10 @@ impl DocumentSpan {
   fn to_target(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<ModuleSpecifier> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server.document_modules.module_for_specifier(
+    let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
       module.scope.as_deref(),
       Some(&module.compiler_options_key),
@@ -2315,16 +2340,15 @@ impl InlayHintDisplayPart {
   pub fn to_lsp(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> lsp::InlayHintLabelPart {
     let location = self.file.as_ref().and_then(|f| {
       let target_specifier = resolve_url(f).ok()?;
-      let target_module =
-        language_server.document_modules.module_for_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-          Some(&module.compiler_options_key),
-        )?;
+      let target_module = snapshot.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?;
       let range = self
         .span
         .as_ref()
@@ -2378,7 +2402,7 @@ impl InlayHint {
   pub fn to_lsp(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> lsp::InlayHint {
     lsp::InlayHint {
       position: module.line_index.position_utf16(self.position.into()),
@@ -2386,7 +2410,7 @@ impl InlayHint {
         lsp::InlayHintLabel::LabelParts(
           display_parts
             .iter()
-            .map(|p| p.to_lsp(module, language_server))
+            .map(|p| p.to_lsp(module, snapshot))
             .collect(),
         )
       } else {
@@ -2600,9 +2624,9 @@ impl ImplementationLocation {
   pub fn to_link(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<lsp::LocationLink> {
-    self.document_span.to_link(module, language_server)
+    self.document_span.to_link(module, snapshot)
   }
 }
 
@@ -2760,7 +2784,7 @@ impl DefinitionInfoAndBoundSpan {
   pub fn to_definition(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
     if let Some(definitions) = &self.definitions {
@@ -2769,7 +2793,7 @@ impl DefinitionInfoAndBoundSpan {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        if let Some(link) = di.document_span.to_link(module, language_server) {
+        if let Some(link) = di.document_span.to_link(module, snapshot) {
           location_links.push(link);
         }
       }
@@ -3146,7 +3170,7 @@ impl ApplicableRefactorInfo {
 
 pub fn file_text_changes_to_workspace_edit<'a>(
   changes_with_modules: impl IntoIterator<
-    Item = (&'a FileTextChanges, &'a Arc<DocumentModule>),
+    Item = (&'a FileTextChanges, &'a DocumentModule),
   >,
   language_server: &language_server::Inner,
   token: &CancellationToken,
@@ -3195,7 +3219,7 @@ impl RefactorEditInfo {
     token: &CancellationToken,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {
     file_text_changes_to_workspace_edit(
-      self.edits.iter().map(|c| (c, module)),
+      self.edits.iter().map(|c| (c, module.as_ref())),
       language_server,
       token,
     )
@@ -3358,13 +3382,13 @@ impl ReferenceEntry {
   pub fn to_location(
     &self,
     module: &Arc<DocumentModule>,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<lsp::Location> {
     let target_specifier = resolve_url(&self.document_span.file_name).ok()?;
     let target_module = if target_specifier == *module.specifier {
       module.clone()
     } else {
-      language_server.document_modules.module_for_specifier(
+      snapshot.document_modules.module_for_specifier(
         &target_specifier,
         module.scope.as_deref(),
         Some(&module.compiler_options_key),
@@ -3406,22 +3430,22 @@ impl CallHierarchyItem {
   pub fn try_resolve_call_hierarchy_item(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let (item, _) =
-      self.to_call_hierarchy_item(module, language_server, maybe_root_path)?;
+      self.to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
     Some(item)
   }
 
   fn to_call_hierarchy_item(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
-    let target_module = language_server.document_modules.module_for_specifier(
+    let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
       module.scope.as_deref(),
       Some(&module.compiler_options_key),
@@ -3513,14 +3537,13 @@ impl CallHierarchyIncomingCall {
   pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let (from, target_module) = self.from.to_call_hierarchy_item(
-      module,
-      language_server,
-      maybe_root_path,
-    )?;
+    let (from, target_module) =
+      self
+        .from
+        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
     Some(lsp::CallHierarchyIncomingCall {
       from,
       from_ranges: self
@@ -3551,14 +3574,13 @@ impl CallHierarchyOutgoingCall {
   pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let (to, _) = self.to.to_call_hierarchy_item(
-      module,
-      language_server,
-      maybe_root_path,
-    )?;
+    let (to, _) =
+      self
+        .to
+        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
     Some(lsp::CallHierarchyOutgoingCall {
       to,
       from_ranges: self
@@ -3736,7 +3758,7 @@ impl CompletionEntryDetails {
     original_item: &lsp::CompletionItem,
     data: &CompletionItemData,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Result<lsp::CompletionItem, AnyError> {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
@@ -3744,20 +3766,18 @@ impl CompletionEntryDetails {
       Some(replace_links(display_parts_to_string(
         &self.display_parts,
         module,
-        language_server,
+        snapshot,
       )))
     } else {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
       // NOTE: similar as `QuickInfo::to_hover()`
-      let mut value = display_parts_to_string(parts, module, language_server);
+      let mut value = display_parts_to_string(parts, module, snapshot);
       if let Some(tags) = &self.tags {
         let tags_preview = tags
           .iter()
-          .map(|tag_info| {
-            get_tag_documentation(tag_info, module, language_server)
-          })
+          .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
           .collect::<Vec<String>>()
           .join("  \n\n");
         if !tags_preview.is_empty() {
@@ -4457,7 +4477,7 @@ impl SignatureHelpItems {
   pub fn into_signature_help(
     self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
     let signatures = self
@@ -4467,7 +4487,7 @@ impl SignatureHelpItems {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        Ok(item.into_signature_information(module, language_server))
+        Ok(item.into_signature_information(module, snapshot))
       })
       .collect::<Result<_, _>>()?;
     Ok(lsp::SignatureHelp {
@@ -4494,28 +4514,22 @@ impl SignatureHelpItem {
   pub fn into_signature_information(
     self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> lsp::SignatureInformation {
-    let prefix_text = display_parts_to_string(
-      &self.prefix_display_parts,
-      module,
-      language_server,
-    );
+    let prefix_text =
+      display_parts_to_string(&self.prefix_display_parts, module, snapshot);
     let params_text = self
       .parameters
       .iter()
       .map(|param| {
-        display_parts_to_string(&param.display_parts, module, language_server)
+        display_parts_to_string(&param.display_parts, module, snapshot)
       })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text = display_parts_to_string(
-      &self.suffix_display_parts,
-      module,
-      language_server,
-    );
+    let suffix_text =
+      display_parts_to_string(&self.suffix_display_parts, module, snapshot);
     let documentation =
-      display_parts_to_string(&self.documentation, module, language_server);
+      display_parts_to_string(&self.documentation, module, snapshot);
     lsp::SignatureInformation {
       label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -4528,9 +4542,7 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| {
-            param.into_parameter_information(module, language_server)
-          })
+          .map(|param| param.into_parameter_information(module, snapshot))
           .collect(),
       ),
       active_parameter: None,
@@ -4551,15 +4563,15 @@ impl SignatureHelpParameter {
   pub fn into_parameter_information(
     self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> lsp::ParameterInformation {
     let documentation =
-      display_parts_to_string(&self.documentation, module, language_server);
+      display_parts_to_string(&self.documentation, module, snapshot);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
         module,
-        language_server,
+        snapshot,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
