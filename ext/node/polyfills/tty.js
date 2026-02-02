@@ -19,7 +19,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { op_bootstrap_color_depth } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
@@ -50,7 +49,7 @@ import process from "node:process";
 const COLORS_2 = 1;
 const COLORS_16 = 4;
 const COLORS_256 = 8;
-const COLORS_16m = 24;
+const COLORS_16M = 24;
 
 // Terminal environments supporting specific color depths
 const TERM_ENVS = {
@@ -65,22 +64,22 @@ const TERM_ENVS = {
   "konsole": COLORS_16,
   "kterm": COLORS_16,
   "mlterm": COLORS_16,
-  "mosh": COLORS_16m,
+  "mosh": COLORS_16M,
   "putty": COLORS_16,
   "st": COLORS_16,
-  "rxvt-unicode-24bit": COLORS_16m,
-  "terminator": COLORS_16m,
-  "xterm-kitty": COLORS_16m,
+  "rxvt-unicode-24bit": COLORS_16M,
+  "terminator": COLORS_16M,
+  "xterm-kitty": COLORS_16M,
 };
 
 // CI environments and their color support
 const CI_ENVS_MAP = new SafeMap(ObjectEntries({
   APPVEYOR: COLORS_256,
   BUILDKITE: COLORS_256,
-  CIRCLECI: COLORS_16m,
+  CIRCLECI: COLORS_16M,
   DRONE: COLORS_256,
-  GITEA_ACTIONS: COLORS_16m,
-  GITHUB_ACTIONS: COLORS_16m,
+  GITEA_ACTIONS: COLORS_16M,
+  GITHUB_ACTIONS: COLORS_16M,
   GITLAB_CI: COLORS_256,
   TRAVIS: COLORS_256,
 }));
@@ -144,7 +143,7 @@ function getColorDepth(env = process.env) {
         return COLORS_256;
       case "3":
         warnOnDeactivatedColors(env);
-        return COLORS_16m;
+        return COLORS_16M;
       default:
         return COLORS_2;
     }
@@ -166,7 +165,7 @@ function getColorDepth(env = process.env) {
     if (+OSRelease[0] >= 10) {
       const build = +OSRelease[2];
       if (build >= 14931) {
-        return COLORS_16m;
+        return COLORS_16M;
       }
       if (build >= 10586) {
         return COLORS_256;
@@ -176,7 +175,7 @@ function getColorDepth(env = process.env) {
   }
 
   if (env.TMUX) {
-    return COLORS_16m;
+    return COLORS_16M;
   }
 
   // Azure DevOps
@@ -219,21 +218,21 @@ function getColorDepth(env = process.env) {
       ) {
         return COLORS_256;
       }
-      return COLORS_16m;
+      return COLORS_16M;
     case "HyperTerm":
     case "MacTerm":
-      return COLORS_16m;
+      return COLORS_16M;
     case "Apple_Terminal":
       return COLORS_256;
   }
 
   if (env.COLORTERM === "truecolor" || env.COLORTERM === "24bit") {
-    return COLORS_16m;
+    return COLORS_16M;
   }
 
   if (env.TERM) {
     if (RegExpPrototypeExec(new SafeRegExp("truecolor"), env.TERM) !== null) {
-      return COLORS_16m;
+      return COLORS_16M;
     }
 
     if (RegExpPrototypeExec(new SafeRegExp("^xterm-256"), env.TERM) !== null) {
