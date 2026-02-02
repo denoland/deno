@@ -69,10 +69,10 @@ deno_ast = { version = "=0.53.0", features = ["transpiling"] }
 deno_core = { version = "0.382.0" }
 
 deno_cache_dir = "=0.27.0"
-deno_doc = "=0.189.1"
+deno_doc = "=0.190.0"
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.107.0", default-features = false }
-deno_lint = "=0.82.0"
+deno_lint = "=0.83.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -83,7 +83,7 @@ deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.108.0"
+eszip = "=0.109.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -315,10 +315,10 @@ crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
 dprint-core = "=0.67.4"
-dprint-plugin-json = "=0.21.0"
+dprint-plugin-json = "=0.21.1"
 dprint-plugin-jupyter = "=0.2.1"
 dprint-plugin-markdown = "=0.20.0"
-dprint-plugin-typescript = "=0.95.13"
+dprint-plugin-typescript = "=0.95.15"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.12.6"
@@ -548,9 +548,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-deno_doc = { path = "../deno_doc" }
-eszip = { path = "../eszip" }
-deno_lint = { path = "../deno_lint" }
-dprint-plugin-typescript = { path = "../dprint-plugin-typescript" }
