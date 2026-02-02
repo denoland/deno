@@ -8,12 +8,14 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 
 use super::ProcessedFile;
+use super::ReadmeOrLicense;
 
 pub fn create_npm_tarball(
   config_file: &ConfigFile,
   version: &str,
   files: &[ProcessedFile],
   package_json: &str,
+  readme_license_files: &[ReadmeOrLicense],
   output_path: Option<&str>,
   dry_run: bool,
 ) -> Result<PathBuf, AnyError> {
@@ -36,13 +38,13 @@ pub fn create_npm_tarball(
     println!("Dry run - would create: {}", filename.display());
     println!("\nPackage contents:");
     println!("  package.json");
+    for file in readme_license_files {
+      println!("  {}", file.relative_path);
+    }
     for file in files {
       println!("  {}", file.output_path);
       if file.dts_content.is_some() {
-        let dts_path = file
-          .output_path
-          .replace(".js", ".d.ts")
-          .replace(".mjs", ".d.mts");
+        let dts_path = convert_js_to_dts_path(&file.output_path);
         println!("  {}", dts_path);
       }
     }
@@ -63,6 +65,16 @@ pub fn create_npm_tarball(
   header.set_cksum();
   tar.append(&header, package_json_bytes)?;
 
+  // Add README and LICENSE files
+  for file in readme_license_files {
+    let mut header = tar::Header::new_gnu();
+    header.set_path(format!("package/{}", file.relative_path))?;
+    header.set_size(file.content.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    tar.append(&header, file.content.as_slice())?;
+  }
+
   // Add each file
   for file in files {
     // Add JS file
@@ -77,10 +89,7 @@ pub fn create_npm_tarball(
     // Add .d.ts file if present
     if let Some(ref dts) = file.dts_content {
       let dts_bytes = dts.as_bytes();
-      let dts_path = file
-        .output_path
-        .replace(".js", ".d.ts")
-        .replace(".mjs", ".d.mts");
+      let dts_path = convert_js_to_dts_path(&file.output_path);
       let mut header = tar::Header::new_gnu();
       header.set_path(format!("package/{}", dts_path))?;
       header.set_size(dts_bytes.len() as u64);
@@ -93,4 +102,14 @@ pub fn create_npm_tarball(
   tar.finish()?;
 
   Ok(filename)
+}
+
+fn convert_js_to_dts_path(path: &str) -> String {
+  if path.ends_with(".mjs") {
+    format!("{}.d.mts", &path[..path.len() - 4])
+  } else if path.ends_with(".js") {
+    format!("{}.d.ts", &path[..path.len() - 3])
+  } else {
+    format!("{}.d.ts", path)
+  }
 }

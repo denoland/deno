@@ -1,10 +1,9 @@
+[WILDCARD]Packing[WILDCARD]@test/dryrun[WILDCARD]
+[WILDCARD]modules collected
 Dry run - would create: test-dryrun-1.0.0.tgz
 
 Package contents:
   package.json
   mod.js
   mod.d.ts
-[WILDCARD]Packing[WILDCARD]@test/dryrun[WILDCARD]
-[WILDCARD]
-  1 modules collected
-[WILDCARD]✓[WILDCARD]Dry run - no tarball created
+[WILDCARD]Dry run - no tarball created

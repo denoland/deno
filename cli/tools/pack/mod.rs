@@ -141,6 +141,9 @@ pub async fn pack(
 
     log::info!("  {} modules collected", collected_paths.len());
 
+    // Collect README and LICENSE files
+    let readme_license_files = collect_readme_license_files(&package)?;
+
     // Process modules: transpile TS→JS, extract .d.ts
     let processed_files = process_modules(
       &graph,
@@ -169,6 +172,7 @@ pub async fn pack(
       &version,
       &processed_files,
       &package_json,
+      &readme_license_files,
       pack_flags.output.as_deref(),
       pack_flags.dry_run,
     )?;
@@ -194,14 +198,32 @@ async fn create_graph(
   package: &JsrPackageConfig,
   pack_flags: &PackFlags,
 ) -> Result<ModuleGraph, AnyError> {
-  // Build graph with fast check enabled (which generates dts)
-  let graph = module_graph_creator
+  use crate::args::config_to_deno_graph_workspace_member;
+  use crate::graph_util::BuildFastCheckGraphOptions;
+  use deno_graph::WorkspaceFastCheckOption;
+
+  // Build initial graph without fast check DTS
+  let mut graph = module_graph_creator
     .create_publish_graph(CreatePublishGraphOptions {
       packages: &[package.clone()],
       build_fast_check_graph: !pack_flags.allow_slow_types,
       validate_graph: true,
     })
     .await?;
+
+  // If fast check is enabled, rebuild with DTS generation
+  if !pack_flags.allow_slow_types {
+    let fast_check_workspace_member =
+      config_to_deno_graph_workspace_member(&package.config_file)?;
+
+    module_graph_creator.module_graph_builder().build_fast_check_graph(
+      &mut graph,
+      BuildFastCheckGraphOptions {
+        workspace_fast_check: WorkspaceFastCheckOption::Enabled(&[fast_check_workspace_member]),
+        fast_check_dts: true,
+      },
+    )?;
+  }
 
   Ok(graph)
 }
@@ -240,8 +262,49 @@ fn collect_graph_modules(
   Ok(paths)
 }
 
+pub struct ReadmeOrLicense {
+  pub relative_path: String,
+  pub content: Vec<u8>,
+}
+
+fn collect_readme_license_files(
+  package: &JsrPackageConfig,
+) -> Result<Vec<ReadmeOrLicense>, AnyError> {
+  let package_dir = package.config_file.dir_path();
+  let mut files = Vec::new();
+
+  // Look for README files (case-insensitive)
+  for name in &["README.md", "README", "readme.md", "Readme.md", "readme"] {
+    let path = package_dir.join(name);
+    if path.exists() {
+      let content = std::fs::read(&path)?;
+      files.push(ReadmeOrLicense {
+        relative_path: name.to_string(),
+        content,
+      });
+      break; // Only include one README
+    }
+  }
+
+  // Look for LICENSE files (case-insensitive)
+  for name in &["LICENSE", "LICENSE.md", "LICENCE", "LICENCE.md", "license", "license.md"] {
+    let path = package_dir.join(name);
+    if path.exists() {
+      let content = std::fs::read(&path)?;
+      files.push(ReadmeOrLicense {
+        relative_path: name.to_string(),
+        content,
+      });
+      break; // Only include one LICENSE
+    }
+  }
+
+  Ok(files)
+}
+
 pub struct ProcessedFile {
   /// Original specifier
+  #[allow(dead_code)]
   pub specifier: ModuleSpecifier,
   /// Relative path in the package (e.g., "mod.ts" -> "mod.js")
   pub output_path: String,
@@ -312,11 +375,21 @@ fn process_modules(
     };
 
     // Extract .d.ts if available and not skipped
-    let dts_content = if !pack_flags.allow_slow_types {
+    let mut dts_content = if !pack_flags.allow_slow_types {
       extract_dts(js_module, media_type)
     } else {
       None
     };
+
+    // Rewrite specifiers in .d.ts content too
+    if let Some(ref dts) = dts_content {
+      let (rewritten_dts, _) = rewrite_specifiers(
+        dts,
+        &path.specifier,
+        graph,
+      )?;
+      dts_content = Some(rewritten_dts);
+    }
 
     // Detect Deno API usage
     let uses_deno = source_text.contains("Deno.");
@@ -346,9 +419,30 @@ fn extract_dts(
     return None;
   }
 
-  // Try to get fast check module
+  // Try to get fast check module with DTS
   if let Some(fast_check) = js_module.fast_check_module() {
-    // Return the fast check source directly
+    // Check if we have a separate DTS module
+    if let Some(ref dts_module) = fast_check.dts {
+      // Emit the DTS program to a string
+      let emit_options = deno_ast::EmitOptions {
+        source_map: deno_ast::SourceMapOption::None,
+        ..Default::default()
+      };
+
+      // Convert program to ProgramRef and comments to single-threaded
+      let program_ref = (&dts_module.program).into();
+      let comments = dts_module.comments.as_single_threaded();
+
+      match deno_ast::emit(program_ref, &comments, &Default::default(), &emit_options) {
+        Ok(emitted) => return Some(emitted.text),
+        Err(e) => {
+          log::warn!("Failed to emit DTS: {}", e);
+          // Fall through to return fast check source
+        }
+      }
+    }
+
+    // Fallback: Return the fast check source (simplified TS)
     return Some(fast_check.source.as_ref().to_string());
   }
 

@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "pack_rewrite_specifiers": {
       "steps": [{
