@@ -34,6 +34,8 @@ console.log(greeting);
 ## Blockquotes
 
 > This is a blockquote.
+>
+> It can span multiple lines.
 
 ## Nested Lists
 
