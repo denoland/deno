@@ -412,6 +412,15 @@ macro_rules! network_stream {
         )*
         Err(JsErrorBox::from_err(ResourceError::BadResourceId))
       }
+
+      pub fn into_resource(self, resource_table: &mut ResourceTable) -> ResourceId {
+        match self {
+          $(
+            $( #[ $meta ] )?
+            Self::$i(s) => resource_table.add(NetworkListenerResource::new(s)),
+          )*
+        }
+      }
     }
   };
 }

@@ -36,7 +36,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       deno_kv::sqlite::SqliteDbHandler::new(None, None),
       deno_kv::KvConfig::builder().build(),
     ),
-    deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
+    deno_cron::deno_cron::init(),
     deno_napi::deno_napi::init(None),
     deno_http::deno_http::init(deno_http::Options::default()),
     deno_io::deno_io::init(Some(Default::default())),

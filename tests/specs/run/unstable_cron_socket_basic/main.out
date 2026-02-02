@@ -1,0 +1,16 @@
+{
+  "A fun cron 123 - _": { schedule: "* * * * *" },
+  "Fail cron": { schedule: "*/5 * * * *", backoffSchedule: [ 100 ] }
+}
+{"error":"Not Found"}
+{"id":2}
+test-cron executed
+{"type":"result","id":2,"success":true}
+{"id":3}
+Exception in cron handler Fail cron Error: an error
+    at file:///[WILDCARD]/child.ts:[WILDCARD]
+    at Object.runMicrotasks (ext:core/01_core.js:[WILDCARD])
+    at Array.processTicksAndRejections (ext:deno_node/_next_tick.ts:[WILDCARD])
+    at eventLoopTick (ext:core/01_core.js:[WILDCARD])
+    at async executeCron (ext:deno_cron/01_cron.ts:[WILDCARD])
+{"type":"result","id":3,"success":false}
