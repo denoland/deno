@@ -29,7 +29,7 @@ struct PackageJson {
 pub fn generate_package_json(
   config_file: &ConfigFile,
   version: &str,
-  _files: &[ProcessedFile],
+  files: &[ProcessedFile],
   include_deno_shim: bool,
 ) -> Result<String, AnyError> {
   let name = config_file
@@ -41,15 +41,19 @@ pub fn generate_package_json(
   // Convert exports from deno.json
   let exports = convert_exports(&config_file.json.exports)?;
 
-  // Collect dependencies
+  // Collect dependencies from all files
   let mut dependencies = HashMap::new();
 
   if include_deno_shim {
     dependencies.insert("@deno/shim-deno".to_string(), "~0.19.0".to_string());
   }
 
-  // TODO: Extract JSR/npm dependencies from import specifiers
-  // This will be done in the specifier rewriting phase
+  // Merge dependencies from all processed files
+  for file in files {
+    for (name, version) in &file.dependencies {
+      dependencies.insert(name.clone(), version.clone());
+    }
+  }
 
   let license = config_file.json.license.as_ref().and_then(|l| {
     l.as_str().map(|s| s.to_string())
