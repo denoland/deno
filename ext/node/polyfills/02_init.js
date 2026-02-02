@@ -142,6 +142,33 @@ function closeIdleConnections() {
     // Ignore
   }
 
+  // Phase 1b: Close all TLS sockets directly
+  // This handles TLS connections that may not be associated with HTTP agents,
+  // such as those created by AWS SDK or other libraries using tls.connect()
+  try {
+    const tls = nativeModuleExports["tls"];
+    if (tls?.TLSSocket?.allTlsSockets) {
+      for (const socket of tls.TLSSocket.allTlsSockets) {
+        try {
+          // Collect RID from the TLS stream before destroying
+          const stream = socket?._handle?.[kStreamBaseField];
+          if (stream) {
+            const rid = stream[internalRidSymbol];
+            if (rid !== undefined) {
+              ridsToClose.push(rid);
+            }
+          }
+          socket.destroy();
+        } catch {
+          // Ignore individual socket errors
+        }
+      }
+      tls.TLSSocket.allTlsSockets.clear();
+    }
+  } catch {
+    // Ignore - module may not be loaded
+  }
+
   // Phase 2: Force close any remaining resources
   // This handles the case where socket.destroy() is a no-op due to HandleWrap state
   for (const rid of ridsToClose) {

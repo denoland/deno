@@ -52,6 +52,10 @@ const kRes = Symbol("res");
 
 const tlsStreamRids = new Uint32Array(2);
 
+// Track all TLSSocket instances for test sanitizer cleanup.
+// This allows closing pooled TLS connections before resource leak detection.
+const allTlsSockets = new Set();
+
 let debug = debuglog("tls", (fn) => {
   debug = fn;
 });
@@ -245,6 +249,12 @@ export class TLSSocket extends net.Socket {
 
       return handle;
     }
+
+    // Track this TLS socket for test sanitizer cleanup
+    allTlsSockets.add(this);
+    this.on("close", () => {
+      allTlsSockets.delete(this);
+    });
   }
 
   _tlsError(err) {
@@ -788,6 +798,9 @@ export const DEFAULT_CIPHERS = [
   "ECDHE-RSA-AES128-GCM-SHA256",
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
+
+// Expose allTlsSockets for test sanitizer cleanup
+TLSSocket.allTlsSockets = allTlsSockets;
 
 export default {
   TLSSocket,
