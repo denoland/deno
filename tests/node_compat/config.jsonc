@@ -1444,12 +1444,7 @@
     "parallel/test-url-parse-format.js": {},
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-relative.js": {},
-    "parallel/test-url-urltooptions.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "https://github.com/denoland/deno/issues/31633"
-    },
+    "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
