@@ -23,6 +23,13 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 
 const kOnKeylog = Symbol("onkeylog");
+
+// Track all Agent instances for test sanitizer cleanup.
+// Using a Set allows us to iterate over all agents and close their pooled connections.
+// We use a regular Set (not WeakSet) because we need to iterate over all agents.
+// Agents are removed from the set when they are destroyed.
+const allAgents = new Set();
+
 const kRequestOptions = Symbol("requestOptions");
 const kRequestAsyncResource = Symbol("requestAsyncResource");
 // New Agent code.
@@ -58,6 +65,9 @@ export function Agent(options) {
   }
 
   EventEmitter.call(this);
+
+  // Track this agent for test sanitizer cleanup
+  allAgents.add(this);
 
   this.defaultPort = 80;
   this.protocol = "http:";
@@ -165,6 +175,9 @@ export function Agent(options) {
 }
 Object.setPrototypeOf(Agent.prototype, EventEmitter.prototype);
 Object.setPrototypeOf(Agent, EventEmitter);
+
+// Expose allAgents on Agent constructor for test sanitizer cleanup
+Agent.allAgents = allAgents;
 
 function maybeEnableKeylog(eventName) {
   if (eventName === "keylog") {
@@ -502,6 +515,8 @@ Agent.prototype.destroy = function destroy() {
       }
     }
   }
+  // Remove from tracked agents set
+  allAgents.delete(this);
 };
 
 function setRequestSocket(agent, req, socket) {

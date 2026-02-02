@@ -106,16 +106,32 @@ function closeIdleConnections() {
     }
   }
 
-  // Phase 1: Collect RIDs and destroy agents
+  // Phase 1: Collect RIDs from ALL agents (not just globalAgent) and destroy them
+  // This handles custom agents created by AWS SDK, axios, got, etc.
+  // Access allAgents via http.Agent.allAgents
   try {
     const http = nativeModuleExports["http"];
+    if (http?.Agent?.allAgents) {
+      for (const agent of http.Agent.allAgents) {
+        try {
+          collectRidsFromAgent(agent);
+          agent.destroy();
+        } catch {
+          // Ignore individual agent errors
+        }
+      }
+      // Clear the set after destroying all agents
+      http.Agent.allAgents.clear();
+    }
+    // Also handle globalAgent explicitly in case it wasn't in allAgents
     if (http?.globalAgent) {
       collectRidsFromAgent(http.globalAgent);
       http.globalAgent.destroy();
     }
   } catch {
-    // Ignore
+    // Ignore - module may not be loaded
   }
+
   try {
     const https = nativeModuleExports["https"];
     if (https?.globalAgent) {
