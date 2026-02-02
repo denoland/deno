@@ -555,7 +555,8 @@ pub async fn upgrade(
     ))
   );
 
-  let temp_dir = tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
   let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
     exe_name: "deno",
     archive_name: &ARCHIVE_NAME,
@@ -971,7 +972,10 @@ fn check_windows_access_denied_error(
 
   if !cfg!(windows) {
     return Err(err).with_context(|| {
-      format!("failed to replace the executable at '{}'", output_exe_path.display())
+      format!(
+        "failed to replace the executable at '{}'",
+        output_exe_path.display()
+      )
     });
   }
 
