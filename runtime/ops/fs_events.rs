@@ -15,6 +15,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorClass;
@@ -27,7 +28,6 @@ use notify::RecursiveMode;
 use notify::Watcher;
 use notify::event::Event as NotifyEvent;
 use notify::event::ModifyKind;
-use serde::Serialize;
 use tokio::sync::mpsc;
 
 deno_core::extension!(
@@ -58,9 +58,10 @@ impl Resource for FsEventsResource {
 ///
 /// Feel free to expand this struct as long as you can add tests to demonstrate
 /// the complexity.
-#[derive(Serialize, Debug, Clone)]
+#[derive(ToV8, Debug, Clone)]
 struct FsEvent {
   kind: &'static str,
+  #[to_v8(serde)]
   paths: Vec<PathBuf>,
   flag: Option<&'static str>,
 }
@@ -244,7 +245,6 @@ fn op_fs_events_open(
 }
 
 #[op2]
-#[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

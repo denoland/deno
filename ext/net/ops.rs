@@ -34,7 +34,6 @@ use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
-use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
 use socket2::Protocol;
@@ -61,7 +60,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -227,7 +226,6 @@ pub async fn op_net_accept_tcp(
 }
 
 #[op2]
-#[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -723,7 +721,6 @@ pub async fn op_net_connect_vsock(
   target_os = "macos"
 )))]
 #[op2]
-#[serde]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -765,7 +762,6 @@ pub fn op_net_listen_vsock(
   target_os = "macos"
 )))]
 #[op2]
-#[serde]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -814,7 +810,6 @@ pub async fn op_net_accept_vsock(
   target_os = "macos"
 )))]
 #[op2]
-#[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -862,8 +857,8 @@ pub async fn op_net_accept_tunnel(
   Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
+#[derive(ToV8, Eq, PartialEq, Debug)]
+#[to_v8(untagged)]
 pub enum DnsRecordData {
   A(String),
   Aaaa(String),
@@ -908,7 +903,6 @@ pub enum DnsRecordData {
 
 #[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
-  #[to_v8(serde)]
   pub data: DnsRecordData,
   pub ttl: u32,
 }

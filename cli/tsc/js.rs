@@ -11,11 +11,11 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
+use deno_core::ToV8;
 use deno_core::anyhow::Context;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -64,8 +64,7 @@ fn op_resolve(
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 pub struct TscConstants {
   types_node_ignorable_names: Vec<&'static str>,
   node_only_globals: Vec<&'static str>,
@@ -86,7 +85,6 @@ impl TscConstants {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> TscConstants {
   TscConstants::new()
 }
@@ -284,8 +282,7 @@ impl super::LoadContent for FastString {
   }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 struct LoadResponse {
   data: FastString,
   version: Option<String>,
@@ -294,7 +291,6 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,

@@ -123,8 +123,7 @@ pub enum QuicError {
   Other(#[from] JsErrorBox),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct CloseInfo {
   close_code: u64,
   reason: String,
@@ -485,8 +484,7 @@ pub(crate) fn op_quic_incoming_accept_0rtt(
   }
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_refuse(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -497,8 +495,7 @@ pub(crate) fn op_quic_incoming_refuse(
   Ok(())
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_ignore(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -698,7 +695,6 @@ pub(crate) fn op_quic_connection_close(
 }
 
 #[op2]
-#[serde]
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<CloseInfo, QuicError> {

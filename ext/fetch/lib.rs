@@ -589,7 +589,6 @@ pub struct FetchResponse {
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
-  #[to_v8(serde)]
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.

@@ -2,6 +2,8 @@
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
+use deno_core::ToV8;
+
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 
@@ -193,8 +195,7 @@ pub fn hostname() -> String {
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct MemInfo {
   pub total: u64,
   pub free: u64,

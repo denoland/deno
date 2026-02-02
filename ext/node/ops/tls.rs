@@ -84,7 +84,7 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
 #[op2]
 pub fn op_set_default_ca_certificates(
   state: &mut OpState,
-  #[serde] certs: Vec<String>,
+  #[scoped] certs: Vec<String>,
 ) {
   if let Some(tls_state) = state.try_borrow_mut::<NodeTlsState>() {
     tls_state.custom_ca_certs = Some(certs);

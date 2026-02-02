@@ -5319,7 +5319,6 @@ fn op_project_version(state: &mut OpState) -> usize {
 }
 
 #[op2]
-#[serde]
 fn op_tsc_constants() -> crate::tsc::TscConstants {
   crate::tsc::TscConstants::new()
 }

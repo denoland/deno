@@ -247,7 +247,6 @@ pub fn op_getegid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_cpus(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError> {
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();

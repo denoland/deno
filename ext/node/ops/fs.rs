@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
@@ -16,7 +17,6 @@ use deno_io::fs::FileResource;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
@@ -149,9 +149,9 @@ pub async fn op_node_open(
     .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, ToV8)]
 pub struct StatFs {
-  #[serde(rename = "type")]
+  #[to_v8(rename = "type")]
   pub typ: u64,
   pub bsize: u64,
   pub blocks: u64,
@@ -162,7 +162,6 @@ pub struct StatFs {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_statfs_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -181,7 +180,6 @@ pub fn op_node_statfs_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,

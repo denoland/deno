@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::FromV8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
-use deno_core::serde::Deserialize;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::JsMessageData;
@@ -109,14 +109,15 @@ deno_core::extension!(
   },
 );
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
+  #[from_v8(serde)]
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
+  #[from_v8(serde)]
   worker_type: WorkerThreadType,
   close_on_idle: bool,
 }
@@ -142,10 +143,9 @@ pub enum CreateWorkerError {
 
 /// Create worker as the host
 #[op2(stack_trace)]
-#[serde]
 fn op_create_worker(
   state: &mut OpState,
-  #[serde] args: CreateWorkerArgs,
+  #[scoped] args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
 ) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
@@ -261,7 +261,7 @@ fn op_create_worker(
 }
 
 #[op2]
-fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
+fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
   match state.borrow_mut::<WorkersTable>().remove(&id) {
     Some(worker_thread) => {
       worker_thread.terminate();
@@ -317,7 +317,7 @@ fn close_channel(
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> WorkerControlEvent {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
@@ -359,7 +359,7 @@ async fn op_host_recv_ctrl(
 #[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
@@ -397,7 +397,7 @@ async fn op_host_recv_message(
 #[op2]
 fn op_host_post_message(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
