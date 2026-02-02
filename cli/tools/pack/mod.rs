@@ -35,22 +35,47 @@ pub async fn pack(
   let cli_factory = CliFactory::from_flags(flags);
   let cli_options = cli_factory.cli_options()?;
 
+  // Check if git repository is clean (unless --allow-dirty)
+  if !pack_flags.allow_dirty {
+    check_git_status(cli_options.initial_cwd())?;
+  }
+
   // Get package configs
   let mut packages = cli_options.start_dir.jsr_packages_for_publish();
   if packages.is_empty() {
     match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
         if deno_json.json.name.is_none() {
-          bail!("Missing 'name' field in deno.json");
+          bail!(
+            "Missing 'name' field in '{}'. Add a package name like:\n  {{\n    \"name\": \"@scope/package-name\",\n    ...\n  }}",
+            deno_json.specifier
+          );
         }
         if deno_json.json.version.is_none() {
-          bail!("Missing 'version' field in deno.json");
+          bail!(
+            "Missing 'version' field in '{}'. Add a version like:\n  {{\n    \"version\": \"1.0.0\",\n    ...\n  }}",
+            deno_json.specifier
+          );
         }
         if deno_json.json.exports.is_none() {
-          bail!("Missing 'exports' field in deno.json");
+          bail!(
+            "Missing 'exports' field in '{}'. Add an exports field like:\n  {{\n    \"exports\": \"./mod.ts\",\n    ...\n  }}",
+            deno_json.specifier
+          );
         }
+        let name = deno_json.json.name.clone().unwrap();
+
+        // Validate package name format
+        if !name.starts_with('@') || !name.contains('/') {
+          bail!(
+            "Invalid package name '{}' in '{}'. Package name must be in the format '@scope/name'",
+            name,
+            deno_json.specifier
+          );
+        }
+
         packages.push(JsrPackageConfig {
-          name: deno_json.json.name.clone().unwrap(),
+          name,
           member_dir: cli_options.start_dir.workspace.root_dir().clone(),
           config_file: deno_json.clone(),
           license: deno_json.json.license.as_ref().and_then(|l| {
@@ -69,6 +94,14 @@ pub async fn pack(
   let parsed_source_cache = cli_factory.parsed_source_cache()?;
 
   for package in packages {
+    // Validate package name format
+    if !package.name.starts_with('@') || !package.name.contains('/') {
+      bail!(
+        "Invalid package name '{}'. Package name must be in the format '@scope/name'",
+        package.name
+      );
+    }
+
     log::info!(
       "{} {}",
       colors::green("Packing"),
@@ -84,7 +117,12 @@ pub async fn pack(
         .json
         .version
         .clone()
-        .context("Missing version")?
+        .with_context(|| {
+          format!(
+            "Missing version in package '{}'. Add a version field or use --set-version",
+            package.name
+          )
+        })?
     };
 
     // Build module graph
@@ -93,7 +131,10 @@ pub async fn pack(
       &package,
       &pack_flags,
     )
-    .await?;
+    .await
+    .with_context(|| {
+      format!("Failed to build module graph for package '{}'", package.name)
+    })?;
 
     // Collect files from the graph
     let collected_paths = collect_graph_modules(&graph, &package)?;
@@ -106,7 +147,10 @@ pub async fn pack(
       &collected_paths,
       parsed_source_cache.as_ref(),
       &pack_flags,
-    )?;
+    )
+    .with_context(|| {
+      format!("Failed to process modules for package '{}'", package.name)
+    })?;
 
     // Detect Deno API usage
     let uses_deno_api = detect_deno_api_usage(&processed_files);
@@ -337,4 +381,40 @@ fn get_extension(media_type: MediaType) -> &'static str {
 
 fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
   files.iter().any(|f| f.uses_deno)
+}
+
+fn check_git_status(cwd: &Path) -> Result<(), AnyError> {
+  // Check if .git directory exists
+  let git_dir = cwd.join(".git");
+  if !git_dir.exists() {
+    // Not a git repository, skip check
+    return Ok(());
+  }
+
+  // Run git status --porcelain to check for uncommitted changes
+  let output = std::process::Command::new("git")
+    .arg("status")
+    .arg("--porcelain")
+    .current_dir(cwd)
+    .output();
+
+  match output {
+    Ok(output) => {
+      if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.trim().is_empty() {
+          bail!(
+            "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
+            stdout.trim()
+          );
+        }
+      }
+      // If git command fails, just warn but don't block
+      Ok(())
+    }
+    Err(_) => {
+      // Git not available or command failed, skip check
+      Ok(())
+    }
+  }
 }
