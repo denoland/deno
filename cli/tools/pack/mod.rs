@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -25,6 +26,7 @@ mod specifier_rewriter;
 
 use npm_tarball::create_npm_tarball;
 use package_json::generate_package_json;
+use specifier_rewriter::rewrite_specifiers;
 
 pub async fn pack(
   flags: Arc<Flags>,
@@ -205,6 +207,8 @@ pub struct ProcessedFile {
   pub dts_content: Option<String>,
   /// Whether this file uses Deno APIs
   pub uses_deno: bool,
+  /// Extracted dependencies (package name -> version)
+  pub dependencies: HashMap<String, String>,
 }
 
 fn process_modules(
@@ -232,7 +236,7 @@ fn process_modules(
     )?;
 
     // Transpile if needed
-    let (js_content, output_ext) = if media_type.is_emittable() {
+    let (mut js_content, output_ext) = if media_type.is_emittable() {
       let transpiled = parsed.transpile(
         &deno_ast::TranspileOptions::default(),
         &deno_ast::TranspileModuleOptions::default(),
@@ -249,9 +253,23 @@ fn process_modules(
       (source_text.to_string(), get_extension(media_type))
     };
 
+    // Rewrite specifiers in the JS content
+    let dependencies = if media_type.is_emittable() || media_type == MediaType::JavaScript {
+      let (rewritten_content, deps) = rewrite_specifiers(
+        &js_content,
+        &path.specifier,
+        graph,
+      )?;
+
+      js_content = rewritten_content;
+      deps
+    } else {
+      HashMap::new()
+    };
+
     // Extract .d.ts if available and not skipped
     let dts_content = if !pack_flags.allow_slow_types {
-      extract_dts_stub(media_type)
+      extract_dts(js_module, media_type)
     } else {
       None
     };
@@ -268,20 +286,30 @@ fn process_modules(
       js_content,
       dts_content,
       uses_deno,
+      dependencies,
     });
   }
 
   Ok(processed)
 }
 
-// For now, generate a simple stub .d.ts
-// TODO: Use actual fast_check .d.ts when deno_graph APIs are stable
-fn extract_dts_stub(media_type: MediaType) -> Option<String> {
-  if media_type.is_typed() {
-    Some("export {};".to_string())
-  } else {
-    None
+fn extract_dts(
+  js_module: &deno_graph::JsModule,
+  media_type: MediaType,
+) -> Option<String> {
+  // Only generate .d.ts for typed files
+  if !media_type.is_typed() {
+    return None;
   }
+
+  // Try to get fast check module
+  if let Some(fast_check) = js_module.fast_check_module() {
+    // Return the fast check source directly
+    return Some(fast_check.source.as_ref().to_string());
+  }
+
+  // Fallback: generate a stub
+  Some("export {};".to_string())
 }
 
 fn compute_output_path(relative_path: &str, new_ext: &str) -> String {
