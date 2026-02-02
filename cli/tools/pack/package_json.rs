@@ -21,6 +21,10 @@ struct PackageJson {
   #[serde(skip_serializing_if = "Option::is_none")]
   description: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  main: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  types: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   exports: Option<serde_json::Value>,
   #[serde(skip_serializing_if = "Option::is_none")]
   dependencies: Option<HashMap<String, String>>,
@@ -40,6 +44,9 @@ pub fn generate_package_json(
 
   // Convert exports from deno.json
   let exports = convert_exports(&config_file.json.exports)?;
+
+  // Extract main and types from exports if "." entry exists
+  let (main, types) = extract_main_and_types(&config_file.json.exports);
 
   // Collect dependencies from all files
   let mut dependencies = HashMap::new();
@@ -65,6 +72,8 @@ pub fn generate_package_json(
     module_type: "module".to_string(),
     license,
     description: None, // TODO: extract from config if available
+    main,
+    types,
     exports: Some(exports),
     dependencies: if dependencies.is_empty() {
       None
@@ -121,12 +130,12 @@ fn convert_exports(
 
 fn convert_ts_to_js_path(path: &str) -> String {
   let path = path.trim_start_matches("./");
-  if path.ends_with(".ts") {
-    path.replace(".ts", ".js")
-  } else if path.ends_with(".tsx") {
-    path.replace(".tsx", ".js")
+  if path.ends_with(".tsx") {
+    format!("{}.js", &path[..path.len() - 4])
+  } else if path.ends_with(".ts") {
+    format!("{}.js", &path[..path.len() - 3])
   } else if path.ends_with(".mts") {
-    path.replace(".mts", ".mjs")
+    format!("{}.mjs", &path[..path.len() - 4])
   } else {
     path.to_string()
   }
@@ -134,11 +143,52 @@ fn convert_ts_to_js_path(path: &str) -> String {
 
 fn convert_ts_to_dts_path(path: &str) -> String {
   let path = path.trim_start_matches("./");
-  if path.ends_with(".ts") || path.ends_with(".tsx") {
-    path.replace(".ts", ".d.ts").replace(".tsx", ".d.ts")
+  // Handle .tsx before .ts to avoid substring issues
+  if path.ends_with(".tsx") {
+    format!("{}.d.ts", &path[..path.len() - 4])
+  } else if path.ends_with(".ts") {
+    format!("{}.d.ts", &path[..path.len() - 3])
   } else if path.ends_with(".mts") {
-    path.replace(".mts", ".d.mts")
+    format!("{}.d.mts", &path[..path.len() - 4])
+  } else if path.ends_with(".js") {
+    format!("{}.d.ts", &path[..path.len() - 3])
   } else {
-    format!("{}.d.ts", path.trim_end_matches(".js"))
+    format!("{}.d.ts", path)
   }
+}
+
+fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String>, Option<String>) {
+  let Some(exports) = exports else {
+    return (Some("./mod.js".to_string()), Some("./mod.d.ts".to_string()));
+  };
+
+  // Handle string export
+  if let Some(s) = exports.as_str() {
+    let js_path = format!("./{}", convert_ts_to_js_path(s));
+    let dts_path = format!("./{}", convert_ts_to_dts_path(s));
+    return (Some(js_path), Some(dts_path));
+  }
+
+  // Handle object exports - look for "." entry
+  if let Some(map) = exports.as_object() {
+    if let Some(dot_export) = map.get(".") {
+      if let Some(path) = dot_export.as_str() {
+        let js_path = format!("./{}", convert_ts_to_js_path(path));
+        let dts_path = format!("./{}", convert_ts_to_dts_path(path));
+        return (Some(js_path), Some(dts_path));
+      } else if let Some(obj) = dot_export.as_object() {
+        // Conditional exports - extract from "import" or "default"
+        let main = obj.get("import")
+          .or_else(|| obj.get("default"))
+          .and_then(|v| v.as_str())
+          .map(|s| s.to_string());
+        let types = obj.get("types")
+          .and_then(|v| v.as_str())
+          .map(|s| s.to_string());
+        return (main, types);
+      }
+    }
+  }
+
+  (None, None)
 }
