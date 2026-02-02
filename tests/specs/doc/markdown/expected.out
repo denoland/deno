@@ -1,22 +1,27 @@
-# Hello World
+Defined in file:///[WILDCARD]/README.md:1:1
 
-This is a paragraph with bold and italic text.
+  # Hello World
 
-## Code Example
+  This is a paragraph with bold and italic text.
 
-  ts
-    const x = 1;
+  ## Code Example
 
-- Item 1
-- Item 2
-- Item 3
+  ```ts
+  const x = 1;
+  ```
 
-1. First
-2. Second
+  - Item 1
+  - Item 2
+  - Item 3
 
-[WILDCARD]A blockquote.[WILDCARD]
+  1. First
+  2. Second
 
-Example (https://example.com)
+  │ A blockquote.
+  │ 
+  ────────────────────────────────────────
 
-Inline `code` here.
+  Example (https://example.com)
+
+  Inline `code` here.
 

@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -28,7 +27,6 @@ use deno_graph::ast::EsParser;
 use deno_graph::source::NullFileSystem;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::resolve_url_or_path;
 use doc::DocDiagnostic;
 use doc::html::ShortPath;
 use indexmap::IndexMap;
@@ -54,11 +52,6 @@ const JSON_SCHEMA_VERSION: u8 = 1;
 
 const PRISM_CSS: &str = include_str!("./doc/prism.css");
 const PRISM_JS: &str = include_str!("./doc/prism.js");
-
-fn is_markdown_file(path: &str) -> bool {
-  let lower = path.to_lowercase();
-  lower.ends_with(".md") || lower.ends_with(".markdown")
-}
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
@@ -195,7 +188,9 @@ pub async fn doc(
         }
       }
 
-      module_specifiers.retain(|s| !markdown_urls.contains(s));
+      module_specifiers.retain(|s| {
+        !markdown_urls.contains(s) && !markdown_urls.contains(graph.resolve(s))
+      });
 
       let doc_parser = doc::DocParser::new(
         &graph,
@@ -213,10 +208,17 @@ pub async fn doc(
         check_diagnostics(&diagnostics)?;
       }
 
-      // todo: concurrent
-      for url in markdown_urls {
-        let file = file_fetcher.fetch_bypass_permissions(&url).await?;
-        let decoded = TextDecodedFile::decode(file)?;
+      let markdown_downloads =
+        deno_core::futures::future::try_join_all(markdown_urls.into_iter().map(
+          |url| async {
+            // ok to skip permissions because these were provided on the CLI
+            let file = file_fetcher.fetch_bypass_permissions(&url).await?;
+            let decoded = TextDecodedFile::decode(file)?;
+            Ok::<_, AnyError>((url, decoded))
+          },
+        ))
+        .await?;
+      for (url, decoded) in markdown_downloads {
         let filename = url.to_string().into_boxed_str();
         doc_nodes_by_url.insert(
           url,

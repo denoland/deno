@@ -150,7 +150,6 @@ pub fn graph_walk_errors<'a>(
 ) -> impl Iterator<Item = EnhancedGraphError> + 'a {
   fn should_ignore_error(
     sys: &CliSys,
-    graph_kind: GraphKind,
     allow_unknown_media_types: bool,
     will_type_check: bool,
     error: &ModuleGraphError,
@@ -182,7 +181,6 @@ pub fn graph_walk_errors<'a>(
     .flat_map(move |error| {
       if should_ignore_error(
         sys,
-        graph.graph_kind(),
         options.allow_unknown_media_types,
         options.will_type_check,
         &error,

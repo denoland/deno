@@ -1,0 +1,67 @@
+# Markdown Test Package
+
+A package for testing `deno doc` with **markdown** files from *JSR*.
+
+## Features
+
+- Renders headings
+- Supports **bold** and *italic* text
+- Handles `inline code`
+- Renders [links](https://example.com)
+
+### Code Examples
+
+```ts
+const greeting = "hello";
+console.log(greeting);
+```
+
+```json
+{
+  "name": "test",
+  "version": "1.0.0"
+}
+```
+
+## Tables
+
+| Feature   | Supported |
+| --------- | --------- |
+| Headings  | Yes       |
+| Lists     | Yes       |
+| Code      | Yes       |
+
+## Blockquotes
+
+> This is a blockquote.
+
+## Nested Lists
+
+- Outer item 1
+  - Inner item A
+  - Inner item B
+- Outer item 2
+  - Inner item C
+
+1. First
+2. Second
+   1. Sub-first
+   2. Sub-second
+
+---
+
+### Images
+
+![alt text](https://example.com/image.png)
+
+### Emphasis Combinations
+
+This has ***bold and italic*** together.
+
+### Horizontal Rules
+
+Text above.
+
+---
+
+Text below.

@@ -2,13 +2,11 @@
   "tests": {
     "json_flag": {
       "args": "doc --json README.md",
-      "output": "error: --json is not supported for markdown files\n",
-      "exitCode": 1
+      "output": "json_flag.out"
     },
     "lint_flag": {
       "args": "doc --lint README.md",
-      "output": "error: --lint is not supported for markdown files\n",
-      "exitCode": 1
+      "output": "Checked 1 file\n"
     }
   }
 }
