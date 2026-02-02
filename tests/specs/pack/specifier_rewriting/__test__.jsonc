@@ -1,0 +1,10 @@
+{
+  "tests": {
+    "pack_rewrite_specifiers": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-rewrite-1.0.0.tgz[WILDCARD]"
+      }]
+    }
+  }
+}

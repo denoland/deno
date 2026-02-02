@@ -1,0 +1,30 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_git_dirty_blocked": {
+      "steps": [{
+        "args": ["eval", "Deno.writeTextFileSync('deno.json', JSON.stringify({name: '@test/dirty', version: '1.0.0', exports: './mod.ts'})); Deno.writeTextFileSync('mod.ts', 'export const x = 1;');"],
+        "output": ""
+      }, {
+        "args": ["eval", "new Deno.Command('git', { args: ['init'], stdout: 'null', stderr: 'null' }).outputSync();"],
+        "output": ""
+      }, {
+        "args": "pack",
+        "exitCode": 1,
+        "output": "[WILDCARD]error[WILDCARD]Git repository has uncommitted changes[WILDCARD]"
+      }]
+    },
+    "pack_git_dirty_allowed": {
+      "steps": [{
+        "args": ["eval", "Deno.writeTextFileSync('deno.json', JSON.stringify({name: '@test/dirty', version: '1.0.0', exports: './mod.ts'})); Deno.writeTextFileSync('mod.ts', 'export const x = 1;');"],
+        "output": ""
+      }, {
+        "args": ["eval", "new Deno.Command('git', { args: ['init'], stdout: 'null', stderr: 'null' }).outputSync();"],
+        "output": ""
+      }, {
+        "args": "pack --allow-dirty",
+        "output": "[WILDCARD]✓[WILDCARD]test-dirty-1.0.0.tgz[WILDCARD]"
+      }]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "tests": {
+    "pack_missing_name": {
+      "steps": [{
+        "args": "pack",
+        "exitCode": 1,
+        "output": "missing_name.out"
+      }]
+    }
+  }
+}
