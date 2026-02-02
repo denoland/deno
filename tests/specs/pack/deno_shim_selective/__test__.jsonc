@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "selective_shim_injection": {
+      "steps": [{
+        "args": "pack --allow-dirty",
+        "output": "[WILDCARD]Packing[WILDCARD]@test/selective[WILDCARD]✓[WILDCARD]test-selective-1.0.0.tgz[WILDCARD]"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-selective-1.0.0.tgz && grep -q '@deno/shim-deno' package/mod.js && echo 'mod.js has shim: true' || echo 'mod.js has shim: false'"
+        ],
+        "output": "mod.js has shim: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q '@deno/shim-deno' package/util.js && echo 'util.js has shim: true' || echo 'util.js has shim: false'"
+        ],
+        "output": "util.js has shim: false\n"
+      }]
+    }
+  }
+}

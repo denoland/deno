@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_shim_injection": {
+      "steps": [{
+        "args": "pack --allow-dirty",
+        "output": "[WILDCARD]Packing[WILDCARD]@test/deno-shim[WILDCARD]✓[WILDCARD]test-deno-shim-1.0.0.tgz[WILDCARD]"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-deno-shim-1.0.0.tgz && grep -q 'import { Deno } from \"@deno/shim-deno\"' package/mod.js && echo 'Has shim import: true' || echo 'Has shim import: false'"
+        ],
+        "output": "Has shim import: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q '@deno/shim-deno' package/package.json && echo 'Has shim dependency: true' || echo 'Has shim dependency: false'"
+        ],
+        "output": "Has shim dependency: true\n"
+      }]
+    }
+  }
+}
