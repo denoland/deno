@@ -1,0 +1,32 @@
+{
+  "tempDir": true,
+  "tests": {
+    "jsx_react": {
+      "steps": [{
+        "args": "pack --allow-dirty --allow-slow-types",
+        "output": "[WILDCARD]Packing[WILDCARD]@test/jsx-react[WILDCARD]✓[WILDCARD]test-jsx-react-1.0.0.tgz[WILDCARD]"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-jsx-react-1.0.0.tgz && grep -q 'React.createElement' package/mod.js && echo 'Uses React.createElement: true' || echo 'Uses React.createElement: false'"
+        ],
+        "output": "Uses React.createElement: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q '\"button\"' package/mod.js && grep -q '\"btn\"' package/mod.js && echo 'Has correct props: true' || echo 'Has correct props: false'"
+        ],
+        "output": "Has correct props: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q 'jsxTemplate' package/mod.js && echo 'Uses jsxTemplate: true' || echo 'Uses jsxTemplate: false'"
+        ],
+        "output": "Uses jsxTemplate: false\n"
+      }]
+    }
+  }
+}
