@@ -12,6 +12,7 @@ https://github.com/denoland/deno_install
 - feat: Windows on ARM builds (#31917)
 - fix(ext/node): enable defensive option on `DatabaseSync` (#32004)
 - fix(ext/node): error formatting compatibility (#31970)
+- fix(ext/node): escape more shell args (#31999)
 - fix(ext/node): implement `sqlite`' `SQLTagStore` (#31945)
 - fix(ext/node): use primordials in `_fs_fchown.ts` (#32007)
 - fix(flags): correct zsh completions for script arg (#31994)
