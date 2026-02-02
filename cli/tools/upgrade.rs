@@ -484,7 +484,8 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags);
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
-  let current_exe_path = std::env::current_exe()?;
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
   let full_path_output_flag = match &upgrade_flags.output {
     Some(output) => Some(
       std::env::current_dir()
@@ -554,19 +555,24 @@ pub async fn upgrade(
     ))
   );
 
-  let temp_dir = tempfile::TempDir::new()?;
+  let temp_dir = tempfile::TempDir::new().context("failed to create temporary directory")?;
   let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
     exe_name: "deno",
     archive_name: &ARCHIVE_NAME,
     archive_data: &archive_data,
     is_windows: cfg!(windows),
     dest_path: temp_dir.path(),
+  })
+  .context("failed to extract archive")?;
+  fs::set_permissions(&new_exe_path, permissions).with_context(|| {
+    format!("failed to set permissions on '{}'", new_exe_path.display())
   })?;
-  fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
-    fs::remove_file(&new_exe_path)?;
+    fs::remove_file(&new_exe_path).with_context(|| {
+      format!("failed to remove '{}'", new_exe_path.display())
+    })?;
     log::info!("Upgraded successfully (dry run)");
     if requested_version.release_channel() == ReleaseChannel::Stable {
       print_release_notes(
@@ -964,7 +970,9 @@ fn check_windows_access_denied_error(
   };
 
   if !cfg!(windows) {
-    return Err(err.into());
+    return Err(err).with_context(|| {
+      format!("failed to replace the executable at '{}'", output_exe_path.display())
+    });
   }
 
   const WIN_ERROR_ACCESS_DENIED: i32 = 5;
@@ -1021,7 +1029,12 @@ fn set_exe_permissions(
   output_exe_path: &Path,
 ) -> Result<std::fs::Permissions, AnyError> {
   let Ok(metadata) = fs::metadata(output_exe_path) else {
-    let metadata = fs::metadata(current_exe_path)?;
+    let metadata = fs::metadata(current_exe_path).with_context(|| {
+      format!(
+        "failed to get metadata of the current executable at '{}'",
+        current_exe_path.display()
+      )
+    })?;
     return Ok(metadata.permissions());
   };
 
@@ -1052,7 +1065,8 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
-    .output()?;
+    .output()
+    .with_context(|| format!("failed to run '{}'", exe_path.display()))?;
   if !output.status.success() {
     bail!(
       "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
