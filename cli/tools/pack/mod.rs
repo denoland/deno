@@ -154,6 +154,7 @@ pub async fn pack(
       &collected_paths,
       parsed_source_cache.as_ref(),
       &pack_flags,
+      &package.config_file,
     )
     .with_context(|| {
       format!("Failed to process modules for package '{}'", package.name)
@@ -443,6 +444,85 @@ const PARTIAL_SUPPORT_DENO_APIS: &[(&str, &str)] = &[
   ("listenTls", "has limited support; some features may not work"),
 ];
 
+/// Create transpile options from deno.json compiler options
+fn create_transpile_options(
+  config_file: &deno_config::deno_json::ConfigFile,
+) -> Result<deno_ast::TranspileOptions, AnyError> {
+  // Get compiler options from deno.json
+  let compiler_options = config_file.json.compiler_options.as_ref();
+
+  // Extract JSX settings
+  let jsx = compiler_options.and_then(|opts| opts.get("jsx")).and_then(|v| v.as_str());
+  let jsx_import_source = compiler_options
+    .and_then(|opts| opts.get("jsxImportSource"))
+    .and_then(|v| v.as_str())
+    .map(|s| s.to_string());
+  let jsx_factory = compiler_options
+    .and_then(|opts| opts.get("jsxFactory"))
+    .and_then(|v| v.as_str())
+    .map(|s| s.to_string());
+  let jsx_fragment_factory = compiler_options
+    .and_then(|opts| opts.get("jsxFragmentFactory"))
+    .and_then(|v| v.as_str())
+    .map(|s| s.to_string());
+
+  let jsx_runtime = match jsx {
+    Some("react") => Some(deno_ast::JsxRuntime::Classic(
+      deno_ast::JsxClassicOptions {
+        factory: jsx_factory.unwrap_or_else(|| "React.createElement".to_string()),
+        fragment_factory: jsx_fragment_factory.unwrap_or_else(|| "React.Fragment".to_string()),
+      },
+    )),
+    Some("react-jsx") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: false,
+        import_source: jsx_import_source,
+      },
+    )),
+    Some("react-jsxdev") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: true,
+        import_source: jsx_import_source.clone(),
+      },
+    )),
+    Some("precompile") => Some(deno_ast::JsxRuntime::Precompile(
+      deno_ast::JsxPrecompileOptions {
+        automatic: deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: jsx_import_source,
+        },
+        skip_elements: None,
+        dynamic_props: None,
+      },
+    )),
+    _ => None,
+  };
+
+  // Extract decorator settings
+  let experimental_decorators = compiler_options
+    .and_then(|opts| opts.get("experimentalDecorators"))
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false);
+  let emit_decorator_metadata = compiler_options
+    .and_then(|opts| opts.get("emitDecoratorMetadata"))
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false);
+
+  Ok(deno_ast::TranspileOptions {
+    jsx: jsx_runtime,
+    decorators: if experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
+    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+    var_decl_imports: false,
+    verbatim_module_syntax: false,
+  })
+}
+
 /// Emit warnings for unsupported or partially supported APIs
 fn warn_about_deno_apis(
   file_path: &str,
@@ -484,8 +564,12 @@ fn process_modules(
   paths: &[CollectedPath],
   parsed_source_cache: &deno_resolver::cache::ParsedSourceCache,
   pack_flags: &PackFlags,
+  config_file: &deno_config::deno_json::ConfigFile,
 ) -> Result<Vec<ProcessedFile>, AnyError> {
   let mut processed = Vec::new();
+
+  // Get transpile options from deno.json compiler options
+  let transpile_options = create_transpile_options(config_file)?;
 
   for path in paths {
     let module = graph.get(&path.specifier);
@@ -518,7 +602,7 @@ fn process_modules(
     // Transpile if needed
     let (mut js_content, output_ext) = if media_type.is_emittable() {
       let transpiled = parsed.transpile(
-        &deno_ast::TranspileOptions::default(),
+        &transpile_options,
         &deno_ast::TranspileModuleOptions::default(),
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,

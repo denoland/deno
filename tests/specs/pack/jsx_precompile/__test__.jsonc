@@ -1,0 +1,32 @@
+{
+  "tempDir": true,
+  "tests": {
+    "jsx_precompile": {
+      "steps": [{
+        "args": "pack --allow-dirty --allow-slow-types",
+        "output": "[WILDCARD]Packing[WILDCARD]@test/jsx-precompile[WILDCARD]✓[WILDCARD]test-jsx-precompile-1.0.0.tgz[WILDCARD]"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-jsx-precompile-1.0.0.tgz && grep -q 'jsxTemplate' package/mod.js && echo 'Has jsxTemplate: true' || echo 'Has jsxTemplate: false'"
+        ],
+        "output": "Has jsxTemplate: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q 'from \"preact/jsx-runtime\"' package/mod.js && echo 'Has preact import: true' || echo 'Has preact import: false'"
+        ],
+        "output": "Has preact import: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q 'React.createElement' package/mod.js && echo 'Has React.createElement: true' || echo 'Has React.createElement: false'"
+        ],
+        "output": "Has React.createElement: false\n"
+      }]
+    }
+  }
+}
