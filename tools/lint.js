@@ -351,7 +351,6 @@ async function ensureNoNewTopLevelEntries() {
     ".devcontainer",
     ".github",
     "cli",
-    "docs",
     "ext",
     "libs",
     "runtime",
