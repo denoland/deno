@@ -45,8 +45,8 @@ outer: while (true) {
         setTimeout(async () => {
           const invocation =
             JSON.stringify({ kind: "invoke", name: firstCronName }) + "\n";
+          console.error("[CRON SERVER] Invoking cron:", firstCronName);
           await writer.write(new TextEncoder().encode(invocation));
-          console.error("[CRON SERVER] Invoked cron:", firstCronName);
         }, 200);
       }
     } else if (msg.kind === "result") {
