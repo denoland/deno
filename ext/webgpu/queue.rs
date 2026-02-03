@@ -165,7 +165,10 @@ impl GPUQueue {
       let byte_offset = view.byte_offset();
       let byte_len = view.byte_length();
       let ab = view.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
       let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      // SAFETY: the slice is within the bounds of the backing store
       let buf =
         unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
       (buf, 1)
