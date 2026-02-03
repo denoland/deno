@@ -24,6 +24,7 @@ const {
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
+  ReflectConstruct,
   SafeWeakRef,
   StringPrototypeReplace,
   SymbolFor,
@@ -158,7 +159,11 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
-export function deprecateInstantiation() {}
+export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
+  // DEP0184: Calling zlib classes without new is deprecated
+  // For now, just create and return the new instance
+  return ReflectConstruct(Constructor, args);
+}
 
 export class WeakReference {
   #weak = null;
