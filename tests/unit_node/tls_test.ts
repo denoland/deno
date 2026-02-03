@@ -442,6 +442,42 @@ Deno.test("mTLS client certificate authentication", async () => {
   server.close();
 });
 
+Deno.test("tls.getCACertificates returns bundled certificates", () => {
+  const certs = tls.getCACertificates("bundled");
+  assert(Array.isArray(certs));
+  assert(certs.length > 0);
+  assert(certs.every((cert) => typeof cert === "string"));
+  assert(certs.every((cert) => cert.startsWith("-----BEGIN CERTIFICATE-----")));
+});
+
+Deno.test("tls.getCACertificates defaults to 'default'", () => {
+  const certs = tls.getCACertificates();
+  assert(Array.isArray(certs));
+  assert(certs.length > 0);
+});
+
+Deno.test("tls.getCACertificates 'system' returns array", () => {
+  const certs = tls.getCACertificates("system");
+  assert(Array.isArray(certs));
+  assert(certs.every((cert) => typeof cert === "string"));
+});
+
+Deno.test("tls.getCACertificates 'extra' returns empty array without NODE_EXTRA_CA_CERTS", () => {
+  const certs = tls.getCACertificates("extra");
+  assert(Array.isArray(certs));
+  assertEquals(certs.length, 0);
+});
+
+Deno.test("tls.getCACertificates throws on invalid type", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).getCACertificates("invalid");
+    },
+    TypeError,
+  );
+});
+
 Deno.test("tls.setDefaultCACertificates exists", () => {
   // deno-lint-ignore no-explicit-any
   assertEquals(typeof (tls as any).setDefaultCACertificates, "function");
