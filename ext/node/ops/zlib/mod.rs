@@ -850,7 +850,7 @@ impl BrotliDecoder {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    let callback = {
+    let (error_info, callback) = {
       let ctx = self.ctx.borrow();
       let ctx = ctx.as_ref().expect("BrotliDecoder not initialized");
 
@@ -867,8 +867,8 @@ impl BrotliDecoder {
       let mut avail_out = out_len as usize;
 
       // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
-      unsafe {
-        ffi::decompressor::ffi::BrotliDecoderDecompressStream(
+      let error_info = unsafe {
+        let res = ffi::decompressor::ffi::BrotliDecoderDecompressStream(
           ctx.inst,
           &mut avail_in,
           &mut next_in,
@@ -881,13 +881,48 @@ impl BrotliDecoder {
         let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
         result[0] = avail_out as u32;
         result[1] = avail_in as u32;
-      }
 
-      v8::Local::new(scope, &ctx.callback)
+        if matches!(
+          res,
+          ffi::decompressor::ffi::interface::BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR
+        ) {
+          let error_code =
+            ffi::decompressor::ffi::BrotliDecoderGetErrorCode(ctx.inst);
+          let error_str =
+            ffi::decompressor::ffi::BrotliDecoderErrorString(error_code);
+          let msg = if error_str.is_null() {
+            "Decompression failed".to_string()
+          } else {
+            let c_str = std::ffi::CStr::from_ptr(error_str as *const _);
+            format!(
+              "ERR_{}",
+              c_str.to_str().unwrap_or("Decompression failed")
+            )
+          };
+          Some((error_code as i32, msg))
+        } else {
+          None
+        }
+      };
+
+      (error_info, v8::Local::new(scope, &ctx.callback))
     };
 
     let this = v8::Local::new(scope, &this);
-    let _ = callback.call(scope, this.into(), &[]);
+
+    if let Some((err, msg)) = error_info {
+      v8_static_strings! {
+        ONERROR_STR = "onerror",
+      }
+      let onerror_str = ONERROR_STR.v8_string(scope).unwrap();
+      let onerror = this.get(scope, onerror_str.into()).unwrap();
+      let cb = v8::Local::<v8::Function>::try_from(onerror).unwrap();
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let err = v8::Integer::new(scope, err);
+      cb.call(scope, this.into(), &[msg.into(), err.into()]);
+    } else {
+      let _ = callback.call(scope, this.into(), &[]);
+    }
 
     Ok(())
   }
