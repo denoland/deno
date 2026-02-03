@@ -357,6 +357,22 @@ impl Zlib {
     Ok(zlib.err)
   }
 
+  #[fast]
+  pub fn params(
+    &self,
+    #[smi] level: i32,
+    #[smi] strategy: i32,
+  ) -> Result<(), ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    zlib.err = zlib.strm.deflate_params(level, strategy);
+    zlib.level = level;
+    zlib.strategy = strategy;
+
+    Ok(())
+  }
+
   #[smi]
   pub fn init(
     &self,
