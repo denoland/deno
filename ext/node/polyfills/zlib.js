@@ -222,17 +222,19 @@ function zlibOnError(message, errno, code) {
   // There is no way to cleanly recover.
   // Continuing only obscures problems.
 
-  // Defer error handling to allow error listeners to be attached.
+  code = code || codes[errno];
+  const error = genericNodeError(message, { errno, code });
+  error.errno = errno;
+  error.code = code;
+  // Set the error synchronously so sync operations can check it immediately
+  self[kError] = error;
+
+  // Defer destroy to allow error listeners to be attached.
   // In Node.js, zlib operations run on the libuv threadpool and callbacks
   // are invoked asynchronously. Deno's implementation is synchronous, so
   // we need to explicitly defer to match Node.js behavior.
   process.nextTick(() => {
-    code = code || codes[errno];
-    const error = genericNodeError(message, { errno, code });
-    error.errno = errno;
-    error.code = code;
     self.destroy(error);
-    self[kError] = error;
   });
 }
 
