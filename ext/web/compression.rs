@@ -90,10 +90,14 @@ pub fn op_compression_new(
     ("gzip", false) => {
       Inner::GzEncoder(GzEncoder::new(w, Compression::default()))
     }
-    ("brotli", true) => Inner::BrotliDecoder(BrotliDecoder::new(w, 4096)),
+    ("brotli", true) => {
+      // 4096 is the default buffer size used by brotli crate
+      Inner::BrotliDecoder(BrotliDecoder::new(w, 4096))
+    }
     ("brotli", false) => {
       // quality level 6 and lgwin 22 are based on google's nginx default values
       // https://github.com/google/ngx_brotli#brotli_comp_level
+      // 4096 is the default buffer size used by brotli crate
       Inner::BrotliEncoder(BrotliEncoder::new(w, 4096, 6, 22))
     }
     _ => return Err(CompressionError::UnsupportedFormat),
