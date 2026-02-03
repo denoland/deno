@@ -599,7 +599,11 @@ impl BrotliEncoder {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
-  ) {
+  ) -> bool {
+    if write_result.len() < 2 {
+      return false;
+    }
+
     let inst = {
       let mut state = BrotliEncoderStateStruct::new(StandardAlloc::default());
 
@@ -618,6 +622,7 @@ impl BrotliEncoder {
       write_result: write_result.as_mut_ptr(),
       callback,
     });
+    true
   }
 
   #[fast]
@@ -774,7 +779,11 @@ impl BrotliDecoder {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
-  ) {
+  ) -> bool {
+    if write_result.len() < 2 {
+      return false;
+    }
+
     // SAFETY: creates new brotli decoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::decompressor::ffi::BrotliDecoderCreateInstance(
@@ -798,6 +807,7 @@ impl BrotliDecoder {
       write_result: write_result.as_mut_ptr(),
       callback,
     });
+    true
   }
 
   #[fast]
@@ -963,6 +973,10 @@ impl ZstdCompress {
     #[scoped] callback: v8::Global<v8::Function>,
     pledged_src_size: f64,
   ) -> bool {
+    if write_result.len() < 2 {
+      return false;
+    }
+
     // Default compression level is 3
     let Ok(mut encoder) = ZstdRawEncoder::new(3) else {
       return false;
@@ -1268,6 +1282,10 @@ impl ZstdDecompress {
     #[scoped] callback: v8::Global<v8::Function>,
     _pledged_src_size: f64, // Unused for decompression, but needed for API consistency
   ) -> bool {
+    if write_result.len() < 2 {
+      return false;
+    }
+
     use zstd::zstd_safe::DParameter;
 
     let Ok(mut decoder) = ZstdRawDecoder::new() else {
