@@ -9,7 +9,7 @@
 [ISOLATE] Starting
 [ISOLATE] Registering test-cron
 [ISOLATE] test-cron registered successfully
-Listening on http://0.0.0.0:8000/ (http://localhost:8000/)
+Listening on http://0.0.0.0:[WILDCARD]/ (http://localhost:[WILDCARD]/)
 [TEST] Received: {"kind":"register","crons":[{"name":"test-cron","schedule":"* * * * *"}]}
 [TEST] Registered crons: test-cron
 [TEST] SUCCESS: Cron handler reloaded and connected
