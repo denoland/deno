@@ -3093,6 +3093,7 @@ version = "0.261.0"
 dependencies = [
  "async-trait",
  "base64-simd",
+ "brotli",
  "bytes",
  "deno_bench_util",
  "deno_core",
