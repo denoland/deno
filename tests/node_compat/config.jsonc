@@ -1569,7 +1569,7 @@
     "parallel/test-zlib-close-after-write.js": {},
     "parallel/test-zlib-close-in-ondata.js": {},
     // "parallel/test-zlib-const.js": {},
-    // "parallel/test-zlib-convenience-methods.js": {},
+    "parallel/test-zlib-convenience-methods.js": {},
     "parallel/test-zlib-crc32.js": {},
     "parallel/test-zlib-create-raw.js": {},
     "parallel/test-zlib-deflate-constructors.js": {},

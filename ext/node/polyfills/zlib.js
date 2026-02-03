@@ -472,7 +472,8 @@ function processChunkSync(self, chunk, flushFlag) {
     error = er;
   });
 
-  if (chunk instanceof DataView) {
+  // The native binding expects a Uint8Array
+  if (!isUint8Array(chunk)) {
     chunk = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
   }
 
@@ -545,6 +546,11 @@ function processChunkSync(self, chunk, flushFlag) {
 function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
+
+  // The native binding expects a Uint8Array
+  if (!isUint8Array(chunk)) {
+    chunk = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
 
   handle.buffer = chunk;
   handle.cb = cb;
