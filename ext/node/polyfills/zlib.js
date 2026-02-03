@@ -983,15 +983,12 @@ class Zstd extends ZlibBase {
     }
 
     const handle = mode === ZSTD_COMPRESS
-      ? new binding.ZstdCompress()
-      : new binding.ZstdDecompress();
-
-    const pledgedSrcSize = opts?.pledgedSrcSize ?? undefined;
+      ? new binding.ZstdCompress(mode)
+      : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
     handle.init(
       initParamsArray,
-      pledgedSrcSize,
       writeState,
       processCallback,
     );

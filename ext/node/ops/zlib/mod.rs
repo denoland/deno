@@ -922,6 +922,472 @@ impl BrotliDecoder {
   }
 }
 
+// Zstd Compression/Decompression support
+use zstd::stream::raw::Decoder as ZstdRawDecoder;
+use zstd::stream::raw::Encoder as ZstdRawEncoder;
+use zstd::stream::raw::Operation;  // Trait for run/flush/finish methods
+
+struct ZstdCompressCtx {
+  encoder: ZstdRawEncoder<'static>,
+  write_result: *mut u32,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct ZstdCompress {
+  ctx: Rc<RefCell<Option<ZstdCompressCtx>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for ZstdCompress {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ZstdCompress"
+  }
+}
+
+#[op2]
+impl ZstdCompress {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] _mode: i32) -> ZstdCompress {
+    ZstdCompress {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] params: &[u32],
+    #[buffer] write_result: &mut [u32],
+    #[scoped] callback: v8::Global<v8::Function>,
+  ) {
+    // Default compression level is 3
+    let Ok(mut encoder) = ZstdRawEncoder::new(3) else {
+      return;
+    };
+
+    // Apply compression parameters
+    for (i, &value) in params.iter().enumerate() {
+      if value == 0xFFFFFFFF {
+        continue; // Skip unset parameters
+      }
+      // Map parameter index to zstd parameter
+      // ZSTD_c_compressionLevel = 100, ZSTD_c_windowLog = 101, etc.
+      use zstd::zstd_safe::CParameter;
+      let param = match i {
+        100 => CParameter::CompressionLevel(value as i32),
+        101 => CParameter::WindowLog(value),
+        102 => CParameter::HashLog(value),
+        103 => CParameter::ChainLog(value),
+        104 => CParameter::SearchLog(value),
+        105 => CParameter::MinMatch(value),
+        106 => CParameter::TargetLength(value),
+        107 => {
+          // Strategy: 1=fast, 2=dfast, 3=greedy, 4=lazy, 5=lazy2, 6=btlazy2, 7=btopt, 8=btultra, 9=btultra2
+          use zstd::zstd_safe::Strategy;
+          let strategy = match value {
+            1 => Strategy::ZSTD_fast,
+            2 => Strategy::ZSTD_dfast,
+            3 => Strategy::ZSTD_greedy,
+            4 => Strategy::ZSTD_lazy,
+            5 => Strategy::ZSTD_lazy2,
+            6 => Strategy::ZSTD_btlazy2,
+            7 => Strategy::ZSTD_btopt,
+            8 => Strategy::ZSTD_btultra,
+            9 => Strategy::ZSTD_btultra2,
+            _ => Strategy::ZSTD_fast,
+          };
+          CParameter::Strategy(strategy)
+        }
+        160 => CParameter::EnableLongDistanceMatching(value != 0),
+        161 => CParameter::LdmHashLog(value),
+        162 => CParameter::LdmMinMatch(value),
+        163 => CParameter::LdmBucketSizeLog(value),
+        164 => CParameter::LdmHashRateLog(value),
+        200 => CParameter::ContentSizeFlag(value != 0),
+        201 => CParameter::ChecksumFlag(value != 0),
+        202 => CParameter::DictIdFlag(value != 0),
+        240 => CParameter::NbWorkers(value),
+        241 => CParameter::JobSize(value),
+        242 => CParameter::OverlapSizeLog(value),
+        _ => continue, // Skip unknown parameters
+      };
+      let _ = encoder.set_parameter(param);
+    }
+
+    self.ctx.borrow_mut().replace(ZstdCompressCtx {
+      encoder,
+      write_result: write_result.as_mut_ptr(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op
+  }
+
+  #[fast]
+  fn reset(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    if let Some(ctx) = ctx.as_mut() {
+      let _ = ctx.encoder.reinit();
+    }
+  }
+
+  #[fast]
+  #[reentrant]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[smi] flush: u8,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    use zstd::stream::raw::{InBuffer, OutBuffer};
+
+    let callback = {
+      let mut ctx = self.ctx.borrow_mut();
+      let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
+
+      let input_slice = input
+        .get(in_off as usize..in_off as usize + in_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
+      let output_slice = out
+        .get_mut(out_off as usize..out_off as usize + out_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+
+      let mut in_buffer = InBuffer::around(input_slice);
+      let mut out_buffer = OutBuffer::around(output_slice);
+
+      // Call the appropriate method based on flush mode
+      // 0 = ZSTD_e_continue, 1 = ZSTD_e_flush, 2 = ZSTD_e_end
+      match flush {
+        0 => {
+          ctx
+            .encoder
+            .run(&mut in_buffer, &mut out_buffer)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+        }
+        1 => {
+          ctx
+            .encoder
+            .run(&mut in_buffer, &mut out_buffer)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+          ctx
+            .encoder
+            .flush(&mut out_buffer)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd flush error: {}", e)))?;
+        }
+        2 => {
+          ctx
+            .encoder
+            .run(&mut in_buffer, &mut out_buffer)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+          ctx
+            .encoder
+            .finish(&mut out_buffer, true)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd finish error: {}", e)))?;
+        }
+        _ => {
+          ctx
+            .encoder
+            .run(&mut in_buffer, &mut out_buffer)
+            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+        }
+      }
+
+      let avail_in = in_len as usize - in_buffer.pos();
+      let avail_out = out_len as usize - out_buffer.pos();
+
+      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+      unsafe {
+        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+        result[0] = avail_out as u32;
+        result[1] = avail_in as u32;
+      }
+
+      v8::Local::new(scope, &ctx.callback)
+    };
+
+    let this = v8::Local::new(scope, &this);
+    let _ = callback.call(scope, this.into(), &[]);
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn write_sync(
+    &self,
+    #[smi] flush: u8,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    use zstd::stream::raw::{InBuffer, OutBuffer};
+
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
+
+    let input_slice = input
+      .get(in_off as usize..in_off as usize + in_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
+    let output_slice = out
+      .get_mut(out_off as usize..out_off as usize + out_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+
+    let mut in_buffer = InBuffer::around(input_slice);
+    let mut out_buffer = OutBuffer::around(output_slice);
+
+    // Call the appropriate method based on flush mode
+    // 0 = ZSTD_e_continue, 1 = ZSTD_e_flush, 2 = ZSTD_e_end
+    match flush {
+      0 => {
+        ctx
+          .encoder
+          .run(&mut in_buffer, &mut out_buffer)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+      }
+      1 => {
+        ctx
+          .encoder
+          .run(&mut in_buffer, &mut out_buffer)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+        ctx
+          .encoder
+          .flush(&mut out_buffer)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd flush error: {}", e)))?;
+      }
+      2 => {
+        ctx
+          .encoder
+          .run(&mut in_buffer, &mut out_buffer)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+        ctx
+          .encoder
+          .finish(&mut out_buffer, true)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd finish error: {}", e)))?;
+      }
+      _ => {
+        ctx
+          .encoder
+          .run(&mut in_buffer, &mut out_buffer)
+          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+      }
+    }
+
+    let avail_in = in_len as usize - in_buffer.pos();
+    let avail_out = out_len as usize - out_buffer.pos();
+
+    // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+    unsafe {
+      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+      result[0] = avail_out as u32;
+      result[1] = avail_in as u32;
+    }
+
+    Ok(())
+  }
+
+  #[fast]
+  fn close(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    let _ = ctx.take();
+  }
+}
+
+struct ZstdDecompressCtx {
+  decoder: ZstdRawDecoder<'static>,
+  write_result: *mut u32,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct ZstdDecompress {
+  ctx: Rc<RefCell<Option<ZstdDecompressCtx>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for ZstdDecompress {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ZstdDecompress"
+  }
+}
+
+#[op2]
+impl ZstdDecompress {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] _mode: i32) -> ZstdDecompress {
+    ZstdDecompress {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] params: &[u32],
+    #[buffer] write_result: &mut [u32],
+    #[scoped] callback: v8::Global<v8::Function>,
+  ) {
+    use zstd::zstd_safe::DParameter;
+
+    let Ok(mut decoder) = ZstdRawDecoder::new() else {
+      return;
+    };
+
+    // Apply decompression parameters
+    for (i, &value) in params.iter().enumerate() {
+      if value == 0xFFFFFFFF {
+        continue; // Skip unset parameters
+      }
+      // ZSTD_d_windowLogMax = 100
+      let param = match i {
+        100 => DParameter::WindowLogMax(value),
+        _ => continue, // Skip unknown parameters
+      };
+      let _ = decoder.set_parameter(param);
+    }
+
+    self.ctx.borrow_mut().replace(ZstdDecompressCtx {
+      decoder,
+      write_result: write_result.as_mut_ptr(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op
+  }
+
+  #[fast]
+  fn reset(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    if let Some(ctx) = ctx.as_mut() {
+      let _ = ctx.decoder.reinit();
+    }
+  }
+
+  #[fast]
+  #[reentrant]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[smi] _flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    use zstd::stream::raw::{InBuffer, OutBuffer};
+
+    let callback = {
+      let mut ctx = self.ctx.borrow_mut();
+      let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
+
+      let input_slice = input
+        .get(in_off as usize..in_off as usize + in_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
+      let output_slice = out
+        .get_mut(out_off as usize..out_off as usize + out_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+
+      let mut in_buffer = InBuffer::around(input_slice);
+      let mut out_buffer = OutBuffer::around(output_slice);
+
+      ctx
+        .decoder
+        .run(&mut in_buffer, &mut out_buffer)
+        .map_err(|e| {
+          JsErrorBox::generic(format!("Zstd decompress error: {}", e))
+        })?;
+
+      let avail_in = in_len as usize - in_buffer.pos();
+      let avail_out = out_len as usize - out_buffer.pos();
+
+      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+      unsafe {
+        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+        result[0] = avail_out as u32;
+        result[1] = avail_in as u32;
+      }
+
+      v8::Local::new(scope, &ctx.callback)
+    };
+
+    let this = v8::Local::new(scope, &this);
+    let _ = callback.call(scope, this.into(), &[]);
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn write_sync(
+    &self,
+    #[smi] _flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), JsErrorBox> {
+    use zstd::stream::raw::{InBuffer, OutBuffer};
+
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
+
+    let input_slice = input
+      .get(in_off as usize..in_off as usize + in_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
+    let output_slice = out
+      .get_mut(out_off as usize..out_off as usize + out_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+
+    let mut in_buffer = InBuffer::around(input_slice);
+    let mut out_buffer = OutBuffer::around(output_slice);
+
+    ctx
+      .decoder
+      .run(&mut in_buffer, &mut out_buffer)
+      .map_err(|e| {
+        JsErrorBox::generic(format!("Zstd decompress error: {}", e))
+      })?;
+
+    let avail_in = in_len as usize - in_buffer.pos();
+    let avail_out = out_len as usize - out_buffer.pos();
+
+    // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+    unsafe {
+      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+      result[0] = avail_out as u32;
+      result[1] = avail_in as u32;
+    }
+
+    Ok(())
+  }
+
+  #[fast]
+  fn close(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    let _ = ctx.take();
+  }
+}
+
 #[op2(fast)]
 pub fn op_zlib_crc32_string(#[string] data: &str, value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
