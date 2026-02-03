@@ -51,8 +51,8 @@ enum Inner {
   DeflateRawEncoder(DeflateEncoder<Vec<u8>>),
   GzDecoder(GzDecoder<Vec<u8>>),
   GzEncoder(GzEncoder<Vec<u8>>),
-  BrotliDecoder(BrotliDecoder<Vec<u8>>),
-  BrotliEncoder(BrotliEncoder<Vec<u8>>),
+  BrotliDecoder(Box<BrotliDecoder<Vec<u8>>>),
+  BrotliEncoder(Box<BrotliEncoder<Vec<u8>>>),
 }
 
 impl std::fmt::Debug for Inner {
@@ -92,13 +92,13 @@ pub fn op_compression_new(
     }
     ("brotli", true) => {
       // 4096 is the default buffer size used by brotli crate
-      Inner::BrotliDecoder(BrotliDecoder::new(w, 4096))
+      Inner::BrotliDecoder(Box::new(BrotliDecoder::new(w, 4096)))
     }
     ("brotli", false) => {
       // quality level 6 and lgwin 22 are based on google's nginx default values
       // https://github.com/google/ngx_brotli#brotli_comp_level
       // 4096 is the default buffer size used by brotli crate
-      Inner::BrotliEncoder(BrotliEncoder::new(w, 4096, 6, 22))
+      Inner::BrotliEncoder(Box::new(BrotliEncoder::new(w, 4096, 6, 22)))
     }
     _ => return Err(CompressionError::UnsupportedFormat),
   };
