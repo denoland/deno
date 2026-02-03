@@ -961,10 +961,10 @@ impl ZstdCompress {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
-  ) {
+  ) -> bool {
     // Default compression level is 3
     let Ok(mut encoder) = ZstdRawEncoder::new(3) else {
-      return;
+      return false;
     };
 
     // Apply compression parameters
@@ -975,6 +975,7 @@ impl ZstdCompress {
       // Map parameter index to zstd parameter
       // ZSTD_c_compressionLevel = 100, ZSTD_c_windowLog = 101, etc.
       use zstd::zstd_safe::CParameter;
+      use zstd::zstd_safe::Strategy;
       let param = match i {
         100 => CParameter::CompressionLevel(value as i32),
         101 => CParameter::WindowLog(value),
@@ -985,7 +986,6 @@ impl ZstdCompress {
         106 => CParameter::TargetLength(value),
         107 => {
           // Strategy: 1=fast, 2=dfast, 3=greedy, 4=lazy, 5=lazy2, 6=btlazy2, 7=btopt, 8=btultra, 9=btultra2
-          use zstd::zstd_safe::Strategy;
           let strategy = match value {
             1 => Strategy::ZSTD_fast,
             2 => Strategy::ZSTD_dfast,
@@ -996,7 +996,7 @@ impl ZstdCompress {
             7 => Strategy::ZSTD_btopt,
             8 => Strategy::ZSTD_btultra,
             9 => Strategy::ZSTD_btultra2,
-            _ => Strategy::ZSTD_fast,
+            _ => return false, // Invalid strategy value
           };
           CParameter::Strategy(strategy)
         }
@@ -1013,7 +1013,9 @@ impl ZstdCompress {
         242 => CParameter::OverlapSizeLog(value),
         _ => continue, // Skip unknown parameters
       };
-      let _ = encoder.set_parameter(param);
+      if encoder.set_parameter(param).is_err() {
+        return false;
+      }
     }
 
     self.ctx.borrow_mut().replace(ZstdCompressCtx {
@@ -1021,6 +1023,7 @@ impl ZstdCompress {
       write_result: write_result.as_mut_ptr(),
       callback,
     });
+    true
   }
 
   #[fast]
@@ -1239,11 +1242,11 @@ impl ZstdDecompress {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
-  ) {
+  ) -> bool {
     use zstd::zstd_safe::DParameter;
 
     let Ok(mut decoder) = ZstdRawDecoder::new() else {
-      return;
+      return false;
     };
 
     // Apply decompression parameters
@@ -1256,7 +1259,9 @@ impl ZstdDecompress {
         100 => DParameter::WindowLogMax(value),
         _ => continue, // Skip unknown parameters
       };
-      let _ = decoder.set_parameter(param);
+      if decoder.set_parameter(param).is_err() {
+        return false;
+      }
     }
 
     self.ctx.borrow_mut().replace(ZstdDecompressCtx {
@@ -1264,6 +1269,7 @@ impl ZstdDecompress {
       write_result: write_result.as_mut_ptr(),
       callback,
     });
+    true
   }
 
   #[fast]

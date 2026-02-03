@@ -51,6 +51,7 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   ERR_TRAILING_JUNK_AFTER_STREAM_END,
+  ERR_ZLIB_INITIALIZATION_FAILED,
   ERR_ZSTD_INVALID_PARAM,
 } = errorCodes;
 
@@ -987,11 +988,14 @@ class Zstd extends ZlibBase {
       : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
-    handle.init(
+    const success = handle.init(
       initParamsArray,
       writeState,
       processCallback,
     );
+    if (!success) {
+      throw new ERR_ZLIB_INITIALIZATION_FAILED("Setting parameter failed");
+    }
     super(opts, mode, handle, zstdDefaultOpts);
     this._writeState = writeState;
   }
