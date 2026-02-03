@@ -58,6 +58,8 @@ const registeredCrons = [];
 
 // 5. Process messages concurrently
 async function readCronMessages() {
+  let receivedRejectAck = false;
+
   while (true) {
     const { value: chunk, done } = await cronReader.read();
     if (done) break;
@@ -84,9 +86,14 @@ async function readCronMessages() {
           );
           Deno.exit(1);
         }
+      } else if (msg.kind === "reject-ack") {
+        console.error("[CRON SERVER] Received reject-ack");
+        receivedRejectAck = true;
       }
     }
   }
+
+  return receivedRejectAck;
 }
 
 async function readControlMessages() {
@@ -123,7 +130,15 @@ async function readControlMessages() {
   }
 }
 
-await Promise.all([readCronMessages(), readControlMessages()]);
+const [receivedRejectAck] = await Promise.all([
+  readCronMessages(),
+  readControlMessages(),
+]);
+
+if (!receivedRejectAck) {
+  console.error("[CRON SERVER] ERROR: Did not receive reject-ack");
+  Deno.exit(1);
+}
 
 console.error("[CRON SERVER] Registered crons:", registeredCrons.join(", "));
 if (registeredCrons.length === 1 && registeredCrons[0] === "early-cron") {
