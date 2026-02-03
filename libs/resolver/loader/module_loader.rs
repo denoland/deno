@@ -390,14 +390,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     specifier: &Url,
     requested_module_type: &RequestedModuleType,
   ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
-    let maybe_module =
-      graph.try_get(specifier).map_err(|err| {
-        enhance_graph_error(
-          &self.sys,
-          deno_graph::ModuleGraphError::ModuleError(err.clone()),
-          EnhanceGraphErrorMode::ShowRange,
-        )
-      })?;
+    let maybe_module = graph.try_get(specifier).map_err(|err| {
+      enhance_graph_error(
+        &self.sys,
+        deno_graph::ModuleGraphError::ModuleError(err.clone()),
+        EnhanceGraphErrorMode::ShowRange,
+      )
+    })?;
 
     match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {

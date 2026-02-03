@@ -1,6 +1,6 @@
 # Hello World
 
-This is a paragraph with **bold** and *italic* text.
+This is a paragraph with **bold** and _italic_ text.
 
 ## Code Example
 

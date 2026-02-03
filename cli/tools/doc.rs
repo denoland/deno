@@ -208,16 +208,15 @@ pub async fn doc(
         check_diagnostics(&diagnostics)?;
       }
 
-      let markdown_downloads =
-        deno_core::futures::future::try_join_all(markdown_urls.into_iter().map(
-          |url| async {
-            // ok to skip permissions because these were provided on the CLI
-            let file = file_fetcher.fetch_bypass_permissions(&url).await?;
-            let decoded = TextDecodedFile::decode(file)?;
-            Ok::<_, AnyError>((url, decoded))
-          },
-        ))
-        .await?;
+      let markdown_downloads = deno_core::futures::future::try_join_all(
+        markdown_urls.into_iter().map(|url| async {
+          // ok to skip permissions because these were provided on the CLI
+          let file = file_fetcher.fetch_bypass_permissions(&url).await?;
+          let decoded = TextDecodedFile::decode(file)?;
+          Ok::<_, AnyError>((url, decoded))
+        }),
+      )
+      .await?;
       for (url, decoded) in markdown_downloads {
         let filename = url.to_string().into_boxed_str();
         doc_nodes_by_url.insert(
