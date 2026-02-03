@@ -85,6 +85,20 @@ function crc32(buf, crc) {
   return op_zlib_crc32(buf, crc);
 }
 
-export { BrotliDecoder, BrotliEncoder, crc32, Zlib, ZstdCompress, ZstdDecompress };
+export {
+  BrotliDecoder,
+  BrotliEncoder,
+  crc32,
+  Zlib,
+  ZstdCompress,
+  ZstdDecompress,
+};
 
-export default { BrotliDecoder, BrotliEncoder, Zlib, ZstdCompress, ZstdDecompress, crc32 };
+export default {
+  BrotliDecoder,
+  BrotliEncoder,
+  Zlib,
+  ZstdCompress,
+  ZstdDecompress,
+  crc32,
+};

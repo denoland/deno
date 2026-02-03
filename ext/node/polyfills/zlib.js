@@ -547,15 +547,23 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
 
-  handle.write(
-    flushFlag,
-    chunk, // in
-    0, // in_off
-    handle.availInBefore, // in_len
-    self._outBuffer, // out
-    self._outOffset, // out_off
-    handle.availOutBefore,
-  ); // out_len
+  try {
+    handle.write(
+      flushFlag,
+      chunk, // in
+      0, // in_off
+      handle.availInBefore, // in_len
+      self._outBuffer, // out
+      self._outOffset, // out_off
+      handle.availOutBefore,
+    ); // out_len
+  } catch (err) {
+    // Set appropriate error code for zstd errors
+    if (err.message && err.message.includes("Src size is incorrect")) {
+      err.code = "ZSTD_error_srcSize_wrong";
+    }
+    self.destroy(err);
+  }
 }
 
 function processCallback() {
@@ -988,10 +996,16 @@ class Zstd extends ZlibBase {
       : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
+    // pledgedSrcSize is only used for compression, use -1 to indicate "not set"
+    const pledgedSrcSize =
+      mode === ZSTD_COMPRESS && opts?.pledgedSrcSize != null
+        ? opts.pledgedSrcSize
+        : -1;
     const success = handle.init(
       initParamsArray,
       writeState,
       processCallback,
+      pledgedSrcSize,
     );
     if (!success) {
       throw new ERR_ZLIB_INITIALIZATION_FAILED("Setting parameter failed");

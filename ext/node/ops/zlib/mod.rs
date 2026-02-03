@@ -925,7 +925,7 @@ impl BrotliDecoder {
 // Zstd Compression/Decompression support
 use zstd::stream::raw::Decoder as ZstdRawDecoder;
 use zstd::stream::raw::Encoder as ZstdRawEncoder;
-use zstd::stream::raw::Operation;  // Trait for run/flush/finish methods
+use zstd::stream::raw::Operation; // Trait for run/flush/finish methods
 
 struct ZstdCompressCtx {
   encoder: ZstdRawEncoder<'static>,
@@ -961,11 +961,21 @@ impl ZstdCompress {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
+    pledged_src_size: f64,
   ) -> bool {
     // Default compression level is 3
     let Ok(mut encoder) = ZstdRawEncoder::new(3) else {
       return false;
     };
+
+    // Set pledged source size if provided (non-negative value)
+    if pledged_src_size >= 0.0
+      && encoder
+        .set_pledged_src_size(Some(pledged_src_size as u64))
+        .is_err()
+    {
+      return false;
+    }
 
     // Apply compression parameters
     for (i, &value) in params.iter().enumerate() {
@@ -1053,7 +1063,8 @@ impl ZstdCompress {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    use zstd::stream::raw::{InBuffer, OutBuffer};
+    use zstd::stream::raw::InBuffer;
+    use zstd::stream::raw::OutBuffer;
 
     let callback = {
       let mut ctx = self.ctx.borrow_mut();
@@ -1076,33 +1087,39 @@ impl ZstdCompress {
           ctx
             .encoder
             .run(&mut in_buffer, &mut out_buffer)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+            .map_err(|e| {
+              JsErrorBox::generic(format!("Zstd compress error: {}", e))
+            })?;
         }
         1 => {
           ctx
             .encoder
             .run(&mut in_buffer, &mut out_buffer)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
-          ctx
-            .encoder
-            .flush(&mut out_buffer)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd flush error: {}", e)))?;
+            .map_err(|e| {
+              JsErrorBox::generic(format!("Zstd compress error: {}", e))
+            })?;
+          ctx.encoder.flush(&mut out_buffer).map_err(|e| {
+            JsErrorBox::generic(format!("Zstd flush error: {}", e))
+          })?;
         }
         2 => {
           ctx
             .encoder
             .run(&mut in_buffer, &mut out_buffer)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
-          ctx
-            .encoder
-            .finish(&mut out_buffer, true)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd finish error: {}", e)))?;
+            .map_err(|e| {
+              JsErrorBox::generic(format!("Zstd compress error: {}", e))
+            })?;
+          ctx.encoder.finish(&mut out_buffer, true).map_err(|e| {
+            JsErrorBox::generic(format!("Zstd finish error: {}", e))
+          })?;
         }
         _ => {
           ctx
             .encoder
             .run(&mut in_buffer, &mut out_buffer)
-            .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+            .map_err(|e| {
+              JsErrorBox::generic(format!("Zstd compress error: {}", e))
+            })?;
         }
       }
 
@@ -1136,7 +1153,8 @@ impl ZstdCompress {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    use zstd::stream::raw::{InBuffer, OutBuffer};
+    use zstd::stream::raw::InBuffer;
+    use zstd::stream::raw::OutBuffer;
 
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
@@ -1158,33 +1176,39 @@ impl ZstdCompress {
         ctx
           .encoder
           .run(&mut in_buffer, &mut out_buffer)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+          .map_err(|e| {
+            JsErrorBox::generic(format!("Zstd compress error: {}", e))
+          })?;
       }
       1 => {
         ctx
           .encoder
           .run(&mut in_buffer, &mut out_buffer)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
-        ctx
-          .encoder
-          .flush(&mut out_buffer)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd flush error: {}", e)))?;
+          .map_err(|e| {
+            JsErrorBox::generic(format!("Zstd compress error: {}", e))
+          })?;
+        ctx.encoder.flush(&mut out_buffer).map_err(|e| {
+          JsErrorBox::generic(format!("Zstd flush error: {}", e))
+        })?;
       }
       2 => {
         ctx
           .encoder
           .run(&mut in_buffer, &mut out_buffer)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
-        ctx
-          .encoder
-          .finish(&mut out_buffer, true)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd finish error: {}", e)))?;
+          .map_err(|e| {
+            JsErrorBox::generic(format!("Zstd compress error: {}", e))
+          })?;
+        ctx.encoder.finish(&mut out_buffer, true).map_err(|e| {
+          JsErrorBox::generic(format!("Zstd finish error: {}", e))
+        })?;
       }
       _ => {
         ctx
           .encoder
           .run(&mut in_buffer, &mut out_buffer)
-          .map_err(|e| JsErrorBox::generic(format!("Zstd compress error: {}", e)))?;
+          .map_err(|e| {
+            JsErrorBox::generic(format!("Zstd compress error: {}", e))
+          })?;
       }
     }
 
@@ -1242,6 +1266,7 @@ impl ZstdDecompress {
     #[buffer] params: &[u32],
     #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
+    _pledged_src_size: f64, // Unused for decompression, but needed for API consistency
   ) -> bool {
     use zstd::zstd_safe::DParameter;
 
@@ -1299,7 +1324,8 @@ impl ZstdDecompress {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    use zstd::stream::raw::{InBuffer, OutBuffer};
+    use zstd::stream::raw::InBuffer;
+    use zstd::stream::raw::OutBuffer;
 
     let callback = {
       let mut ctx = self.ctx.borrow_mut();
@@ -1352,7 +1378,8 @@ impl ZstdDecompress {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    use zstd::stream::raw::{InBuffer, OutBuffer};
+    use zstd::stream::raw::InBuffer;
+    use zstd::stream::raw::OutBuffer;
 
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
