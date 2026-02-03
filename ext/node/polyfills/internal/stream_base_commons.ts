@@ -50,6 +50,7 @@ export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
 export const kHandle = Symbol("kHandle");
+export const kBoundSession = Symbol("kBoundSession");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");
 export const kBufferGen = Symbol("kBufferGen");
@@ -97,13 +98,16 @@ function handleWriteReq(req: any, data: any, encoding: string) {
 
 // deno-lint-ignore no-explicit-any
 function onWriteComplete(this: any, status: number) {
+  console.error("DEBUG onWriteComplete: status=" + status + " handle=" + !!this.handle);
   let stream = this.handle[ownerSymbol];
+  console.error("DEBUG onWriteComplete: stream=" + !!stream + " destroyed=" + stream?.destroyed);
 
   if (stream.constructor.name === "ReusedHandle") {
     stream = stream.handle;
   }
 
   if (stream.destroyed) {
+    console.error("DEBUG onWriteComplete: stream destroyed, calling callback");
     if (typeof this.callback === "function") {
       this.callback(null);
     }
@@ -126,6 +130,7 @@ function onWriteComplete(this: any, status: number) {
   stream[kUpdateTimer]();
   stream[kAfterAsyncWrite](this);
 
+  console.error("DEBUG onWriteComplete: calling callback, has callback=" + (typeof this.callback === "function"));
   if (typeof this.callback === "function") {
     this.callback(null);
   }
@@ -365,6 +370,7 @@ export function setStreamTimeout(
     if (this[kSession]) {
       this[kSession][kUpdateTimer]();
     }
+    if (this[kBoundSession]) this[kBoundSession][kUpdateTimer]();
 
     if (callback !== undefined) {
       validateFunction(callback, "callback");

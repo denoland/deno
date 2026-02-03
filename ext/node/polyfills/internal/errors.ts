@@ -2437,7 +2437,7 @@ export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
   }
 }
 
-export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
+class ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;
   max?: number;
@@ -2453,6 +2453,31 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
       this.max = max;
     }
   }
+
+  static HideStackFramesError =
+    ERR_HTTP2_INVALID_SETTING_VALUE_RangeError as typeof ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+}
+
+export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeTypeError {
+  actual: unknown;
+  min?: number;
+  max?: number;
+
+  constructor(name: string, actual: unknown, min?: number, max?: number) {
+    super(
+      "ERR_HTTP2_INVALID_SETTING_VALUE",
+      `Invalid value for setting "${name}": ${actual}`,
+    );
+    this.actual = actual;
+    if (min !== undefined) {
+      this.min = min;
+      this.max = max;
+    }
+  }
+
+  static RangeError = ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+  static HideStackFramesError =
+    ERR_HTTP2_INVALID_SETTING_VALUE as typeof ERR_HTTP2_INVALID_SETTING_VALUE;
 }
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
@@ -2884,6 +2909,7 @@ codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
 
 // TODO(kt3k): assign all error classes here.
 

@@ -790,8 +790,10 @@ function _writeAfterFIN(
 function _tryReadStart(socket: Socket) {
   // Not already reading, start the flow.
   debug("Socket._handle.readStart");
+  console.error("DEBUG: _tryReadStart called");
   socket._handle!.reading = true;
   const err = socket._handle!.readStart();
+  console.error("DEBUG: _tryReadStart readStart returned", err);
 
   if (err) {
     socket.destroy(errnoException(err, "read"));
