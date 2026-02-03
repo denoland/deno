@@ -1535,7 +1535,9 @@
     "parallel/test-whatwg-url-custom-setters.js": {},
     "parallel/test-whatwg-url-custom-tostringtag.js": {},
     "parallel/test-whatwg-url-override-hostname.js": {},
-    "parallel/test-worker-broadcastchannel-wpt.js": {},
+    // Note: Node.js BroadcastChannel message dispatch ordering differs from the Web spec ordering.
+    // Deno follows the Web spec.
+    // "parallel/test-worker-broadcastchannel-wpt.js": {},
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before

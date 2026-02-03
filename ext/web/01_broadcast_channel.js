@@ -12,7 +12,6 @@ import {
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
-  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -62,44 +61,26 @@ async function recv() {
   rid = null;
 }
 
-const pendingMessages = [];
-let flushScheduled = false;
-
 function dispatch(source, name, data) {
-  ArrayPrototypePush(pendingMessages, { source, name, data });
-  if (!flushScheduled) {
-    flushScheduled = true;
-    defer(flushPendingMessages);
-  }
-}
+  for (let i = 0; i < channels.length; ++i) {
+    const channel = channels[i];
 
-function flushPendingMessages() {
-  flushScheduled = false;
-  const messages = ArrayPrototypeSplice(pendingMessages, 0);
-  // Snapshot channels to avoid issues with mutations during dispatch.
-  const snapshot = ArrayPrototypeSlice(channels);
-
-  // Deliver in receiver creation order (Node.js-style ordering).
-  // For each receiver, deliver all pending messages before moving
-  // to the next receiver.
-  for (let i = 0; i < snapshot.length; ++i) {
-    const channel = snapshot[i];
+    if (channel === source) continue; // Don't self-send.
+    if (channel[_name] !== name) continue;
     if (channel[_closed]) continue;
 
-    for (let j = 0; j < messages.length; ++j) {
-      const msg = messages[j];
-      if (channel === msg.source) continue; // Don't self-send.
-      if (channel[_name] !== msg.name) continue;
-      if (channel[_closed]) break;
-
+    const go = () => {
+      if (channel[_closed]) return;
       const event = new MessageEvent("message", {
-        data: core.deserialize(msg.data), // TODO(bnoordhuis) Cache immutables.
+        data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
       setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
-    }
+    };
+
+    defer(go);
   }
 }
 class BroadcastChannel extends EventTarget {
