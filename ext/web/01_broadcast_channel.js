@@ -12,6 +12,7 @@ import {
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -32,13 +33,22 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
+const _refed = Symbol("[[refed]]");
+const refBroadcastChannel = Symbol("refBroadcastChannel");
 
 const channels = [];
 let rid = null;
+let recvPromise = null;
+let refedBroadcastChannelsCount = 0;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await op_broadcast_recv(rid);
+    recvPromise = op_broadcast_recv(rid);
+    if (refedBroadcastChannelsCount === 0) {
+      core.unrefOpPromise(recvPromise);
+    }
+    const message = await recvPromise;
+    recvPromise = null;
 
     if (message === null) {
       break;
@@ -52,31 +62,50 @@ async function recv() {
   rid = null;
 }
 
-function dispatch(source, name, data) {
-  for (let i = 0; i < channels.length; ++i) {
-    const channel = channels[i];
+const pendingMessages = [];
+let flushScheduled = false;
 
-    if (channel === source) continue; // Don't self-send.
-    if (channel[_name] !== name) continue;
+function dispatch(source, name, data) {
+  ArrayPrototypePush(pendingMessages, { source, name, data });
+  if (!flushScheduled) {
+    flushScheduled = true;
+    defer(flushPendingMessages);
+  }
+}
+
+function flushPendingMessages() {
+  flushScheduled = false;
+  const messages = ArrayPrototypeSplice(pendingMessages, 0);
+  // Snapshot channels to avoid issues with mutations during dispatch.
+  const snapshot = ArrayPrototypeSlice(channels);
+
+  // Deliver in receiver creation order (Node.js-style ordering).
+  // For each receiver, deliver all pending messages before moving
+  // to the next receiver.
+  for (let i = 0; i < snapshot.length; ++i) {
+    const channel = snapshot[i];
     if (channel[_closed]) continue;
 
-    const go = () => {
-      if (channel[_closed]) return;
+    for (let j = 0; j < messages.length; ++j) {
+      const msg = messages[j];
+      if (channel === msg.source) continue; // Don't self-send.
+      if (channel[_name] !== msg.name) continue;
+      if (channel[_closed]) break;
+
       const event = new MessageEvent("message", {
-        data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
+        data: core.deserialize(msg.data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
       setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
-    };
-
-    defer(go);
+    }
   }
 }
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
+  [_refed] = true;
 
   get name() {
     return this[_name];
@@ -93,6 +122,7 @@ class BroadcastChannel extends EventTarget {
     this[webidl.brand] = webidl.brand;
 
     ArrayPrototypePush(channels, this);
+    refedBroadcastChannelsCount++;
 
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
@@ -129,6 +159,22 @@ class BroadcastChannel extends EventTarget {
     });
   }
 
+  [refBroadcastChannel](ref) {
+    if (ref && !this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount++;
+      if (refedBroadcastChannelsCount === 1 && recvPromise) {
+        core.refOpPromise(recvPromise);
+      }
+      this[_refed] = true;
+    } else if (!ref && this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
+  }
+
   close() {
     webidl.assertBranded(this, BroadcastChannelPrototype);
     this[_closed] = true;
@@ -136,8 +182,16 @@ class BroadcastChannel extends EventTarget {
     const index = ArrayPrototypeIndexOf(channels, this);
     if (index === -1) return;
 
+    if (this[_refed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
+
     ArrayPrototypeSplice(channels, index, 1);
-    if (channels.length === 0) {
+    if (channels.length === 0 && rid !== null) {
       op_broadcast_unsubscribe(rid);
     }
   }
@@ -162,4 +216,4 @@ defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
-export { BroadcastChannel };
+export { BroadcastChannel, refBroadcastChannel };
