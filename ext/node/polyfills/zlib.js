@@ -222,12 +222,18 @@ function zlibOnError(message, errno, code) {
   // There is no way to cleanly recover.
   // Continuing only obscures problems.
 
-  code = code || codes[errno];
-  const error = genericNodeError(message, { errno, code });
-  error.errno = errno;
-  error.code = code;
-  self.destroy(error);
-  self[kError] = error;
+  // Defer error handling to allow error listeners to be attached.
+  // In Node.js, zlib operations run on the libuv threadpool and callbacks
+  // are invoked asynchronously. Deno's implementation is synchronous, so
+  // we need to explicitly defer to match Node.js behavior.
+  process.nextTick(() => {
+    code = code || codes[errno];
+    const error = genericNodeError(message, { errno, code });
+    error.errno = errno;
+    error.code = code;
+    self.destroy(error);
+    self[kError] = error;
+  });
 }
 
 const FLUSH_BOUND = [
@@ -754,6 +760,14 @@ function Zlib(opts, mode) {
           dictionary,
         );
       }
+    }
+    // The native binding expects a Uint8Array, convert other ArrayBufferViews
+    if (dictionary !== undefined && !isUint8Array(dictionary)) {
+      dictionary = new Uint8Array(
+        dictionary.buffer,
+        dictionary.byteOffset,
+        dictionary.byteLength,
+      );
     }
   }
 

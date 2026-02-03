@@ -1577,7 +1577,7 @@
     // "parallel/test-zlib-destroy-pipe.js": {},
     "parallel/test-zlib-destroy.js": {},
     "parallel/test-zlib-dictionary-fail.js": {},
-    // "parallel/test-zlib-dictionary.js": {},
+    "parallel/test-zlib-dictionary.js": {},
     "parallel/test-zlib-empty-buffer.js": {},
     "parallel/test-zlib-failed-init.js": {},
     "parallel/test-zlib-flush-drain-longblock.js": {},
