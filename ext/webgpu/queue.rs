@@ -137,7 +137,7 @@ impl GPUQueue {
     data_arg: v8::Local<'a, v8::Value>,
     #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
     // Per the WebGPU spec, dataOffset and size are in elements (not bytes)
     // when data is a TypedArray, and in bytes otherwise.
     let (buf, bytes_per_element) = if let Ok(typed_array) =
@@ -173,7 +173,9 @@ impl GPUQueue {
         unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
       (buf, 1)
     } else {
-      return;
+      return Err(JsErrorBox::type_error(
+        "data must be an ArrayBuffer or ArrayBufferView",
+      ));
     };
 
     let data_offset_bytes = data_offset as usize * bytes_per_element;
@@ -191,6 +193,8 @@ impl GPUQueue {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   #[required(4)]
