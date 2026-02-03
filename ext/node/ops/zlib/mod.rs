@@ -627,7 +627,9 @@ impl BrotliEncoder {
         if value == 0xFFFFFFFF {
           continue; // Skip setting the parameter, same as C API.
         }
-        state.set_parameter(encoder_param(i as u32), value);
+        if !state.set_parameter(encoder_param(i as u32), value) {
+          return false;
+        }
       }
 
       state

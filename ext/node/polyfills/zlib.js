@@ -956,7 +956,14 @@ function Brotli(opts, mode) {
     : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
-  handle.init(brotliInitParamsArray, this._writeState, processCallback);
+  const success = handle.init(
+    brotliInitParamsArray,
+    this._writeState,
+    processCallback,
+  );
+  if (!success) {
+    throw new ERR_ZLIB_INITIALIZATION_FAILED("Initialization failed");
+  }
 
   ReflectApply(ZlibBase, this, [opts, mode, handle, brotliDefaultOpts]);
 }

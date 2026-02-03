@@ -1564,7 +1564,7 @@
     "parallel/test-zlib-brotli-from-brotli.js": {},
     "parallel/test-zlib-brotli-from-string.js": {},
     // "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {},
-    // "parallel/test-zlib-brotli.js": {},
+    "parallel/test-zlib-brotli.js": {},
     "parallel/test-zlib-close-after-error.js": {},
     "parallel/test-zlib-close-after-write.js": {},
     "parallel/test-zlib-close-in-ondata.js": {},
