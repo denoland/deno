@@ -75,7 +75,10 @@ fn extract_inner(
     Err(_) => ExportCollector::default(),
   };
 
-  let extracted_files = if file.media_type == MediaType::Unknown {
+  let extracted_files = if matches!(
+    file.media_type,
+    MediaType::Unknown | MediaType::Markdown
+  ) {
     extract_files_from_fenced_blocks(
       &file.specifier,
       &file.source,

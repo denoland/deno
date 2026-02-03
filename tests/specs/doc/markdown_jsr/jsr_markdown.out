@@ -39,9 +39,10 @@ Defined in http://127.0.0.1:4250/@denotest/markdown/1.0.0/readme.md:1:1
   ## Blockquotes
 
   │ This is a blockquote.
-  │ 
-  │ │ It can span multiple lines.
-  │ 
+  │
+  │ It can span multiple lines.
+  │
+
   ## Nested Lists
 
   - Outer item 1
