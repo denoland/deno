@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -561,6 +561,10 @@ Object.defineProperties(
             });
           }
         });
+      } else {
+        // For empty writes, call callback and emit drain to maintain flow control
+        callback?.();
+        this.emit("drain");
       }
       return false;
     },

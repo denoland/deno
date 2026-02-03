@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -15,7 +15,7 @@ import {
   notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
-import { type Buffer } from "node:buffer";
+import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -33,13 +33,6 @@ export type BinaryOptionsArgument =
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
 
-export type ReadOptions = {
-  buffer: Buffer | ArrayBufferView;
-  offset: number;
-  length: number;
-  position: number | null;
-};
-
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
@@ -55,6 +48,21 @@ export function isFileOptions(
     (fileOptions as FileOptions).signal != undefined ||
     (fileOptions as WriteFileOptions).mode != undefined
   );
+}
+
+export function getValidatedEncoding(
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    | ((...args: unknown[]) => unknown)
+    | Encodings
+    | null,
+): Encodings | null {
+  const encoding = getEncoding(optOrCallback);
+  if (encoding) {
+    assertEncoding(encoding);
+  }
+  return encoding;
 }
 
 export function getEncoding(

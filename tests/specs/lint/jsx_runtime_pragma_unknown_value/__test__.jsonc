@@ -1,0 +1,5 @@
+// Regression test for https://github.com/denoland/deno/issues/30858.
+{
+  "args": "lint --quiet",
+  "output": ""
+}

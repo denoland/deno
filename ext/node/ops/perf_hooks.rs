@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -18,7 +18,10 @@ pub struct EldHistogram {
   started: Cell<bool>,
 }
 
-impl GarbageCollected for EldHistogram {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for EldHistogram {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EldHistogram"
   }

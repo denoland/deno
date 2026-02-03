@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -173,8 +173,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     }
     let transpile_options = &transpile_and_emit_options.transpile;
     if matches!(provider.media_type(), MediaType::Jsx)
-      && !transpile_options.transform_jsx
-      && !transpile_options.precompile_jsx
+      && transpile_options.jsx.is_none()
     {
       // jsx disabled, so skip
       return Ok(provider.into_source());
@@ -237,10 +236,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       return Ok(source.clone());
     }
     let transpile_options = &transpile_and_emit_options.transpile;
-    if matches!(media_type, MediaType::Jsx)
-      && !transpile_options.transform_jsx
-      && !transpile_options.precompile_jsx
-    {
+    if matches!(media_type, MediaType::Jsx) && transpile_options.jsx.is_none() {
       // jsx disabled, so skip
       return Ok(source.clone());
     }
@@ -361,6 +357,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       | MediaType::Dmts
       | MediaType::Dcts
       | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html

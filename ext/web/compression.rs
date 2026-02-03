@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::io::Write;
 
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use flate2::Compression;
 use flate2::write::DeflateDecoder;
@@ -31,7 +32,10 @@ pub enum CompressionError {
 #[derive(Debug)]
 struct CompressionResource(RefCell<Option<Inner>>);
 
-impl deno_core::GarbageCollected for CompressionResource {
+// SAFETY: we're sure `CompressionResource` can be GCed
+unsafe impl deno_core::GarbageCollected for CompressionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"CompressionResource"
   }
@@ -74,11 +78,10 @@ pub fn op_compression_new(
 }
 
 #[op2]
-#[buffer]
 pub fn op_compression_write(
   #[cppgc] resource: &CompressionResource,
   #[anybuffer] input: &[u8],
-) -> Result<Vec<u8>, CompressionError> {
+) -> Result<Uint8Array, CompressionError> {
   let mut inner = resource.0.borrow_mut();
   let inner = inner.as_mut().ok_or(CompressionError::ResourceClosed)?;
   let out: Vec<u8> = match &mut *inner {
@@ -114,15 +117,14 @@ pub fn op_compression_write(
     }
   }
   .collect();
-  Ok(out)
+  Ok(out.into())
 }
 
 #[op2]
-#[buffer]
 pub fn op_compression_finish(
   #[cppgc] resource: &CompressionResource,
   report_errors: bool,
-) -> Result<Vec<u8>, CompressionError> {
+) -> Result<Uint8Array, CompressionError> {
   let inner = resource
     .0
     .borrow_mut()
@@ -149,9 +151,9 @@ pub fn op_compression_finish(
       if report_errors {
         Err(err)
       } else {
-        Ok(Vec::with_capacity(0))
+        Ok(Vec::with_capacity(0).into())
       }
     }
-    Ok(out) => Ok(out),
+    Ok(out) => Ok(out.into()),
   }
 }

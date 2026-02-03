@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -34,6 +34,7 @@ use deno_graph::Resolution;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
@@ -311,6 +312,7 @@ pub struct Inner {
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  force_push_based_diagnostics: bool,
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
@@ -409,21 +411,13 @@ impl LanguageServer {
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
+          will_type_check: true,
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
         },
       )?;
-
-      // Update the lockfile on the file system with anything new
-      // found after caching
-      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await
-        && let Err(err) = &lockfile.write_if_changed()
-      {
-        lsp_warn!("{:#}", err);
-      }
-
       Ok(())
     }
 
@@ -581,8 +575,13 @@ impl Inner {
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
-    let npm_search_api =
-      CliNpmSearchApi::new(module_registry.file_fetcher.clone());
+    let npm_search_api = CliNpmSearchApi::new(
+      module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        link_packages: Default::default(),
+        newest_dependency_date_options: Default::default(),
+      }),
+    );
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
@@ -609,6 +608,7 @@ impl Inner {
       npm_search_api,
       performance,
       registered_semantic_tokens_capabilities: false,
+      force_push_based_diagnostics: false,
       resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -831,8 +831,16 @@ impl Inner {
     }
     self.jsr_search_api =
       CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
-    self.npm_search_api =
-      CliNpmSearchApi::new(self.module_registry.file_fetcher.clone());
+    self.npm_search_api = CliNpmSearchApi::new(
+      self.module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        // todo(dsherret): the npm_search_api should probably be specific
+        // to each workspace so that the link packages can be properly
+        // hooked up
+        link_packages: Default::default(),
+        newest_dependency_date_options: Default::default(),
+      }),
+    );
     self.performance.measure(mark);
   }
 
@@ -886,6 +894,10 @@ impl Inner {
     }));
     self.registered_semantic_tokens_capabilities = true;
   }
+
+  fn is_using_push_based_diagnostics(&self) -> bool {
+    self.force_push_based_diagnostics || !self.config.diagnostic_capable()
+  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -901,8 +913,6 @@ impl Inner {
     if let Some(parent_pid) = params.process_id {
       parent_process_checker::start(parent_pid)
     }
-
-    let capabilities = capabilities::server_capabilities(&params.capabilities);
 
     let version = format!(
       "{} ({}, {})",
@@ -974,15 +984,15 @@ impl Inner {
       }
       self.config.set_workspace_folders(workspace_folders);
       if let Some(options) = params.initialization_options {
-        self.config.set_workspace_settings(
-          WorkspaceSettings::from_initialization_options(options),
-          vec![],
-        );
+        let settings = WorkspaceSettings::from_initialization_options(options);
+        self.force_push_based_diagnostics =
+          settings.force_push_based_diagnostics;
+        self.config.set_workspace_settings(settings, vec![]);
       }
       self.config.set_client_capabilities(params.capabilities);
     }
 
-    if !self.config.diagnostic_capable() {
+    if self.is_using_push_based_diagnostics() {
       let mut diagnostics_server = DiagnosticsServer::new(
         self.client.clone(),
         self.performance.clone(),
@@ -997,6 +1007,13 @@ impl Inner {
 
     self.update_tracing();
     self.update_debug_flag();
+
+    let mut capabilities =
+      capabilities::server_capabilities(&self.config.client_capabilities);
+
+    if self.force_push_based_diagnostics {
+      capabilities.diagnostic_provider = None;
+    }
 
     if capabilities.semantic_tokens_provider.is_some() {
       self.registered_semantic_tokens_capabilities = true;
@@ -1119,16 +1136,16 @@ impl Inner {
             | MediaType::Dmts
             | MediaType::Dcts
             | MediaType::Json
+            | MediaType::Jsonc
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
             | MediaType::Css
             | MediaType::Html
+            | MediaType::Json5
             | MediaType::Sql
             | MediaType::Unknown => {
-              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
-                continue;
-              }
+              continue;
             }
           }
           dir_files.insert(path);
@@ -1207,6 +1224,13 @@ impl Inner {
       &self.config,
       &self.resolver,
     ));
+    // TODO(nayeemrmn): This represents a circular dependency between
+    // `LspCompilerOptionsResolver` and `LspResolver` because the former uses
+    // the node resolver to resolve `extends` in tsconfig. Break out the node
+    // resolver from `LspResolver`.
+    self
+      .resolver
+      .set_compiler_options_resolver(&self.compiler_options_resolver.inner);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1650,10 +1674,20 @@ impl Inner {
       .into_iter()
       .map(|e| (uri_to_url(&e.uri), e))
       .collect::<Vec<_>>();
-    if changes
-      .iter()
-      .any(|(s, _)| self.config.tree.is_watched_file(s))
-    {
+    if changes.iter().any(|(specifier, _)| {
+      let path = specifier.path();
+      !path.contains("/node_modules/")
+        && (path.ends_with("/deno.json")
+          || path.ends_with("/deno.jsonc")
+          || path.ends_with("/package.json")
+          || path.ends_with("/tsconfig.json"))
+        || path.ends_with("/node_modules/.package-lock.json")
+        || path.ends_with("/node_modules/.yarn-integrity.json")
+        || path.ends_with("/node_modules/.modules.yaml")
+        || path.ends_with("/node_modules/.deno/.setup-cache.bin")
+        || self.config.tree.is_watched_file(specifier)
+        || self.compiler_options_resolver.is_watched_file(specifier)
+    }) {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
       let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
@@ -1703,7 +1737,7 @@ impl Inner {
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
-      if self.config.diagnostic_capable()
+      if !self.is_using_push_based_diagnostics()
         && self.config.diagnostic_refresh_capable()
       {
         self.client.refresh_diagnostics();
@@ -1915,9 +1949,11 @@ impl Inner {
       .dependency_at_position(&params.text_document_position_params.position)
     {
       let dep_module = dep.get_code().and_then(|s| {
-        self
-          .document_modules
-          .inspect_module_for_specifier(s, module.scope.as_deref())
+        self.document_modules.module_for_specifier(
+          s,
+          module.scope.as_deref(),
+          Some(&module.compiler_options_key),
+        )
       });
       let dep_types_dependency = dep_module.as_ref().map(|m| {
         m.types_dependency
@@ -2243,12 +2279,12 @@ impl Inner {
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
+    let kinds = params.context.only.unwrap_or_default();
+
     // Refactor
-    let only = params
-      .context
-      .only
-      .as_ref()
-      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+    let only = kinds
+      .first()
+      .map(|v| v.as_str().to_owned())
       .unwrap_or_default();
     let refactor_infos = self
       .ts_server
@@ -2293,6 +2329,50 @@ impl Inner {
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
+
+    // Organize imports
+    if !self.config.client_provided_organize_imports_capable()
+      && (kinds.is_empty()
+        || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS))
+    {
+      let document_has_errors = params.context.diagnostics.iter().any(|d| {
+        // Assume diagnostics without a severity are errors
+        d.severity.is_none_or(|s| s == DiagnosticSeverity::ERROR)
+      });
+      let organize_imports_edit = self
+        .ts_server
+        .organize_imports(self.snapshot(), &module, document_has_errors, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get organize imports edit from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+
+      if !organize_imports_edit.is_empty() {
+        let changes_with_modules = organize_imports_edit
+          .into_iter()
+          .map(|c| (c, module.clone()))
+          .collect::<IndexMap<_, _>>();
+        all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+          title: "Organize imports".to_string(),
+          kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+          edit: file_text_changes_to_workspace_edit(
+            &changes_with_modules,
+            self,
+            token,
+          )?,
+          data: Some(json!({ "uri": params.text_document.uri})),
+          ..Default::default()
+        }));
+      }
+    }
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();
@@ -3958,17 +4038,23 @@ impl Inner {
           );
         })
         .unwrap_or_default();
-      items_with_scopes.extend(items.into_iter().map(|i| (i, scope)));
+      items_with_scopes.extend(
+        items
+          .into_iter()
+          .map(|i| (i, (scope, compiler_options_key))),
+      );
     }
     let symbol_information = items_with_scopes
       .into_iter()
-      .flat_map(|(item, scope)| {
+      .flat_map(|(item, (scope, compiler_options_key))| {
         if token.is_cancelled() {
           return Some(Err(LspError::request_cancelled()));
         }
-        Some(Ok(
-          item.to_symbol_information(scope.map(|s| s.as_ref()), self)?,
-        ))
+        Some(Ok(item.to_symbol_information(
+          scope.map(|s| s.as_ref()),
+          compiler_options_key,
+          self,
+        )?))
       })
       .collect::<Result<Vec<_>, _>>()?;
     let symbol_information = if symbol_information.is_empty() {
@@ -4709,6 +4795,7 @@ impl Inner {
     let mut cli_factory = CliFactory::from_flags(Arc::new(Flags {
       internal: InternalFlags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
+        lockfile_skip_write: true,
         ..Default::default()
       },
       ca_stores: workspace_settings.certificate_stores.clone(),
@@ -4761,12 +4848,18 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_cache(&mut self) {
+    self.refresh_config_tree().await;
+    self.update_cache();
+    self.refresh_resolver().await;
+    self.refresh_compiler_options_resolver();
+    self.refresh_linter_resolver();
+    self.refresh_documents_config();
     self.resolver.did_cache();
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
-    if self.config.diagnostic_capable()
+    if !self.is_using_push_based_diagnostics()
       && self.config.diagnostic_refresh_capable()
     {
       self.client.refresh_diagnostics();

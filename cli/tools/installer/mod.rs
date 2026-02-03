@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::env;
@@ -20,9 +20,13 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
+use deno_npm::NpmPackageId;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -33,9 +37,11 @@ pub use self::bin_name_resolver::BinNameResolver;
 use crate::args::AddFlags;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
 use crate::args::InstallFlagsLocal;
+use crate::args::InstallTopLevelFlags;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
@@ -46,7 +52,10 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::jsr::JsrFetchResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::sys::CliSys;
+use crate::util::display;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -72,7 +81,7 @@ pub struct InstallStats {
   pub downloaded_jsr: DashSet<String>,
   pub reused_jsr: DashSet<String>,
   pub resolved_npm: DashSet<String>,
-  pub downloaded_npm: Count,
+  pub downloaded_npm: DashSet<String>,
   pub intialized_npm: DashSet<String>,
   pub reused_npm: Count,
 }
@@ -98,7 +107,7 @@ impl std::fmt::Debug for InstallStats {
       )
       .field("resolved_npm", &self.resolved_npm.len())
       .field("resolved_jsr_count", &self.resolved_jsr.len())
-      .field("downloaded_npm", &self.downloaded_npm.get())
+      .field("downloaded_npm", &self.downloaded_npm.len())
       .field("downloaded_jsr_count", &self.downloaded_jsr.len())
       .field(
         "intialized_npm",
@@ -117,28 +126,48 @@ impl std::fmt::Debug for InstallStats {
 #[derive(Debug)]
 pub struct InstallReporter {
   stats: Arc<InstallStats>,
+
+  scripts_warnings: Arc<Mutex<Vec<LifecycleScriptsWarning>>>,
+
+  deprecation_messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl InstallReporter {
   pub fn new() -> Self {
     Self {
       stats: Arc::new(InstallStats::default()),
+      scripts_warnings: Arc::new(Mutex::new(Vec::new())),
+      deprecation_messages: Arc::new(Mutex::new(Vec::new())),
     }
+  }
+
+  pub fn take_scripts_warnings(&self) -> Vec<LifecycleScriptsWarning> {
+    std::mem::take(&mut *self.scripts_warnings.lock())
+  }
+
+  pub fn take_deprecation_message(&self) -> Vec<String> {
+    std::mem::take(&mut *self.deprecation_messages.lock())
   }
 }
 
 impl deno_npm_installer::InstallProgressReporter for InstallReporter {
-  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {
-    // log::info!("initializing: {}", nv);
-  }
+  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {}
 
   fn initialized(&self, nv: &deno_semver::package::PackageNv) {
-    // log::info!("initialized: {}", nv);
     self.stats.intialized_npm.insert(nv.to_string());
   }
 
-  fn blocking(&self, _message: &str) {
-    // log::info!("blocking: {}", message);
+  fn blocking(&self, _message: &str) {}
+
+  fn scripts_not_run_warning(
+    &self,
+    warning: deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning,
+  ) {
+    self.scripts_warnings.lock().push(warning);
+  }
+
+  fn deprecated_message(&self, message: String) {
+    self.deprecation_messages.lock().push(message);
   }
 }
 
@@ -173,18 +202,18 @@ impl deno_graph::source::Reporter for InstallReporter {
 impl deno_npm::resolution::Reporter for InstallReporter {
   fn on_resolved(
     &self,
-    _package_req: &deno_semver::package::PackageReq,
+    package_req: &deno_semver::package::PackageReq,
     _nv: &deno_semver::package::PackageNv,
   ) {
-    self.stats.resolved_npm.insert(_package_req.to_string());
+    self.stats.resolved_npm.insert(package_req.to_string());
   }
 }
 
 impl deno_npm_cache::TarballCacheReporter for InstallReporter {
   fn download_started(&self, _nv: &deno_semver::package::PackageNv) {}
 
-  fn downloaded(&self, _nv: &deno_semver::package::PackageNv) {
-    self.stats.downloaded_npm.inc();
+  fn downloaded(&self, nv: &deno_semver::package::PackageNv) {
+    self.stats.downloaded_npm.insert(nv.to_string());
   }
 
   fn reused_cache(&self, _nv: &deno_semver::package::PackageNv) {
@@ -372,9 +401,28 @@ pub async fn uninstall(
   // There might be some extra files to delete
   // Note: tsconfig.json is legacy. We renamed it to deno.json.
   // Remove cleaning it up after January 2024
+  // Use the base file path (without extension) to compute related files
+  let base_file = installation_dir.join(&uninstall_flags.name);
+
   for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    let file_path = file_path.with_extension(ext);
-    remove_file_if_exists(&file_path)?;
+    // remove the plain extension files (e.g., name.deno.json, name.lock.json)
+    let file_path_ext = base_file.with_extension(ext);
+    remove_file_if_exists(&file_path_ext)?;
+
+    // also remove the hidden per-command copies created at install time
+    // (e.g., .name.deno.json)
+    let hidden_file = get_hidden_file_with_ext(&base_file, ext);
+    remove_file_if_exists(&hidden_file)?;
+
+    // On Windows, installs use a shim with a .cmd extension, which means the
+    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+    // those as well to be thorough.
+    #[cfg(windows)]
+    {
+      let base_with_cmd = base_file.with_extension("cmd");
+      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+      remove_file_if_exists(&hidden_cmd_file)?;
+    }
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
@@ -394,13 +442,14 @@ fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
 
 pub(crate) async fn install_from_entrypoints(
   flags: Arc<Flags>,
-  entrypoints: &[String],
+  entrypoints_flags: InstallEntrypointsFlags,
 ) -> Result<(), AnyError> {
+  let started = std::time::Instant::now();
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
   let specifiers = main_graph_container.collect_specifiers(
-    entrypoints,
+    &entrypoints_flags.entrypoints,
     CollectSpecifiersOptions {
       include_ignored_specified: true,
     },
@@ -416,7 +465,16 @@ pub(crate) async fn install_from_entrypoints(
     .await?;
   emitter
     .cache_module_emits(&main_graph_container.graph())
-    .await
+    .await?;
+
+  print_install_report(
+    &factory.sys(),
+    started.elapsed(),
+    &factory.install_reporter()?.unwrap().clone(),
+    factory.workspace_resolver().await?,
+    factory.npm_resolver().await?,
+  );
+  Ok(())
 }
 
 async fn install_local(
@@ -428,40 +486,31 @@ async fn install_local(
       super::pm::add(flags, add_flags, super::pm::AddCommandName::Install).await
     }
     InstallFlagsLocal::Entrypoints(entrypoints) => {
-      install_from_entrypoints(flags, &entrypoints).await
+      install_from_entrypoints(flags, entrypoints).await
     }
-    InstallFlagsLocal::TopLevel => {
-      let factory = CliFactory::from_flags(flags);
-      install_top_level(&factory).await
+    InstallFlagsLocal::TopLevel(top_level_flags) => {
+      install_top_level(flags, top_level_flags).await
     }
   }
 }
 
-async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
-  // surface any errors in the package.json
-  factory
-    .npm_installer()
-    .await?
-    .ensure_no_pkg_json_dep_errors()?;
-  let npm_installer = factory.npm_installer().await?;
-  npm_installer.ensure_no_pkg_json_dep_errors()?;
+#[derive(Debug, Default)]
+struct CategorizedInstalledDeps {
+  normal_deps: Vec<NpmPackageId>,
+  dev_deps: Vec<NpmPackageId>,
+}
 
-  // set up the custom progress bar
-  let install_reporter = factory.install_reporter()?.unwrap().clone();
-
-  // the actual work
-  crate::tools::pm::cache_top_level_deps(factory, None).await?;
-
+fn categorize_installed_npm_deps(
+  npm_resolver: &CliNpmResolver,
+  workspace: &WorkspaceResolver<CliSys>,
+  install_reporter: &InstallReporter,
+) -> CategorizedInstalledDeps {
+  let Some(managed_resolver) = npm_resolver.as_managed() else {
+    return CategorizedInstalledDeps::default();
+  };
   // compute the summary info
-  let snapshot = factory
-    .npm_resolver()
-    .await?
-    .as_managed()
-    .unwrap()
-    .resolution()
-    .snapshot();
+  let snapshot = managed_resolver.resolution().snapshot();
 
-  let workspace = factory.workspace_resolver().await?;
   let top_level_packages = snapshot.top_level_packages();
 
   // all this nonsense is to categorize into normal and dev deps
@@ -487,9 +536,6 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
 
@@ -498,7 +544,10 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+        deno_package_json::PackageJsonDepValue::File(_) => {
+          // TODO(nathanwhit)
+          // TODO(bartlomieju)
+        }
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
@@ -507,9 +556,6 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
   }
@@ -517,12 +563,13 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   let mut installed_normal_deps = Vec::new();
   let mut installed_dev_deps = Vec::new();
 
+  let npm_installed_set = if npm_resolver.root_node_modules_path().is_some() {
+    &install_reporter.stats.intialized_npm
+  } else {
+    &install_reporter.stats.downloaded_npm
+  };
   for pkg in top_level_packages {
-    if !install_reporter
-      .stats
-      .intialized_npm
-      .contains(&pkg.nv.to_string())
-    {
+    if !npm_installed_set.contains(&pkg.nv.to_string()) {
       continue;
     }
     if normal_deps.contains(&pkg.nv.name.to_string()) {
@@ -537,41 +584,98 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
   installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
 
+  CategorizedInstalledDeps {
+    normal_deps: installed_normal_deps.into_iter().cloned().collect(),
+    dev_deps: installed_dev_deps.into_iter().cloned().collect(),
+  }
+}
+
+pub fn print_install_report(
+  sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  elapsed: std::time::Duration,
+  install_reporter: &InstallReporter,
+  workspace: &WorkspaceResolver<CliSys>,
+  npm_resolver: &CliNpmResolver,
+) {
+  fn human_elapsed(elapsed: u128) -> String {
+    display::human_elapsed_with_ms_limit(elapsed, 3_000)
+  }
+
   let rep = install_reporter;
 
   if !rep.stats.intialized_npm.is_empty()
     || !rep.stats.downloaded_jsr.is_empty()
   {
+    let total_installed =
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
-      "Packages: {}",
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    );
-    log::info!(
-      "{}",
-      deno_terminal::colors::green("+".repeat(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ))
+      "{} {} {} {} {}",
+      deno_terminal::colors::gray("Installed"),
+      total_installed,
+      deno_terminal::colors::gray(format!(
+        "package{}",
+        if total_installed > 1 { "s" } else { "" },
+      )),
+      deno_terminal::colors::gray("in"),
+      human_elapsed(elapsed.as_millis())
     );
 
+    let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
     log::info!(
-      "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-      deno_terminal::colors::green(
-        rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ),
+      "{} {} {}",
+      deno_terminal::colors::gray("Reused"),
+      total_reused,
+      deno_terminal::colors::gray(format!(
+        "package{} from cache",
+        if total_reused == 1 { "" } else { "s" },
+      )),
     );
-    log::info!("");
+    if total_reused > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::yellow_bold("+".repeat(total_reused))
+      );
+    }
+
+    let jsr_downloaded = rep.stats.downloaded_jsr.len();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      jsr_downloaded,
+      deno_terminal::colors::gray(format!(
+        "package{} from JSR",
+        if jsr_downloaded == 1 { "" } else { "s" },
+      )),
+    );
+    if jsr_downloaded > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::green("+".repeat(jsr_downloaded))
+      );
+    }
+
+    let npm_download = rep.stats.downloaded_npm.len();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      npm_download,
+      deno_terminal::colors::gray(format!(
+        "package{} from npm",
+        if npm_download == 1 { "" } else { "s" },
+      )),
+    );
+    if npm_download > 0 {
+      log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
+    }
   }
 
+  let CategorizedInstalledDeps {
+    normal_deps: installed_normal_deps,
+    dev_deps: installed_dev_deps,
+  } = categorize_installed_npm_deps(npm_resolver, workspace, install_reporter);
+
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
+    log::info!("");
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
       .stats
@@ -614,9 +718,55 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
     }
   }
 
+  let warnings = install_reporter.take_scripts_warnings();
+  for warning in warnings {
+    log::warn!("{}", warning.into_message(sys));
+  }
+
+  let deprecation_messages = install_reporter.take_deprecation_message();
+  for message in deprecation_messages {
+    log::warn!("{}", message);
+  }
+}
+
+async fn install_top_level(
+  flags: Arc<Flags>,
+  top_level_flags: InstallTopLevelFlags,
+) -> Result<(), AnyError> {
+  let start_instant = std::time::Instant::now();
+  let factory = CliFactory::from_flags(flags);
+  // surface any errors in the package.json
+  factory
+    .npm_installer()
+    .await?
+    .ensure_no_pkg_json_dep_errors()?;
+  let npm_installer = factory.npm_installer().await?;
+  npm_installer.ensure_no_pkg_json_dep_errors()?;
+
+  // the actual work
+  crate::tools::pm::cache_top_level_deps(
+    &factory,
+    None,
+    crate::tools::pm::CacheTopLevelDepsOptions {
+      lockfile_only: top_level_flags.lockfile_only,
+    },
+  )
+  .await?;
+
   if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
+
+  let install_reporter = factory.install_reporter()?.unwrap().clone();
+  let workspace = factory.workspace_resolver().await?;
+  let npm_resolver = factory.npm_resolver().await?;
+  print_install_report(
+    &factory.sys(),
+    start_instant.elapsed(),
+    &install_reporter,
+    workspace,
+    npm_resolver,
+  );
 
   Ok(())
 }
@@ -688,42 +838,15 @@ async fn install_global(
   let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
     deps_file_fetcher.clone(),
     npmrc.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
-
-  let entry_text = install_flags_global.module_url.as_str();
-  if !cli_options.initial_cwd().join(entry_text).exists() {
-    // check for package requirement missing prefix
-    if let Ok(Err(package_req)) =
-      super::pm::AddRmPackageReq::parse(entry_text, None)
-    {
-      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
-        bail!(
-          "{entry_text} is missing a prefix. Did you mean `{}`?",
-          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-        );
-      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
-        bail!(
-          "{entry_text} is missing a prefix. Did you mean `{}`?",
-          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-        );
-      }
-    }
-  }
-
-  factory
-    .main_module_graph_container()
-    .await?
-    .load_and_type_check_files(
-      std::slice::from_ref(&install_flags_global.module_url),
-      CollectSpecifiersOptions {
-        include_ignored_specified: true,
-      },
-    )
-    .await?;
 
   if matches!(flags.config_flag, ConfigFlag::Discover)
     && cli_options.workspace().deno_jsons().next().is_some()
@@ -734,27 +857,95 @@ async fn install_global(
     );
   }
 
-  let bin_name_resolver = factory.bin_name_resolver()?;
+  for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
+    let entry_text = module_url;
+    if !cli_options.initial_cwd().join(entry_text).exists() {
+      // provide a helpful error message for users migrating from Deno < 3.0
+      if i == 1
+        && install_flags_global.args.is_empty()
+        && Url::parse(entry_text).is_err()
+      {
+        bail!(
+          concat!(
+            "{} is missing a prefix. Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
+            "Did you mean `deno install -g {} -- {}`? Or maybe provide a `jsr:` or `npm:` prefix?",
+          ),
+          entry_text,
+          &install_flags_global.module_urls[0],
+          install_flags_global.module_urls[1..].join(" "),
+        )
+      }
+      // check for package requirement missing prefix
+      if let Ok(Err(package_req)) =
+        super::pm::AddRmPackageReq::parse(entry_text, None)
+      {
+        if package_req.name.starts_with("@")
+          && jsr_resolver
+            .req_to_nv(&package_req)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
+        {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+          );
+        } else if npm_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          bail!(
+            "{entry_text} is missing a prefix. Did you mean `{}`?",
+            crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+          );
+        }
+      }
+    }
 
-  // create the install shim
-  create_install_shim(
-    &bin_name_resolver,
-    cli_options.initial_cwd(),
-    &flags,
-    install_flags_global,
-  )
-  .await
+    factory
+      .main_module_graph_container()
+      .await?
+      .load_and_type_check_files(
+        std::slice::from_ref(module_url),
+        CollectSpecifiersOptions {
+          include_ignored_specified: true,
+        },
+      )
+      .await?;
+
+    let bin_name_resolver = factory.bin_name_resolver()?;
+    // create the install shim
+    create_install_shim(
+      &bin_name_resolver,
+      cli_options.initial_cwd(),
+      &flags,
+      &install_flags_global,
+      module_url,
+    )
+    .await?;
+  }
+  Ok(())
 }
 
 async fn create_install_shim(
   bin_name_resolver: &BinNameResolver<'_>,
   cwd: &Path,
   flags: &Flags,
-  install_flags_global: InstallFlagsGlobal,
+  install_flags_global: &InstallFlagsGlobal,
+  module_url: &str,
 ) -> Result<(), AnyError> {
-  let shim_data =
-    resolve_shim_data(bin_name_resolver, cwd, flags, &install_flags_global)
-      .await?;
+  let shim_data = resolve_shim_data(
+    bin_name_resolver,
+    cwd,
+    flags,
+    install_flags_global,
+    module_url,
+  )
+  .await?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -809,13 +1000,13 @@ async fn resolve_shim_data(
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
+  module_url: &str,
 ) -> Result<ShimData, AnyError> {
   let installation_dir =
     get_installer_bin_dir(cwd, install_flags_global.root.as_deref())?;
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags_global.module_url, cwd)?;
-
+  let module_url = resolve_url_or_path(module_url, cwd)?;
   let name = if install_flags_global.name.is_some() {
     install_flags_global.name.clone()
   } else {
@@ -1017,6 +1208,7 @@ mod tests {
   use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
+  use deno_npm::resolution::NpmVersionResolver;
   use test_util::TempDir;
   use test_util::testdata_path;
 
@@ -1034,9 +1226,17 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
-    super::create_install_shim(&resolver, &cwd, flags, install_flags_global)
-      .await
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+    super::create_install_shim(
+      &resolver,
+      &cwd,
+      flags,
+      &install_flags_global,
+      &install_flags_global.module_urls[0],
+    )
+    .await
   }
 
   async fn resolve_shim_data(
@@ -1046,8 +1246,17 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
-    super::resolve_shim_data(&resolver, &cwd, flags, install_flags_global).await
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+    super::resolve_shim_data(
+      &resolver,
+      &cwd,
+      flags,
+      install_flags_global,
+      &install_flags_global.module_urls[0],
+    )
+    .await
   }
 
   #[tokio::test]
@@ -1059,7 +1268,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1095,7 +1304,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1117,7 +1326,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Default::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1145,7 +1354,7 @@ mod tests {
         ..Default::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1173,7 +1382,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/subdir/main.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/subdir/main.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1196,8 +1405,10 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
-          .to_string(),
+        module_urls: vec![
+          "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
+            .to_string(),
+        ],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1223,7 +1434,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1254,7 +1465,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1290,7 +1501,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1322,7 +1533,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1355,7 +1566,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "npm:cowsay".to_string(),
+        module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
         root: Some(temp_dir.to_string_lossy().into_owned()),
@@ -1392,7 +1603,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_url: "npm:cowsay".to_string(),
+        module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
@@ -1427,7 +1638,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: local_module_str.to_string(),
+        module_urls: vec![local_module_str.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1456,7 +1667,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1476,7 +1687,7 @@ mod tests {
     let no_force_result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()], // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1499,7 +1710,7 @@ mod tests {
     let force_result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()], // using a different URL
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1529,7 +1740,7 @@ mod tests {
         ..Flags::default()
       },
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1558,7 +1769,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1598,7 +1809,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: local_module_str.to_string(),
+        module_urls: vec![local_module_str.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1643,7 +1854,7 @@ mod tests {
         ..Flags::default()
       },
       InstallFlagsGlobal {
-        module_url: "http://localhost:4545/cat.ts".to_string(),
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1685,7 +1896,7 @@ mod tests {
     let result = create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_url: file_module_string.to_string(),
+        module_urls: vec![file_module_string.to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1724,6 +1935,7 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       File::create(&file_path).unwrap();
     }
+    let shim_path = file_path.clone();
 
     // create extra files
     {
@@ -1738,6 +1950,18 @@ mod tests {
     {
       let file_path = file_path.with_extension("lock.json");
       File::create(file_path).unwrap();
+    }
+
+    // create hidden per-command copies as produced by install
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
+      File::create(hidden_file).unwrap();
+    }
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
+      File::create(hidden_file).unwrap();
     }
 
     uninstall(
@@ -1756,6 +1980,14 @@ mod tests {
     assert!(!file_path.with_extension("tsconfig.json").exists());
     assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
+
+    // hidden per-command files should also be removed
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+    );
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+    );
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -16,13 +16,13 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
-use crate::NetPermissions;
 use crate::io::UnixStreamResource;
 use crate::ops::NetError;
 use crate::raw::NetworkListenerResource;
@@ -47,6 +47,34 @@ impl Resource for UnixDatagramResource {
   }
 }
 
+/// A wrapper around `UnixListener` that holds the socket path and removes it on drop.
+pub struct UnixListenerWithPath {
+  listener: UnixListener,
+  path: PathBuf,
+}
+
+impl UnixListenerWithPath {
+  pub fn new(listener: UnixListener, path: PathBuf) -> Self {
+    Self { listener, path }
+  }
+
+  pub async fn accept(
+    &self,
+  ) -> std::io::Result<(UnixStream, tokio::net::unix::SocketAddr)> {
+    self.listener.accept().await
+  }
+
+  pub fn local_addr(&self) -> std::io::Result<tokio::net::unix::SocketAddr> {
+    self.listener.local_addr()
+  }
+}
+
+impl Drop for UnixListenerWithPath {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_file(&self.path);
+  }
+}
+
 #[derive(Serialize)]
 pub struct UnixAddr {
   pub path: Option<String>,
@@ -57,8 +85,7 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -66,7 +93,7 @@ pub async fn op_net_accept_unix(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<UnixListener>>(rid)
+    .get::<NetworkListenerResource<UnixListenerWithPath>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -89,23 +116,19 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_net_connect_unix<NP>(
+#[op2(stack_trace)]
+pub async fn op_net_connect_unix(
   state: Rc<RefCell<OpState>>,
   #[string] address_path: String,
-) -> Result<(ResourceId, Option<String>, Option<String>), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, Option<String>, Option<String>), NetError> {
   let address_path = {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<NP>()
+      .borrow_mut::<PermissionsContainer>()
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
         OpenAccessKind::ReadWriteNoFollow,
-        "Deno.connect()",
+        Some("Deno.connect()"),
       )
       .map_err(NetError::Permission)?
   };
@@ -121,7 +144,7 @@ where
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -143,24 +166,21 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
-pub async fn op_net_send_unixpacket<NP>(
+pub async fn op_net_send_unixpacket(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] address_path: String,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<usize, NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<usize, NetError> {
   let address_path = {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>()
+    s.borrow_mut::<PermissionsContainer>()
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
         OpenAccessKind::WriteNoFollow,
-        "Deno.DatagramConn.send()",
+        Some("Deno.DatagramConn.send()"),
       )
       .map_err(NetError::Permission)?
   };
@@ -179,45 +199,40 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_net_listen_unix<NP>(
+pub fn op_net_listen_unix(
   state: &mut OpState,
   #[string] address_path: &str,
   #[string] api_name: &str,
-) -> Result<(ResourceId, Option<String>), NetError>
-where
-  NP: NetPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<NP>();
+) -> Result<(ResourceId, Option<String>), NetError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
   let api_call_expr = format!("{}()", api_name);
   let address_path = permissions
     .check_open(
       Cow::Borrowed(Path::new(address_path)),
       OpenAccessKind::ReadWriteNoFollow,
-      &api_call_expr,
+      Some(&api_call_expr),
     )
     .map_err(NetError::Permission)?;
-  let listener = UnixListener::bind(address_path)?;
+  let listener = UnixListener::bind(&address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
-  let listener_resource = NetworkListenerResource::new(listener);
+  let listener_with_path =
+    UnixListenerWithPath::new(listener, address_path.to_path_buf());
+  let listener_resource = NetworkListenerResource::new(listener_with_path);
   let rid = state.resource_table.add(listener_resource);
   Ok((rid, pathname))
 }
 
-pub fn net_listen_unixpacket<NP>(
+pub fn net_listen_unixpacket(
   state: &mut OpState,
   address_path: &str,
-) -> Result<(ResourceId, Option<String>), NetError>
-where
-  NP: NetPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<NP>();
+) -> Result<(ResourceId, Option<String>), NetError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
   let address_path = permissions
     .check_open(
       Cow::Borrowed(Path::new(address_path)),
       OpenAccessKind::ReadWriteNoFollow,
-      "Deno.listenDatagram()",
+      Some("Deno.listenDatagram()"),
     )
     .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
@@ -232,30 +247,69 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_net_listen_unixpacket<NP>(
+pub fn op_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<(ResourceId, Option<String>), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, Option<String>), NetError> {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_unixpacket::<NP>(state, path)
+  net_listen_unixpacket(state, path)
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_node_unstable_net_listen_unixpacket<NP>(
+pub fn op_node_unstable_net_listen_unixpacket(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<(ResourceId, Option<String>), NetError>
-where
-  NP: NetPermissions + 'static,
-{
-  net_listen_unixpacket::<NP>(state, path)
+) -> Result<(ResourceId, Option<String>), NetError> {
+  net_listen_unixpacket(state, path)
 }
 
 pub fn pathstring(pathname: &Path) -> Result<String, NetError> {
   into_string(pathname.into())
+}
+
+/// Check if fd is a socket using fstat
+fn is_socket_fd(fd: i32) -> bool {
+  // SAFETY: It is safe to zero-initialize a libc::stat struct
+  let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };
+  // SAFETY: fd is a valid file descriptor, stat_buf is a valid pointer
+  let result = unsafe { libc::fstat(fd, &mut stat_buf) };
+  if result != 0 {
+    return false;
+  }
+  // S_IFSOCK = 0o140000 on most Unix systems
+  (stat_buf.st_mode & libc::S_IFMT) == libc::S_IFSOCK
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_net_unix_stream_from_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<ResourceId, NetError> {
+  use std::os::unix::io::FromRawFd;
+
+  // Validate fd is non-negative
+  if fd < 0 {
+    return Err(NetError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // Check if fd is a socket - if not, we can't use UnixStream
+  if !is_socket_fd(fd) {
+    return Err(NetError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "File descriptor is not a socket",
+    )));
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the created UnixStream from this point on.
+  let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
+  std_stream.set_nonblocking(true)?;
+  let unix_stream = UnixStream::from_std(std_stream)?;
+  let resource = UnixStreamResource::new(unix_stream.into_split());
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -87,7 +87,7 @@ impl NodeAnalysisCache for NullNodeAnalysisCache {
 
 #[sys_traits::auto_impl]
 pub trait DenoCjsCodeAnalyzerSys:
-  sys_traits::FsRead + MaybeSend + MaybeSync + 'static
+  sys_traits::FsRead + sys_traits::FsMetadata + MaybeSend + MaybeSync + 'static
 {
 }
 

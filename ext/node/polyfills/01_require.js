@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -98,6 +98,7 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
+import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -201,6 +202,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
+    "internal/assert/myers_diff": internalAssertMyersDiff,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -306,8 +308,6 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 
 function stat(filename) {
-  // TODO: required only on windows
-  // filename = path.toNamespacedPath(filename);
   if (statCache !== null) {
     const result = statCache.get(filename);
     if (result !== undefined) {
@@ -1129,7 +1129,7 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    buffer.Buffer,
+    buffer.Buffer.from,
     reportError,
   );
 };

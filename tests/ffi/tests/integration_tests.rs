@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
@@ -44,6 +44,7 @@ fn basic() {
     .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
+    .env("DENO_UNSTABLE_FFI_TRACE_TURBO", "1")
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();

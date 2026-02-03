@@ -1,0 +1,6 @@
+// Regression test for https://github.com/denoland/deno/issues/30216.
+{
+  "args": "run --quiet -A main.tsx",
+  "output": "main.out",
+  "exitCode": 1
+}

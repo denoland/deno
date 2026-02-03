@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -608,19 +608,7 @@ function processCallback() {
     handle.availInBefore = availInAfter;
 
     if (!streamBufferIsFull) {
-      this.write(
-        handle.flushFlag,
-        this.buffer, // in
-        handle.inOff, // in_off
-        handle.availInBefore, // in_len
-        self._outBuffer, // out
-        self._outOffset, // out_off
-        self._chunkSize,
-      ); // out_len
-    } else {
-      const oldRead = self._read;
-      self._read = (n) => {
-        self._read = oldRead;
+      process.nextTick(() => {
         this.write(
           handle.flushFlag,
           this.buffer, // in
@@ -630,6 +618,22 @@ function processCallback() {
           self._outOffset, // out_off
           self._chunkSize,
         ); // out_len
+      });
+    } else {
+      const oldRead = self._read;
+      self._read = (n) => {
+        self._read = oldRead;
+        process.nextTick(() => {
+          this.write(
+            handle.flushFlag,
+            this.buffer, // in
+            handle.inOff, // in_off
+            handle.availInBefore, // in_len
+            self._outBuffer, // out
+            self._outOffset, // out_off
+            self._chunkSize,
+          ); // out_len
+        });
         self._read(n);
       };
     }

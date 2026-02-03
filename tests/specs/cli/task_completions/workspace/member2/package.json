@@ -1,0 +1,7 @@
+{
+  "name": "@testing/member2",
+  "scripts": {
+    "member2-task1": "echo member2-task1",
+    "member2-task2": "echo member2-task2"
+  }
+}

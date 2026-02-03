@@ -1,7 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util::TestContext;
 use test_util::TestContextBuilder;
+use test_util::test;
 
 // This test only runs on linux, because it hardcodes the XDG_CACHE_HOME env var
 // which is only used on linux.

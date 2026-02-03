@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -194,6 +194,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
+    self.write_output_end();
     if !self.parallel {
       self.force_report_wait(description);
     }

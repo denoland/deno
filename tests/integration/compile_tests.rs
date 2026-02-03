@@ -1,6 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::eprintln;
+use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_not_contains;
@@ -292,7 +294,7 @@ fn standalone_runtime_flags() {
     .split_output()
     .run()
     .assert_exit_code(1)
-    .assert_stdout_matches_text("0.1472050634010581\n")
+    .assert_stdout_matches_text("0.34158532233056826\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     );
@@ -763,7 +765,9 @@ testing[WILDCARD]this
     .args("compile --output binary main.ts")
     .run()
     .assert_exit_code(0)
-    .assert_matches_text("Check file:///[WILDLINE]/main.ts\nCompile file:///[WILDLINE]/main.ts to binary[WILDLINE]\n");
+    .assert_matches_text(
+      "Check main.ts\nCompile main.ts to binary[WILDLINE]\n",
+    );
 
   context
     .new_command()
@@ -1012,8 +1016,8 @@ console.log(getValue());"#,
     r#"Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
-Check file:///[WILDCARD]/main.ts
-Compile file:///[WILDCARD]/main.ts to [WILDCARD]
+Check main.ts
+Compile main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])

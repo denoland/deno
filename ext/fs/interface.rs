@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use core::str;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -13,19 +14,24 @@ use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 pub struct OpenOptions {
+  #[from_v8(default)]
   pub read: bool,
+  #[from_v8(default)]
   pub write: bool,
+  #[from_v8(default)]
   pub create: bool,
+  #[from_v8(default)]
   pub truncate: bool,
+  #[from_v8(default)]
   pub append: bool,
+  #[from_v8(default)]
   pub create_new: bool,
+  #[from_v8(default)]
   pub custom_flags: Option<i32>,
+  #[from_v8(default)]
   pub mode: Option<u32>,
 }
 
@@ -62,6 +68,58 @@ impl OpenOptions {
   }
 }
 
+impl From<i32> for OpenOptions {
+  fn from(flags: i32) -> Self {
+    let mut options = OpenOptions {
+      ..Default::default()
+    };
+    let mut flags = flags;
+
+    if (flags & libc::O_APPEND) == libc::O_APPEND {
+      options.append = true;
+      flags &= !libc::O_APPEND;
+    }
+    if (flags & libc::O_CREAT) == libc::O_CREAT {
+      options.create = true;
+      flags &= !libc::O_CREAT;
+    }
+    if (flags & libc::O_EXCL) == libc::O_EXCL {
+      options.create_new = true;
+      options.write = true;
+      flags &= !libc::O_EXCL;
+    }
+    if (flags & libc::O_RDWR) == libc::O_RDWR {
+      options.read = true;
+      options.write = true;
+      flags &= !libc::O_RDWR;
+    }
+    if (flags & libc::O_TRUNC) == libc::O_TRUNC {
+      options.truncate = true;
+      flags &= !libc::O_TRUNC;
+    }
+    if (flags & libc::O_WRONLY) == libc::O_WRONLY {
+      options.write = true;
+      flags &= !libc::O_WRONLY;
+    }
+
+    if flags != 0 {
+      options.custom_flags = Some(flags);
+    }
+
+    if !options.append
+      && !options.create
+      && !options.create_new
+      && !options.read
+      && !options.truncate
+      && !options.write
+    {
+      options.read = true;
+    }
+
+    Self { ..options }
+  }
+}
+
 #[derive(Deserialize)]
 pub enum FsFileType {
   #[serde(rename = "file")]
@@ -73,8 +131,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, deno_core::ToV8)]
 pub struct FsDirEntry {
   pub name: String,
   pub is_file: bool,
@@ -293,7 +350,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let file = self.open_async(path, options).await?;
     if let Some(mode) = options.mode {
@@ -303,8 +360,11 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     Ok(())
   }
 
-  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
-    let options = OpenOptions::read();
+  fn read_file_sync(
+    &self,
+    path: &CheckedPath,
+    options: OpenOptions,
+  ) -> FsResult<Cow<'static, [u8]>> {
     let file = self.open_sync(path, options)?;
     let buf = file.read_all_sync()?;
     Ok(buf)
@@ -312,8 +372,8 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   async fn read_file_async<'a>(
     &'a self,
     path: CheckedPathBuf,
+    options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
-    let options = OpenOptions::read();
     let file = self.open_async(path, options).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
@@ -330,25 +390,21 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
       .unwrap_or(false)
   }
 
-  fn exists_sync(&self, path: &CheckedPath) -> bool {
-    self.stat_sync(path).is_ok()
-  }
-  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    Ok(self.stat_async(path).await.is_ok())
-  }
+  fn exists_sync(&self, path: &CheckedPath) -> bool;
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool>;
 
   fn read_text_file_lossy_sync(
     &self,
     path: &CheckedPath,
   ) -> FsResult<Cow<'static, str>> {
-    let buf = self.read_file_sync(path)?;
+    let buf = self.read_file_sync(path, OpenOptions::read())?;
     Ok(string_from_cow_utf8_lossy(buf))
   }
   async fn read_text_file_lossy_async<'a>(
     &'a self,
     path: CheckedPathBuf,
   ) -> FsResult<Cow<'static, str>> {
-    let buf = self.read_file_async(path).await?;
+    let buf = self.read_file_async(path, OpenOptions::read()).await?;
     Ok(string_from_cow_utf8_lossy(buf))
   }
 }

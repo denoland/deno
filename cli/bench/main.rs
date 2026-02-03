@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
@@ -118,31 +118,33 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
-  (
-    "check",
-    &[
-      "check",
-      "--reload",
-      "--unstable",
-      "--config",
-      "tests/config/deno.json",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "no_check",
-    &[
-      "cache",
-      "--reload",
-      "--no-check",
-      "--unstable",
-      "--config",
-      "tests/config/deno.json",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
+  // TODO(bartlomieju): temporarily disabled, because we can't upgrade `tests/util/std` submodule
+  // due to needing it to be published.
+  // (
+  //   "check",
+  //   &[
+  //     "check",
+  //     "--reload",
+  //     "--unstable",
+  //     "--config",
+  //     "tests/config/deno.json",
+  //     "tests/util/std/http/file_server_test.ts",
+  //   ],
+  //   None,
+  // ),
+  // (
+  //   "no_check",
+  //   &[
+  //     "cache",
+  //     "--reload",
+  //     "--no-check",
+  //     "--unstable",
+  //     "--config",
+  //     "tests/config/deno.json",
+  //     "tests/util/std/http/file_server_test.ts",
+  //   ],
+  //   None,
+  // ),
 ];
 
 const RESULT_KEYS: &[&str] =

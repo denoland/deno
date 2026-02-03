@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -27,6 +27,7 @@ deno_core::extension!(deno_test,
     op_restore_test_permissions,
     op_register_test,
     op_register_test_step,
+    op_register_test_hook,
     op_test_get_origin,
     op_test_event_step_wait,
     op_test_event_step_result_ok,
@@ -94,7 +95,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_test(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
   #[string] name: String,
   ignore: bool,
   only: bool,
@@ -127,9 +128,21 @@ fn op_register_test(
       column_number,
     },
   };
-  let container = state.borrow_mut::<TestContainer>();
-  container.register(description, function);
+  state
+    .borrow_mut::<TestContainer>()
+    .register(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
+}
+
+#[op2]
+fn op_register_test_hook(
+  state: &mut OpState,
+  #[string] hook_type: String,
+  #[scoped] function: v8::Global<v8::Function>,
+) -> Result<(), JsErrorBox> {
+  let container = state.borrow_mut::<TestContainer>();
+  container.register_hook(hook_type, function);
   Ok(())
 }
 

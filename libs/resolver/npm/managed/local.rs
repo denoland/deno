@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! Code for local node_modules resolution.
 
@@ -10,6 +10,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::url_from_directory_path;
+use deno_semver::Version;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
@@ -20,6 +21,7 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
+use super::common::join_package_name_to_path;
 use super::resolution::NpmResolutionCellRc;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
@@ -168,17 +170,15 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         .into(),
       );
     };
-    let package_root_path = self.resolve_package_root(&local_path);
-    let mut current_folder = package_root_path.as_path();
-    while let Some(parent_folder) = current_folder.parent() {
-      current_folder = parent_folder;
+    // go from the current path down because it might have bundled dependencies
+    for current_folder in local_path.ancestors().skip(1) {
       let node_modules_folder = if current_folder.ends_with("node_modules") {
         Cow::Borrowed(current_folder)
       } else {
         Cow::Owned(current_folder.join("node_modules"))
       };
 
-      let sub_dir = join_package_name(&node_modules_folder, name);
+      let sub_dir = join_package_name_to_path(&node_modules_folder, name);
       if self.sys.fs_is_dir_no_err(&sub_dir) {
         return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(|err| {
           PackageFolderResolveIoError {
@@ -203,13 +203,27 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
       .into(),
     )
   }
-}
 
-fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
-  let mut path = path.to_path_buf();
-  // ensure backslashes are used on windows
-  for part in package_name.split('/') {
-    path = path.join(part);
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    if let Some(referrer) = maybe_referrer
+      && let Ok(path) =
+        self.resolve_package_folder_from_package(types_package_name, referrer)
+    {
+      Some(path)
+    } else {
+      // otherwise, try to find one in the snapshot
+      let snapshot = self.resolution.snapshot();
+      let pkg_id = super::common::find_definitely_typed_package_from_snapshot(
+        types_package_name,
+        maybe_package_version,
+        &snapshot,
+      )?;
+      self.maybe_package_folder(pkg_id)
+    }
   }
-  path
 }

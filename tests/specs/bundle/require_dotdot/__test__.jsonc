@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle -o out.js ./repro/foo.cjs",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A out.js",
+      "output": "hello from index\n"
+    }
+  ]
+}

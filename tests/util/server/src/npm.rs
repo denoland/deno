@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::fs;
@@ -18,10 +18,7 @@ use crate::PathRef;
 use crate::root_path;
 use crate::tests_path;
 
-pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
-pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
-pub const DENOTEST3_SCOPE_NAME: &str = "@denotest3";
-pub const ESBUILD_VERSION: &str = "0.25.5";
+pub static ESBUILD_VERSION: &str = "0.25.5";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -67,6 +64,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
       ),
       "npm-private3",
+    )
+  });
+
+pub static PUBLIC_TEST_NPM_JSR_REGISTRY: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Public,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PUBLIC_NPM_JSR_REGISTRY_PORT
+      ),
+      "npm-jsr",
     )
   });
 
@@ -155,57 +164,28 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
+    let scope_names = [
+      "@denotest",
+      "@denotest2",
+      "@denotest3",
+      "@jsr",
+      "@esbuild",
+      "@types",
+    ];
+    for scope_name in scope_names {
+      let prefix1 = format!("/{}/", scope_name);
+      let prefix2 = format!("/{}%2f", scope_name);
 
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
+      let maybe_package_name_with_path = uri_path
+        .strip_prefix(&prefix1)
+        .or_else(|| uri_path.strip_prefix(&prefix2));
 
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", DENOTEST2_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST2_SCOPE_NAME);
-
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", DENOTEST3_SCOPE_NAME);
-    let prefix2 = format!("/{}%2f", DENOTEST3_SCOPE_NAME);
-
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", "@types");
-    let prefix2 = format!("/{}%2f", "@types");
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-    if let Some(package_name_with_path) = maybe_package_name_with_path
-      && package_name_with_path.starts_with("denotest")
-    {
-      return Some(("@types", package_name_with_path));
-    }
-
-    let prefix1 = format!("/{}/", "@esbuild");
-    let prefix2 = format!("/{}%2f", "@esbuild");
-    let maybe_package_name_with_path = uri_path
-      .strip_prefix(&prefix1)
-      .or_else(|| uri_path.strip_prefix(&prefix2));
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      return Some(("@esbuild", package_name_with_path));
+      if let Some(package_name_with_path) = maybe_package_name_with_path
+        && (scope_name != "@types"
+          || package_name_with_path.starts_with("denotest"))
+      {
+        return Some((scope_name, package_name_with_path));
+      }
     }
 
     None
@@ -297,6 +277,27 @@ fn create_package_version_info(
     serde_json::from_str(&package_json_text)?;
   version_info.insert("dist".to_string(), dist.into());
 
+  // add a bin entry for a directories.bin package.json entry as this
+  // is what the npm registry does as well
+  if let Some(directories) = version_info.get("directories")
+    && !version_info.contains_key("bin")
+    && let Some(bin) = directories
+      .as_object()
+      .and_then(|o| o.get("bin"))
+      .and_then(|v| v.as_str())
+  {
+    let mut bins = serde_json::Map::new();
+    for entry in std::fs::read_dir(version_folder.join(bin))? {
+      let entry = entry?;
+      let file_name = entry.file_name().to_string_lossy().to_string();
+      bins.insert(
+        file_name.to_string(),
+        format!("{}/{}", bin, file_name).into(),
+      );
+    }
+    version_info.insert("bin".into(), bins.into());
+  }
+
   Ok((tarball_bytes, version_info))
 }
 
@@ -309,7 +310,7 @@ fn get_esbuild_platform_info(
     "darwin-x64" => Some(("esbuild-x64", "mac", false)),
     "darwin-arm64" => Some(("esbuild-aarch64", "mac", false)),
     "win32-x64" => Some(("esbuild-x64.exe", "win", true)),
-    "win32-arm64" => Some(("esbuild-arm64.exe", "win", true)),
+    "win32-arm64" => Some(("esbuild-aarch64.exe", "win", true)),
     _ => None,
   }
 }
@@ -488,6 +489,7 @@ fn get_npm_package(
   let mut versions = serde_json::Map::new();
   let mut latest_version = semver::Version::parse("0.0.0").unwrap();
   let mut dist_tags = serde_json::Map::new();
+  let mut time = serde_json::Map::new();
   for entry in fs::read_dir(&package_folder)? {
     let entry = entry?;
     let file_type = entry.file_type()?;
@@ -535,6 +537,10 @@ fn get_npm_package(
       dist_tags.insert(tag.to_string(), version.clone().into());
     }
 
+    if let Some(date) = version_info.get("publishDate") {
+      time.insert(version.clone(), date.clone());
+    }
+
     versions.insert(version.clone(), version_info.into());
     let version = semver::Version::parse(&version)?;
     if version.cmp(&latest_version).is_gt() {
@@ -551,6 +557,7 @@ fn get_npm_package(
   registry_file.insert("name".to_string(), package_name.to_string().into());
   registry_file.insert("versions".to_string(), versions.into());
   registry_file.insert("dist-tags".to_string(), dist_tags.into());
+  registry_file.insert("time".to_string(), time.into());
   Ok(Some(CustomNpmPackage {
     registry_file: serde_json::to_string(&registry_file).unwrap(),
     tarballs,

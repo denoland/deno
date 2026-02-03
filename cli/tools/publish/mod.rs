@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -49,6 +49,7 @@ use crate::args::PublishFlags;
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::registry;
@@ -86,11 +87,17 @@ pub async fn publish(
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
+    match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
+        debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
           bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
+        if !deno_json.should_publish() {
+          bail!(
+            "Package 'publish' field is false in '{}'.",
+            deno_json.specifier
+          );
         }
         error_missing_exports_field(deno_json)?;
       }
@@ -117,7 +124,10 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
-    Some(cli_factory.node_resolver().await?.clone()),
+    cli_factory.node_resolver().await?.clone(),
+    cli_factory.npm_req_resolver().await?.clone(),
+    cli_factory.pkg_json_resolver()?.clone(),
+    cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
@@ -131,7 +141,10 @@ pub async fn publish(
     cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
+    GraphDiagnosticsCollector::new(
+      cli_factory.npm_resolver().await?.clone(),
+      parsed_source_cache.clone(),
+    ),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
@@ -294,10 +307,11 @@ impl PublishPreparer {
     let build_fast_check_graph = !allow_slow_types;
     let graph = self
       .module_graph_creator
-      .create_and_validate_publish_graph(
-        package_configs,
+      .create_publish_graph(CreatePublishGraphOptions {
+        packages: package_configs,
         build_fast_check_graph,
-      )
+        validate_graph: true,
+      })
       .await?;
 
     // todo(dsherret): move to lint rule
@@ -867,14 +881,14 @@ async fn perform_publish(
       futures.push(
         async move {
           let display_name = package.display_name();
-          publish_package(
+          Box::pin(publish_package(
             http_client,
             package,
             registry_api_url,
             registry_url,
             &authorization,
             provenance,
-          )
+          ))
           .await
           .with_context(|| format!("Failed to publish {}", display_name))?;
           Ok(package_name)
@@ -1035,7 +1049,8 @@ async fn publish_package(
       },
     };
     let bundle =
-      provenance::generate_provenance(http_client, vec![subject]).await?;
+      Box::pin(provenance::generate_provenance(http_client, vec![subject]))
+        .await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!(

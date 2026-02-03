@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@lib": ["./lib"],
+      "@lib/*": ["./lib/*", "./lib/*/mod.ts"],
+      "./src/*": ["./src/*", "./types/*"],
+      "@unmapped/*": ["./nonexistent"]
+    }
+  },
+  "unstable": ["sloppy-imports"]
+}

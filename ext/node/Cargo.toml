@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_node"
-version = "0.152.0"
+version = "0.168.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -34,12 +34,14 @@ deno_crypto_provider.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
+deno_inspector_server.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
+deno_tls.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
@@ -61,9 +63,11 @@ ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
 node_resolver.workspace = true
+node_shim.workspace = true
 num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true
@@ -78,6 +82,7 @@ rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
 rusqlite.workspace = true
+rustls-tokio-stream.workspace = true
 scrypt.workspace = true
 sec1.workspace = true
 serde.workspace = true
@@ -86,6 +91,7 @@ sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
+socket2.workspace = true
 spki.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
@@ -101,8 +107,9 @@ yoke.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 errno = "0.3.10"
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock"] }
 winapi = { workspace = true, features = ["consoleapi"] }
 deno_subprocess_windows.workspace = true

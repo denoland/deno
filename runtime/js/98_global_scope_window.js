@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -13,7 +13,7 @@ const {
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
-import * as console from "ext:deno_console/01_console.js";
+import * as console from "ext:deno_web/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";

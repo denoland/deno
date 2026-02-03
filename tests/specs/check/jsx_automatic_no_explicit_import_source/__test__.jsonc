@@ -1,10 +1,24 @@
 {
   "tempDir": true,
-  "steps": [{
-    "args": "install",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "check main.tsx",
-    "output": "check.out"
-  }]
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "check main.tsx",
+      "output": "check.out"
+    }
+  ],
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
 }

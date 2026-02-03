@@ -1,11 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
@@ -62,7 +63,10 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
-impl GarbageCollected for KeyObjectHandle {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for KeyObjectHandle {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"KeyObjectHandle"
   }
@@ -1641,7 +1645,7 @@ pub fn op_node_create_ed_raw(
   KeyObjectHandle::new_ed_raw(curve, key, is_public)
 }
 
-#[derive(serde::Deserialize)]
+#[derive(FromV8)]
 pub struct RsaJwkKey {
   n: String,
   e: String,
@@ -1653,7 +1657,7 @@ pub struct RsaJwkKey {
 #[op2]
 #[cppgc]
 pub fn op_node_create_rsa_jwk(
-  #[serde] jwk: RsaJwkKey,
+  #[scoped] jwk: RsaJwkKey,
   is_public: bool,
 ) -> Result<KeyObjectHandle, RsaJwkError> {
   KeyObjectHandle::new_rsa_jwk(jwk, is_public)
@@ -1900,7 +1904,7 @@ pub fn op_node_generate_secret_key(#[smi] len: usize) -> KeyObjectHandle {
   KeyObjectHandle::Secret(key.into_boxed_slice())
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_secret_key_async(
   #[smi] len: usize,
@@ -1919,7 +1923,10 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
-impl GarbageCollected for KeyObjectHandlePair {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for KeyObjectHandlePair {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"KeyObjectHandlePair"
   }
@@ -1983,7 +1990,7 @@ pub fn op_node_generate_rsa_key(
   generate_rsa(modulus_length, public_exponent)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
@@ -2074,7 +2081,7 @@ pub fn op_node_generate_rsa_pss_key(
   )
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_rsa_pss_key_async(
   #[smi] modulus_length: usize,
@@ -2134,7 +2141,7 @@ pub fn op_node_generate_dsa_key(
   dsa_generate(modulus_length, divisor_length)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dsa_key_async(
   #[smi] modulus_length: usize,
@@ -2181,7 +2188,7 @@ pub fn op_node_generate_ec_key(
   ec_generate(named_curve)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_ec_key_async(
   #[string] named_curve: String,
@@ -2204,7 +2211,7 @@ pub fn op_node_generate_x25519_key() -> KeyObjectHandlePair {
   x25519_generate()
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_x25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(x25519_generate).await.unwrap()
@@ -2223,7 +2230,7 @@ pub fn op_node_generate_ed25519_key() -> KeyObjectHandlePair {
   ed25519_generate()
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed25519_generate).await.unwrap()
@@ -2300,7 +2307,7 @@ pub fn op_node_generate_dh_group_key(
   dh_group_generate(group_name)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dh_group_key_async(
   #[string] group_name: String,
@@ -2346,7 +2353,7 @@ pub fn op_node_generate_dh_key(
   dh_generate(prime, prime_len, generator)
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub async fn op_node_generate_dh_key_async(
   #[buffer(copy)] prime: Option<Box<[u8]>>,
@@ -2359,30 +2366,28 @@ pub async fn op_node_generate_dh_key_async(
 }
 
 #[op2]
-#[serde]
 pub fn op_node_dh_keys_generate_and_export(
   #[buffer] prime: Option<&[u8]>,
   #[smi] prime_len: usize,
   #[smi] generator: usize,
-) -> (ToJsBuffer, ToJsBuffer) {
+) -> (Uint8Array, Uint8Array) {
   let prime = prime
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
   let dh = dh::DiffieHellman::new(prime, generator);
-  let private_key = dh.private_key.into_vec().into_boxed_slice();
-  let public_key = dh.public_key.into_vec().into_boxed_slice();
+  let private_key = dh.private_key.into_vec();
+  let public_key = dh.public_key.into_vec();
   (private_key.into(), public_key.into())
 }
 
 #[op2]
-#[buffer]
 pub fn op_node_export_secret_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<Box<[u8]>, JsErrorBox> {
+) -> Result<Uint8Array, JsErrorBox> {
   let key = handle
     .as_secret_key()
     .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
-  Ok(key.to_vec().into_boxed_slice())
+  Ok(key.to_vec().into())
 }
 
 #[op2]

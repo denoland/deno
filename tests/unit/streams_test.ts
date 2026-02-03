@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assertEquals,
   assertRejects,
@@ -650,4 +650,73 @@ Deno.test(async function readableStreamFromWithStringThrows() {
   await promise.promise;
   stopSignal.abort();
   await p;
+});
+
+Deno.test(async function readableStreamEmittingManyChunks() {
+  const code = `
+    const serverPort = 4594;
+    const stopSignal = new AbortController();
+    let count = 0;
+    let before = 0;
+    let after = 0;
+
+    function startServer() {
+      Deno.serve({ port: serverPort, signal: stopSignal.signal }, (_) => {
+        return new Response(
+          new ReadableStream({
+            start() {
+              before = Deno.memoryUsage().heapUsed;
+            },
+            pull(controller) {
+              const used = Deno.memoryUsage().heapUsed;
+
+              if (used > after) {
+                after = used;
+              }
+
+              if (count < 30_000) {
+                controller.enqueue(new Uint8Array([0]));
+              } else {
+                controller.close();
+              }
+
+              count += 1;
+            },
+          }),
+        );
+      });
+    }
+
+    async function startClient() {
+      const response = await fetch(\`http://localhost:\${serverPort}\`);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("client: failed to get reader from response");
+      }
+
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    }
+
+    startServer();
+    await startClient();
+    stopSignal.abort();
+    console.log(\`\${after} / \${before} = \${after / before}\`);
+    if (after / before > 1.5) {
+      Deno.exit(1);
+    }
+  `;
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-N", "-"],
+    stdin: "piped",
+  });
+
+  await using child = command.spawn();
+  await ReadableStream.from([code])
+    .pipeThrough(new TextEncoderStream())
+    .pipeTo(child.stdin);
+
+  assertEquals((await child.status).code, 0, "memory leak");
 });

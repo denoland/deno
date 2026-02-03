@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -15,10 +15,10 @@ use boxed_error::Boxed;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
-use deno_core::JsBuffer;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_error::JsErrorBox;
@@ -33,10 +33,8 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Deserialize;
 use serde::Serialize;
 
-use crate::FsPermissions;
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
@@ -120,18 +118,17 @@ pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_chdir<P>(
+pub fn op_fs_chdir(
   state: &mut OpState,
   #[string] directory: &str,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let d = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(directory)),
-    OpenAccessKind::ReadNoFollow,
-    "Deno.chdir()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let d = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(directory)),
+      OpenAccessKind::ReadNoFollow,
+      Some("Deno.chdir()"),
+    )?;
   state
     .borrow::<FileSystemRc>()
     .chdir(&d)
@@ -148,16 +145,21 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 struct FsOpenOptions {
+  #[from_v8(default)]
   read: bool,
+  #[from_v8(default)]
   write: bool,
+  #[from_v8(default)]
   create: bool,
+  #[from_v8(default)]
   truncate: bool,
+  #[from_v8(default)]
   append: bool,
+  #[from_v8(default)]
   create_new: bool,
+  #[from_v8(default)]
   mode: Option<u32>,
 }
 
@@ -178,14 +180,11 @@ impl From<FsOpenOptions> for OpenOptions {
 
 #[op2(stack_trace)]
 #[smi]
-pub fn op_fs_open_sync<P>(
+pub fn op_fs_open_sync(
   state: &mut OpState,
   #[string] path: &str,
-  #[serde] options: Option<FsOpenOptions>,
-) -> Result<ResourceId, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+  #[scoped] options: Option<FsOpenOptions>,
+) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),
     None => OpenOptions::read(),
@@ -193,11 +192,13 @@ where
   let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(path),
-    open_options_to_access_kind(&options),
-    "Deno.openSync()",
-  )?;
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(path),
+      open_options_to_access_kind(&options),
+      Some("Deno.openSync()"),
+    )?;
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
   let rid = state
     .resource_table
@@ -205,16 +206,13 @@ where
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
-pub async fn op_fs_open_async<P>(
+pub async fn op_fs_open_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<FsOpenOptions>,
-) -> Result<ResourceId, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+  #[scoped] options: Option<FsOpenOptions>,
+) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),
     None => OpenOptions::read(),
@@ -225,11 +223,13 @@ where
     let mut state = state.borrow_mut();
     (
       state.borrow::<FileSystemRc>().clone(),
-      state.borrow_mut::<P>().check_open(
-        Cow::Owned(path),
-        open_options_to_access_kind(&options),
-        "Deno.open()",
-      )?,
+      state
+        .borrow_mut::<deno_permissions::PermissionsContainer>()
+        .check_open(
+          Cow::Owned(path),
+          open_options_to_access_kind(&options),
+          Some("Deno.open()"),
+        )?,
     )
   };
   let file = fs
@@ -245,22 +245,21 @@ where
 }
 
 #[op2(stack_trace)]
-pub fn op_fs_mkdir_sync<P>(
+pub fn op_fs_mkdir_sync(
   state: &mut OpState,
   #[string] path: &str,
   recursive: bool,
   mode: Option<u32>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let mode = mode.unwrap_or(0o777) & 0o777;
 
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.mkdirSync()",
-  )?;
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.mkdirSync()"),
+    )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.mkdir_sync(&path, recursive, Some(mode))
@@ -269,25 +268,24 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_mkdir_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_mkdir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   recursive: bool,
   mode: Option<u32>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let mode = mode.unwrap_or(0o777) & 0o777;
 
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.mkdir()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.mkdir()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -300,19 +298,18 @@ where
 
 #[cfg(unix)]
 #[op2(fast, stack_trace)]
-pub fn op_fs_chmod_sync<P>(
+pub fn op_fs_chmod_sync(
   state: &mut OpState,
   #[string] path: &str,
   mode: u32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.chmodSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.chmodSync()"),
+    )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
@@ -320,41 +317,39 @@ where
 
 #[cfg(not(unix))]
 #[op2(fast, stack_trace)]
-pub fn op_fs_chmod_sync<P>(
+pub fn op_fs_chmod_sync(
   state: &mut OpState,
   #[string] path: &str,
   mode: i32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.chmodSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.chmodSync()"),
+    )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
 }
 
 #[cfg(unix)]
-#[op2(async, stack_trace)]
-pub async fn op_fs_chmod_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_chmod_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   mode: u32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.chmod()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.chmod()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chmod_async(path.as_owned(), mode)
@@ -364,22 +359,21 @@ where
 }
 
 #[cfg(not(unix))]
-#[op2(async, stack_trace)]
-pub async fn op_fs_chmod_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_chmod_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   mode: i32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.chmod()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.chmod()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chmod_async(path.as_owned(), mode)
@@ -389,43 +383,41 @@ where
 }
 
 #[op2(stack_trace)]
-pub fn op_fs_chown_sync<P>(
+pub fn op_fs_chown_sync(
   state: &mut OpState,
   #[string] path: &str,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.chownSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.chownSync()"),
+    )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chown_sync(&path, uid, gid)
     .context_path("chown", &path)?;
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_chown_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_chown_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.chown()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.chown()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   fs.chown_async(path.as_owned(), uid, gid)
@@ -446,7 +438,7 @@ pub fn op_fs_fchmod_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchmod_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -471,7 +463,7 @@ pub fn op_fs_fchown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchown_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -485,24 +477,23 @@ pub async fn op_fs_fchown_async(
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_remove_sync<P>(
+pub fn op_fs_remove_sync(
   state: &mut OpState,
   #[string] path: &str,
   recursive: bool,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let path = Cow::Borrowed(Path::new(path));
   let path = if recursive {
-    state.borrow_mut::<P>().check_open(
-      path,
-      OpenAccessKind::WriteNoFollow,
-      "Deno.removeSync()",
-    )?
+    state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        path,
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.removeSync()"),
+      )?
   } else {
     state
-      .borrow_mut::<P>()
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
       .check_write_partial(path, "Deno.removeSync()")?
   };
 
@@ -513,27 +504,26 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_remove_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_remove_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   recursive: bool,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let path = Cow::Owned(PathBuf::from(path));
     let path = if recursive {
-      state.borrow_mut::<P>().check_open(
-        path,
-        OpenAccessKind::WriteNoFollow,
-        "Deno.remove()",
-      )?
+      state
+        .borrow_mut::<deno_permissions::PermissionsContainer>()
+        .check_open(
+          path,
+          OpenAccessKind::WriteNoFollow,
+          Some("Deno.remove()"),
+        )?
     } else {
       state
-        .borrow_mut::<P>()
+        .borrow_mut::<deno_permissions::PermissionsContainer>()
         .check_write_partial(path, "Deno.remove()")?
     };
 
@@ -548,24 +538,22 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_copy_file_sync<P>(
+pub fn op_fs_copy_file_sync(
   state: &mut OpState,
   #[string] from: &str,
   #[string] to: &str,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<P>();
+) -> Result<(), FsOpsError> {
+  let permissions =
+    state.borrow_mut::<deno_permissions::PermissionsContainer>();
   let from = permissions.check_open(
     Cow::Borrowed(Path::new(from)),
     OpenAccessKind::Read,
-    "Deno.copyFileSync()",
+    Some("Deno.copyFileSync()"),
   )?;
   let to = permissions.check_open(
     Cow::Borrowed(Path::new(to)),
     OpenAccessKind::WriteNoFollow,
-    "Deno.copyFileSync()",
+    Some("Deno.copyFileSync()"),
   )?;
 
   let fs = state.borrow::<FileSystemRc>();
@@ -575,27 +563,25 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_copy_file_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_copy_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] from: String,
   #[string] to: String,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, from, to) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let from = permissions.check_open(
       Cow::Owned(PathBuf::from(from)),
       OpenAccessKind::Read,
-      "Deno.copyFile()",
+      Some("Deno.copyFile()"),
     )?;
     let to = permissions.check_open(
       Cow::Owned(PathBuf::from(to)),
       OpenAccessKind::WriteNoFollow,
-      "Deno.copyFile()",
+      Some("Deno.copyFile()"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), from, to)
   };
@@ -607,19 +593,18 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_stat_sync<P>(
+pub fn op_fs_stat_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[buffer] stat_out_buf: &mut [u32],
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::ReadNoFollow,
-    "Deno.statSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::ReadNoFollow,
+      Some("Deno.statSync()"),
+    )?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.stat_sync(&path).context_path("stat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -627,22 +612,20 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
-pub async fn op_fs_stat_async<P>(
+pub async fn op_fs_stat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<SerializableStat, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<SerializableStat, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
-      "Deno.stat()",
+      Some("Deno.stat()"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
@@ -654,19 +637,18 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_lstat_sync<P>(
+pub fn op_fs_lstat_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[buffer] stat_out_buf: &mut [u32],
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::ReadNoFollow,
-    "Deno.lstatSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::ReadNoFollow,
+      Some("Deno.lstatSync()"),
+    )?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.lstat_sync(&path).context_path("lstat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -674,22 +656,20 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
-pub async fn op_fs_lstat_async<P>(
+pub async fn op_fs_lstat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<SerializableStat, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<SerializableStat, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
-      "Deno.lstat()",
+      Some("Deno.lstat()"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
@@ -702,19 +682,17 @@ where
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_fs_realpath_sync<P>(
+pub fn op_fs_realpath_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<String, FsOpsError> {
   let fs = state.borrow::<FileSystemRc>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions =
+    state.borrow_mut::<deno_permissions::PermissionsContainer>();
   let path = permissions.check_open(
     Cow::Borrowed(Path::new(path)),
     OpenAccessKind::ReadNoFollow,
-    "Deno.realPathSync()",
+    Some("Deno.realPathSync()"),
   )?;
   let resolved_path =
     fs.realpath_sync(&path).context_path("realpath", &path)?;
@@ -723,23 +701,21 @@ where
   Ok(path_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
-pub async fn op_fs_realpath_async<P>(
+pub async fn op_fs_realpath_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<String, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let fs = state.borrow::<FileSystemRc>().clone();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
-      "Deno.realPath()",
+      Some("Deno.realPath()"),
     )?;
     (fs, path)
   };
@@ -753,19 +729,17 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_fs_read_dir_sync<P>(
+pub fn op_fs_read_dir_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<Vec<FsDirEntry>, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::ReadNoFollow,
-    "Deno.readDirSync()",
-  )?;
+) -> Result<Vec<FsDirEntry>, FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::ReadNoFollow,
+      Some("Deno.readDirSync()"),
+    )?;
 
   let fs = state.borrow::<FileSystemRc>();
   let entries = fs.read_dir_sync(&path).context_path("readdir", &path)?;
@@ -773,22 +747,20 @@ where
   Ok(entries)
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_fs_read_dir_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_read_dir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<Vec<FsDirEntry>, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<Vec<FsDirEntry>, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::ReadNoFollow,
-      "Deno.readDir()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::ReadNoFollow,
+        Some("Deno.readDir()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -801,24 +773,22 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_rename_sync<P>(
+pub fn op_fs_rename_sync(
   state: &mut OpState,
   #[string] oldpath: &str,
   #[string] newpath: &str,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<P>();
+) -> Result<(), FsOpsError> {
+  let permissions =
+    state.borrow_mut::<deno_permissions::PermissionsContainer>();
   let oldpath = permissions.check_open(
     Cow::Borrowed(Path::new(oldpath)),
     OpenAccessKind::ReadWriteNoFollow,
-    "Deno.renameSync()",
+    Some("Deno.renameSync()"),
   )?;
   let newpath = permissions.check_open(
     Cow::Borrowed(Path::new(newpath)),
     OpenAccessKind::WriteNoFollow,
-    "Deno.renameSync()",
+    Some("Deno.renameSync()"),
   )?;
 
   let fs = state.borrow::<FileSystemRc>();
@@ -828,27 +798,25 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_rename_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_rename_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let oldpath = permissions.check_open(
       Cow::Owned(PathBuf::from(oldpath)),
       OpenAccessKind::ReadWriteNoFollow,
-      "Deno.rename()",
+      Some("Deno.rename()"),
     )?;
     let newpath = permissions.check_open(
       Cow::Owned(PathBuf::from(newpath)),
       OpenAccessKind::WriteNoFollow,
-      "Deno.rename()",
+      Some("Deno.rename()"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
@@ -861,24 +829,22 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_link_sync<P>(
+pub fn op_fs_link_sync(
   state: &mut OpState,
   #[string] oldpath: &str,
   #[string] newpath: &str,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<P>();
+) -> Result<(), FsOpsError> {
+  let permissions =
+    state.borrow_mut::<deno_permissions::PermissionsContainer>();
   let oldpath = permissions.check_open(
     Cow::Borrowed(Path::new(oldpath)),
     OpenAccessKind::ReadWriteNoFollow,
-    "Deno.linkSync()",
+    Some("Deno.linkSync()"),
   )?;
   let newpath = permissions.check_open(
     Cow::Borrowed(Path::new(newpath)),
     OpenAccessKind::WriteNoFollow,
-    "Deno.linkSync()",
+    Some("Deno.linkSync()"),
   )?;
 
   let fs = state.borrow::<FileSystemRc>();
@@ -888,27 +854,25 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_link_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_link_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let oldpath = permissions.check_open(
       Cow::Owned(PathBuf::from(oldpath)),
       OpenAccessKind::ReadWriteNoFollow,
-      "Deno.link()",
+      Some("Deno.link()"),
     )?;
     let newpath = permissions.check_open(
       Cow::Owned(PathBuf::from(newpath)),
       OpenAccessKind::WriteNoFollow,
-      "Deno.link()",
+      Some("Deno.link()"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
@@ -921,16 +885,14 @@ where
 }
 
 #[op2(stack_trace)]
-pub fn op_fs_symlink_sync<P>(
+pub fn op_fs_symlink_sync(
   state: &mut OpState,
   #[string] oldpath: &str,
   #[string] newpath: &str,
   #[serde] file_type: Option<FsFileType>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let permissions = state.borrow_mut::<P>();
+) -> Result<(), FsOpsError> {
+  let permissions =
+    state.borrow_mut::<deno_permissions::PermissionsContainer>();
   permissions.check_write_all("Deno.symlinkSync()")?;
   permissions.check_read_all("Deno.symlinkSync()")?;
 
@@ -945,19 +907,17 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_symlink_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_symlink_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
   #[string] newpath: String,
   #[serde] file_type: Option<FsFileType>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let fs = {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
+    let permissions =
+      state.borrow_mut::<deno_permissions::PermissionsContainer>();
     permissions.check_write_all("Deno.symlink()")?;
     permissions.check_read_all("Deno.symlink()")?;
     state.borrow::<FileSystemRc>().clone()
@@ -980,18 +940,17 @@ where
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_fs_read_link_sync<P>(
+pub fn op_fs_read_link_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::ReadNoFollow,
-    "Deno.readLink()",
-  )?;
+) -> Result<String, FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::ReadNoFollow,
+      Some("Deno.readLink()"),
+    )?;
 
   let fs = state.borrow::<FileSystemRc>();
 
@@ -1000,22 +959,21 @@ where
   Ok(target_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
-pub async fn op_fs_read_link_async<P>(
+pub async fn op_fs_read_link_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<String, FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::ReadNoFollow,
-      "Deno.readLink()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::ReadNoFollow,
+        Some("Deno.readLink()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -1028,19 +986,18 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_truncate_sync<P>(
+pub fn op_fs_truncate_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[number] len: u64,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.truncateSync()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.truncateSync()"),
+    )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.truncate_sync(&path, len)
@@ -1049,22 +1006,21 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_truncate_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[number] len: u64,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.truncate()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.truncate()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -1076,22 +1032,21 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_fs_utime_sync<P>(
+pub fn op_fs_utime_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[number] atime_secs: i64,
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::WriteNoFollow,
-    "Deno.utime()",
-  )?;
+) -> Result<(), FsOpsError> {
+  let path = state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("Deno.utime()"),
+    )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -1100,25 +1055,24 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-pub async fn op_fs_utime_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_utime_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[number] atime_secs: i64,
   #[smi] atime_nanos: u32,
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::WriteNoFollow,
-      "Deno.utime()",
-    )?;
+    let path = state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.utime()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
@@ -1137,20 +1091,14 @@ where
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_fs_make_temp_dir_sync<P>(
+pub fn op_fs_make_temp_dir_sync(
   state: &mut OpState,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let (dir, fs) = make_temp_check_sync::<P>(
-    state,
-    dir_arg.as_deref(),
-    "Deno.makeTempDirSync()",
-  )?;
+) -> Result<String, FsOpsError> {
+  let (dir, fs) =
+    make_temp_check_sync(state, dir_arg.as_deref(), "Deno.makeTempDirSync()")?;
 
   let mut rng = thread_rng();
 
@@ -1180,22 +1128,16 @@ where
   .context("tmpdir")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
-pub async fn op_fs_make_temp_dir_async<P>(
+pub async fn op_fs_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let (dir, fs) = make_temp_check_async::<P>(
-    state,
-    dir_arg.as_deref(),
-    "Deno.makeTempDir()",
-  )?;
+) -> Result<String, FsOpsError> {
+  let (dir, fs) =
+    make_temp_check_async(state, dir_arg.as_deref(), "Deno.makeTempDir()")?;
 
   let mut rng = thread_rng();
 
@@ -1231,20 +1173,14 @@ where
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_fs_make_temp_file_sync<P>(
+pub fn op_fs_make_temp_file_sync(
   state: &mut OpState,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let (dir, fs) = make_temp_check_sync::<P>(
-    state,
-    dir_arg.as_deref(),
-    "Deno.makeTempFileSync()",
-  )?;
+) -> Result<String, FsOpsError> {
+  let (dir, fs) =
+    make_temp_check_sync(state, dir_arg.as_deref(), "Deno.makeTempFileSync()")?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1280,22 +1216,16 @@ where
   .context("tmpfile")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
-pub async fn op_fs_make_temp_file_async<P>(
+pub async fn op_fs_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] dir_arg: Option<String>,
   #[string] prefix: Option<String>,
   #[string] suffix: Option<String>,
-) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
-  let (dir, fs) = make_temp_check_async::<P>(
-    state,
-    dir_arg.as_deref(),
-    "Deno.makeTempFile()",
-  )?;
+) -> Result<String, FsOpsError> {
+  let (dir, fs) =
+    make_temp_check_async(state, dir_arg.as_deref(), "Deno.makeTempFile()")?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1348,58 +1278,60 @@ fn strip_dir_prefix(
   }
 }
 
-fn make_temp_check_sync<'a, P>(
+fn make_temp_check_sync<'a>(
   state: &mut OpState,
   dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError> {
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_open(
-      Cow::Borrowed(Path::new(dir)),
-      OpenAccessKind::WriteNoFollow,
-      api_name,
-    )?,
+    Some(dir) => state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(Path::new(dir)),
+        OpenAccessKind::WriteNoFollow,
+        Some(api_name),
+      )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state.borrow_mut::<P>().check_open_blind(
-        Cow::Owned(dir),
-        OpenAccessKind::WriteNoFollow,
-        "TMP",
-        api_name,
-      )?
+      state
+        .borrow_mut::<deno_permissions::PermissionsContainer>()
+        .check_open_blind(
+          Cow::Owned(dir),
+          OpenAccessKind::WriteNoFollow,
+          "TMP",
+          Some(api_name),
+        )?
     }
   };
   Ok((dir, fs))
 }
 
-fn make_temp_check_async<'a, P>(
+fn make_temp_check_async<'a>(
   state: Rc<RefCell<OpState>>,
   dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError> {
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_open(
-      Cow::Borrowed(Path::new(dir)),
-      OpenAccessKind::WriteNoFollow,
-      api_name,
-    )?,
+    Some(dir) => state
+      .borrow_mut::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(Path::new(dir)),
+        OpenAccessKind::WriteNoFollow,
+        Some(api_name),
+      )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state.borrow_mut::<P>().check_open_blind(
-        Cow::Owned(dir),
-        OpenAccessKind::WriteNoFollow,
-        "TMP",
-        api_name,
-      )?
+      state
+        .borrow_mut::<deno_permissions::PermissionsContainer>()
+        .check_open_blind(
+          Cow::Owned(dir),
+          OpenAccessKind::WriteNoFollow,
+          "TMP",
+          Some(api_name),
+        )?
     }
   };
   Ok((dir, fs))
@@ -1468,27 +1400,26 @@ fn tmp_name(
 }
 
 #[op2(stack_trace)]
-pub fn op_fs_write_file_sync<P>(
+pub fn op_fs_write_file_sync(
   state: &mut OpState,
   #[string] path: &str,
   mode: Option<u32>,
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+  data: Uint8Array,
+) -> Result<(), FsOpsError> {
   let path = Path::new(path);
 
   let options = OpenOptions::write(create, append, create_new, mode);
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<P>().check_open(
-    Cow::Borrowed(path),
-    OpenAccessKind::Write,
-    "Deno.writeFileSync()",
-  )?;
+  let path = state
+    .borrow::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::Write,
+      Some("Deno.writeFileSync()"),
+    )?;
 
   fs.write_file_sync(&path, options, &data)
     .context_path("writefile", &path)?;
@@ -1496,21 +1427,18 @@ where
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[allow(clippy::too_many_arguments)]
-pub async fn op_fs_write_file_async<P>(
+pub async fn op_fs_write_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] mode: Option<u32>,
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<(), FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<(), FsOpsError> {
   let path = PathBuf::from(path);
 
   let options = OpenOptions::write(create, append, create_new, mode);
@@ -1519,15 +1447,17 @@ where
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<P>().check_open(
-      Cow::Owned(path),
-      OpenAccessKind::Write,
-      "Deno.writeFile()",
-    )?;
+    let path = state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(path),
+        OpenAccessKind::Write,
+        Some("Deno.writeFile()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.write_file_async(path.as_owned(), options, data.to_vec());
+  let fut = fs.write_file_async(path.as_owned(), options, data.0);
 
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1547,53 +1477,64 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_fs_read_file_sync<P>(
+pub fn op_fs_read_file_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<ToJsBuffer, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+  #[smi] flags: Option<i32>,
+) -> Result<Uint8Array, FsOpsError> {
   let path = Path::new(path);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<P>().check_open(
-    Cow::Borrowed(path),
-    OpenAccessKind::Read,
-    "Deno.readFileSync()",
-  )?;
-  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
+  let path = state
+    .borrow::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(path),
+      open_options_to_access_kind(&options),
+      Some("Deno.readFileSync()"),
+    )?;
+
+  let buf = fs
+    .read_file_sync(&path, options)
+    .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_fs_read_file_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_read_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<ToJsBuffer, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+  #[smi] flags: Option<i32>,
+) -> Result<Uint8Array, FsOpsError> {
   let path = PathBuf::from(path);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<P>().check_open(
-      Cow::Owned(path),
-      OpenAccessKind::Read,
-      "Deno.readFile()",
-    )?;
+    let path = state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(path),
+        open_options_to_access_kind(&options),
+        Some("Deno.readFile()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.read_file_async(path.as_owned());
+  let fut = fs.read_file_async(path.as_owned(), options);
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1610,26 +1551,24 @@ where
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
 #[op2(stack_trace)]
-#[to_v8]
-pub fn op_fs_read_file_text_sync<P>(
+pub fn op_fs_read_file_text_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<FastString, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<FastString, FsOpsError> {
   let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<P>().check_open(
-    Cow::Borrowed(path),
-    OpenAccessKind::Read,
-    "Deno.readFileSync()",
-  )?;
+  let path = state
+    .borrow::<deno_permissions::PermissionsContainer>()
+    .check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::Read,
+      Some("Deno.readFileSync()"),
+    )?;
   let str = fs
     .read_text_file_lossy_sync(&path)
     .context_path("readfile", &path)?;
@@ -1639,27 +1578,25 @@ where
   })
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
-pub async fn op_fs_read_file_text_async<P>(
+#[op2(stack_trace)]
+pub async fn op_fs_read_file_text_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<FastString, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+) -> Result<FastString, FsOpsError> {
   let path = PathBuf::from(path);
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<P>().check_open(
-      Cow::Owned(path),
-      OpenAccessKind::Read,
-      "Deno.readFile()",
-    )?;
+    let path = state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Owned(path),
+        OpenAccessKind::Read,
+        Some("Deno.readFile()"),
+      )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
@@ -1712,7 +1649,7 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
@@ -1738,7 +1675,7 @@ pub fn op_fs_file_sync_data_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1760,7 +1697,7 @@ pub fn op_fs_file_sync_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1779,13 +1716,22 @@ pub fn op_fs_file_stat_sync(
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::Read,
+        Some("Deno.FsFile.prototype.statSync()"),
+      )?;
+  }
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
@@ -1793,6 +1739,16 @@ pub async fn op_fs_file_stat_async(
 ) -> Result<SerializableStat, FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow()
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::Read,
+        Some("Deno.FsFile.prototype.stat()"),
+      )?;
+  }
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
@@ -1809,7 +1765,7 @@ pub fn op_fs_flock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1832,7 +1788,7 @@ pub fn op_fs_funlock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1855,7 +1811,7 @@ pub fn op_fs_ftruncate_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1878,11 +1834,20 @@ pub fn op_fs_futime_sync(
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.FsFile.prototype.utimeSync()"),
+      )?;
+  }
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_futime_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1893,6 +1858,16 @@ pub async fn op_fs_futime_async(
 ) -> Result<(), FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow()
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::WriteNoFollow,
+        Some("Deno.FsFile.prototype.utime()"),
+      )?;
+  }
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
@@ -2059,15 +2034,21 @@ create_struct_writer! {
     birthtime: u64,
     ctime_set: bool,
     ctime: u64,
-    // Following are only valid under Unix.
+    // Stats below are platform dependent.
+    // On Unix, they are always available.
+    // On Windows, the `*_set` fields are used
+    // to indicate if the corresponding field is resolved.
     dev: u64,
+    ino_set: bool,
     ino: u64,
     mode: u32,
+    nlink_set: bool,
     nlink: u64,
     uid: u32,
     gid: u32,
     rdev: u64,
     blksize: u64,
+    blocks_set: bool,
     blocks: u64,
     is_block_device: bool,
     is_char_device: bool,
@@ -2094,14 +2075,17 @@ impl From<FsStat> for SerializableStat {
       ctime: stat.ctime.unwrap_or(0),
 
       dev: stat.dev,
-      ino: stat.ino,
+      ino_set: stat.ino.is_some(),
+      ino: stat.ino.unwrap_or(0),
       mode: stat.mode,
-      nlink: stat.nlink,
+      nlink_set: stat.nlink.is_some(),
+      nlink: stat.nlink.unwrap_or(0),
       uid: stat.uid,
       gid: stat.gid,
       rdev: stat.rdev,
       blksize: stat.blksize,
-      blocks: stat.blocks,
+      blocks_set: stat.blocks.is_some(),
+      blocks: stat.blocks.unwrap_or(0),
       is_block_device: stat.is_block_device,
       is_char_device: stat.is_char_device,
       is_fifo: stat.is_fifo,

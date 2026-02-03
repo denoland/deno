@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -14,6 +14,8 @@ use deno_core::v8;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
+
+use crate::error::GPUGenericError;
 
 mod adapter;
 mod bind_group;
@@ -90,11 +92,14 @@ deno_core::extension!(
     render_pass::GPURenderPassEncoder,
     render_pipeline::GPURenderPipeline,
     sampler::GPUSampler,
+    shader::GPUCompilationInfo,
+    shader::GPUCompilationMessage,
     shader::GPUShaderModule,
     adapter::GPUSupportedFeatures,
     adapter::GPUSupportedLimits,
     texture::GPUTexture,
     texture::GPUTextureView,
+    texture::GPUExternalTexture,
     byow::UnsafeWindowSurface,
     surface::GPUCanvasContext,
   ],
@@ -106,7 +111,7 @@ deno_core::extension!(
 #[cppgc]
 pub fn op_create_gpu(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
   error_event_class: v8::Local<v8::Value>,
@@ -127,7 +132,10 @@ struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 
-impl GarbageCollected for GPU {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPU {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPU"
   }
@@ -135,7 +143,12 @@ impl GarbageCollected for GPU {
 
 #[op2]
 impl GPU {
-  #[async_method]
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPU, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[cppgc]
   async fn request_adapter(
     &self,
@@ -156,13 +169,20 @@ impl GPU {
         &wgpu_types::InstanceDescriptor {
           backends,
           flags: wgpu_types::InstanceFlags::from_build_config(),
+          memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds {
+            for_resource_creation: Some(97),
+            for_device_loss: Some(99),
+          },
           backend_options: wgpu_types::BackendOptions {
             dx12: wgpu_types::Dx12BackendOptions {
               shader_compiler: wgpu_types::Dx12Compiler::Fxc,
+              ..Default::default()
             },
             gl: wgpu_types::GlBackendOptions::default(),
+            noop: wgpu_types::NoopBackendOptions::default(),
           },
         },
+        None,
       )));
       state.borrow::<Instance>()
     };

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -991,10 +991,6 @@ impl WeakDocumentModuleMap {
     }
   }
 
-  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
-    self.by_specifier.read().get(specifier)
-  }
-
   fn contains_specifier(&self, specifier: &Url) -> bool {
     self.by_specifier.read().contains_key(specifier)
   }
@@ -1037,6 +1033,8 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
@@ -1048,6 +1046,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
+  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
 }
 
 impl DocumentModules {
@@ -1075,6 +1074,7 @@ impl DocumentModules {
         .collect(),
     );
     self.dep_info_by_scope = Default::default();
+    self.assigned_scopes = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
     NodeResolutionThreadLocalCache::clear();
@@ -1279,12 +1279,19 @@ impl DocumentModules {
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(
+    let module = self.module_inner(
       &document,
       Some(&Arc::new(specifier)),
       scope,
       compiler_options_key,
-    )
+    );
+    if let Some(module) = &module {
+      self.assigned_scopes.insert(
+        document.uri().clone(),
+        (module.scope.clone(), module.compiler_options_key.clone()),
+      );
+    }
+    module
   }
 
   pub fn primary_module(
@@ -1293,6 +1300,16 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    if let Some((scope, compiler_options_key)) =
+      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
+    {
+      return self.module_inner(
+        document,
+        None,
+        scope.as_deref(),
+        Some(&compiler_options_key),
+      );
     }
     for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
@@ -1364,24 +1381,6 @@ impl DocumentModules {
       (result.entry(scope).or_default() as &mut Vec<_>).push(module);
     }
     result
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_for_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
-      Ok(jsr_req_ref) => {
-        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-      }
-      _ => Cow::Borrowed(specifier),
-    };
-    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
-    let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(&specifier)
   }
 
   /// This will not create any module entries, only retrieve existing entries.
@@ -2113,6 +2112,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -2261,6 +2261,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,
@@ -2306,6 +2307,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,

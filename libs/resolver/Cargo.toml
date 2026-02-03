@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_resolver"
-version = "0.45.0"
+version = "0.61.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,6 +32,7 @@ async-trait.workspace = true
 base32.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
+chrono.workspace = true
 dashmap = { workspace = true, optional = true }
 deno_ast = { workspace = true, features = ["cjs"], optional = true }
 deno_cache_dir.workspace = true
@@ -67,5 +68,6 @@ twox-hash.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+node_resolver.workspace = true
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
 test_util.workspace = true

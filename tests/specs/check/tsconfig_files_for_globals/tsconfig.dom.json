@@ -1,6 +1,7 @@
 {
   "files": ["main.dom.ts", "globals.d.ts"],
   "compilerOptions": {
-    "composite": true
+    "composite": true,
+    "lib": []
   }
 }

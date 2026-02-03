@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::future::Future;
@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundlePlatform;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::WorkspaceDirectory;
@@ -15,6 +16,7 @@ use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_graph::packages::JsrVersionResolver;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_process_state;
@@ -25,6 +27,7 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
@@ -38,7 +41,6 @@ use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -51,7 +53,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -60,7 +61,6 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
@@ -96,14 +96,14 @@ use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollector;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
-use crate::tools::run::hmr::HmrRunner;
+use crate::tools::run::hmr::HmrRunnerState;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -304,7 +304,6 @@ struct CliFactoryServices {
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
-  maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
@@ -430,7 +429,11 @@ impl CliFactory {
   pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
     let http_client = self.http_client_provider();
     let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
-    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
+    Ok(BinNameResolver::new(
+      http_client,
+      npm_api.as_ref(),
+      self.npm_version_resolver()?,
+    ))
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
@@ -520,6 +523,26 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
+  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
+    if self.cli_options()?.unstable_tsgo() {
+      Ok(Some(
+        crate::tsc::ensure_tsgo(
+          self.deno_dir()?,
+          self.http_client_provider().clone(),
+        )
+        .await?,
+      ))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
+    self.resolver_factory()?.jsr_version_resolver()
+  }
+
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.npm_installer_factory()?.npm_cache()
   }
@@ -563,10 +586,12 @@ impl CliFactory {
           self.text_only_progress_bar().clone(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
-          Some(managed_npm_resolver) => Arc::new(
-            DenoTaskLifeCycleScriptsExecutor::new(managed_npm_resolver.clone()),
-          )
-            as Arc<dyn LifecycleScriptsExecutor>,
+          Some(managed_npm_resolver) => {
+            Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
+              managed_npm_resolver.clone(),
+              self.text_only_progress_bar().clone(),
+            )) as Arc<dyn LifecycleScriptsExecutor>
+          }
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
         self.text_only_progress_bar().clone(),
@@ -588,6 +613,12 @@ impl CliFactory {
     })
   }
 
+  pub fn npm_version_resolver(
+    &self,
+  ) -> Result<&Arc<NpmVersionResolver>, AnyError> {
+    self.resolver_factory()?.npm_version_resolver()
+  }
+
   pub fn install_reporter(
     &self,
   ) -> Result<Option<&Arc<crate::tools::installer::InstallReporter>>, AnyError>
@@ -596,7 +627,9 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(InstallFlags::Local(_)) => Ok(Some(Arc::new(
+        DenoSubcommand::Install(InstallFlags::Local(_))
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
         ))),
         _ => Ok(None),
@@ -617,10 +650,16 @@ impl CliFactory {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
-        None => self
-          .sys()
-          .env_current_dir()
-          .with_context(|| "Failed getting cwd.")?,
+        None => {
+          if let Some(initial_cwd) = self.flags.initial_cwd.clone() {
+            initial_cwd
+          } else {
+            self
+              .sys()
+              .env_current_dir()
+              .with_context(|| "Failed getting cwd.")?
+          }
+        }
       };
       let options = new_workspace_factory_options(&initial_cwd, &self.flags);
       let mut factory =
@@ -701,6 +740,13 @@ impl CliFactory {
     self.resolver_factory()?.node_resolver()
   }
 
+  pub async fn npm_req_resolver(
+    &self,
+  ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
+    self.initialize_npm_resolution_if_managed().await?;
+    self.resolver_factory()?.npm_req_resolver()
+  }
+
   async fn initialize_npm_resolution_if_managed(&self) -> Result<(), AnyError> {
     self
       .npm_installer_factory()?
@@ -737,14 +783,15 @@ impl CliFactory {
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
+            self.resolver_factory()?.pkg_json_resolver().clone(),
             self.sys(),
-            self.workspace_directory_provider()?.clone(),
             self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
             } else {
               None
             },
+            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),
@@ -765,9 +812,11 @@ impl CliFactory {
             self.caches()?.clone(),
             self.cjs_tracker()?.clone(),
             cli_options.clone(),
+            self.compiler_options_resolver()?.clone(),
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
+            self.jsr_version_resolver()?.clone(),
             self.maybe_lockfile().await?.cloned(),
             self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),
@@ -779,7 +828,6 @@ impl CliFactory {
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
-            self.compiler_options_resolver()?.clone(),
             self.install_reporter()?.cloned().map(|r| {
               r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
             }),
@@ -829,16 +877,18 @@ impl CliFactory {
       .await
   }
 
-  pub fn maybe_inspector_server(
-    &self,
-  ) -> Result<&Option<Arc<InspectorServer>>, AnyError> {
-    self.services.maybe_inspector_server.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      match cli_options.resolve_inspector_server() {
-        Ok(server) => Ok(server.map(Arc::new)),
-        Err(err) => Err(err),
-      }
-    })
+  pub fn maybe_start_inspector_server(&self) -> Result<(), AnyError> {
+    let cli_options = self.cli_options()?;
+    if let Some((host, name, publish_uid)) =
+      cli_options.resolve_inspector_server_options()
+    {
+      deno_runtime::deno_inspector_server::create_inspector_server(
+        host,
+        name,
+        publish_uid,
+      )?;
+    }
+    Ok(())
   }
 
   pub async fn module_load_preparer(
@@ -919,17 +969,11 @@ impl CliFactory {
         let desc_parser = self.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options(),
+          &self.cli_options()?.permissions_options()?,
         )?;
 
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
-  }
-
-  fn workspace_directory_provider(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectoryProvider>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory_provider()?)
   }
 
   fn workspace_external_import_map_loader(
@@ -958,6 +1002,7 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let workspace_factory = self.workspace_factory()?;
     let resolver_factory = self.resolver_factory()?;
+    let npm_installer_factory = self.npm_installer_factory()?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let npm_registry_permission_checker = {
       let mode = if resolver_factory.use_byonm()? {
@@ -988,6 +1033,9 @@ impl CliFactory {
       },
       self.emitter()?.clone(),
       self.file_fetcher()?.clone(),
+      npm_installer_factory
+        .has_js_execution_started_flag()
+        .clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.memory_files().clone(),
@@ -1019,6 +1067,7 @@ impl CliFactory {
     };
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
+    self.maybe_start_inspector_server()?;
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -1030,7 +1079,7 @@ impl CliFactory {
       None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
-      self.maybe_inspector_server()?.clone(),
+      cli_options.coverage_dir(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
       create_npm_process_state_provider(npm_resolver),
@@ -1040,6 +1089,9 @@ impl CliFactory {
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
+      Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
+        self.flags.clone(),
+      ))),
     );
 
     Ok(CliMainWorkerFactory::new(
@@ -1048,6 +1100,7 @@ impl CliFactory {
       self.maybe_lockfile().await?.cloned(),
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
+      self.text_only_progress_bar().clone(),
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
@@ -1071,9 +1124,9 @@ impl CliFactory {
       has_node_modules_dir: workspace_factory
         .node_modules_dir_path()?
         .is_some(),
-      inspect_brk: cli_options.inspect_brk().is_some(),
-      inspect_wait: cli_options.inspect_wait().is_some(),
-      strace_ops: cli_options.strace_ops().clone(),
+      inspect_brk: cli_options.inspect_brk(),
+      inspect_wait: cli_options.inspect_wait(),
+      trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
@@ -1089,13 +1142,16 @@ impl CliFactory {
       unsafely_ignore_certificate_errors: cli_options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      node_ipc: cli_options.node_ipc_fd(),
+      node_ipc_init: cli_options.node_ipc_init()?,
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       enable_raw_imports: cli_options.unstable_raw_imports(),
+      maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
+        cli_options.initial_cwd(),
+      )?),
     })
   }
 
@@ -1106,29 +1162,24 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move || {
+        HmrRunnerState::new(emitter.clone(), watcher_communicator.clone())
       });
       Some(fn_)
     } else {
       None
     };
-    let create_coverage_collector =
-      if let Some(coverage_dir) = cli_options.coverage_dir() {
-        let fn_: crate::worker::CreateCoverageCollectorCb =
-          Box::new(move |session| {
-            CoverageCollector::new(coverage_dir.clone(), session)
-          });
-        Some(fn_)
-      } else {
-        None
-      };
+    let maybe_coverage_dir = cli_options.coverage_dir();
+
+    let initial_cwd =
+      deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
 
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
-      create_coverage_collector,
+      maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
+      maybe_initial_cwd: Some(Arc::new(initial_cwd)),
     })
   }
 
@@ -1155,6 +1206,7 @@ impl CliFactory {
           } else {
             IsCjsResolutionMode::Disabled
           },
+          newest_dependency_date: self.flags.minimum_dependency_age,
           node_analysis_cache: Some(node_analysis_cache),
           node_resolver_options: NodeResolverOptions {
             conditions: NodeConditionOptions {
@@ -1226,6 +1278,7 @@ impl CliFactory {
           } else {
             deno_resolver::loader::AllowJsonImports::WithAttribute
           },
+          require_modules: options.require_modules()?,
         },
       )))
     })
@@ -1263,12 +1316,15 @@ fn new_workspace_factory_options(
     // resolver so it can set up the `node_modules/` directory.
     is_package_manager_subcommand: matches!(
       flags.subcommand,
-      DenoSubcommand::Install(_)
-        | DenoSubcommand::Add(_)
-        | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Init(_)
-        | DenoSubcommand::Outdated(_)
+      DenoSubcommand::Add(_)
+        | DenoSubcommand::Audit(_)
         | DenoSubcommand::Clean(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Install(_)
+        | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Uninstall(_)
+        | DenoSubcommand::ApproveScripts(_)
     ),
     no_lock: flags.no_lock
       || matches!(
@@ -1290,6 +1346,10 @@ fn new_workspace_factory_options(
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
       },
     ),
+    root_node_modules_dir_override: flags
+      .internal
+      .root_node_modules_dir_override
+      .clone(),
     vendor: flags.vendor,
   }
 }

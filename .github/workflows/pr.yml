@@ -7,6 +7,8 @@ on:
       - edited
       - synchronize
 
+# WARNING: This workflow runs in the context of the base repository so the
+# GITHUB_TOKEN it has access to has full write permissions to the repository.
 jobs:
   main:
     name: lint title
@@ -19,5 +21,4 @@ jobs:
       - name: Lint
         env:
           PR_TITLE: '${{ github.event.pull_request.title }}'
-          PR_SHA: '${{ github.event.pull_request.head.sha }}'
-        run: deno run https://raw.githubusercontent.com/denoland/deno/$PR_SHA/tools/verify_pr_title.js "$PR_TITLE"
+        run: deno run https://raw.githubusercontent.com/denoland/deno/refs/heads/main/tools/verify_pr_title.js "$PR_TITLE"

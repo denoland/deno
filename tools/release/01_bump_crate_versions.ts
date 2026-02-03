@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, GitLogOutput, semver } from "./deps.ts";
 
@@ -11,12 +11,12 @@ const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
 if (Deno.args.some((a) => a === "--rc")) {
-  const cliVersion = semver.parse(cliCrate.version)!;
+  let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease[0] != "rc") {
-    cliVersion.increment("minor");
+  if (cliVersion.prerelease?.[0] != "rc") {
+    cliVersion = semver.increment(cliVersion, "minor");
   }
-  cliVersion.increment("pre", "rc");
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
 
   const version = cliVersion.toString();
 
@@ -72,9 +72,14 @@ try {
 async function updateReleasesMd() {
   const gitLog = await getGitLog();
   const releasesMdFile = workspace.getReleasesMdFile();
+  const cliVersion = semver.parse(cliCrate.version)!;
+  const bodyPreText = releaseHasBlogPost()
+    ? `Read more: http://deno.com/blog/v${cliVersion.major}.${cliVersion.minor}`
+    : undefined;
   releasesMdFile.updateWithGitLog({
     version: cliCrate.version,
     gitLog,
+    bodyPreText,
   });
 
   await workspace.runFormatter();
@@ -151,4 +156,12 @@ async function assertDenoBinaryVersion(expectedVersion: string) {
     $.logError("Error: Expected", expectedVersion, "but found", text);
     Deno.exit(1);
   }
+}
+
+function releaseHasBlogPost() {
+  const pastVersion = semver.parse(originalCliVersion)!;
+  const newVersion = semver.parse(cliCrate.version)!;
+
+  return pastVersion.major !== newVersion.major ||
+    pastVersion.minor !== newVersion.minor;
 }

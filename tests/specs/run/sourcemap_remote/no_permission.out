@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Error without sourcemap permission
+  throw new Error("Error without sourcemap permission");
+        ^
+    at throwError (file://[WILDCARD]/no_permission.js:3:9)
+    at file://[WILDCARD]/no_permission.js:6:1

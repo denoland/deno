@@ -1,4 +1,4 @@
-Check [WILDCARD]/resource_sanitizer.ts
+Check [WILDCARD]resource_sanitizer.ts
 running 1 test from [WILDCARD]/resource_sanitizer.ts
 leak ... FAILED ([WILDCARD])
 

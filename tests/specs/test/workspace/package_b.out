@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/package-b/mod.test.ts
+Check [WILDCARD]mod.test.ts
 running 2 tests from ./mod.test.ts
 addOne ... ok ([WILDLINE])
 fail ... FAILED ([WILDLINE])

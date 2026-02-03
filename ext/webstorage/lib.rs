@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
@@ -120,7 +120,10 @@ struct Storage {
   persistent: bool,
 }
 
-impl GarbageCollected for Storage {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Storage {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Storage"
   }
@@ -233,7 +236,6 @@ impl Storage {
 }
 
 #[op2]
-#[serde]
 fn op_webstorage_iterate_keys(
   #[cppgc] storage: &Storage,
   state: &mut OpState,

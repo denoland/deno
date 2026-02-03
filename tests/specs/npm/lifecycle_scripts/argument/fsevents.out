@@ -1,0 +1,12 @@
+Download http://localhost:4260/fsevents
+Download http://localhost:4260/fsevents/fsevents-2.3.3.tgz
+Initialize fsevents@2.3.3
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
++ npm:fsevents 2.3.3
+

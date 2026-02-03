@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -22,19 +22,24 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::WriteOutcome;
+use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
@@ -44,11 +49,8 @@ use quinn::crypto::rustls::QuicServerConfig;
 use quinn::rustls::client::ClientSessionMemoryCache;
 use quinn::rustls::client::ClientSessionStore;
 use quinn::rustls::client::Resumption;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::DefaultTlsOptions;
-use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use crate::resolve_addr::resolve_addr_sync;
 
@@ -121,33 +123,33 @@ pub enum QuicError {
   Other(#[from] JsErrorBox),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CloseInfo {
   close_code: u64,
   reason: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 struct Addr {
   hostname: String,
   port: u16,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 struct ListenArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Default, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Default, PartialEq)]
 struct TransportConfig {
   keep_alive_interval: Option<u64>,
   max_idle_timeout: Option<u64>,
   max_concurrent_bidirectional_streams: Option<u32>,
   max_concurrent_unidirectional_streams: Option<u32>,
+  #[from_v8(serde)]
   preferred_address_v4: Option<SocketAddrV4>,
+  #[from_v8(serde)]
   preferred_address_v6: Option<SocketAddrV6>,
   congestion_control: Option<String>,
 }
@@ -215,7 +217,10 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {
+// SAFETY: we're sure `EndpointResource` can be GCed
+unsafe impl GarbageCollected for EndpointResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EndpointResource"
   }
@@ -223,23 +228,23 @@ impl GarbageCollected for EndpointResource {
 
 #[op2]
 #[cppgc]
-pub(crate) fn op_quic_endpoint_create<NP>(
+pub(crate) fn op_quic_endpoint_create(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: Addr,
+  #[scoped] addr: Addr,
   can_listen: bool,
-) -> Result<EndpointResource, QuicError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<EndpointResource, QuicError> {
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
 
   if can_listen {
-    state.borrow_mut().borrow_mut::<NP>().check_net(
-      &(&addr.ip().to_string(), Some(addr.port())),
-      "new Deno.QuicEndpoint()",
-    )?;
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(
+        &(&addr.ip().to_string(), Some(addr.port())),
+        "new Deno.QuicEndpoint()",
+      )?
   } else {
     // If this is not a can-listen, assert that we will bind to an ephemeral port.
     assert_eq!(
@@ -268,7 +273,6 @@ where
 }
 
 #[op2]
-#[serde]
 pub(crate) fn op_quic_endpoint_get_addr(
   #[cppgc] endpoint: &EndpointResource,
 ) -> Result<Addr, QuicError> {
@@ -300,7 +304,10 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {
+// SAFETY: we're sure `ListenerResource` can be GCed
+unsafe impl GarbageCollected for ListenerResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ListenerResource"
   }
@@ -310,8 +317,8 @@ impl GarbageCollected for ListenerResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_listen(
   #[cppgc] endpoint: &EndpointResource,
-  #[serde] args: ListenArgs,
-  #[serde] transport_config: TransportConfig,
+  #[scoped] args: ListenArgs,
+  #[scoped] transport_config: TransportConfig,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<ListenerResource, QuicError> {
   if !endpoint.can_listen {
@@ -355,7 +362,10 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {
+// SAFETY: we're sure `ConnectionResource` can be GCed
+unsafe impl GarbageCollected for ConnectionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectionResource"
   }
@@ -366,13 +376,16 @@ struct IncomingResource(
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {
+// SAFETY: we're sure `Incoming` can be GCed
+unsafe impl GarbageCollected for IncomingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"IncomingResource"
   }
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_listener_accept(
   #[cppgc] resource: &ListenerResource,
@@ -403,7 +416,6 @@ pub(crate) fn op_quic_incoming_local_ip(
 }
 
 #[op2]
-#[serde]
 pub(crate) fn op_quic_incoming_remote_addr(
   #[cppgc] incoming_resource: &IncomingResource,
 ) -> Result<Addr, QuicError> {
@@ -445,11 +457,11 @@ fn quic_incoming_accept(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_incoming_accept(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[serde] transport_config: Option<TransportConfig>,
+  #[scoped] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   let conn = connecting.await?;
@@ -460,7 +472,7 @@ pub(crate) async fn op_quic_incoming_accept(
 #[cppgc]
 pub(crate) fn op_quic_incoming_accept_0rtt(
   #[cppgc] incoming_resource: &IncomingResource,
-  #[serde] transport_config: Option<TransportConfig>,
+  #[scoped] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
   let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
   match connecting.into_0rtt() {
@@ -499,14 +511,16 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {
+// SAFETY: we're sure `ConnectingResource` can be GCed
+unsafe impl GarbageCollected for ConnectingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectingResource"
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 struct ConnectArgs {
   addr: Addr,
   ca_certs: Option<Vec<String>>,
@@ -515,29 +529,29 @@ struct ConnectArgs {
   server_certificate_hashes: Option<Vec<CertificateHash>>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 struct CertificateHash {
   algorithm: String,
+  #[from_v8(serde)]
   value: JsBuffer,
 }
 
 #[op2]
 #[cppgc]
-pub(crate) fn op_quic_endpoint_connect<NP>(
+pub(crate) fn op_quic_endpoint_connect(
   state: Rc<RefCell<OpState>>,
   #[cppgc] endpoint: &EndpointResource,
-  #[serde] args: ConnectArgs,
-  #[serde] transport_config: TransportConfig,
+  #[scoped] args: ConnectArgs,
+  #[scoped] transport_config: TransportConfig,
   #[cppgc] key_pair: &TlsKeysHolder,
-) -> Result<ConnectingResource, QuicError>
-where
-  NP: NetPermissions + 'static,
-{
-  state.borrow_mut().borrow_mut::<NP>().check_net(
-    &(&args.addr.hostname, Some(args.addr.port)),
-    "Deno.connectQuic()",
-  )?;
+) -> Result<ConnectingResource, QuicError> {
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net(
+      &(&args.addr.hostname, Some(args.addr.port)),
+      "Deno.connectQuic()",
+    )?;
 
   let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()
@@ -574,13 +588,14 @@ where
       ))
       .with_no_client_auth()
   } else {
-    create_client_config(
+    create_client_config(TlsClientConfigOptions {
       root_cert_store,
       ca_certs,
       unsafely_ignore_certificate_errors,
-      key_pair.take(),
-      SocketUse::GeneralSsl,
-    )?
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: key_pair.take(),
+      socket_use: SocketUse::GeneralSsl,
+    })?
   };
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -605,7 +620,7 @@ where
   Ok(ConnectingResource(RefCell::new(Some(connecting))))
 }
 
-#[op2(async)]
+#[op2]
 #[cppgc]
 pub(crate) async fn op_quic_connecting_1rtt(
   #[cppgc] connecting: &ConnectingResource,
@@ -660,7 +675,6 @@ pub(crate) fn op_quic_connection_get_server_name(
 }
 
 #[op2]
-#[serde]
 pub(crate) fn op_quic_connection_get_remote_addr(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<Addr, QuicError> {
@@ -683,7 +697,7 @@ pub(crate) fn op_quic_connection_close(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
@@ -702,7 +716,7 @@ pub(crate) async fn op_quic_connection_closed(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub(crate) async fn op_quic_connection_handshake(
   #[cppgc] connection: &ConnectionResource,
 ) {
@@ -809,8 +823,7 @@ impl Resource for RecvStreamResource {
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub(crate) async fn op_quic_connection_accept_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -832,8 +845,7 @@ pub(crate) async fn op_quic_connection_accept_bi(
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub(crate) async fn op_quic_connection_open_bi(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -857,8 +869,7 @@ pub(crate) async fn op_quic_connection_open_bi(
   Ok((tx_rid, rx_rid))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub(crate) async fn op_quic_connection_accept_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -881,8 +892,7 @@ pub(crate) async fn op_quic_connection_accept_uni(
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub(crate) async fn op_quic_connection_open_uni(
   #[cppgc] connection: &ConnectionResource,
   state: Rc<RefCell<OpState>>,
@@ -907,7 +917,7 @@ pub(crate) async fn op_quic_connection_open_uni(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2]
 pub(crate) async fn op_quic_connection_send_datagram(
   #[cppgc] connection: &ConnectionResource,
   #[buffer] buf: JsBuffer,
@@ -916,13 +926,12 @@ pub(crate) async fn op_quic_connection_send_datagram(
   Ok(())
 }
 
-#[op2(async)]
-#[buffer]
+#[op2]
 pub(crate) async fn op_quic_connection_read_datagram(
   #[cppgc] connection: &ConnectionResource,
-) -> Result<Vec<u8>, QuicError> {
+) -> Result<Uint8Array, QuicError> {
   let data = connection.0.read_datagram().await?;
-  Ok(data.into())
+  Ok(Vec::from(data).into())
 }
 
 #[op2(fast)]
@@ -1085,8 +1094,7 @@ pub(crate) mod webtransport {
     Ok((settings_tx_rid, settings_rx_rid))
   }
 
-  #[op2(async)]
-  #[serde]
+  #[op2]
   pub(crate) async fn op_webtransport_connect(
     state: Rc<RefCell<OpState>>,
     #[cppgc] connection_resource: &ConnectionResource,
@@ -1149,8 +1157,7 @@ pub(crate) mod webtransport {
     ))
   }
 
-  #[op2(async)]
-  #[serde]
+  #[op2]
   pub(crate) async fn op_webtransport_accept(
     state: Rc<RefCell<OpState>>,
     #[cppgc] connection_resource: &ConnectionResource,

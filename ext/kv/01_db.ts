@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -37,13 +37,13 @@ const {
   StringPrototypeReplace,
   Symbol,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 
 const encodeCursor: (

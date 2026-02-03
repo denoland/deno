@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_core::Extension;
@@ -10,8 +10,6 @@ extension!(deno_ffi, esm = ["00_ffi.js"]);
 extension!(runtime,
   deps = [
     deno_webidl,
-    deno_console,
-    deno_url,
     deno_tls,
     deno_web,
     deno_fetch,
@@ -19,14 +17,14 @@ extension!(runtime,
     deno_websocket,
     deno_webstorage,
     deno_crypto,
-    deno_broadcast_channel,
     deno_node,
     deno_ffi,
     deno_net,
     deno_napi,
     deno_http,
     deno_io,
-    deno_fs
+    deno_fs,
+    deno_bundle_runtime
   ],
   esm_entry_point = "ext:runtime/90_deno_ns.js",
   esm = [

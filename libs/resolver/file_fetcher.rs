@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -627,6 +627,17 @@ impl<
           LoadResponse::External { specifier },
         ))));
       }
+    }
+
+    if !matches!(
+      specifier.scheme(),
+      "file" | "http" | "https" | "blob" | "data"
+    ) {
+      return Box::pin(std::future::ready(Ok(Some(
+        deno_graph::source::LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
     }
 
     self.load_or_cache(

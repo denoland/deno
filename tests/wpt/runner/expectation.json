@@ -2368,7 +2368,7 @@
       "event.any.html": true,
       "event.any.worker.html": true,
       "abort-signal-any.any.html": true,
-      "abort-signal-any.any.worker.html": true,
+      "abort-signal-any.any.worker.html": false,
       "abort-signal-timeout.html": false,
       "reason-constructor.html": false
     },
@@ -5371,24 +5371,34 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false,
-      "readable-stream.html": false,
-      "reason.html": false,
+      "transfer-with-messageport.window.html": true,
+      "readable-stream.html": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()",
+        "transferring a non-serializable chunk should error both sides"
+      ],
+      "reason.html": [
+        "DOMException errors should be preserved"
+      ],
       "service-worker.https.html": false,
       "shared-worker.html": false,
       "transform-stream-members.any.html": true,
       "transform-stream-members.any.worker.html": true,
-      "transform-stream.html": false,
-      "window.html": false,
-      "worker.html": false,
-      "writable-stream.html": false
+      "transform-stream.html": true,
+      "window.html": [
+        "transfer to and from an iframe should work"
+      ],
+      "worker.html": true,
+      "writable-stream.html": [
+        "writing a unclonable object should error the stream"
+      ]
     }
   },
   "user-timing": {
     "buffered-flag.any.html": false,
     "buffered-flag.any.worker.html": false,
-    "case-sensitivity.any.html": false,
-    "case-sensitivity.any.worker.html": false,
+    "case-sensitivity.any.html": true,
+    "case-sensitivity.any.worker.html": true,
     "clear_all_marks.any.html": true,
     "clear_all_marks.any.worker.html": true,
     "clear_all_measures.any.html": true,
@@ -5409,8 +5419,12 @@
     "mark-entry-constructor.any.worker.html": true,
     "mark-errors.any.html": true,
     "mark-errors.any.worker.html": true,
-    "mark-l3.any.html": false,
-    "mark-l3.any.worker.html": false,
+    "mark-l3.any.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
+    "mark-l3.any.worker.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
     "mark-measure-return-objects.any.html": true,
     "mark-measure-return-objects.any.worker.html": true,
     "mark.any.html": true,
@@ -5427,8 +5441,16 @@
     "measure_syntax_err.any.worker.html": true,
     "structured-serialize-detail.any.html": true,
     "structured-serialize-detail.any.worker.html": true,
-    "supported-usertiming-types.any.html": false,
-    "supported-usertiming-types.any.worker.html": false,
+    "supported-usertiming-types.any.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
+    "supported-usertiming-types.any.worker.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
     "user_timing_exists.any.html": true,
     "user_timing_exists.any.worker.html": true,
     "invoke_with_timing_attributes.worker.html": true,
@@ -5500,7 +5522,8 @@
     "measure.html": false,
     "measure_associated_with_navigation_timing.html": false,
     "measure_exception.html": [
-      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception."
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception.",
+      "Invocation of performance.measure(\"Exception8\", {\"detail\": \"non-empty\"}) should throw TypeError Exception."
     ],
     "measure_exceptions_navigation_timing.html": false,
     "measure_navigation_timing.html": false,
@@ -5514,12 +5537,8 @@
         "compile.any.worker.html": true,
         "instantiate-bad-imports.any.html": true,
         "instantiate-bad-imports.any.worker.html": true,
-        "instantiate.any.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
-        "instantiate.any.worker.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
+        "instantiate.any.html": true,
+        "instantiate.any.worker.html": true,
         "multi-value.any.html": true,
         "multi-value.any.worker.html": true,
         "toStringTag.any.html": true,
@@ -5540,16 +5559,12 @@
         "valueOf.any.worker.html": true
       },
       "idlharness.any.html": [
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object"
       ],
       "idlharness.any.worker.html": [
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object"
       ],
       "instance": {
         "constructor-bad-imports.any.html": true,
@@ -5580,14 +5595,26 @@
         "constructor-shared.tentative.any.worker.html": true,
         "constructor-types.tentative.any.html": false,
         "constructor-types.tentative.any.worker.html": false,
-        "to-fixed-length-buffer-shared.any.html": false,
-        "to-fixed-length-buffer-shared.any.worker.html": false,
-        "to-fixed-length-buffer.any.html": false,
-        "to-fixed-length-buffer.any.worker.html": false,
-        "to-resizable-buffer-shared.any.html": false,
-        "to-resizable-buffer-shared.any.worker.html": false,
-        "to-resizable-buffer.any.html": false,
-        "to-resizable-buffer.any.worker.html": false
+        "to-fixed-length-buffer-shared.any.html": true,
+        "to-fixed-length-buffer-shared.any.worker.html": true,
+        "to-fixed-length-buffer.any.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-fixed-length-buffer.any.worker.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-resizable-buffer-shared.any.html": true,
+        "to-resizable-buffer-shared.any.worker.html": true,
+        "to-resizable-buffer.any.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ],
+        "to-resizable-buffer.any.worker.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ]
       },
       "module": {
         "constructor.any.html": true,
@@ -5601,13 +5628,9 @@
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "moduleSource.tentative.any.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ],
         "moduleSource.tentative.any.worker.html": [
-          "AbstractModuleSource intrinsic",
-          "AbstractModuleSourceProto intrinsic",
           "AbstractModuleSourceProto toStringTag brand check"
         ]
       },
@@ -6140,9 +6163,9 @@
       "constructors.html": false,
       "default-iterator-object.html": true,
       "default-toJSON-cross-realm.html": false,
-      "global-immutable-prototype.any.worker.html": [
-        "Setting to a different prototype"
-      ],
+      "global-immutable-prototype.any.worker.html": {
+        "ignore": true
+      },
       "global-object-implicit-this-value-cross-realm.html": false,
       "has-instance.html": [
         "Manually-constructed prototype chains are correctly handled by instanceof",
@@ -7443,8 +7466,6 @@
       "<area>: Setting <mailto:me@example.net>.pathname = '/foo' Opaque paths cannot be set"
     ],
     "url-setters.any.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -7470,8 +7491,6 @@
     "url-setters.any.html?include=javascript": true,
     "url-setters.any.html?include=mailto": true,
     "url-setters.any.worker.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
@@ -9615,8 +9634,6 @@
         "request-constructor-init-body-override.any.html": true,
         "request-constructor-init-body-override.any.worker.html": true,
         "request-init-001.sub.html": [
-          "Check method init value of patch and associated getter",
-          "Check method init value of patCh and associated getter",
           "Check referrer init value of /relative/ressource and associated getter",
           "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
           "Check referrer init value of http://web-platform.test:8000/ and associated getter",
@@ -11706,11 +11723,11 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\t=block",
-          "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\n=block",
           "Fetch: /images/gre\\ten-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\n=block",
+          "Fetch: /images/gre\\ren-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<",
           "Fetch: /images/green-1x1.png?<\\r=block"
         ],
         "dangling-markup-mitigation.tentative.https.html": false,
@@ -13095,7 +13112,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone.any.worker.html": [
@@ -13123,7 +13139,6 @@
           "An object whose interface is deleted from the global must still deserialize",
           "A subclass instance will deserialize as its closest serializable superclass",
           "Growable SharedArrayBuffer",
-          "A subclass instance will be received as its closest transferable superclass",
           "Transferring OOB TypedArray throws"
         ],
         "structured-clone-cross-realm-method.html": false
@@ -13547,7 +13562,7 @@
     "MessagePort_onmessage_start.any.html": true,
     "MessagePort_onmessage_start.any.worker.html": true,
     "postMessage_MessagePorts_xsite.sub.window.html": false,
-    "MessageEvent_onmessage_postMessage_infinite_loop.html": false,
+    "MessageEvent_onmessage_postMessage_infinite_loop.html": true,
     "messageerror.html": false,
     "multi-globals": {
       "broadcastchannel-current.sub.html": false,
@@ -14554,6 +14569,7 @@
     "eventhandlers.any.worker.html?wpt_flags=h2": true,
     "eventhandlers.any.worker.html?wss": true,
     "idlharness.any.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -14572,6 +14588,7 @@
       "Stringification of new CloseEvent(\"close\")"
     ],
     "idlharness.any.worker.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -15004,9 +15021,9 @@
         "ctor-undefined.html": false,
         "terminate.html": true,
         "use-base-url.html": false,
-        "same-origin.html": [
-          "non-parsable URL"
-        ]
+        "same-origin.html": {
+          "ignore": true
+        }
       },
       "SharedWorker": {
         "Infinity-arguments.html": false,
@@ -15351,7 +15368,6 @@
     "shared-worker-in-data-url-context.window.html": false,
     "worker-performance.worker.html": [
       "Resource timing seems to work in workers",
-      "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
     ],
     "importscripts_mime_local.any.worker.html": [
@@ -15438,22 +15454,7 @@
     "urlpattern.any.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15462,22 +15463,7 @@
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15486,22 +15472,7 @@
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -15510,22 +15481,7 @@
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []",
       "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
-      "Pattern: [{\"protocol\":\"http\",\"port\":\"80 \"}] Inputs: [{\"protocol\":\"http\",\"port\":\"80\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"8\\t0\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80?x\"}]",
-      "Pattern: [{\"port\":\"80\"}] Inputs: [{\"port\":\"80\\\\x\"}]",
-      "Pattern: [\"https://{sub.}?example{.com/}foo\"] Inputs: [\"https://example.com/foo\"]",
-      "Pattern: [{\"hostname\":\"bad#hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad/hostname\"}] Inputs: [{\"hostname\":\"bad\"}]",
-      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
-      "Pattern: [{\"hostname\":\"bad\\\\\\\\hostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\nhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\rhostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
-      "Pattern: [{\"hostname\":\"bad\\thostname\"}] Inputs: [{\"hostname\":\"badhostname\"}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",

@@ -1,9 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Weak;
+use std::rc::Rc;
 
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
@@ -25,7 +25,7 @@ impl FromV8<'_> for SessionOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, validators::Error> {
     use validators::Error;
@@ -87,10 +87,13 @@ pub struct Session {
   pub(crate) freed: Cell<bool>,
 
   // Hold a weak reference to the database.
-  pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
+  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Session {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Session"
   }
@@ -109,6 +112,9 @@ impl Session {
     }
 
     self.freed.set(true);
+    if self.db.borrow().is_none() {
+      return Ok(());
+    }
     // Safety: `self.inner` is a valid session. double free is
     // prevented by `freed` flag.
     unsafe {
@@ -121,15 +127,17 @@ impl Session {
 
 #[op2]
 impl Session {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Session {
+    unreachable!()
+  }
+
   // Closes the session.
   #[fast]
   #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
 
@@ -142,11 +150,7 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
@@ -161,11 +165,7 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    let db_rc = self
-      .db
-      .upgrade()
-      .ok_or_else(|| SqliteError::AlreadyClosed)?;
-    if db_rc.borrow().is_none() {
+    if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_package_json::MissingPkgJsonNameError;
 use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
@@ -28,7 +29,7 @@ pub enum NodeJsErrorCode {
   ERR_UNSUPPORTED_ESM_URL_SCHEME,
   ERR_INVALID_FILE_URL_PATH,
   ERR_UNKNOWN_BUILTIN_MODULE,
-  /// Deno specific since Node doesn't support TypeScript.
+  /// Deno specific since Node doesn't support type checking TypeScript.
   ERR_TYPES_NOT_FOUND,
 }
 
@@ -892,13 +893,13 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
-  suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
+  suggestion.as_ref().map(|suggestion| format!("\nDid you mean to import '{suggestion}'?")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
 pub struct UnsupportedDirImportError {
   pub dir_url: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
-  pub suggested_file_name: Option<&'static str>,
+  pub suggestion: Option<String>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {
@@ -1037,26 +1038,33 @@ impl NodeJsErrorCoded for UnsupportedEsmUrlSchemeError {
 }
 
 #[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Failed resolving binary export. '{}' did not exist", pkg_json_path.display())]
+pub struct MissingPkgJsonError {
+  pub pkg_json_path: PathBuf,
+}
+
+#[derive(Debug, Error, JsError)]
 pub enum ResolvePkgJsonBinExportError {
   #[class(inherit)]
   #[error(transparent)]
-  PkgJsonLoad(#[from] PackageJsonLoadError),
-  #[class(generic)]
-  #[error("Failed resolving binary export. '{}' did not exist", pkg_json_path.display())]
-  MissingPkgJson { pkg_json_path: PathBuf },
+  ResolvePkgNpmBinaryCommands(#[from] ResolvePkgNpmBinaryCommandsError),
   #[class(generic)]
   #[error("Failed resolving binary export. {message}")]
   InvalidBinProperty { message: String },
 }
 
 #[derive(Debug, Error, JsError)]
-pub enum ResolveBinaryCommandsError {
+pub enum ResolvePkgNpmBinaryCommandsError {
   #[class(inherit)]
   #[error(transparent)]
   PkgJsonLoad(#[from] PackageJsonLoadError),
   #[class(generic)]
-  #[error("'{}' did not have a name", pkg_json_path.display())]
-  MissingPkgJsonName { pkg_json_path: PathBuf },
+  #[error(transparent)]
+  MissingPkgJson(#[from] MissingPkgJsonError),
+  #[class(inherit)]
+  #[error(transparent)]
+  MissingPkgJsonName(#[from] MissingPkgJsonNameError),
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]

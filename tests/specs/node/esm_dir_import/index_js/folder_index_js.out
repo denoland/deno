@@ -1,0 +1,7 @@
+Download http://localhost:4260/@denotest%2fsub-folders
+Download http://localhost:4260/@denotest/sub-folders/1.0.0.tgz
+error: Could not resolve 'npm:@denotest/sub-folders/folder_index_js'
+
+Caused by:
+    [ERR_UNSUPPORTED_DIR_IMPORT] Directory import 'file:///[WILDLINE]/folder_index_js' is not supported resolving ES modules imported from 'file:///[WILDLINE]/folder_index_js.ts'
+    Did you mean to import '@denotest/sub-folders/folder_index_js/index.js'?

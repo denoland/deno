@@ -1,12 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+mod backup;
 mod database;
+mod lru_cache;
 mod session;
+mod sql_tag_store;
 mod statement;
 mod validators;
 
+pub use backup::op_node_database_backup;
 pub use database::DatabaseSync;
 pub use session::Session;
+pub use sql_tag_store::SQLTagStore;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -76,10 +81,6 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   AlreadyOpen,
   #[class(generic)]
-  #[error("failed to prepare statement")]
-  #[property("code" = self.code())]
-  PrepareFailed,
-  #[class(generic)]
   #[error("failed to create session")]
   #[property("code" = self.code())]
   SessionCreateFailed,
@@ -91,7 +92,7 @@ pub enum SqliteError {
   #[error("session is not open")]
   #[property("code" = self.code())]
   SessionClosed,
-  #[class(generic)]
+  #[class(type)]
   #[error("Illegal constructor")]
   #[property("code" = self.code())]
   InvalidConstructor,
@@ -100,11 +101,9 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidExpandedSql,
   #[class(range)]
-  #[error(
-    "The value of column {0} is too large to be represented as a JavaScript number: {1}"
-  )]
+  #[error("Value is too large to be represented as a JavaScript number: {0}")]
   #[property("code" = self.code())]
-  NumberTooLarge(i32, i64),
+  NumberTooLarge(i64),
   #[class(type)]
   #[error("Invalid callback: {0}")]
   #[property("code" = self.code())]
@@ -121,6 +120,10 @@ pub enum SqliteError {
   #[error(transparent)]
   #[property("code" = self.code())]
   Validation(#[from] validators::Error),
+  #[class(generic)]
+  #[error("statement has been finalized")]
+  #[property("code" = self.code())]
+  StatementFinalized,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -179,8 +182,9 @@ impl SqliteError {
       | Self::DuplicateNamedParameter(..)
       | Self::AlreadyClosed
       | Self::InUse
-      | Self::AlreadyOpen => ErrorCode::ERR_INVALID_STATE,
-      Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
+      | Self::AlreadyOpen
+      | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
+      Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }

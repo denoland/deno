@@ -2,11 +2,11 @@
   "tempDir": true,
   "tests": {
     "nothing": {
-      "args": "fmt",
+      "args": "fmt .",
       "output": "Checked 7 files\n"
     },
     "flag": {
-      "args": "fmt --unstable-sql",
+      "args": "fmt --unstable-sql .",
       "output": "[UNORDERED_START]\n[WILDLINE]badly_formatted.sql\n[WILDLINE]wrong_file_ignore.sql\n[UNORDERED_END]\nChecked 7 files\n"
     },
     "config_file": {

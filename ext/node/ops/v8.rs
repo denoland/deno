@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr::NonNull;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -18,7 +18,7 @@ pub fn op_v8_cached_data_version_tag() -> u32 {
 
 #[op2(fast)]
 pub fn op_v8_get_heap_statistics(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[buffer] buffer: &mut [f64],
 ) {
   let stats = scope.get_heap_statistics();
@@ -47,7 +47,10 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
-impl v8::cppgc::GarbageCollected for Serializer<'_> {
+// SAFETY: we're sure this can be GCed
+unsafe impl v8::cppgc::GarbageCollected for Serializer<'_> {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Serializer"
   }
@@ -56,7 +59,7 @@ impl v8::cppgc::GarbageCollected for Serializer<'_> {
 impl SerializerDelegate {
   fn obj<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Object> {
     v8::Local::new(scope, &self.obj)
   }
@@ -65,7 +68,7 @@ impl SerializerDelegate {
 impl v8::ValueSerializerImpl for SerializerDelegate {
   fn get_shared_array_buffer_id<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
     let obj = self.obj(scope);
@@ -82,12 +85,12 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     }
     None
   }
-  fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
+  fn has_custom_host_object(&self, _isolate: &v8::Isolate) -> bool {
     false
   }
   fn throw_data_clone_error<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     message: v8::Local<'s, v8::String>,
   ) {
     let obj = self.obj(scope);
@@ -110,7 +113,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 
   fn write_host_object<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     object: v8::Local<'s, v8::Object>,
     _value_serializer: &dyn ValueSerializerHelper,
   ) -> Option<bool> {
@@ -131,7 +134,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 
   fn is_host_object<'s>(
     &self,
-    _scope: &mut v8::HandleScope<'s>,
+    _scope: &mut v8::PinScope<'s, '_>,
     _object: v8::Local<'s, v8::Object>,
   ) -> Option<bool> {
     // should never be called because has_custom_host_object returns false
@@ -142,7 +145,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 #[op2]
 #[cppgc]
 pub fn op_v8_new_serializer(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<v8::Object>,
 ) -> Serializer<'static> {
   let obj = v8::Global::new(scope, obj);
@@ -162,8 +165,7 @@ pub fn op_v8_set_treat_array_buffer_views_as_host_objects(
 }
 
 #[op2]
-#[serde]
-pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> ToJsBuffer {
+pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> Uint8Array {
   ser.inner.release().into()
 }
 
@@ -207,7 +209,7 @@ pub fn op_v8_write_uint64(#[cppgc] ser: &Serializer, hi: u32, lo: u32) {
 
 #[op2(nofast, reentrant)]
 pub fn op_v8_write_value(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] ser: &Serializer,
   value: v8::Local<v8::Value>,
 ) {
@@ -227,7 +229,10 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl deno_core::GarbageCollected for Deserializer<'_> {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Deserializer<'_> {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Deserializer"
   }
@@ -237,8 +242,9 @@ pub struct DeserializerDelegate {
   obj: v8::TracedReference<v8::Object>,
 }
 
-impl GarbageCollected for DeserializerDelegate {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DeserializerDelegate {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.obj);
   }
 
@@ -250,7 +256,7 @@ impl GarbageCollected for DeserializerDelegate {
 impl v8::ValueDeserializerImpl for DeserializerDelegate {
   fn read_host_object<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     _value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
     let obj = self.obj.get(scope).unwrap();
@@ -258,7 +264,8 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
+    let scope = std::pin::pin!(v8::AllowJavascriptExecutionScope::new(scope));
+    let scope = &mut scope.init();
     if let Some(v) = obj.get(scope, key)
       && let Ok(v) = v.try_cast::<v8::Function>()
     {
@@ -283,7 +290,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
 #[op2]
 #[cppgc]
 pub fn op_v8_new_deserializer(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
 ) -> Result<Deserializer<'static>, JsErrorBox> {
@@ -322,11 +329,18 @@ pub fn op_v8_new_deserializer(
 pub fn op_v8_transfer_array_buffer_de(
   #[cppgc] deser: &Deserializer,
   #[smi] id: u32,
-  array_buffer: v8::Local<v8::ArrayBuffer>,
-) {
-  // TODO(nathanwhit): also need binding for TransferSharedArrayBuffer, then call that if
-  // array_buffer is shared
+  array_buffer: v8::Local<v8::Value>,
+) -> Result<(), deno_core::error::DataError> {
+  if let Ok(shared_array_buffer) =
+    array_buffer.try_cast::<v8::SharedArrayBuffer>()
+  {
+    deser
+      .inner
+      .transfer_shared_array_buffer(id, shared_array_buffer)
+  }
+  let array_buffer = array_buffer.try_cast::<v8::ArrayBuffer>()?;
   deser.inner.transfer_array_buffer(id, array_buffer);
+  Ok(())
 }
 
 #[op2(fast)]
@@ -342,7 +356,7 @@ pub fn op_v8_read_double(
 
 #[op2(nofast)]
 pub fn op_v8_read_header(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] deser: &Deserializer,
 ) -> bool {
   let context = scope.get_current_context();
@@ -380,7 +394,6 @@ pub fn op_v8_read_uint32(
 }
 
 #[op2]
-#[serde]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
 ) -> Result<(u32, u32), JsErrorBox> {
@@ -399,7 +412,7 @@ pub fn op_v8_get_wire_format_version(#[cppgc] deser: &Deserializer) -> u32 {
 
 #[op2(reentrant)]
 pub fn op_v8_read_value<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   #[cppgc] deser: &Deserializer,
 ) -> v8::Local<'s, v8::Value> {
   let context = scope.get_current_context();

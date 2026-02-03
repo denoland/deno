@@ -1,6 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -24,6 +25,7 @@ use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::watch_env_tracker::WatchEnvTracker;
 
 pub mod hmr;
 
@@ -40,7 +42,7 @@ To grant permissions, set them before the script argument. For example:
   }
 }
 
-fn set_npm_user_agent() {
+pub fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
     #[allow(clippy::undocumented_unsafe_blocks)]
@@ -89,6 +91,7 @@ pub async fn run_script(
     ),
   ))?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
     set_npm_user_agent();
@@ -104,6 +107,7 @@ pub async fn run_script(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await
@@ -125,6 +129,7 @@ pub async fn run_from_stdin(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -149,6 +154,7 @@ pub async fn run_from_stdin(
       WorkerExecutionMode::Run,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;
@@ -173,6 +179,14 @@ async fn run_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
+      let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
+        .env_file
+        .as_ref()
+        .map(|files| files.iter().map(PathBuf::from).collect());
+      WatchEnvTracker::snapshot().load_env_variables_from_env_files(
+        env_file_paths.as_ref(),
+        flags.log_level,
+      );
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
@@ -181,6 +195,7 @@ async fn run_with_watch(
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
 
         if main_module.scheme() == "npm" {
           set_npm_user_agent();
@@ -193,7 +208,12 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module.clone(), preload_modules)
+          .create_main_worker(
+            mode,
+            main_module.clone(),
+            preload_modules,
+            require_modules,
+          )
           .await?;
 
         if watch_flags.hmr {
@@ -221,6 +241,7 @@ pub async fn eval_command(
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -247,6 +268,7 @@ pub async fn eval_command(
       WorkerExecutionMode::Eval,
       main_module.clone(),
       preload_modules,
+      require_modules,
     )
     .await?;
   let exit_code = worker.run().await?;
@@ -298,6 +320,7 @@ pub async fn run_eszip(
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
@@ -307,6 +330,7 @@ pub async fn run_eszip(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;

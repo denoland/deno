@@ -1,5 +1,5 @@
-Check file:///[WILDLINE]/package-a/mod.bench.ts
-Check file:///[WILDLINE]/package-b/mod.bench.ts
+Check [WILDCARD]mod.bench.ts
+Check [WILDCARD]mod.bench.ts
     CPU | [WILDLINE]
 Runtime | [WILDLINE]
 

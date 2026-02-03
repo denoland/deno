@@ -1,0 +1,9 @@
+[WILDCARD]
+Bundled 4 modules in [WILDLINE]
+[UNORDERED_START]
+  dist[WILDCHAR]index-[WILDLINE].js [WILDLINE]
+  dist[WILDCHAR]sub[WILDCHAR]index-[WILDLINE].js [WILDLINE]
+  dist[WILDCHAR]index.html [WILDLINE]
+  dist[WILDCHAR]sub[WILDCHAR]index.html [WILDLINE]
+[UNORDERED_END]
+

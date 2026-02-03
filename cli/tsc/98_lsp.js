@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   clearScriptNamesCache,
@@ -237,8 +237,14 @@ function lspToTsCompilerOptions(config) {
   Object.assign(options, {
     allowNonTsExtensions: true,
     allowImportingTsExtensions: true,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    module: options.module === ts.ModuleKind.ESNext ||
+        options.module === ts.ModuleKind.Preserve
+      ? options.module
+      : ts.ModuleKind.NodeNext,
+    moduleResolution:
+      options.moduleResolution === ts.ModuleResolutionKind.Bundler
+        ? ts.ModuleResolutionKind.Bundler
+        : ts.ModuleResolutionKind.NodeNext,
   });
   if (errors.length > 0) {
     debug(ts.formatDiagnostics(errors, host));

@@ -1,4 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
 import {
   assert,
   assertEquals,
@@ -866,4 +869,288 @@ Deno.test("websocket close ongoing handshake", async () => {
     await promise2;
     assert(gotError2);
   }
+});
+
+function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
+  return (err) => {
+    console.error(err);
+    ac.abort();
+    return new Response("Internal server error", { status: 500 });
+  };
+}
+
+function onListen(
+  resolve: (value: void | PromiseLike<void>) => void,
+): (_addr: Deno.Addr) => void {
+  return () => {
+    resolve();
+  };
+}
+
+Deno.test("WebSocket headers", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      assertEquals(request.headers.get("Authorization"), "Bearer foo");
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  const ws = new WebSocket(`ws://localhost:${servePort}`, {
+    headers: {
+      "Authorization": "Bearer foo",
+    },
+  });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
+});
+
+Deno.test("WebSocket with custom http client with unix proxy", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const socketPath = Deno.makeTempFileSync();
+  Deno.removeSync(socketPath);
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+    transport: "unix",
+    path: socketPath,
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  using client = Deno.createHttpClient({
+    proxy: {
+      transport: "unix",
+      path: socketPath,
+    },
+  });
+  const ws = new WebSocket(`ws://localhost:8000/`, { client });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
+});
+
+Deno.test("WebSocket with custom http client with vsock proxy", {
+  ignore: Deno.build.os !== "linux",
+}, async () => {
+  const socketPath = Deno.makeTempFileSync();
+  Deno.removeSync(socketPath);
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+    transport: "vsock",
+    cid: -1,
+    port: 4242,
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  using client = Deno.createHttpClient({
+    proxy: {
+      transport: "vsock",
+      cid: 1,
+      port: 4242,
+    },
+  });
+  const ws = new WebSocket(`ws://localhost:8000/`, { client });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
+});
+
+Deno.test("WebSocket custom host header", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      assertEquals(request.headers.get("host"), "example.com");
+      assertEquals(request.url, "http://example.com/");
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  using client = Deno.createHttpClient({ allowHost: true });
+  const ws = new WebSocket(`ws://localhost:${servePort}`, {
+    headers: {
+      "Host": "example.com",
+    },
+    client,
+  });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
+});
+
+Deno.test("WebSocket close with reason but no code doesn't send 1005", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+
+  const server = Deno.serve({
+    handler: (request) => {
+      const { response, socket } = Deno.upgradeWebSocket(request);
+      socket.onerror = () => fail();
+      socket.onopen = () => {
+        socket.close(undefined, "A");
+      };
+      socket.onclose = () => ac.abort();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: () => listeningDeferred.resolve(),
+    hostname: "localhost",
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+
+  const conn = await Deno.connect({ port: servePort, hostname: "localhost" });
+  await conn.write(
+    new TextEncoder().encode(
+      "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+    ),
+  );
+
+  const response = new Uint8Array(2048);
+  let totalRead = 0;
+
+  let n = await conn.read(response);
+  assert(n !== null && n > 0);
+  totalRead += n;
+  const headerEnd = new TextDecoder().decode(response.subarray(0, totalRead))
+    .indexOf("\r\n\r\n");
+  assert(headerEnd > 0);
+
+  const frameStart = headerEnd + 4;
+
+  // Keep reading until we have the WebSocket frame header and payload
+  while (totalRead < frameStart + 3) {
+    n = await conn.read(response.subarray(totalRead));
+    assert(n !== null && n > 0);
+    totalRead += n;
+  }
+
+  // [FIN+opcode][length][payload]
+  assertEquals(response[frameStart], 0x88);
+  const payloadLength = response[frameStart + 1] & 0x7F;
+
+  // Payload should just be "A" (1 byte), NOT 1005 code (2 bytes) + "A"
+  assertEquals(payloadLength, 1);
+  assertEquals(response[frameStart + 2], "A".charCodeAt(0));
+
+  conn.close();
+  await server.finished;
 });

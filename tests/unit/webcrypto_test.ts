@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -717,9 +717,9 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
 Deno.test(async function testAesCtrEncryptDecrypt() {
   async function aesCtrRoundTrip(
     key: CryptoKey,
-    counter: Uint8Array,
+    counter: Uint8Array<ArrayBuffer>,
     length: number,
-    plainText: Uint8Array,
+    plainText: Uint8Array<ArrayBuffer>,
   ) {
     const cipherText = await crypto.subtle.encrypt(
       {

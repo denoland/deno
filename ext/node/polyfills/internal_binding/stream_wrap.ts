@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -355,7 +355,6 @@ export class LibuvStreamWrap extends HandleWrap {
     let buf = this.#buf;
 
     let nread: number | null;
-    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     if (this.upgrading) {
       // Starting an upgrade, stop reading. Upgrading will resume reading.
@@ -363,6 +362,7 @@ export class LibuvStreamWrap extends HandleWrap {
       return;
     }
 
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       if (this[kStreamBaseField]![_readWithCancelHandle]) {
         const { cancelHandle, nread: p } = this[kStreamBaseField]!

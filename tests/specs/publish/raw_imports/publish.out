@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 Checking for slow types in the public API...
 error[unstable-raw-import]: raw imports have not been stabilized
  --> [WILDLINE]main.ts:1:18

@@ -1,0 +1,12 @@
+{
+  "steps": [
+    {
+      "args": "cache main.ts",
+      "output": "cache.out"
+    },
+    {
+      "args": "run main.ts",
+      "output": "1\n2\n1\n"
+    }
+  ]
+}

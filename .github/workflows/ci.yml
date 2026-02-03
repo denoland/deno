@@ -32,7 +32,7 @@ jobs:
           git config --global fetch.parallel 32
         if: github.event.pull_request.draft == true
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -60,12 +60,12 @@ jobs:
         include:
           - os: macos
             arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
             job: test
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-13'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
@@ -91,6 +91,17 @@ jobs:
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: windows
+            arch: aarch64
+            runner: windows-11-arm
+            job: test
+            profile: debug
+          - os: windows
+            arch: aarch64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
+            job: test
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: linux
             arch: x86_64
             runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -112,32 +123,17 @@ jobs:
             profile: debug
             use_sysroot: true
           - os: linux
-            arch: x86_64
-            runner: ubuntu-24.04
-            job: lint
-            profile: debug
-          - os: linux
             arch: aarch64
-            runner: ubicloud-standard-16-arm
+            runner: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
             job: test
             profile: debug
           - os: linux
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ubicloud-standard-16-arm'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
             job: test
             profile: release
             use_sysroot: true
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-          - os: macos
-            arch: x86_64
-            runner: macos-13
-            job: lint
-            profile: debug
-          - os: windows
-            arch: x86_64
-            runner: windows-2022
-            job: lint
-            profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
@@ -150,7 +146,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -188,23 +184,26 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '71-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '71-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && (matrix.os == ''linux'' && matrix.arch == ''aarch64'')'
+        name: Load 'vsock_loopback; kernel module
+        run: sudo modprobe vsock_loopback
+      - if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''bench'') && !(matrix.os == ''windows'' && matrix.arch == ''aarch64''))'
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64''))'
+        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && (matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && ((matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -213,9 +212,9 @@ jobs:
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
         name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 22
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -223,7 +222,7 @@ jobs:
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
         name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -237,7 +236,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Setup gcloud (windows)
@@ -272,18 +271,18 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-20.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-20 lld-20 clang-tools-20 clang-format-20 clang-tidy-20 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-20 lld-20 clang-tools-20 clang-format-20 clang-tidy-20
+          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-20 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -316,8 +315,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-20
-            -C link-arg=-fuse-ld=lld-20
+            -C linker=clang-21
+            -C link-arg=-fuse-ld=lld-21
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -328,8 +327,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-20
-            -C link-arg=-fuse-ld=lld-20
+            -C linker=clang-21
+            -C link-arg=-fuse-ld=lld-21
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -338,7 +337,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-20
+          CC=/usr/bin/clang-21
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
@@ -391,34 +390,18 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '71-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
       - name: Set up playwright cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
         if: '!(matrix.skip)'
-      - name: test_format.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
-      - name: lint.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
-      - name: jsdoc_checker.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
-      - name: Check tracing build
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
-        run: cargo check -p deno --features=lsp-tracing
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets --features=panic-trace
@@ -459,7 +442,7 @@ jobs:
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))))
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
           path: target/release/deno
@@ -519,7 +502,7 @@ jobs:
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
-        uses: azure/trusted-signing-action@v0
+        uses: Azure/artifact-signing-action@v0
         with:
           endpoint: 'https://eus.codesigning.azure.net/'
           trusted-signing-account-name: deno-cli-code-signing
@@ -611,6 +594,23 @@ jobs:
       - name: Ensure no git changes
         if: '!(matrix.skip) && (matrix.job == ''test'' && github.event_name == ''pull_request'')'
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Combine test results
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
+        run: deno run -RWN ./tools/combine_test_results.js
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: |-
+          !(matrix.skip) && (always() &&
+          matrix.job == 'test' &&
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
+        with:
+          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          path: target/test_results.json
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -665,7 +665,7 @@ jobs:
       - name: Run benchmarks
         if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
-      - name: Post Benchmarks
+      - name: Post benchmarks
         if: |-
           !(matrix.skip) && (matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
@@ -684,7 +684,7 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(matrix.skip) && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(matrix.skip) && (matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
@@ -728,7 +728,7 @@ jobs:
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v0.1.15
+        uses: softprops/action-gh-release@v2
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
@@ -742,6 +742,10 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/deno-aarch64-pc-windows-msvc.zip
+            target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/denort-aarch64-pc-windows-msvc.zip
+            target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
@@ -764,7 +768,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
-        if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
+        if: '!(matrix.skip) && (matrix.job == ''test'' && github.ref == ''refs/heads/main'')'
         with:
           path: |-
             ./target
@@ -772,7 +776,96 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '71-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+  lint:
+    name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
+    runs-on: '${{ matrix.runner }}'
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            profile: debug
+            job: lint
+          - os: macos
+            arch: x86_64
+            runner: macos-15-intel
+            profile: debug
+            job: lint
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
+            profile: debug
+            job: lint
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+      - uses: dsherret/rust-toolchain-file@v1
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Restore cache build output (PR)
+        uses: actions/cache/restore@v4
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
+          restore-keys: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+      - name: test_format.js
+        if: matrix.os == 'linux'
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+      - name: lint.js
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
+      - name: jsdoc_checker.js
+        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
+      - name: Save cache build output (main)
+        uses: actions/cache/save@v4
+        if: matrix.job == 'test' && github.ref == 'refs/heads/main'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:
@@ -787,7 +880,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -810,6 +903,7 @@ jobs:
           cargo check --no-default-features --features package_json -p deno_config
           cargo check --no-default-features --features workspace --features sync -p deno_config
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
+          cargo check -p deno --features=lsp-tracing
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
@@ -819,7 +913,7 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'

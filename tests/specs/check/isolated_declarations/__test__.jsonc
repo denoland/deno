@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "check": {
+      "args": "check main.ts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "run": {
+      "args": "run main.ts",
+      "output": "run.out"
+    }
+  }
+}

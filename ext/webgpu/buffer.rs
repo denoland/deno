@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,6 +14,7 @@ use deno_error::JsErrorBox;
 use wgpu_core::device::HostMap as MapMode;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -72,7 +73,10 @@ impl WebIdlInterfaceConverter for GPUBuffer {
   const NAME: &'static str = "GPUBuffer";
 }
 
-impl GarbageCollected for GPUBuffer {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUBuffer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUBuffer"
   }
@@ -80,6 +84,12 @@ impl GarbageCollected for GPUBuffer {
 
 #[op2]
 impl GPUBuffer {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBuffer, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -107,7 +117,9 @@ impl GPUBuffer {
     *self.map_state.borrow()
   }
 
-  #[async_method]
+  // In the successful case, the promise should resolve to undefined, but
+  // `#[undefined]` does not seem to work here.
+  // https://github.com/denoland/deno/issues/29603
   async fn map_async(
     &self,
     #[webidl(options(enforce_range = true))] mode: u32,
@@ -167,7 +179,7 @@ impl GPUBuffer {
         {
           self
             .instance
-            .device_poll(self.device, wgpu_types::Maintain::wait())
+            .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
             .unwrap();
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -192,7 +204,7 @@ impl GPUBuffer {
 
   fn get_mapped_range<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
   ) -> Result<v8::Local<'s, v8::ArrayBuffer>, BufferError> {
@@ -243,7 +255,8 @@ impl GPUBuffer {
   }
 
   #[nofast]
-  fn unmap(&self, scope: &mut v8::HandleScope) -> Result<(), BufferError> {
+  #[undefined]
+  fn unmap(&self, scope: &mut v8::PinScope<'_, '_>) -> Result<(), BufferError> {
     for ab in self.mapped_js_buffers.replace(vec![]) {
       let ab = ab.open(scope);
       ab.detach(None);
@@ -260,10 +273,8 @@ impl GPUBuffer {
   }
 
   #[fast]
-  fn destroy(&self) -> Result<(), JsErrorBox> {
-    self
-      .instance
-      .buffer_destroy(self.id)
-      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  #[undefined]
+  fn destroy(&self) {
+    self.instance.buffer_destroy(self.id);
   }
 }

@@ -1,4 +1,16 @@
 {
-  "args": "check main.ts",
-  "output": "main.out"
+  "tempDir": true,
+  "args": "check main.tsx",
+  "output": "main.out",
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
 }
