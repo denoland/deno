@@ -3,7 +3,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "bench_util",
   "cli",
   "cli/lib",
   "cli/rt",
@@ -48,6 +47,7 @@ members = [
   "runtime/permissions",
   "runtime/subprocess_windows",
   "tests",
+  "tests/bench_util",
   "tests/ffi",
   "tests/napi",
   "tests/sqlite_extension_test",
