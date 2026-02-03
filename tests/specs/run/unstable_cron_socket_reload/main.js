@@ -8,4 +8,4 @@ Deno.cron("test-cron", "* * * * *", () => {
 console.error("[ISOLATE] test-cron registered successfully");
 
 // Keep alive with Deno.serve
-Deno.serve({port: 0}, () => new Response("Hello"));
+Deno.serve({ port: 0 }, () => new Response("Hello"));
