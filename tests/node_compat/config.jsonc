@@ -1607,7 +1607,7 @@
     // "parallel/test-zlib-unused-weak.js": {},
     "parallel/test-zlib-unzip-one-byte-chunks.js": {},
     "parallel/test-zlib-write-after-close.js": {},
-    // "parallel/test-zlib-write-after-end.js": {},
+    "parallel/test-zlib-write-after-end.js": {},
     "parallel/test-zlib-write-after-flush.js": {},
     "parallel/test-zlib-zero-byte.js": {},
     "parallel/test-zlib-zero-windowBits.js": {},
