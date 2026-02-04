@@ -327,7 +327,7 @@ async fn op_host_recv_ctrl(
       (handle.worker_handle.clone(), handle.cancel_handle.clone())
     } else {
       // If handle was not found it means worker has already shutdown
-      return WorkerControlEvent::Close;
+      return WorkerControlEvent::Close(0);
     }
   };
 
@@ -337,20 +337,23 @@ async fn op_host_recv_ctrl(
     .await;
   match maybe_event {
     Ok(Some(event)) => {
-      // Terminal error means that worker should be removed from worker table.
-      if let WorkerControlEvent::TerminalError(_) = &event {
-        close_channel(state, id, WorkerChannel::Ctrl);
+      // Terminal error or close means that worker should be removed from worker table.
+      match &event {
+        WorkerControlEvent::TerminalError(_)
+        | WorkerControlEvent::Close(_) => {
+          close_channel(state, id, WorkerChannel::Ctrl);
+        }
       }
       event
     }
     Ok(None) => {
       // If there was no event from worker it means it has already been closed.
       close_channel(state, id, WorkerChannel::Ctrl);
-      WorkerControlEvent::Close
+      WorkerControlEvent::Close(0)
     }
     Err(_) => {
       // The worker was terminated.
-      WorkerControlEvent::Close
+      WorkerControlEvent::Close(0)
     }
   }
 }
