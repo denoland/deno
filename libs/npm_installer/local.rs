@@ -230,7 +230,7 @@ impl<
         &self.root_node_modules_path,
         &deno_local_registry_dir,
         &package_partitions,
-        &self.npm_install_deps_provider,
+        &mut setup_cache,
       )?;
     }
     setup_cache.set_packages_hash(packages_hash);
@@ -1313,6 +1313,10 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
       .unwrap_or(true) // If no previous cache, consider it changed
   }
 
+  pub fn clear_previous(&mut self) {
+    self.previous = None;
+  }
+
   /// Updates the packages hash in the current cache
   pub fn set_packages_hash(&mut self, hash: u64) {
     self.current.packages_hash = hash;
@@ -1495,12 +1499,12 @@ fn calculate_packages_hash(
 
 /// Cleans up unused packages from the node_modules/.deno directory.
 /// This removes any package folders that are not part of the current resolution.
-fn cleanup_unused_packages(
-  sys: &impl LocalNpmInstallSys,
+fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
   root_node_modules_dir: &Path,
   deno_local_registry_dir: &Path,
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
-  npm_install_deps_provider: &NpmInstallDepsProvider,
+  setup_cache: &mut LocalSetupCache<TSys>,
 ) -> Result<(), SyncResolutionWithFsError> {
   // Collect all package folder names that should exist in .deno/
   let expected_folders: HashSet<_> = package_partitions
@@ -1510,13 +1514,12 @@ fn cleanup_unused_packages(
     })
     .collect();
 
-  // 1. Clean up package folders in .deno/ directory
+  // Clean up package folders in .deno/ that are no longer needed
   if let Ok(entries) = sys.fs_read_dir(deno_local_registry_dir) {
     for entry in entries.flatten() {
       let file_name = entry.file_name();
       if let Some(name_str) = file_name.to_str() {
-        // Skip special files/dirs like node_modules, .deno.lock, .setup-cache.bin
-        if name_str == "node_modules" || name_str.starts_with('.') {
+        if name_str == "node_modules" || name_str.starts_with(".deno.lock") {
           continue;
         }
 
@@ -1529,60 +1532,26 @@ fn cleanup_unused_packages(
     }
   }
 
-  // 1.5. Clean up dependency symlinks inside each package's node_modules
-  for package in package_partitions.iter_all() {
-    let folder_name =
-      get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
-    let package_node_modules = deno_local_registry_dir
-      .join(&folder_name)
-      .join("node_modules");
-
-    if let Ok(entries) = sys.fs_read_dir(&package_node_modules) {
-      for entry in entries.flatten() {
-        let entry_path = package_node_modules.join(entry.file_name());
-        // Remove all dependency symlinks (will be recreated as needed)
-        let _ignore = sys.fs_remove_dir_all(&entry_path);
-      }
+  if let Some(previous) = &mut setup_cache.previous {
+    // Clean up .deno/node_modules/* symlinks for packages no longer needed
+    let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
+    for name in std::mem::take(&mut previous.deno_symlinks).keys() {
+      let path = deno_node_modules_dir.join(name);
+      let _ignore = sys.fs_remove_dir_all(&path);
     }
+
+    // Clean up root node_modules/* symlinks for packages no longer needed
+    for name in std::mem::take(&mut previous.root_symlinks).keys() {
+      let path = root_node_modules_dir.join(name);
+      let _ignore = sys.fs_remove_dir_all(&path);
+    }
+
+    previous.deno_symlinks = Default::default();
   }
 
-  // 2. Clean up .deno/node_modules/* symlinks
-  let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
-  if let Ok(entries) = sys.fs_read_dir(&deno_node_modules_dir) {
-    for entry in entries.flatten() {
-      let _ignore =
-        sys.fs_remove_dir_all(deno_node_modules_dir.join(entry.file_name()));
-    }
-  }
-
-  // 3. Clean up root node_modules/* (will be recreated as needed)
-  if let Ok(entries) = sys.fs_read_dir(root_node_modules_dir) {
-    for entry in entries.flatten() {
-      let file_name = entry.file_name();
-      if let Some(name_str) = file_name.to_str() {
-        // Skip .deno directory
-        if name_str == ".deno" {
-          continue;
-        }
-
-        let path = root_node_modules_dir.join(&file_name);
-        // Remove .bin unconditionally, or other entries if metadata check succeeds
-        if name_str == ".bin" || sys.fs_symlink_metadata(&path).is_ok() {
-          let _ignore = sys.fs_remove_dir_all(&path);
-        }
-      }
-    }
-  }
-
-  // 4. Clean up workspace child node_modules directories
-  let mut workspace_dirs = HashSet::new();
-  for remote in npm_install_deps_provider.remote_pkgs() {
-    let child_node_modules = remote.base_dir.join("node_modules");
-    if workspace_dirs.insert(child_node_modules.clone()) {
-      // Remove entire child node_modules directory (will be recreated with correct packages)
-      let _ignore = sys.fs_remove_dir_all(&child_node_modules);
-    }
-  }
+  // Always clean up .bin directory (will be recreated with correct entries)
+  let bin_dir = root_node_modules_dir.join(".bin");
+  let _ignore = sys.fs_remove_dir_all(&bin_dir);
 
   Ok(())
 }
