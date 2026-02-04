@@ -212,20 +212,33 @@ impl<
     )
     .await;
 
+    let package_partitions =
+      snapshot.all_system_packages_partitioned(&self.system_info);
+
     // load this after we get the directory lock
     let mut setup_cache = LocalSetupCache::load(
       self.sys.clone(),
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
-    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
+    // 1. Check if packages changed and clean up if needed
+    let packages_hash = calculate_packages_hash(&package_partitions);
+    if setup_cache.packages_changed(packages_hash) {
+      cleanup_unused_packages(
+        &self.sys,
+        &self.root_node_modules_path,
+        &deno_local_registry_dir,
+        &package_partitions,
+        &self.npm_install_deps_provider,
+      )?;
+    }
+    setup_cache.set_packages_hash(packages_hash);
 
-    // 1. Write all the packages out the .deno directory.
+    // 2. Write all the packages out the .deno directory.
     //
     // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
-    let package_partitions =
-      snapshot.all_system_packages_partitioned(&self.system_info);
+    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -474,7 +487,7 @@ impl<
       result?; // surface the first error
     }
 
-    // 2. Setup the patch packages
+    // 3. Setup the patch packages
     for patch_pkg in self.npm_install_deps_provider.patch_pkgs() {
       // there might be multiple ids per package due to peer dep copy packages
       for id in snapshot.package_ids_for_nv(&patch_pkg.nv) {
@@ -519,7 +532,7 @@ impl<
       result?; // surface the first error
     }
 
-    // 3. Create any "copy" packages, which are used for peer dependencies
+    // 4. Create any "copy" packages, which are used for peer dependencies
     for package in &package_partitions.copy_packages {
       let package_cache_folder_id = package.get_package_cache_folder_id();
       let destination_path = deno_local_registry_dir
@@ -564,7 +577,7 @@ impl<
       result?; // surface the first error
     }
 
-    // 4. Symlink all the dependencies into the .deno directory.
+    // 5. Symlink all the dependencies into the .deno directory.
     //
     // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
     // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
@@ -611,7 +624,7 @@ impl<
     // set of node_modules in workspace packages that we've already ensured exist
     let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
 
-    // 5. Create symlinks for package json dependencies
+    // 6. Create symlinks for package json dependencies
     {
       for remote in self.npm_install_deps_provider.remote_pkgs() {
         let remote_pkg = match snapshot.resolve_pkg_from_pkg_req(&remote.req) {
@@ -706,7 +719,7 @@ impl<
       }
     }
 
-    // 6. Create symlinks for the remaining top level packages in the node_modules folder.
+    // 7. Create symlinks for the remaining top level packages in the node_modules folder.
     // (These may be present if they are not in the package.json dependencies)
     // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
     // node_modules/<package_name>
@@ -749,7 +762,7 @@ impl<
       }
     }
 
-    // 7. Create a node_modules/.deno/node_modules/<package-name> directory with
+    // 8. Create a node_modules/.deno/node_modules/<package-name> directory with
     // the remaining packages
     for package in newest_packages_by_name.values() {
       match found_names.entry(&package.id.nv.name) {
@@ -787,7 +800,7 @@ impl<
       }
     }
 
-    // 8. Set up `node_modules/.bin` entries for packages that need it.
+    // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
       let bin_entries = match Rc::try_unwrap(bin_entries) {
         Ok(bin_entries) => bin_entries.into_inner(),
@@ -817,7 +830,7 @@ impl<
       )?;
     }
 
-    // 9. Create symlinks for the workspace packages
+    // 10. Create symlinks for the workspace packages
     {
       // todo(dsherret): this is not exactly correct because it should
       // install correctly for a workspace (potentially in sub directories),
@@ -1168,6 +1181,8 @@ struct SetupCacheData {
   root_symlinks: BTreeMap<String, String>,
   deno_symlinks: BTreeMap<String, String>,
   dep_symlinks: BTreeMap<String, BTreeMap<String, String>>,
+  #[serde(default)]
+  packages_hash: u64,
 }
 
 /// It is very slow to try to re-setup the symlinks each time, so this will
@@ -1287,6 +1302,20 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
         .entry(parent_name.to_string())
         .or_default(),
     }
+  }
+
+  /// Checks if the packages have changed since the last setup
+  pub fn packages_changed(&self, current_hash: u64) -> bool {
+    self
+      .previous
+      .as_ref()
+      .map(|p| p.packages_hash != current_hash)
+      .unwrap_or(true) // If no previous cache, consider it changed
+  }
+
+  /// Updates the packages hash in the current cache
+  pub fn set_packages_hash(&mut self, hash: u64) {
+    self.current.packages_hash = hash;
   }
 }
 
@@ -1444,6 +1473,126 @@ fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
     }
   }
   path.into_owned()
+}
+
+/// Calculates a hash of the current package set for change detection.
+/// This allows us to detect when npm packages have been added, removed, or changed.
+fn calculate_packages_hash(
+  package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+) -> u64 {
+  use std::hash::Hash;
+  use std::hash::Hasher;
+
+  let mut hasher = twox_hash::XxHash64::default();
+
+  // Hash all package IDs (iter_all is deterministic)
+  for package in package_partitions.iter_all() {
+    package.id.hash(&mut hasher);
+  }
+
+  hasher.finish()
+}
+
+/// Cleans up unused packages from the node_modules/.deno directory.
+/// This removes any package folders that are not part of the current resolution.
+fn cleanup_unused_packages(
+  sys: &impl LocalNpmInstallSys,
+  root_node_modules_dir: &Path,
+  deno_local_registry_dir: &Path,
+  package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> Result<(), SyncResolutionWithFsError> {
+  // Collect all package folder names that should exist in .deno/
+  let expected_folders: HashSet<_> = package_partitions
+    .iter_all()
+    .map(|package| {
+      get_package_folder_id_folder_name(&package.get_package_cache_folder_id())
+    })
+    .collect();
+
+  // 1. Clean up package folders in .deno/ directory
+  if let Ok(entries) = sys.fs_read_dir(deno_local_registry_dir) {
+    for entry in entries {
+      if let Ok(entry) = entry {
+        let file_name = entry.file_name();
+        if let Some(name_str) = file_name.to_str() {
+          // Skip special files/dirs like node_modules, .deno.lock, .setup-cache.bin
+          if name_str == "node_modules" || name_str.starts_with('.') {
+            continue;
+          }
+
+          // If this folder is not expected, remove it
+          if !expected_folders.contains(name_str) {
+            let path = deno_local_registry_dir.join(file_name);
+            let _ignore = sys.fs_remove_dir_all(&path);
+          }
+        }
+      }
+    }
+  }
+
+  // 1.5. Clean up dependency symlinks inside each package's node_modules
+  for package in package_partitions.iter_all() {
+    let folder_name =
+      get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
+    let package_node_modules = deno_local_registry_dir
+      .join(&folder_name)
+      .join("node_modules");
+
+    if let Ok(entries) = sys.fs_read_dir(&package_node_modules) {
+      for entry in entries {
+        if let Ok(entry) = entry {
+          let entry_path = package_node_modules.join(entry.file_name());
+          // Remove all dependency symlinks (will be recreated as needed)
+          let _ignore = sys.fs_remove_dir_all(&entry_path);
+        }
+      }
+    }
+  }
+
+  // 2. Clean up .deno/node_modules/* symlinks
+  let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
+  if let Ok(entries) = sys.fs_read_dir(&deno_node_modules_dir) {
+    for entry in entries {
+      if let Ok(entry) = entry {
+        let _ignore =
+          sys.fs_remove_dir_all(&deno_node_modules_dir.join(entry.file_name()));
+      }
+    }
+  }
+
+  // 3. Clean up root node_modules/* (will be recreated as needed)
+  if let Ok(entries) = sys.fs_read_dir(root_node_modules_dir) {
+    for entry in entries {
+      if let Ok(entry) = entry {
+        let file_name = entry.file_name();
+        if let Some(name_str) = file_name.to_str() {
+          // Skip .deno directory
+          if name_str == ".deno" {
+            continue;
+          }
+
+          let path = root_node_modules_dir.join(&file_name);
+          // Remove .bin unconditionally, or other entries if metadata check succeeds
+          if name_str == ".bin" || sys.fs_symlink_metadata(&path).is_ok() {
+            let _ignore = sys.fs_remove_dir_all(&path);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Clean up workspace child node_modules directories
+  let mut workspace_dirs = HashSet::new();
+  for remote in npm_install_deps_provider.remote_pkgs() {
+    let child_node_modules = remote.base_dir.join("node_modules");
+    if workspace_dirs.insert(child_node_modules.clone()) {
+      // Remove entire child node_modules directory (will be recreated with correct packages)
+      let _ignore = sys.fs_remove_dir_all(&child_node_modules);
+    }
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]

@@ -1,0 +1,8 @@
+Download http://localhost:4545/npm/registry/chalk
+Download http://localhost:4545/npm/registry/cowsay
+Download http://localhost:4545/npm/registry/chalk/chalk-5.0.1.tgz
+Download http://localhost:4545/npm/registry/cowsay/cowsay-1.5.0.tgz
+[WILDCARD]
+Initialize chalk@5.0.1
+Initialize cowsay@1.5.0
+[WILDCARD]
