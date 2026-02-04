@@ -20,14 +20,12 @@
 // SOFTWARE.
 
 import {
-  op_bootstrap_color_depth,
   op_node_is_tty,
   op_set_raw,
 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
-  Error,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
   RegExpPrototypeExec,
