@@ -210,7 +210,7 @@ async fn run_subcommand(
       spawn_subcommand(async { tools::info::info(flags, info_flags).await })
     }
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
-      tools::installer::install_command(flags, install_flags).await
+      Box::pin(tools::installer::install_command(flags, install_flags)).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
