@@ -25,6 +25,8 @@ import {
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { ERR_WORKER_INVALID_EXEC_ARGV } from "ext:deno_node/internal/errors.ts";
+import { validateArray } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
 import {
   BroadcastChannel as WebBroadcastChannel,
@@ -124,6 +126,23 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
+
+    if (options?.execArgv) {
+      validateArray(options.execArgv, "options.execArgv");
+      if (options.execArgv.length > 0) {
+        throw new ERR_WORKER_INVALID_EXEC_ARGV(options.execArgv);
+      }
+    }
+
+    if (options?.env) {
+      const nodeOptions = options.env.NODE_OPTIONS;
+      if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
+        throw new ERR_WORKER_INVALID_EXEC_ARGV(
+          [nodeOptions],
+          "invalid NODE_OPTIONS env variable",
+        );
+      }
+    }
 
     if (
       typeof specifier === "object" &&
