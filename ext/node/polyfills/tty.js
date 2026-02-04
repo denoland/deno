@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_bootstrap_color_depth, op_node_is_tty } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
@@ -11,6 +11,74 @@ import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
+const {
+  isTerminal,
+  ops: { op_open_tty_from_fd },
+} = core;
+
+// Helper class to wrap a file descriptor as a stream-like object
+// Similar to Stdin/Stdout/Stderr classes in io module
+class TTYStream {
+  #rid;
+  #ref = true;
+  #opPromise;
+
+  constructor(rid) {
+    this.#rid = rid;
+  }
+
+  get rid() {
+    return this.#rid;
+  }
+
+  async read(p) {
+    if (p.length === 0) return 0;
+    this.#opPromise = core.read(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    const nread = await this.#opPromise;
+    return nread === 0 ? null : nread;
+  }
+
+  readSync(p) {
+    return core.ops.op_read_sync(this.#rid, p);
+  }
+
+  async write(p) {
+    this.#opPromise = core.write(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    return await this.#opPromise;
+  }
+
+  writeSync(p) {
+    return core.ops.op_write_sync(this.#rid, p);
+  }
+
+  close() {
+    core.tryClose(this.#rid);
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
+  }
+
+  [Symbol("REF")]() {
+    this.#ref = true;
+    if (this.#opPromise) {
+      core.refOpPromise(this.#opPromise);
+    }
+  }
+
+  [Symbol("UNREF")]() {   
+    this.#ref = false;
+    if (this.#opPromise) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+  }
+}
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -26,13 +94,28 @@ export class ReadStream extends Socket {
       throw new ERR_INVALID_FD(fd);
     }
 
-    // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
-
-    const tty = new TTY(io.stdin);
+    let handle;
+    if (fd > 2) {
+      // For fd > 2, use the new op to create a TTY resource from the fd
+      try {
+        const rid = op_open_tty_from_fd(fd);
+        // Create a stream wrapper for this rid and pass to TTY
+        const stream = new TTYStream(rid);
+        handle = new TTY(stream);
+      } catch (e) {
+        throw new Error(
+          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
+        );
+      }
+    } else {
+      // For stdin/stdout/stderr, use the built-in handles
+      handle = new TTY(
+        fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+      );
+    }
     super({
       readableHighWaterMark: 0,
-      handle: tty,
+      handle,
       manualStart: true,
       ...options,
     });
@@ -58,16 +141,29 @@ export class WriteStream extends Socket {
       throw new ERR_INVALID_FD(fd);
     }
 
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
+    let handle;
+    if (fd > 2) {
+      // For fd > 2, use the new op to create a TTY resource from the fd
+      try {
+        const rid = op_open_tty_from_fd(fd);
+        // Create a stream wrapper for this rid and pass to TTY
+        const stream = new TTYStream(rid);
+        handle = new TTY(stream);
+      } catch (e) {
+        throw new Error(
+          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
+        );
+      }
+    } else {
+      // For stdin/stdout/stderr, use the built-in handles
+      handle = new TTY(
+        fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+      );
+    }
 
     super({
       readableHighWaterMark: 0,
-      handle: tty,
+      handle,
       manualStart: true,
     });
 
@@ -80,7 +176,7 @@ export class WriteStream extends Socket {
   /**
    * @param {number | Record<string, string>} [count]
    * @param {Record<string, string>} [env]
-   * @returns {boolean}
+   * @returns {boolea
    */
   hasColors(count, env) {
     if (
