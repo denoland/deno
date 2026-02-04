@@ -615,8 +615,11 @@ impl<'a> GraphDisplayContext<'a> {
     module: &Module,
     type_dep: bool,
   ) -> DisplayTreeNode {
-    enum PackageOrSpecifier {
-      Package(Box<NpmResolutionPackage>),
+    enum PackageOrSpecifier<'a> {
+      Package {
+        package: Box<NpmResolutionPackage>,
+        sub_path: Option<&'a str>,
+      },
       Specifier(ModuleSpecifier),
     }
 
@@ -625,18 +628,29 @@ impl<'a> GraphDisplayContext<'a> {
     let package_or_specifier = match module.npm() {
       Some(npm) => {
         match self.npm_info.resolve_package(npm.pkg_req_ref.req()) {
-          Some(package) => Package(Box::new(package.clone())),
+          Some(package) => Package {
+            package: Box::new(package.clone()),
+            sub_path: npm.pkg_req_ref.sub_path(),
+          },
           None => Specifier(module.specifier().clone()), // should never happen
         }
       }
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized().into_string(),
+      Package { package, .. } => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = match &package_or_specifier {
-      Package(package) => format!("npm:/{}", package.id.as_serialized()),
+      Package { package, sub_path } => {
+        format!(
+          "npm:/{}{}",
+          package.id.as_serialized(),
+          sub_path
+            .map(|path| format!("/{}", path))
+            .unwrap_or_default()
+        )
+      }
       Specifier(specifier) => specifier.to_string(),
     };
     let header_text = if was_seen {
@@ -653,7 +667,7 @@ impl<'a> GraphDisplayContext<'a> {
         header_text
       };
       let maybe_size = match &package_or_specifier {
-        Package(package) => {
+        Package { package, .. } => {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
@@ -670,7 +684,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     if !was_seen {
       match &package_or_specifier {
-        Package(package) => {
+        Package { package, .. } => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => match module {
