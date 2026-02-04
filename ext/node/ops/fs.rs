@@ -601,10 +601,21 @@ pub fn op_node_dup_fd(
     return Err(FsError::Io(std::io::Error::last_os_error()));
   }
 
+  // Clear O_NONBLOCK flag - the PTY fd might be in non-blocking mode,
+  // but StdFileResourceInner uses spawn_blocking for reads which expects
+  // blocking I/O. We need blocking reads so the read will wait for data.
+  // SAFETY: new_fd is valid, fcntl with F_GETFL/F_SETFL is safe
+  unsafe {
+    let flags = libc::fcntl(new_fd, libc::F_GETFL);
+    if flags >= 0 && (flags & libc::O_NONBLOCK) != 0 {
+      libc::fcntl(new_fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+    }
+  }
+
   // SAFETY: new_fd is a valid fd we just created via dup().
   let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
-
-  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
