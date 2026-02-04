@@ -2,33 +2,101 @@
 
 // TODO(nayeemrmn): Move to `cli/lsp/tsc/go.rs`.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use deno_config::deno_json::CompilerOptions;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_resolver::deno_json::CompilerOptionsKey;
+use lsp_types::Uri;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 use super::documents::DocumentModule;
 use super::language_server::StateSnapshot;
+use crate::cache::DenoDir;
+use crate::http_util::HttpClientProvider;
+use crate::lsp::completions::CompletionItemData;
 use crate::lsp::performance::Performance;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TsGoCompletionItemData {
+  pub uri: Uri,
+  pub data: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum TsGoRequest {
+  ScopedRequest {
+    name: String,
+    args: serde_json::Value,
+    compiler_options_key: CompilerOptionsKey,
+    notebook_uri: Option<Arc<Uri>>,
+  },
+  UnscopedRequest {
+    name: String,
+    args: serde_json::Value,
+  },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DidChangeConfigurationParams {
+  pub by_compiler_options_by_key:
+    Option<BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>>,
+  pub by_notebook_uri: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
+}
+
+#[derive(Debug)]
+struct TsGoServerInner {}
 
 #[derive(Debug)]
 pub struct TsGoServer {
   enable_tracing: Arc<AtomicBool>,
   performance: Arc<Performance>,
+  deno_dir: DenoDir,
+  http_client_provider: Arc<HttpClientProvider>,
+  inner: tokio::sync::OnceCell<TsGoServerInner>,
 }
 
 impl TsGoServer {
-  pub fn new(performance: Arc<Performance>) -> Self {
+  pub fn new(
+    performance: Arc<Performance>,
+    deno_dir: &DenoDir,
+    http_client_provider: &Arc<HttpClientProvider>,
+  ) -> Self {
     Self {
       enable_tracing: Default::default(),
       performance,
+      deno_dir: deno_dir.clone(),
+      http_client_provider: http_client_provider.clone(),
+      inner: Default::default(),
     }
   }
 
+  async fn inner(&self) -> &TsGoServerInner {
+    self
+      .inner
+      .get_or_init(async || {
+        let tsgo_path = crate::tsc::ensure_tsgo(
+          &self.deno_dir,
+          self.http_client_provider.clone(),
+        )
+        .await
+        .unwrap();
+        todo!("{}", tsgo_path.display())
+      })
+      .await
+  }
+
   pub fn is_started(&self) -> bool {
-    todo!()
+    self.inner.initialized()
   }
 
   pub async fn provide_diagnostics(
@@ -128,17 +196,39 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CompletionResponse>, AnyError> {
-    todo!()
+    let response: Result<Option<lsp::CompletionResponse>, AnyError> = todo!();
+    if let Ok(Some(response)) = &mut response {
+      let items = match response {
+        lsp::CompletionResponse::Array(items) => items,
+        lsp::CompletionResponse::List(list) => &mut list.items,
+      };
+      for item in items {
+        if let Some(data) = &mut item.data {
+          let raw_data = std::mem::replace(data, serde_json::Value::Null);
+          *data = serde_json::json!(CompletionItemData {
+            documentation: None,
+            tsc: None,
+            tsgo: Some(TsGoCompletionItemData {
+              uri: module.uri.as_ref().clone(),
+              data: raw_data,
+            })
+          });
+        }
+      }
+    }
+    response
   }
 
   pub async fn resolve_completion_item(
     &self,
     module: &DocumentModule,
-    item: lsp::CompletionItem,
+    mut item: lsp::CompletionItem,
+    data: TsGoCompletionItemData,
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::CompletionItem, AnyError> {
-    todo!()
+    item.data = Some(data.data);
+    todo!("{:?}", item)
   }
 
   pub async fn provide_implementations(
@@ -229,6 +319,15 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
+    todo!()
+  }
+
+  pub async fn provide_workspace_symbol(
+    &self,
+    query: &str,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
     todo!()
   }
 }

@@ -2,6 +2,7 @@
 
 // TODO(nayeemrmn): Move to `cli/lsp/tsc/mod.rs`.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_core::anyhow::anyhow;
@@ -17,8 +18,13 @@ use tower_lsp::lsp_types as lsp;
 use super::documents::DocumentModule;
 use super::language_server::StateSnapshot;
 use super::tsc;
+use crate::cache::DenoDir;
+use crate::http_util::HttpClientProvider;
 use crate::lsp::analysis::TsFixActionCollector;
+use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
+use crate::lsp::completions;
 use crate::lsp::config::CodeLensSettings;
+use crate::lsp::config::UpdateImportsOnFileMoveEnabled;
 use crate::lsp::diagnostics::ts_json_to_diagnostics;
 use crate::lsp::documents::Document;
 use crate::lsp::language_server;
@@ -27,6 +33,7 @@ use crate::lsp::performance::Performance;
 use crate::lsp::refactor;
 use crate::lsp::tsc::{TsServer, file_text_changes_to_workspace_edit};
 use crate::lsp::tsc_go::TsGoServer;
+use crate::lsp::urls::uri_to_url;
 
 #[derive(Debug)]
 pub enum TsModServer {
@@ -35,18 +42,22 @@ pub enum TsModServer {
 }
 
 impl TsModServer {
-  pub fn new(performance: Arc<Performance>) -> Self {
+  pub fn new(
+    performance: Arc<Performance>,
+    deno_dir: &DenoDir,
+    http_client_provider: &Arc<HttpClientProvider>,
+  ) -> Self {
     if std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
-      TsModServer::Go(TsGoServer::new(performance))
+      Self::Go(TsGoServer::new(performance, deno_dir, http_client_provider))
     } else {
-      TsModServer::Js(TsServer::new(performance))
+      Self::Js(TsServer::new(performance))
     }
   }
 
   pub fn is_started(&self) -> bool {
     match self {
-      TsModServer::Js(ts_server) => ts_server.is_started(),
-      TsModServer::Go(ts_server) => ts_server.is_started(),
+      Self::Js(ts_server) => ts_server.is_started(),
+      Self::Go(ts_server) => ts_server.is_started(),
     }
   }
 
@@ -57,7 +68,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut ts_diagnostics = ts_server
           .get_diagnostics(snapshot.clone(), module, token)
           .await?;
@@ -81,7 +92,7 @@ impl TsModServer {
           &snapshot.document_modules,
         ))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         let report = ts_server
           .provide_diagnostics(module, snapshot, token)
           .await?;
@@ -105,7 +116,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut locations = IndexSet::new();
         for module in snapshot
           .document_modules
@@ -156,7 +167,7 @@ impl TsModServer {
         };
         Ok(locations)
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_references(module, position, context, snapshot, token)
           .await
@@ -172,7 +183,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CodeLens>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         if !settings.implementations && !settings.references {
           return Ok(None);
         }
@@ -199,7 +210,7 @@ impl TsModServer {
           Ok(Some(code_lenses))
         }
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server.provide_code_lenses(module, snapshot, token).await
       }
     }
@@ -212,7 +223,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::DocumentSymbolResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let navigation_tree = ts_server
           .get_navigation_tree(snapshot, module, token)
           .await
@@ -240,7 +251,7 @@ impl TsModServer {
         };
         Ok(response)
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_document_symbols(module, snapshot, token)
           .await
@@ -256,14 +267,14 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::Hover>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let position = module.line_index.offset_tsc(position)?;
         let quick_info = ts_server
           .get_quick_info(snapshot.clone(), module, position, token)
           .await?;
         Ok(quick_info.map(|qi| qi.to_hover(module, &snapshot)))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_hover(module, position, snapshot, token)
           .await
@@ -283,7 +294,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::CodeActionResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let supported_code_fixes =
           ts_server.get_supported_code_fixes(snapshot.clone()).await?;
         let fixable_diagnostics = context.diagnostics.iter().filter(|d| {
@@ -441,7 +452,7 @@ impl TsModServer {
                 kind: Some(lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
                 edit: file_text_changes_to_workspace_edit(
                   changes_with_modules,
-                  language_server,
+                  &snapshot,
                   token,
                 )?,
                 data: Some(json!({ "uri": &module.uri})),
@@ -453,7 +464,7 @@ impl TsModServer {
 
         Ok(Some(actions))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_code_actions(module, range, context, snapshot, token)
           .await
@@ -469,7 +480,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::DocumentHighlight>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let highlights = ts_server
           .get_document_highlights(
             snapshot,
@@ -494,7 +505,7 @@ impl TsModServer {
           })
           .transpose()
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_document_highlights(module, position, snapshot, token)
           .await
@@ -510,7 +521,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let definition_info = ts_server
           .get_definition(
             snapshot.clone(),
@@ -530,7 +541,7 @@ impl TsModServer {
           .transpose()
           .map(|d| d.flatten())
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_definition(module, position, snapshot, token)
           .await
@@ -546,7 +557,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let definition_info = ts_server
           .get_type_definition(
             snapshot.clone(),
@@ -573,7 +584,7 @@ impl TsModServer {
           })
           .transpose()
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_type_definition(module, position, snapshot, token)
           .await
@@ -591,7 +602,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::CompletionResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let position = module.line_index.offset_tsc(position)?;
         let completion_info = ts_server
           .get_completions(
@@ -634,9 +645,70 @@ impl TsModServer {
           })
           .transpose()
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_completion(module, position, context, snapshot, token)
+          .await
+      }
+    }
+  }
+
+  pub async fn resolve_completion_item(
+    &self,
+    module: &DocumentModule,
+    item: lsp::CompletionItem,
+    data: completions::CompletionItemData,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<lsp::CompletionItem, AnyError> {
+    match self {
+      Self::Js(ts_server) => {
+        let Some(data) = data.tsc else {
+          return Ok(item);
+        };
+        match ts_server
+          .get_completion_details(
+            snapshot.clone(),
+            module,
+            data.position,
+            data.name.clone(),
+            data.source.clone(),
+            data.data.clone(),
+            token,
+          )
+          .await
+        {
+          Ok(Some(completion_details)) => completion_details
+            .as_completion_item(&item, &data, module, &snapshot)
+            .map_err(|err| {
+              anyhow!("Unable to convert completion details: {:#}", err)
+            }),
+          Ok(None) => {
+            if !token.is_cancelled() {
+              lsp_warn!(
+                "Received undefined completion details from TypeScript for item: {:#?}",
+                &item,
+              );
+            }
+            Ok(item)
+          }
+          Err(err) => {
+            if !token.is_cancelled() {
+              lsp_warn!(
+                "Unable to get completion details from TypeScript: {:#}",
+                err
+              );
+            }
+            Ok(item)
+          }
+        }
+      }
+      Self::Go(ts_server) => {
+        let Some(data) = data.tsgo else {
+          return Ok(item);
+        };
+        ts_server
+          .resolve_completion_item(module, item, data, snapshot, token)
           .await
       }
     }
@@ -651,7 +723,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut implementations_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
@@ -703,7 +775,7 @@ impl TsModServer {
           )))
         }
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_implementations(module, position, snapshot, token)
           .await
@@ -718,7 +790,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::FoldingRange>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let outlining_spans = ts_server
           .get_outlining_spans(snapshot.clone(), &module, token)
           .await?;
@@ -741,7 +813,7 @@ impl TsModServer {
           Ok(None)
         }
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_folding_range(module, snapshot, token)
           .await
@@ -758,7 +830,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut incoming_calls_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
@@ -806,7 +878,7 @@ impl TsModServer {
           .collect::<Result<Vec<_>, _>>()?;
         Ok(Some(incoming_calls))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_call_hierarchy_incoming_calls(module, item, snapshot, token)
           .await
@@ -822,7 +894,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let outgoing_calls = ts_server
           .provide_call_hierarchy_outgoing_calls(
             snapshot.clone(),
@@ -850,7 +922,7 @@ impl TsModServer {
           .collect::<Result<_, _>>()?;
         Ok(Some(outgoing_calls))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_call_hierarchy_outgoing_calls(module, item, snapshot, token)
           .await
@@ -866,7 +938,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let items = ts_server
           .prepare_call_hierarchy(
             snapshot.clone(),
@@ -900,7 +972,7 @@ impl TsModServer {
           })
           .transpose()
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_prepare_call_hierarchy(module, position, snapshot, token)
           .await
@@ -919,7 +991,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut locations_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
@@ -970,7 +1042,7 @@ impl TsModServer {
           Ok(Some(workspace_edit))
         }
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_rename(module, position, new_name, snapshot, token)
           .await
@@ -986,7 +1058,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SelectionRange>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let mut selection_ranges = Vec::with_capacity(positions.len());
         for &position in positions {
           if token.is_cancelled() {
@@ -1006,11 +1078,82 @@ impl TsModServer {
         }
         Ok(Some(selection_ranges))
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_selection_ranges(module, positions, snapshot, token)
           .await
       }
+    }
+  }
+
+  pub async fn provide_semantic_tokens_full(
+    &self,
+    module: &DocumentModule,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::SemanticTokensResult>, AnyError> {
+    let semantic_tokens = module
+      .semantic_tokens_full
+      .get_or_try_init(async || {
+        match self {
+          Self::Js(ts_server) => ts_server
+            .get_encoded_semantic_classifications(
+              snapshot,
+              module,
+              0..module.line_index.text_content_length_utf16().into(),
+              token,
+            )
+            .await?
+            .to_semantic_tokens(module.line_index.clone(), token),
+          // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
+          Self::Go(_) => Ok(Default::default()),
+        }
+      })
+      .await?
+      .clone();
+    if semantic_tokens.data.is_empty() {
+      Ok(None)
+    } else {
+      Ok(Some(lsp::SemanticTokensResult::Tokens(semantic_tokens)))
+    }
+  }
+
+  pub async fn provide_semantic_tokens_range(
+    &self,
+    module: &DocumentModule,
+    range: lsp::Range,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::SemanticTokensRangeResult>, AnyError> {
+    if let Some(tokens) = module.semantic_tokens_full.get() {
+      let tokens = super::semantic_tokens::tokens_within_range(tokens, range);
+      let result = if !tokens.data.is_empty() {
+        Some(lsp::SemanticTokensRangeResult::Tokens(tokens))
+      } else {
+        None
+      };
+      return Ok(result);
+    }
+    let semantic_tokens = match self {
+      Self::Js(ts_server) => ts_server
+        .get_encoded_semantic_classifications(
+          snapshot,
+          module,
+          module.line_index.offset_tsc(range.start)?
+            ..module.line_index.offset_tsc(range.end)?,
+          token,
+        )
+        .await?
+        .to_semantic_tokens(module.line_index.clone(), token)?,
+      // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
+      Self::Go(_) => Default::default(),
+    };
+    if semantic_tokens.data.is_empty() {
+      Ok(None)
+    } else {
+      Ok(Some(lsp::SemanticTokensRangeResult::Tokens(
+        semantic_tokens,
+      )))
     }
   }
 
@@ -1023,7 +1166,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<lsp::SignatureHelp>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let options = if let Some(context) = context {
           tsc::SignatureHelpItemsOptions {
             trigger_reason: Some(tsc::SignatureHelpTriggerReason {
@@ -1054,11 +1197,82 @@ impl TsModServer {
             anyhow!("Unable to convert signature help items: {:#}", err)
           })
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_signature_help(module, position, context, snapshot, token)
           .await
       }
+    }
+  }
+
+  pub async fn provide_will_rename_files(
+    &self,
+    file_renames: &[lsp::FileRename],
+    language_server: &language_server::Inner,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
+    match self {
+      Self::Js(ts_server) => {
+        let mut changes_with_modules = IndexMap::new();
+        for rename in file_renames {
+          let Some(document) = snapshot
+            .document_modules
+            .documents
+            .get(&lsp::Uri::from_str(&rename.old_uri).unwrap())
+          else {
+            continue;
+          };
+          for module in snapshot
+            .document_modules
+            .get_or_temp_modules_by_compiler_options_key(&document)
+            .into_values()
+          {
+            if token.is_cancelled() {
+              return Err(anyhow!("request cancelled"));
+            }
+            let options = snapshot
+              .config
+              .language_settings_for_specifier(&module.specifier)
+              .map(|s| s.update_imports_on_file_move.clone())
+              .unwrap_or_default();
+            // Note that `Always` and `Prompt` are treated the same in the server, the
+            // client will worry about that after receiving the edits.
+            if options.enabled == UpdateImportsOnFileMoveEnabled::Never {
+              continue;
+            }
+            let changes = ts_server
+              .get_edits_for_file_rename(
+                snapshot.clone(),
+                &module,
+                &uri_to_url(&lsp::Uri::from_str(&rename.new_uri).unwrap()),
+                token,
+              )
+              .await?;
+            let changes = fix_ts_import_changes_for_file_rename(
+              changes,
+              &rename.new_uri,
+              &module,
+              language_server,
+              token,
+            )
+            .map_err(|err| {
+              anyhow!("Unable to fix import changes: {:#}", err)
+            })?;
+            if !changes.is_empty() {
+              changes_with_modules
+                .extend(changes.into_iter().map(|c| (c, module.clone())));
+            }
+          }
+        }
+        file_text_changes_to_workspace_edit(
+          changes_with_modules.iter().map(|(c, m)| (c, m.as_ref())),
+          &snapshot,
+          token,
+        )
+      }
+      // TODO(nayeemrmn): Fix when tsgo supports edits for file renames.
+      Self::Go(_) => Ok(None),
     }
   }
 
@@ -1070,7 +1284,7 @@ impl TsModServer {
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
-      TsModServer::Js(ts_server) => {
+      Self::Js(ts_server) => {
         let text_span =
           tsc::TextSpan::from_range(range, module.line_index.clone()).map_err(
             |err| {
@@ -1103,9 +1317,83 @@ impl TsModServer {
           })
           .transpose()
       }
-      TsModServer::Go(ts_server) => {
+      Self::Go(ts_server) => {
         ts_server
           .provide_inlay_hint(module, range, snapshot, token)
+          .await
+      }
+    }
+  }
+
+  pub async fn provide_workspace_symbol(
+    &self,
+    query: &str,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
+    match self {
+      Self::Js(ts_server) => {
+        let mut items_with_scopes = IndexMap::new();
+        for (compiler_options_key, compiler_options_data) in
+          snapshot.compiler_options_resolver.entries()
+        {
+          let scope = compiler_options_data
+            .workspace_dir_or_source_url
+            .as_ref()
+            .and_then(|s| snapshot.config.tree.scope_for_specifier(s));
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          let items = ts_server
+          .get_navigate_to_items(
+            snapshot.clone(),
+            query.to_string(),
+            // this matches vscode's hard coded result count
+            Some(256),
+            compiler_options_key,
+            scope,
+            // TODO(nayeemrmn): Support notebook scopes here.
+            None,
+            token,
+          )
+          .await
+          .inspect_err(|err| {
+            lsp_warn!(
+              "Unable to get signature help items from TypeScript: {:#}\nScope: {}",
+              err,
+              scope.map(|s| s.as_str()).unwrap_or("null"),
+            );
+          })
+          .unwrap_or_default();
+          items_with_scopes.extend(
+            items
+              .into_iter()
+              .map(|i| (i, (scope, compiler_options_key))),
+          );
+        }
+        let symbol_information = items_with_scopes
+          .into_iter()
+          .flat_map(|(item, (scope, compiler_options_key))| {
+            if token.is_cancelled() {
+              return Some(Err(anyhow!("request cancelled")));
+            }
+            Some(Ok(item.to_symbol_information(
+              scope.map(|s| s.as_ref()),
+              compiler_options_key,
+              &snapshot,
+            )?))
+          })
+          .collect::<Result<Vec<_>, _>>()?;
+        let symbol_information = if symbol_information.is_empty() {
+          None
+        } else {
+          Some(symbol_information)
+        };
+        Ok(symbol_information)
+      }
+      Self::Go(ts_server) => {
+        ts_server
+          .provide_workspace_symbol(query, snapshot, token)
           .await
       }
     }

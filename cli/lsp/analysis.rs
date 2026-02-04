@@ -272,7 +272,7 @@ pub struct TsResponseImportMapper<'a> {
   scope: Option<Arc<ModuleSpecifier>>,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
-  tsc_specifier_map: &'a tsc::TscSpecifierMap,
+  tsc_specifier_map: Arc<tsc::TscSpecifierMap>,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -280,7 +280,7 @@ impl<'a> TsResponseImportMapper<'a> {
     document_modules: &'a DocumentModules,
     scope: Option<Arc<ModuleSpecifier>>,
     resolver: &'a LspResolver,
-    tsc_specifier_map: &'a tsc::TscSpecifierMap,
+    tsc_specifier_map: Arc<tsc::TscSpecifierMap>,
   ) -> Self {
     let maybe_import_map = resolver
       .get_scoped_resolver(scope.as_deref())

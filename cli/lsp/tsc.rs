@@ -71,7 +71,6 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
-use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
 use super::code_lens;
@@ -1736,13 +1735,6 @@ pub enum OneOrMany<T> {
 }
 
 impl<T> OneOrMany<T> {
-  pub fn len(&self) -> usize {
-    match self {
-      Self::One(_) => 1,
-      Self::Many(v) => v.len(),
-    }
-  }
-
   pub fn into_vec(self) -> Vec<T> {
     match self {
       Self::One(i) => vec![i],
@@ -2293,10 +2285,10 @@ impl NavigateToItem {
     &self,
     scope: Option<&Url>,
     compiler_options_key: &CompilerOptionsKey,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<lsp::SymbolInformation> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server.document_modules.module_for_specifier(
+    let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
       scope,
       Some(compiler_options_key),
@@ -2924,7 +2916,7 @@ impl FileTextChanges {
   pub fn to_text_document_change_ops(
     &self,
     module: &DocumentModule,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
   ) -> Option<Vec<lsp::DocumentChangeOperation>> {
     let is_new_file = self.is_new_file.unwrap_or(false);
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
@@ -2932,7 +2924,7 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(language_server.document_modules.module_for_specifier(
+      Some(snapshot.document_modules.module_for_specifier(
         &target_specifier,
         module.scope.as_deref(),
         Some(&module.compiler_options_key),
@@ -2991,13 +2983,13 @@ impl Classifications {
     &self,
     line_index: Arc<LineIndex>,
     token: &CancellationToken,
-  ) -> LspResult<lsp::SemanticTokens> {
+  ) -> Result<lsp::SemanticTokens, AnyError> {
     // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
       if token.is_cancelled() {
-        return Err(LspError::request_cancelled());
+        return Err(anyhow!("request cancelled"));
       }
       let src_offset = 3 * i;
       let offset = self.spans[src_offset];
@@ -3172,16 +3164,15 @@ pub fn file_text_changes_to_workspace_edit<'a>(
   changes_with_modules: impl IntoIterator<
     Item = (&'a FileTextChanges, &'a DocumentModule),
   >,
-  language_server: &language_server::Inner,
+  snapshot: &StateSnapshot,
   token: &CancellationToken,
-) -> LspResult<Option<lsp::WorkspaceEdit>> {
+) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
   for (change, module) in changes_with_modules {
     if token.is_cancelled() {
-      return Err(LspError::request_cancelled());
+      return Err(anyhow!("request cancelled"));
     }
-    let Some(ops) = change.to_text_document_change_ops(module, language_server)
-    else {
+    let Some(ops) = change.to_text_document_change_ops(module, snapshot) else {
       continue;
     };
     all_ops.extend(ops);
@@ -3215,12 +3206,12 @@ impl RefactorEditInfo {
   pub fn to_workspace_edit(
     &self,
     module: &Arc<DocumentModule>,
-    language_server: &language_server::Inner,
+    snapshot: &StateSnapshot,
     token: &CancellationToken,
-  ) -> LspResult<Option<lsp::WorkspaceEdit>> {
+  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     file_text_changes_to_workspace_edit(
       self.edits.iter().map(|c| (c, module.as_ref())),
-      language_server,
+      snapshot,
       token,
     )
   }

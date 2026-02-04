@@ -9,10 +9,8 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -38,14 +36,12 @@ use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::loader::MemoryFilesRc;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
-use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::error;
 use node_resolver::NodeResolutionKind;
@@ -74,7 +70,6 @@ use super::code_lens;
 use super::completions;
 use super::config::Config;
 use super::config::SETTINGS_SECTION;
-use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::diagnostics;
 use super::diagnostics::DiagnosticDataSpecifier;
@@ -110,7 +105,6 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
-use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::DenoDiagnostic;
@@ -118,7 +112,6 @@ use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::lint::get_deno_lint_code_actions;
 use crate::lsp::logging::init_log_file;
-use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -584,7 +577,11 @@ impl Inner {
       }),
     );
     let config = Config::default();
-    let ts_server = Arc::new(TsModServer::new(performance.clone()));
+    let ts_server = Arc::new(TsModServer::new(
+      performance.clone(),
+      cache.deno_dir(),
+      &http_client_provider,
+    ));
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
@@ -2259,9 +2256,10 @@ impl Inner {
       let Some(module) = self.get_primary_module(&document)? else {
         return Ok(params);
       };
+      let snapshot = self.snapshot();
       let combined_code_actions = ts_server
         .get_combined_code_fix(
-          self.snapshot(),
+          snapshot.clone(),
           &module,
           &code_action_data.fix_id,
           token,
@@ -2327,9 +2325,10 @@ impl Inner {
       let Some(module) = self.get_primary_module(&document)? else {
         return Ok(code_action);
       };
+      let snapshot = self.snapshot();
       let refactor_edit_info = ts_server
         .get_edits_for_refactor(
-          self.snapshot(),
+          snapshot.clone(),
           &module,
           module.line_index.offset_tsc(action_data.range.start)?
             ..module.line_index.offset_tsc(action_data.range.end)?,
@@ -2369,8 +2368,16 @@ impl Inner {
               }
             })?
           }
-          code_action.edit =
-            refactor_edit_info.to_workspace_edit(&module, self, token)?;
+          code_action.edit = refactor_edit_info
+            .to_workspace_edit(&module, &snapshot, token)
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                lsp_warn!("Unable to convert refactor edit info: {:#}", err);
+                LspError::internal_error()
+              }
+            })?;
         }
         Err(err) => {
           if token.is_cancelled() {
@@ -2403,8 +2410,8 @@ impl Inner {
       module.scope.clone(),
       &self.resolver,
       match self.ts_server.as_ref() {
-        TsModServer::Js(ts_server) => &ts_server.specifier_map,
-        TsModServer::Go(_) => todo!(),
+        TsModServer::Js(ts_server) => ts_server.specifier_map.clone(),
+        TsModServer::Go(_) => Default::default(),
       },
     )
   }
@@ -2758,120 +2765,57 @@ impl Inner {
     params: CompletionItem,
     token: &CancellationToken,
   ) -> LspResult<CompletionItem> {
-    let mark = self
-      .performance
-      .mark_with_args("lsp.completion_resolve", &params);
+    let _mark = self.performance.measure_scope("lsp.completion_resolve");
     let Some(data) = &params.data else {
       return Ok(params);
     };
-    let item = match self.ts_server.as_ref() {
-      TsModServer::Js(ts_server) => {
-        let data = serde_json::from_value::<completions::CompletionItemData>(
-          data.clone(),
-        )
+    let data =
+      serde_json::from_value::<completions::CompletionItemData>(data.clone())
         .map_err(|err| {
-          error!("Could not decode data field of completion item: {:#}", err);
-          LspError::internal_error()
-        })?;
-        let Some(data) = data.tsc else {
-          return Ok(params);
-        };
-        let Some(document) = self.get_document(
-          &data.uri,
-          Enabled::Filter,
-          Exists::Enforce,
-          Diagnosable::Filter,
-        )?
-        else {
-          return Ok(params);
-        };
-        let Some(module) = self.get_primary_module(&document)? else {
-          return Ok(params);
-        };
-        let snapshot = self.snapshot();
-        match ts_server
-          .get_completion_details(
-            snapshot.clone(),
-            &module,
-            data.position,
-            data.name.clone(),
-            data.source.clone(),
-            data.data.clone(),
-            token,
-          )
-          .await
-        {
-          Ok(Some(completion_details)) => completion_details
-            .as_completion_item(&params, &data, &module, &snapshot)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                lsp_warn!("Unable to convert completion details: {:#}", err);
-                LspError::internal_error()
-              }
-            })?,
-          Ok(None) => {
-            if !token.is_cancelled() {
-              lsp_warn!(
-                "Received undefined completion details from TypeScript for item: {:#?}",
-                &params,
-              );
-            }
-            return Ok(params);
-          }
-          Err(err) => {
-            if !token.is_cancelled() {
-              lsp_warn!(
-                "Unable to get completion details from TypeScript: {:#}",
-                err
-              );
-            }
-            return Ok(params);
-          }
-        }
-      }
-      TsModServer::Go(ts_server) => {
-        let Some(uri) = data.get("fileName").and_then(|file_name| {
-          let file_name = file_name.as_str()?;
-          let url = url_from_file_path(&Path::new(file_name)).inspect_err(|err| {
-            lsp_warn!("Couldn't convert `CompletionItem::data.fileName` to URL: {file_name}");
-          }).ok()?;
-          url_to_uri(&url).inspect_err(|err| {
-            lsp_warn!("Couldn't convert `CompletionItem::data.fileName` from URL to URI: {}", &url);
-          }).ok()
-        }) else {
-          return Ok(params);
-        };
-        let Some(document) = self.get_document(
-          &uri,
-          Enabled::Filter,
-          Exists::Enforce,
-          Diagnosable::Filter,
-        )?
-        else {
-          return Ok(params);
-        };
-        let Some(module) = self.get_primary_module(&document)? else {
-          return Ok(params);
-        };
-        ts_server
-          .resolve_completion_item(&module, params, self.snapshot(), token)
-          .await
-          .map_err(|err| {
-            if token.is_cancelled() {
-              LspError::request_cancelled()
-            } else {
-              lsp_warn!(
-                "Unable to resolve completion item by TypeScript: {:#}",
-                err
-              );
-              LspError::internal_error()
-            }
-          })?
-      }
+        error!("Could not decode data field of completion item: {:#}", err);
+        LspError::internal_error()
+      })?;
+    if let Some(url) = data.documentation {
+      return Ok(CompletionItem {
+        documentation: self.module_registry.get_documentation(&url).await,
+        data: None,
+        ..params
+      });
+    }
+    let uri = if let Some(data) = &data.tsc {
+      &data.uri
+    } else if let Some(data) = &data.tsgo {
+      &data.uri
+    } else {
+      return Ok(params);
     };
-    self.performance.measure(mark);
+    let Some(document) = self.get_document(
+      uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(params);
+    };
+    let Some(module) = self.get_primary_module(&document)? else {
+      return Ok(params);
+    };
+    let item = self
+      .ts_server
+      .resolve_completion_item(&module, params, data, self.snapshot(), token)
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Unable to resolve completion item from TypeScript: {:#}",
+            err
+          );
+          LspError::internal_error()
+        }
+      })?;
     Ok(item)
   }
 
@@ -3301,43 +3245,20 @@ impl Inner {
     let Some(module) = self.get_primary_module(&document)? else {
       return Ok(None);
     };
-    let semantic_tokens = module
-      .semantic_tokens_full
-      .get_or_try_init(|| async {
-        let semantic_classification = match self.ts_server.as_ref() {
-          TsModServer::Js(ts_server) => ts_server
-            .get_encoded_semantic_classifications(
-              self.snapshot(),
-              &module,
-              0..module.line_index.text_content_length_utf16().into(),
-              token,
-            )
-            .await
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                lsp_warn!(
-                  "Unable to get semantic classifications from TypeScript: {:#}",
-                  err
-                );
-                LspError::invalid_request()
-              }
-            })?,
-          TsModServer::Go(_) => todo!(),
-        };
-        semantic_classification
-          .to_semantic_tokens(module.line_index.clone(), token)
-      })
-      .await?
-      .clone();
-    let response = if !semantic_tokens.data.is_empty() {
-      Some(SemanticTokensResult::Tokens(semantic_tokens))
-    } else {
-      None
-    };
+    let result = self
+      .ts_server
+      .provide_semantic_tokens_full(&module, self.snapshot(), token)
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to get semantic tokens from TypeScript: {:#}", err);
+          LspError::invalid_request()
+        }
+      })?;
     self.performance.measure(mark);
-    Ok(response)
+    Ok(result)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -3361,49 +3282,28 @@ impl Inner {
     let Some(module) = self.get_primary_module(&document)? else {
       return Ok(None);
     };
-    if let Some(tokens) = module.semantic_tokens_full.get() {
-      let tokens =
-        super::semantic_tokens::tokens_within_range(tokens, params.range);
-      let response = if !tokens.data.is_empty() {
-        Some(SemanticTokensRangeResult::Tokens(tokens))
-      } else {
-        None
-      };
-      self.performance.measure(mark);
-      return Ok(response);
-    }
-    let semantic_classification = match self.ts_server.as_ref() {
-      TsModServer::Js(ts_server) => ts_server
-        .get_encoded_semantic_classifications(
-          self.snapshot(),
-          &module,
-          module.line_index.offset_tsc(params.range.start)?
-            ..module.line_index.offset_tsc(params.range.end)?,
-          token,
-        )
-        .await
-        .map_err(|err| {
-          if token.is_cancelled() {
-            LspError::request_cancelled()
-          } else {
-            lsp_warn!(
-              "Unable to get semantic classifications from TypeScript: {:#}",
-              err
-            );
-            LspError::invalid_request()
-          }
-        })?,
-      TsModServer::Go(_) => todo!(),
-    };
-    let semantic_tokens = semantic_classification
-      .to_semantic_tokens(module.line_index.clone(), token)?;
-    let response = if !semantic_tokens.data.is_empty() {
-      Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
-    } else {
-      None
-    };
+    let result = self
+      .ts_server
+      .provide_semantic_tokens_range(
+        &module,
+        params.range,
+        self.snapshot(),
+        token,
+      )
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get semantic tokens range from TypeScript: {:#}",
+            err
+          );
+          LspError::invalid_request()
+        }
+      })?;
     self.performance.measure(mark);
-    Ok(response)
+    Ok(result)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -3458,84 +3358,21 @@ impl Inner {
     if !self.ts_server.is_started() {
       return Ok(None);
     }
-    let mut changes_with_modules = IndexMap::new();
-    for rename in params.files {
-      let Some(document) = self.get_document(
-        &Uri::from_str(&rename.old_uri).unwrap(),
-        Enabled::Ignore,
-        Exists::Filter,
-        Diagnosable::Ignore,
-      )?
-      else {
-        continue;
-      };
-      for module in self
-        .document_modules
-        .get_or_temp_modules_by_compiler_options_key(&document)
-        .into_values()
-      {
+    self
+      .ts_server
+      .provide_will_rename_files(&params.files, self, self.snapshot(), token)
+      .await
+      .map_err(|err| {
         if token.is_cancelled() {
-          return Err(LspError::request_cancelled());
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Unable to get edits for file renames from TypeScript: {:#}",
+            err
+          );
+          LspError::internal_error()
         }
-        let options = self
-          .config
-          .language_settings_for_specifier(&module.specifier)
-          .map(|s| s.update_imports_on_file_move.clone())
-          .unwrap_or_default();
-        // Note that `Always` and `Prompt` are treated the same in the server, the
-        // client will worry about that after receiving the edits.
-        if options.enabled == UpdateImportsOnFileMoveEnabled::Never {
-          continue;
-        }
-        let changes = match self.ts_server.as_ref() {
-          TsModServer::Js(ts_server) => ts_server
-            .get_edits_for_file_rename(
-              self.snapshot(),
-              &module,
-              &uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
-              token,
-            )
-            .await
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                lsp_warn!(
-                  "Unable to get edits for file rename from TypeScript: {:#}\nScope: {}",
-                  err,
-                  module.scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
-                );
-                LspError::internal_error()
-              }
-            })?,
-          TsModServer::Go(_) => todo!(),
-        };
-        let changes = fix_ts_import_changes_for_file_rename(
-          changes,
-          &rename.new_uri,
-          &module,
-          self,
-          token,
-        )
-        .map_err(|err| {
-          if token.is_cancelled() {
-            LspError::request_cancelled()
-          } else {
-            error!("Unable to fix import changes: {:#}", err);
-            LspError::internal_error()
-          }
-        })?;
-        if !changes.is_empty() {
-          changes_with_modules
-            .extend(changes.into_iter().map(|c| (c, module.clone())));
-        }
-      }
-    }
-    file_text_changes_to_workspace_edit(
-      changes_with_modules.iter().map(|(c, m)| (c, m.as_ref())),
-      self,
-      token,
-    )
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -3547,67 +3384,19 @@ impl Inner {
     if !self.ts_server.is_started() {
       return Ok(None);
     }
-
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
-    let mut items_with_scopes = IndexMap::new();
-    for (compiler_options_key, compiler_options_data) in
-      self.compiler_options_resolver.entries()
-    {
-      let scope = compiler_options_data
-        .workspace_dir_or_source_url
-        .as_ref()
-        .and_then(|s| self.config.tree.scope_for_specifier(s));
-      if token.is_cancelled() {
-        return Err(LspError::request_cancelled());
-      }
-      let items = match self.ts_server.as_ref() {
-        TsModServer::Js(ts_server) => ts_server
-          .get_navigate_to_items(
-            self.snapshot(),
-            params.query.clone(),
-            // this matches vscode's hard coded result count
-            Some(256),
-            compiler_options_key,
-            scope,
-            // TODO(nayeemrmn): Support notebook scopes here.
-            None,
-            token,
-          )
-          .await
-          .inspect_err(|err| {
-            lsp_warn!(
-              "Unable to get signature help items from TypeScript: {:#}\nScope: {}",
-              err,
-              scope.map(|s| s.as_str()).unwrap_or("null"),
-            );
-          })
-          .unwrap_or_default(),
-        TsModServer::Go(_) => todo!(),
-      };
-      items_with_scopes.extend(
-        items
-          .into_iter()
-          .map(|i| (i, (scope, compiler_options_key))),
-      );
-    }
-    let symbol_information = items_with_scopes
-      .into_iter()
-      .flat_map(|(item, (scope, compiler_options_key))| {
+    let symbol_information = self
+      .ts_server
+      .provide_workspace_symbol(&params.query, self.snapshot(), token)
+      .await
+      .map_err(|err| {
         if token.is_cancelled() {
-          return Some(Err(LspError::request_cancelled()));
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get workspace symbols from TypeScript: {:#}", err);
+          LspError::internal_error()
         }
-        Some(Ok(item.to_symbol_information(
-          scope.map(|s| s.as_ref()),
-          compiler_options_key,
-          self,
-        )?))
-      })
-      .collect::<Result<Vec<_>, _>>()?;
-    let symbol_information = if symbol_information.is_empty() {
-      None
-    } else {
-      Some(symbol_information)
-    };
+      })?;
     self.performance.measure(mark);
     Ok(symbol_information)
   }
