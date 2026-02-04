@@ -3,7 +3,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "bench_util",
   "cli",
   "cli/lib",
   "cli/rt",
@@ -48,6 +47,7 @@ members = [
   "runtime/permissions",
   "runtime/subprocess_windows",
   "tests",
+  "tests/bench_util",
   "tests/ffi",
   "tests/napi",
   "tests/sqlite_extension_test",
@@ -118,7 +118,7 @@ deno_webstorage = { version = "0.225.0", path = "./ext/webstorage" }
 denort_helper = { version = "0.28.0", path = "./ext/rt_helper" }
 
 # workspace libraries
-deno_bench_util = { version = "0.224.0", path = "./bench_util" }
+deno_bench_util = { version = "0.224.0", path = "./tests/bench_util" }
 deno_config = { version = "0.80.0", features = ["workspace"], path = "./libs/config" }
 deno_crypto_provider = { version = "0.24.0", path = "./libs/crypto" }
 deno_features = { version = "0.27.0", path = "./runtime/features" }
@@ -140,7 +140,7 @@ node_shim = { version = "0.5.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-deno_tunnel = "0.8.0"
+deno_tunnel = "0.8.1"
 
 # widely used libraries
 anyhow = "1.0.57"

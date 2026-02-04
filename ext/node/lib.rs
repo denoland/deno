@@ -418,6 +418,8 @@ deno_core::extension!(deno_node,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
+    ops::zlib::ZstdCompress,
+    ops::zlib::ZstdDecompress,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
