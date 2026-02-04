@@ -40,7 +40,7 @@ Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
 
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
   const stubEnv = Deno.noColor ? { NO_COLOR: "1" } : {};
-  
+
   assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
   assert(tty.WriteStream.prototype.hasColors(stubEnv) === !Deno.noColor);
 
