@@ -1132,6 +1132,7 @@
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
+    "parallel/test-sqlite-authz.js": {},
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
@@ -1535,6 +1536,9 @@
     "parallel/test-whatwg-url-custom-setters.js": {},
     "parallel/test-whatwg-url-custom-tostringtag.js": {},
     "parallel/test-whatwg-url-override-hostname.js": {},
+    // Note: Node.js BroadcastChannel message dispatch ordering differs from the Web spec ordering.
+    // Deno follows the Web spec.
+    // "parallel/test-worker-broadcastchannel-wpt.js": {},
     "parallel/test-worker-cjs-workerdata.js": {},
     "parallel/test-worker-cleanexit-with-js.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -1623,6 +1627,7 @@
     "pseudo-tty/test-set-raw-mode-reset.js": {},
     "pseudo-tty/test-tty-color-support-warning-2.js": {},
     "pseudo-tty/test-tty-color-support-warning.js": {},
+    "pseudo-tty/test-tty-color-support.js": {},
     "pseudo-tty/test-tty-stdin-call-end.js": {},
     "pseudo-tty/test-tty-stdin-end.js": {},
     "pseudo-tty/test-tty-stdout-end.js": {},

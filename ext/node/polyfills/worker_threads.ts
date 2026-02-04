@@ -26,7 +26,10 @@ import {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
-import { BroadcastChannel } from "ext:deno_web/01_broadcast_channel.js";
+import {
+  BroadcastChannel as WebBroadcastChannel,
+  refBroadcastChannel,
+} from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
 import { createRequire } from "node:module";
@@ -659,6 +662,18 @@ function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
         patchMessagePortIfFound(data[obj], seen);
       }
     }
+  }
+}
+
+class BroadcastChannel extends WebBroadcastChannel {
+  ref() {
+    this[refBroadcastChannel](true);
+    return this;
+  }
+
+  unref() {
+    this[refBroadcastChannel](false);
+    return this;
   }
 }
 
