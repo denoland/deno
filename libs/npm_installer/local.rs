@@ -214,6 +214,7 @@ impl<
 
     let package_partitions =
       snapshot.all_system_packages_partitioned(&self.system_info);
+    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
 
     // load this after we get the directory lock
     let mut setup_cache = LocalSetupCache::load(
@@ -238,7 +239,6 @@ impl<
     //
     // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
-    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
