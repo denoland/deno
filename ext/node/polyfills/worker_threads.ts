@@ -146,6 +146,25 @@ class NodeWorker extends EventEmitter {
         "node:worker_threads support only 'file:' and 'data:' URLs",
       );
     }
+
+    // Serialize workerData before resolving the filename so that
+    // DataCloneError is thrown before file-not-found errors,
+    // matching Node.js behavior.
+    // One of the most common usages will be to pass `process.env` here,
+    // but because `process.env` is a Proxy in Deno, we need to get a plain
+    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    if (options?.env) {
+      env_ = JSONParse(JSONStringify(options?.env));
+    }
+    const serializedWorkerMetadata = serializeJsMessageData({
+      workerData: options?.workerData,
+      environmentData: environmentData,
+      env: env_,
+      isWorkerThread: true,
+    }, options?.transferList ?? []);
+
     if (options?.eval) {
       const code = typeof specifier === "string"
         ? encodeURIComponent(specifier)
@@ -168,20 +187,6 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
-    // One of the most common usages will be to pass `process.env` here,
-    // but because `process.env` is a Proxy in Deno, we need to get a plain
-    // object out of it - otherwise we'll run in `DataCloneError`s.
-    // See https://github.com/denoland/deno/issues/23522.
-    let env_ = undefined;
-    if (options?.env) {
-      env_ = JSONParse(JSONStringify(options?.env));
-    }
-    const serializedWorkerMetadata = serializeJsMessageData({
-      workerData: options?.workerData,
-      environmentData: environmentData,
-      env: env_,
-      isWorkerThread: true,
-    }, options?.transferList ?? []);
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
