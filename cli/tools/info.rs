@@ -345,8 +345,11 @@ fn add_npm_packages_to_json(
                 .map(|path| format!("/{}", path))
                 .unwrap_or_default()
             );
-            redirects_to_add
-              .push((specifier.to_string(), new_specifier.clone()));
+            // Only add a redirect if the specifier is actually changing
+            if specifier != new_specifier {
+              redirects_to_add
+                .push((specifier.to_string(), new_specifier.clone()));
+            }
             *value = serde_json::Value::String(new_specifier);
           }
         }
