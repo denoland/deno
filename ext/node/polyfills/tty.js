@@ -1,22 +1,37 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_bootstrap_color_depth, op_node_is_tty } from "ext:core/ops";
+import {
+  op_bootstrap_color_depth,
+  op_node_is_tty,
+  op_set_raw,
+} from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
 } = primordials;
+const { internalRidSymbol } = core;
+
+// Debug logging to file
+const logFile = "/tmp/tty-debug.log";
+function logToFile(msg) {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(new Date().toISOString() + " " + msg + "\n");
+    Deno.writeFileSync(logFile, data, { append: true });
+  } catch (e) {
+    // ignore
+  }
+}
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
-const {
-  isTerminal,
-  ops: { op_open_tty_from_fd },
-} = core;
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
+import { op_node_get_fd } from "ext:core/ops";
 
-// Helper class to wrap a file descriptor as a stream-like object
+// Helper class to wrap a resource ID as a stream-like object
 // Similar to Stdin/Stdout/Stderr classes in io module
 class TTYStream {
   #rid;
@@ -25,6 +40,11 @@ class TTYStream {
 
   constructor(rid) {
     this.#rid = rid;
+    logToFile('[TTYStream] Created with rid: ' + rid);
+  }
+
+  get [internalRidSymbol]() {
+    return this.#rid;
   }
 
   get rid() {
@@ -32,47 +52,75 @@ class TTYStream {
   }
 
   async read(p) {
+    logToFile('[TTYStream] read called, rid=' + this.#rid + ' buffer length: ' + p.length);
     if (p.length === 0) return 0;
+
+    // Debug: verify resource exists
+    try {
+      const fd = op_node_get_fd(this.#rid);
+      logToFile('[TTYStream] op_node_get_fd returned fd: ' + fd + ' for rid: ' + this.#rid);
+    } catch (e) {
+      logToFile('[TTYStream] op_node_get_fd FAILED: ' + e.message);
+    }
+
+    // Debug: check resources
+    try {
+      logToFile('[TTYStream] Deno.resources: ' + JSON.stringify(Deno.resources()));
+    } catch (e) {
+      logToFile('[TTYStream] Cannot get resources: ' + e.message);
+    }
+
+    logToFile('[TTYStream] calling core.read...');
     this.#opPromise = core.read(this.#rid, p);
     if (!this.#ref) {
       core.unrefOpPromise(this.#opPromise);
     }
-    const nread = await this.#opPromise;
-    return nread === 0 ? null : nread;
+    logToFile('[TTYStream] awaiting core.read promise...');
+    try {
+      const nread = await this.#opPromise;
+      logToFile('[TTYStream] read completed, nread: ' + nread);
+      return nread === 0 ? null : nread;
+    } catch (e) {
+      logToFile('[TTYStream] read error: ' + e.message);
+      throw e;
+    }
   }
 
   readSync(p) {
-    return core.ops.op_read_sync(this.#rid, p);
+    if (p.length === 0) return 0;
+    const nread = core.readSync(this.#rid, p);
+    return nread === 0 ? null : nread;
   }
 
-  async write(p) {
-    this.#opPromise = core.write(this.#rid, p);
-    if (!this.#ref) {
-      core.unrefOpPromise(this.#opPromise);
-    }
-    return await this.#opPromise;
+  write(p) {
+    return core.write(this.#rid, p);
   }
 
   writeSync(p) {
-    return core.ops.op_write_sync(this.#rid, p);
+    return core.writeSync(this.#rid, p);
   }
 
   close() {
     core.tryClose(this.#rid);
   }
 
+  setRaw(mode, options = { __proto__: null }) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
+  }
+
   isTerminal() {
     return core.isTerminal(this.#rid);
   }
 
-  [Symbol("REF")]() {
+  [io.REF]() {
     this.#ref = true;
     if (this.#opPromise) {
       core.refOpPromise(this.#opPromise);
     }
   }
 
-  [Symbol("UNREF")]() {   
+  [io.UNREF]() {
     this.#ref = false;
     if (this.#opPromise) {
       core.unrefOpPromise(this.#opPromise);
@@ -90,35 +138,36 @@ function isatty(fd) {
 
 export class ReadStream extends Socket {
   constructor(fd, options) {
+    logToFile('[ReadStream] constructor called with fd: ' + fd);
     if (fd >> 0 !== fd || fd < 0) {
       throw new ERR_INVALID_FD(fd);
     }
 
     let handle;
-    if (fd > 2) {
-      // For fd > 2, use the new op to create a TTY resource from the fd
-      try {
-        const rid = op_open_tty_from_fd(fd);
-        // Create a stream wrapper for this rid and pass to TTY
-        const stream = new TTYStream(rid);
-        handle = new TTY(stream);
-      } catch (e) {
-        throw new Error(
-          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
-        );
-      }
+    // For fd > 2 (PTY), don't use manualStart so reading starts automatically
+    const isPty = fd > 2;
+    logToFile('[ReadStream] isPty: ' + isPty);
+    if (isPty) {
+      // For fd > 2, get the rid from the fd map (will dup if needed)
+      const rid = getRid(fd);
+      logToFile('[ReadStream] got rid: ' + rid + ' for fd: ' + fd);
+      const stream = new TTYStream(rid);
+      handle = new TTY(stream);
+      logToFile('[ReadStream] created TTY handle');
     } else {
       // For stdin/stdout/stderr, use the built-in handles
       handle = new TTY(
         fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
       );
     }
+    logToFile('[ReadStream] calling super with manualStart: ' + (!isPty));
     super({
       readableHighWaterMark: 0,
       handle,
-      manualStart: true,
+      manualStart: !isPty, // PTY streams should auto-start
       ...options,
     });
+    logToFile('[ReadStream] super() returned');
 
     this.isRaw = false;
     this.isTTY = true;
@@ -137,23 +186,18 @@ setReadStream(ReadStream);
 
 export class WriteStream extends Socket {
   constructor(fd) {
+    console.error('[WriteStream] constructor called with fd:', fd);
     if (fd >> 0 !== fd || fd < 0) {
       throw new ERR_INVALID_FD(fd);
     }
 
     let handle;
     if (fd > 2) {
-      // For fd > 2, use the new op to create a TTY resource from the fd
-      try {
-        const rid = op_open_tty_from_fd(fd);
-        // Create a stream wrapper for this rid and pass to TTY
-        const stream = new TTYStream(rid);
-        handle = new TTY(stream);
-      } catch (e) {
-        throw new Error(
-          `Failed to create TTY stream for file descriptor ${fd}: ${e.message}`,
-        );
-      }
+      console.error('[WriteStream] fd > 2, creating TTYStream');
+      // For fd > 2, get the rid from the fd map (will dup if needed)
+      const rid = getRid(fd);
+      const stream = new TTYStream(rid);
+      handle = new TTY(stream);
     } else {
       // For stdin/stdout/stderr, use the built-in handles
       handle = new TTY(
@@ -167,9 +211,15 @@ export class WriteStream extends Socket {
       manualStart: true,
     });
 
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
+    try {
+      const { columns, rows } = Deno.consoleSize();
+      this.columns = columns;
+      this.rows = rows;
+    } catch {
+      // consoleSize can fail if not a real TTY
+      this.columns = 80;
+      this.rows = 24;
+    }
     this.isTTY = true;
   }
 

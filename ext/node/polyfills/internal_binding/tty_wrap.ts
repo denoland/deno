@@ -19,4 +19,22 @@ export class TTY extends LibuvStreamWrap {
   unref() {
     this[kStreamBaseField][io.UNREF]();
   }
+
+  setRaw(flag, options) {
+    const stream = this[kStreamBaseField];
+    if (stream && typeof stream.setRaw === "function") {
+      stream.setRaw(flag, options);
+    }
+  }
+
+  getWindowSize(size) {
+    try {
+      const { columns, rows } = Deno.consoleSize();
+      size[0] = columns;
+      size[1] = rows;
+      return 0;
+    } catch {
+      return -1;
+    }
+  }
 }
