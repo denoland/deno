@@ -10,8 +10,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::Shared;
 use deno_core::serde_json::json;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use lsp_types::Uri;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -58,6 +60,37 @@ impl TsModServer {
     match self {
       Self::Js(ts_server) => ts_server.is_started(),
       Self::Go(ts_server) => ts_server.is_started(),
+    }
+  }
+
+  pub async fn get_ambient_modules(
+    &self,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    match self {
+      Self::Js(ts_server) => {
+        ts_server
+          .get_ambient_modules(
+            snapshot,
+            compiler_options_key,
+            notebook_uri,
+            token,
+          )
+          .await
+      }
+      Self::Go(ts_server) => {
+        ts_server
+          .get_ambient_modules(
+            compiler_options_key,
+            notebook_uri,
+            snapshot,
+            token,
+          )
+          .await
+      }
     }
   }
 
@@ -1219,7 +1252,7 @@ impl TsModServer {
           let Some(document) = snapshot
             .document_modules
             .documents
-            .get(&lsp::Uri::from_str(&rename.old_uri).unwrap())
+            .get(&Uri::from_str(&rename.old_uri).unwrap())
           else {
             continue;
           };
@@ -1245,7 +1278,7 @@ impl TsModServer {
               .get_edits_for_file_rename(
                 snapshot.clone(),
                 &module,
-                &uri_to_url(&lsp::Uri::from_str(&rename.new_uri).unwrap()),
+                &uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
                 token,
               )
               .await?;

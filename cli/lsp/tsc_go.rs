@@ -99,6 +99,16 @@ impl TsGoServer {
     self.inner.initialized()
   }
 
+  pub async fn get_ambient_modules(
+    &self,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    todo!()
+  }
+
   pub async fn provide_diagnostics(
     &self,
     module: &DocumentModule,

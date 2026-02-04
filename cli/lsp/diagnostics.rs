@@ -1339,32 +1339,27 @@ pub async fn generate_module_diagnostics(
     .clone();
   let ambient_modules_regex = ambient_modules_regex_cell
     .get_or_init(async || {
-      match ts_server {
-        TsModServer::Js(ts_server) => {
-          ts_server
-            .get_ambient_modules(
-              snapshot.clone(),
-              &module.compiler_options_key,
-              module.notebook_uri.as_ref(),
-              token,
-            )
-            .await
-            .inspect_err(|err| {
-              if !token.is_cancelled() {
-                lsp_warn!("Unable to get ambient modules: {:#}", err);
-              }
-            })
-            .ok()
-            .filter(|a| !a.is_empty())
-            .and_then(|ambient_modules| {
-              let regex_string = ambient_modules_to_regex_string(&ambient_modules);
-              regex::Regex::new(&regex_string).inspect_err(|err| {
-                lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
-              }).ok()
-            })
-        }
-        TsModServer::Go(_) => todo!(),
-      }
+      ts_server
+        .get_ambient_modules(
+          &module.compiler_options_key,
+          module.notebook_uri.as_ref(),
+          snapshot.clone(),
+          token,
+        )
+        .await
+        .inspect_err(|err| {
+          if !token.is_cancelled() {
+            lsp_warn!("Unable to get ambient modules: {:#}", err);
+          }
+        })
+        .ok()
+        .filter(|a| !a.is_empty())
+        .and_then(|ambient_modules| {
+          let regex_string = ambient_modules_to_regex_string(&ambient_modules);
+          regex::Regex::new(&regex_string).inspect_err(|err| {
+            lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
+          }).ok()
+        })
     }).await;
   if let Some(ambient_modules_regex) = ambient_modules_regex {
     diagnostics.extend(deferred_deps_diagnostics.into_iter().filter_map(
