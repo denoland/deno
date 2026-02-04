@@ -1512,20 +1512,18 @@ fn cleanup_unused_packages(
 
   // 1. Clean up package folders in .deno/ directory
   if let Ok(entries) = sys.fs_read_dir(deno_local_registry_dir) {
-    for entry in entries {
-      if let Ok(entry) = entry {
-        let file_name = entry.file_name();
-        if let Some(name_str) = file_name.to_str() {
-          // Skip special files/dirs like node_modules, .deno.lock, .setup-cache.bin
-          if name_str == "node_modules" || name_str.starts_with('.') {
-            continue;
-          }
+    for entry in entries.flatten() {
+      let file_name = entry.file_name();
+      if let Some(name_str) = file_name.to_str() {
+        // Skip special files/dirs like node_modules, .deno.lock, .setup-cache.bin
+        if name_str == "node_modules" || name_str.starts_with('.') {
+          continue;
+        }
 
-          // If this folder is not expected, remove it
-          if !expected_folders.contains(name_str) {
-            let path = deno_local_registry_dir.join(file_name);
-            let _ignore = sys.fs_remove_dir_all(&path);
-          }
+        // If this folder is not expected, remove it
+        if !expected_folders.contains(name_str) {
+          let path = deno_local_registry_dir.join(file_name);
+          let _ignore = sys.fs_remove_dir_all(&path);
         }
       }
     }
@@ -1540,12 +1538,10 @@ fn cleanup_unused_packages(
       .join("node_modules");
 
     if let Ok(entries) = sys.fs_read_dir(&package_node_modules) {
-      for entry in entries {
-        if let Ok(entry) = entry {
-          let entry_path = package_node_modules.join(entry.file_name());
-          // Remove all dependency symlinks (will be recreated as needed)
-          let _ignore = sys.fs_remove_dir_all(&entry_path);
-        }
+      for entry in entries.flatten() {
+        let entry_path = package_node_modules.join(entry.file_name());
+        // Remove all dependency symlinks (will be recreated as needed)
+        let _ignore = sys.fs_remove_dir_all(&entry_path);
       }
     }
   }
@@ -1553,30 +1549,26 @@ fn cleanup_unused_packages(
   // 2. Clean up .deno/node_modules/* symlinks
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   if let Ok(entries) = sys.fs_read_dir(&deno_node_modules_dir) {
-    for entry in entries {
-      if let Ok(entry) = entry {
-        let _ignore =
-          sys.fs_remove_dir_all(&deno_node_modules_dir.join(entry.file_name()));
-      }
+    for entry in entries.flatten() {
+      let _ignore =
+        sys.fs_remove_dir_all(deno_node_modules_dir.join(entry.file_name()));
     }
   }
 
   // 3. Clean up root node_modules/* (will be recreated as needed)
   if let Ok(entries) = sys.fs_read_dir(root_node_modules_dir) {
-    for entry in entries {
-      if let Ok(entry) = entry {
-        let file_name = entry.file_name();
-        if let Some(name_str) = file_name.to_str() {
-          // Skip .deno directory
-          if name_str == ".deno" {
-            continue;
-          }
+    for entry in entries.flatten() {
+      let file_name = entry.file_name();
+      if let Some(name_str) = file_name.to_str() {
+        // Skip .deno directory
+        if name_str == ".deno" {
+          continue;
+        }
 
-          let path = root_node_modules_dir.join(&file_name);
-          // Remove .bin unconditionally, or other entries if metadata check succeeds
-          if name_str == ".bin" || sys.fs_symlink_metadata(&path).is_ok() {
-            let _ignore = sys.fs_remove_dir_all(&path);
-          }
+        let path = root_node_modules_dir.join(&file_name);
+        // Remove .bin unconditionally, or other entries if metadata check succeeds
+        if name_str == ".bin" || sys.fs_symlink_metadata(&path).is_ok() {
+          let _ignore = sys.fs_remove_dir_all(&path);
         }
       }
     }
