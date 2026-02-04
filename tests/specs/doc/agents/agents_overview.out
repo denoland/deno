@@ -1,0 +1,41 @@
+Deno Documentation for Agents
+
+Usage:
+
+  Get documentation for a module's public API:
+    deno doc ./path/to/module.ts
+
+  Get documentation for a specific symbol:
+    deno doc ./path/to/module.ts MyClass
+
+  Get documentation for a remote package:
+    deno doc jsr:@std/path
+
+  Get documentation for a specific package version:
+    deno doc jsr:@std/path@1.0.0
+
+  Get agent skills for a package:
+    deno doc --agents jsr:@example/package
+
+  Output documentation as JSON:
+    deno doc --json ./path/to/module.ts
+
+Project:
+
+  @example/my-project 1.0.0
+
+  Exports:
+    . -> ./mod.ts
+
+  To see documentation for this project:
+    deno doc ./mod.ts
+
+Dependencies:
+
+  @std/assert jsr:@std/assert@^1.0.0
+    doc: deno doc jsr:@std/assert@^1.0.0
+    skills: deno doc --agents jsr:@std/assert@^1.0.0
+  @std/path jsr:@std/path@^1.0.0
+    doc: deno doc jsr:@std/path@^1.0.0
+    skills: deno doc --agents jsr:@std/path@^1.0.0
+

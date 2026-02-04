@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -37,6 +38,7 @@ use crate::factory::CliFactory;
 use crate::graph_util::GraphWalkErrorsOptions;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
+use crate::jsr::JsrFetchResolver;
 use crate::sys::CliSys;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::CollectSpecifiersOptions;
@@ -111,6 +113,11 @@ pub async fn doc(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
+
+  if doc_flags.agents {
+    return doc_agents(&factory, cli_options, &doc_flags).await;
+  }
+
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache()?;
   let capturing_parser = parsed_source_cache.as_capturing_parser();
@@ -267,6 +274,364 @@ pub async fn doc(
       print_docs_to_stdout(doc_flags, doc_nodes)
     }
   }
+}
+
+async fn doc_agents(
+  factory: &CliFactory,
+  cli_options: &Arc<crate::args::CliOptions>,
+  doc_flags: &DocFlags,
+) -> Result<(), AnyError> {
+  let mut output = String::new();
+
+  match &doc_flags.source_files {
+    DocSourceFileFlag::Paths(source_files) if !source_files.is_empty() => {
+      doc_agents_package(factory, &mut output, source_files).await?;
+    }
+    _ => {
+      doc_agents_overview(factory, cli_options, &mut output).await?;
+    }
+  }
+
+  display::write_to_stdout_ignore_sigpipe(output.as_bytes())
+    .map_err(AnyError::from)
+}
+
+async fn doc_agents_overview(
+  factory: &CliFactory,
+  cli_options: &Arc<crate::args::CliOptions>,
+  output: &mut String,
+) -> Result<(), AnyError> {
+  writeln!(output, "{}", colors::bold("Deno Documentation for Agents"))?;
+  writeln!(output)?;
+  writeln!(output, "{}", colors::bold("Usage:"))?;
+  writeln!(output)?;
+  writeln!(output, "  Get documentation for a module's public API:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan("deno doc ./path/to/module.ts")
+  )?;
+  writeln!(output)?;
+  writeln!(output, "  Get documentation for a specific symbol:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan("deno doc ./path/to/module.ts MyClass")
+  )?;
+  writeln!(output)?;
+  writeln!(output, "  Get documentation for a remote package:")?;
+  writeln!(output, "    {}", colors::cyan("deno doc jsr:@std/path"))?;
+  writeln!(output)?;
+  writeln!(
+    output,
+    "  Get documentation for a specific package version:"
+  )?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan("deno doc jsr:@std/path@1.0.0")
+  )?;
+  writeln!(output)?;
+  writeln!(output, "  Get agent skills for a package:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan("deno doc --agents jsr:@example/package")
+  )?;
+  writeln!(output)?;
+  writeln!(output, "  Output documentation as JSON:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan("deno doc --json ./path/to/module.ts")
+  )?;
+  writeln!(output)?;
+
+  // Show project info if we have a deno.json
+  if let Some(config_file) = cli_options.start_dir.member_or_root_deno_json() {
+    if let Some(name) = &config_file.json.name {
+      writeln!(output, "{}", colors::bold("Project:"))?;
+      writeln!(output)?;
+      if let Some(version) = &config_file.json.version {
+        writeln!(
+          output,
+          "  {} {}",
+          colors::green(name),
+          colors::gray(version)
+        )?;
+      } else {
+        writeln!(output, "  {}", colors::green(name))?;
+      }
+
+      // Show exports if available
+      if let Ok(exports_config) = config_file.to_exports_config() {
+        let map = exports_config.into_map();
+        if !map.is_empty() {
+          writeln!(output)?;
+          writeln!(output, "  {}:", colors::bold("Exports"))?;
+          for (key, value) in &map {
+            writeln!(
+              output,
+              "    {} -> {}",
+              colors::cyan(key),
+              colors::gray(value)
+            )?;
+          }
+          writeln!(output)?;
+          writeln!(output, "  To see documentation for this project:")?;
+          let entrypoints: Vec<&str> =
+            map.values().map(|s| s.as_str()).collect();
+          writeln!(
+            output,
+            "    {}",
+            colors::cyan(format!("deno doc {}", entrypoints.join(" ")))
+          )?;
+        }
+      }
+      writeln!(output)?;
+    }
+  }
+
+  // Show dependencies
+  let maybe_lockfile = factory.maybe_lockfile().await?;
+
+  // Collect dependencies from imports in deno.json
+  if let Some(config_file) = cli_options.start_dir.member_or_root_deno_json() {
+    if let Some(imports) = &config_file.json.imports {
+      if let Some(imports_map) = imports.as_object() {
+        if !imports_map.is_empty() {
+          writeln!(output, "{}", colors::bold("Dependencies:"))?;
+          writeln!(output)?;
+
+          let mut deps: Vec<(&str, &str)> = imports_map
+            .iter()
+            .filter_map(|(key, val)| val.as_str().map(|v| (key.as_str(), v)))
+            .collect();
+          deps.sort_by_key(|(k, _)| *k);
+
+          for (alias, specifier) in &deps {
+            // Try to find the resolved version from the lockfile
+            let resolved = if let Some(lockfile) = &maybe_lockfile {
+              let locked = lockfile.lock();
+              let mut found = None;
+              for (dep_req, version) in &locked.content.packages.specifiers {
+                let req_str = dep_req.to_string();
+                if req_str == *specifier
+                  || specifier.contains(&*dep_req.req.name)
+                {
+                  found = Some((dep_req.kind, version.to_string()));
+                  break;
+                }
+              }
+              found
+            } else {
+              None
+            };
+
+            if let Some((_kind, version)) = &resolved {
+              writeln!(
+                output,
+                "  {} {} (resolved: {})",
+                colors::cyan(alias),
+                colors::gray(specifier),
+                colors::green(version)
+              )?;
+            } else {
+              writeln!(
+                output,
+                "  {} {}",
+                colors::cyan(alias),
+                colors::gray(specifier)
+              )?;
+            }
+
+            // Add hints for getting documentation
+            if specifier.starts_with("jsr:") || specifier.starts_with("npm:") {
+              writeln!(
+                output,
+                "    doc: {}",
+                colors::gray(format!("deno doc {specifier}"))
+              )?;
+              writeln!(
+                output,
+                "    skills: {}",
+                colors::gray(format!("deno doc --agents {specifier}"))
+              )?;
+            }
+          }
+          writeln!(output)?;
+        }
+      }
+    }
+  }
+
+  Ok(())
+}
+
+async fn doc_agents_package(
+  factory: &CliFactory,
+  output: &mut String,
+  source_files: &[String],
+) -> Result<(), AnyError> {
+  let specifier = &source_files[0];
+
+  writeln!(
+    output,
+    "{} {}",
+    colors::bold("Package:"),
+    colors::cyan(specifier)
+  )?;
+  writeln!(output)?;
+
+  // Show how to get the full docs
+  writeln!(output, "{}", colors::bold("Documentation:"))?;
+  writeln!(output)?;
+  writeln!(output, "  View full API documentation:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan(format!("deno doc {specifier}"))
+  )?;
+  writeln!(output)?;
+  writeln!(output, "  View documentation as JSON:")?;
+  writeln!(
+    output,
+    "    {}",
+    colors::cyan(format!("deno doc --json {specifier}"))
+  )?;
+  writeln!(output)?;
+
+  // If this is a JSR package, try to fetch its metadata and look for agent exports
+  if specifier.starts_with("jsr:") {
+    let stripped = specifier.strip_prefix("jsr:").unwrap();
+    // Parse the package specifier
+    let req = deno_semver::package::PackageReq::from_str(stripped)
+      .with_context(|| {
+        format!("Failed to parse package specifier: {specifier}")
+      })?;
+
+    let file_fetcher = factory.file_fetcher()?;
+    let jsr_resolver = JsrFetchResolver::new(
+      file_fetcher.clone(),
+      factory.jsr_version_resolver()?.clone(),
+    );
+
+    // Resolve to a specific version
+    match jsr_resolver.req_to_nv(&req).await {
+      Ok(Some(nv)) => {
+        writeln!(
+          output,
+          "{} {}@{}",
+          colors::bold("Resolved version:"),
+          nv.name,
+          colors::green(&nv.version)
+        )?;
+        writeln!(output)?;
+
+        // Fetch package version info to get exports
+        if let Some(version_info) = jsr_resolver.package_version_info(&nv).await
+        {
+          let exports: Vec<(&str, &str)> = version_info.exports().collect();
+
+          if !exports.is_empty() {
+            // Separate agent/markdown exports from regular exports
+            let mut agent_exports = Vec::new();
+            let mut regular_exports = Vec::new();
+
+            for (export_name, export_path) in &exports {
+              if export_name.starts_with("./agents")
+                || export_path.ends_with(".md")
+                || export_path.ends_with(".markdown")
+              {
+                agent_exports.push((*export_name, *export_path));
+              } else {
+                regular_exports.push((*export_name, *export_path));
+              }
+            }
+
+            if !agent_exports.is_empty() {
+              writeln!(output, "{}", colors::bold("Agent Skills:"))?;
+              writeln!(output)?;
+              for (export_name, export_path) in &agent_exports {
+                writeln!(
+                  output,
+                  "  {} -> {}",
+                  colors::cyan(export_name),
+                  colors::gray(export_path)
+                )?;
+                let full_specifier = if *export_name == "." {
+                  format!("jsr:{}@{}", nv.name, nv.version)
+                } else {
+                  let subpath =
+                    export_name.strip_prefix('.').unwrap_or(export_name);
+                  format!("jsr:{}@{}{}", nv.name, nv.version, subpath)
+                };
+                if export_path.ends_with(".md")
+                  || export_path.ends_with(".markdown")
+                {
+                  writeln!(
+                    output,
+                    "    read: {}",
+                    colors::gray(format!("deno doc {full_specifier}"))
+                  )?;
+                } else {
+                  writeln!(
+                    output,
+                    "    doc: {}",
+                    colors::gray(format!("deno doc {full_specifier}"))
+                  )?;
+                }
+              }
+              writeln!(output)?;
+            }
+
+            writeln!(output, "{}", colors::bold("Exports:"))?;
+            writeln!(output)?;
+            for (export_name, export_path) in &regular_exports {
+              writeln!(
+                output,
+                "  {} -> {}",
+                colors::cyan(export_name),
+                colors::gray(export_path)
+              )?;
+            }
+            if regular_exports.is_empty() {
+              writeln!(output, "  {}", colors::gray("(no regular exports)"))?;
+            }
+            writeln!(output)?;
+          }
+        }
+      }
+      Ok(None) => {
+        writeln!(
+          output,
+          "{} Could not resolve package: {}",
+          colors::yellow("Warning:"),
+          specifier
+        )?;
+      }
+      Err(e) => {
+        writeln!(
+          output,
+          "{} Failed to resolve package: {}",
+          colors::yellow("Warning:"),
+          e
+        )?;
+      }
+    }
+  } else if specifier.starts_with("npm:") {
+    writeln!(output, "{}", colors::bold("Exports:"))?;
+    writeln!(output)?;
+    writeln!(output, "  To see documentation for this npm package:")?;
+    writeln!(
+      output,
+      "    {}",
+      colors::cyan(format!("deno doc {specifier}"))
+    )?;
+    writeln!(output)?;
+  }
+
+  Ok(())
 }
 
 struct DocResolver {

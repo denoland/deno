@@ -257,6 +257,7 @@ pub struct DocFlags {
   pub html: Option<DocHtmlFlag>,
   pub source_files: DocSourceFileFlag,
   pub filter: Option<String>,
+  pub agents: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2932,6 +2933,12 @@ Show documentation for runtime built-ins:
     <p(245)>deno doc</>
     <p(245)>deno doc --filter Deno.Listener</>
 
+Show agent-friendly documentation for the current project:
+    <p(245)>deno doc --agents</>
+
+Show agent skills for a specific package:
+    <p(245)>deno doc --agents jsr:@example/package@1.0.0</>
+
 <y>Read more:</> <c>https://docs.deno.com/go/doc</>"),
           UnstableArgsConfig::ResolutionOnly
     )
@@ -3025,6 +3032,17 @@ Show documentation for runtime built-ins:
             .long("lint")
             .help("Output documentation diagnostics.")
             .action(ArgAction::SetTrue).help_heading(DOC_HEADING),
+        )
+        .arg(
+          Arg::new("agents")
+            .long("agents")
+            .help("Output agent-friendly documentation for the project or a specific package")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("json")
+            .conflicts_with("html")
+            .conflicts_with("lint")
+            .conflicts_with("filter")
+            .conflicts_with("private").help_heading(DOC_HEADING),
         )
         // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
         // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
@@ -6168,6 +6186,7 @@ fn doc_parse(
   let private = matches.get_flag("private");
   let lint = matches.get_flag("lint");
   let json = matches.get_flag("json");
+  let agents = matches.get_flag("agents");
   let filter = matches.remove_one::<String>("filter");
   let html = if matches.get_flag("html") {
     let name = matches.remove_one::<String>("name");
@@ -6199,6 +6218,7 @@ fn doc_parse(
     html,
     filter,
     private,
+    agents,
   });
   Ok(())
 }
@@ -10227,6 +10247,7 @@ mod tests {
           html: None,
           lint: false,
           filter: None,
+          agents: false,
         }),
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
@@ -11854,6 +11875,7 @@ mod tests {
           lint: false,
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -11886,6 +11908,7 @@ mod tests {
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -11917,6 +11940,7 @@ mod tests {
           lint: true,
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -11945,6 +11969,7 @@ mod tests {
             "path/to/module.ts".to_string()
           ]),
           filter: Some("SomeClass.someField".to_string()),
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -11961,6 +11986,7 @@ mod tests {
           lint: false,
           source_files: Default::default(),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -11983,6 +12009,7 @@ mod tests {
           html: None,
           source_files: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -12006,6 +12033,7 @@ mod tests {
           html: None,
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.js"]),
           filter: None,
+          agents: false,
         }),
         no_npm: true,
         no_remote: true,
@@ -12032,6 +12060,7 @@ mod tests {
             "path/to/module2.js".to_string()
           ]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -12057,6 +12086,7 @@ mod tests {
             "path/to/module2.js".to_string()
           ]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }
@@ -12085,6 +12115,7 @@ mod tests {
             "path/to/module2.js".to_string()
           ]),
           filter: None,
+          agents: false,
         }),
         ..Flags::default()
       }

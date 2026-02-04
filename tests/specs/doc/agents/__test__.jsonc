@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "agents_overview_with_project": {
+      "args": "doc --agents",
+      "output": "agents_overview.out",
+      "exitCode": 0
+    },
+    "agents_conflicts_with_json": {
+      "args": "doc --agents --json mod.ts",
+      "output": "agents_conflict.out",
+      "exitCode": 1
+    }
+  }
+}
