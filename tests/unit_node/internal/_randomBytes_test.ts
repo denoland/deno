@@ -91,7 +91,11 @@ Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is
 Deno.test("randomBytes buffer has correct byteLength and unique values", function () {
   // Test that the underlying ArrayBuffer has the expected size
   const buf8 = randomBytes(8);
-  assertEquals(buf8.buffer.byteLength, 8, "buffer.byteLength should match requested size");
+  assertEquals(
+    buf8.buffer.byteLength,
+    8,
+    "buffer.byteLength should match requested size",
+  );
 
   // Test that multiple calls return buffers with different underlying data
   // This was broken when using shared pool allocation
