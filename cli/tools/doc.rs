@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -12,9 +13,12 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
+use deno_doc::DocNode;
+use deno_doc::Location;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
+use deno_doc::js_doc::JsDoc;
 use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
@@ -26,6 +30,7 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use doc::DocDiagnostic;
 use doc::html::ShortPath;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
@@ -34,6 +39,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::file_fetcher::TextDecodedFile;
 use crate::graph_util::GraphWalkErrorsOptions;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
@@ -115,6 +121,7 @@ pub async fn doc(
   let parsed_source_cache = factory.parsed_source_cache()?;
   let capturing_parser = parsed_source_cache.as_capturing_parser();
   let analyzer = module_info_cache.as_module_analyzer();
+  let file_fetcher = factory.file_fetcher()?;
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
@@ -129,7 +136,7 @@ pub async fn doc(
       let module_graph_creator = factory.module_graph_creator().await?;
       let sys = CliSys::default();
 
-      let module_specifiers = collect_specifiers(
+      let mut module_specifiers = collect_specifiers(
         CollectSpecifiersOptions {
           file_patterns: FilePatterns {
             base: cli_options.initial_cwd().to_path_buf(),
@@ -167,9 +174,23 @@ pub async fn doc(
           allow_unknown_jsr_exports: false,
         },
       );
+      let mut markdown_urls = IndexSet::new();
       for error in errors {
-        log::warn!("{} {}", colors::yellow("Warning"), error);
+        if let Some(deno_graph::ModuleErrorKind::UnsupportedMediaType {
+          media_type: MediaType::Markdown,
+          specifier,
+          ..
+        }) = error.original().as_module_error_kind()
+        {
+          markdown_urls.insert(specifier.clone());
+        } else {
+          log::warn!("{} {}", colors::yellow("Warning"), error);
+        }
       }
+
+      module_specifiers.retain(|s| {
+        !markdown_urls.contains(s) && !markdown_urls.contains(graph.resolve(s))
+      });
 
       let doc_parser = doc::DocParser::new(
         &graph,
@@ -180,11 +201,44 @@ pub async fn doc(
           diagnostics: doc_flags.lint,
         },
       )?;
-      let doc_nodes_by_url = doc_parser.parse()?;
+      let mut doc_nodes_by_url = doc_parser.parse()?;
 
       if doc_flags.lint {
         let diagnostics = doc_parser.take_diagnostics();
         check_diagnostics(&diagnostics)?;
+      }
+
+      let markdown_downloads = deno_core::futures::future::try_join_all(
+        markdown_urls.into_iter().map(|url| async {
+          // ok to skip permissions because these were provided on the CLI
+          let file = file_fetcher.fetch_bypass_permissions(&url).await?;
+          let decoded = TextDecodedFile::decode(file)?;
+          Ok::<_, AnyError>((url, decoded))
+        }),
+      )
+      .await?;
+      for (url, decoded) in markdown_downloads {
+        let filename = url.to_string().into_boxed_str();
+        doc_nodes_by_url.insert(
+          url,
+          Vec::from([DocNode {
+            declaration_kind: deno_doc::node::DeclarationKind::Declare,
+            def: deno_doc::DocNodeDef::ModuleDoc,
+            location: Location {
+              filename,
+              col: 0,
+              byte_index: 0,
+              // this is 1-indexed for some reason
+              line: 1,
+            },
+            name: "".into(),
+            is_default: None,
+            js_doc: JsDoc {
+              doc: Some(Box::from(&*decoded.source)),
+              tags: Default::default(),
+            },
+          }]),
+        );
       }
 
       doc_nodes_by_url

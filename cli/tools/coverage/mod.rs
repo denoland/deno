@@ -551,6 +551,7 @@ pub fn cover_files(
       | MediaType::Unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs

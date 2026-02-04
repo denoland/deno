@@ -372,6 +372,7 @@ fn get_module_roots_and_include_paths(
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,

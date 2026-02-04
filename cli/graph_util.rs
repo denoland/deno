@@ -39,6 +39,7 @@ use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
+use deno_resolver::graph::EnhancedGraphError;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
 use deno_resolver::graph::format_deno_graph_error;
@@ -116,7 +117,7 @@ pub fn graph_valid(
     },
   );
   match errors.next() {
-    Some(error) => Err(error),
+    Some(error) => Err(JsErrorBox::from_err(error)),
     _ => {
       // finally surface the npm resolution result
       if let Err(err) = &graph.npm_dep_graph_result {
@@ -146,15 +147,14 @@ pub fn graph_walk_errors<'a>(
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
-) -> impl Iterator<Item = JsErrorBox> + 'a {
+) -> impl Iterator<Item = EnhancedGraphError> + 'a {
   fn should_ignore_error(
     sys: &CliSys,
-    graph_kind: GraphKind,
     allow_unknown_media_types: bool,
     will_type_check: bool,
     error: &ModuleGraphError,
   ) -> bool {
-    if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
+    if allow_unknown_media_types
       && matches!(
         error.as_module_error_kind(),
         Some(ModuleErrorKind::UnsupportedMediaType { .. })
@@ -181,7 +181,6 @@ pub fn graph_walk_errors<'a>(
     .flat_map(move |error| {
       if should_ignore_error(
         sys,
-        graph.graph_kind(),
         options.allow_unknown_media_types,
         options.will_type_check,
         &error,
@@ -209,9 +208,9 @@ pub fn graph_walk_errors<'a>(
       {
         return None;
       }
-      let message = enhance_graph_error(
+      let enhanced = enhance_graph_error(
         sys,
-        &error,
+        error,
         if is_root {
           EnhanceGraphErrorMode::HideRange
         } else {
@@ -219,7 +218,7 @@ pub fn graph_walk_errors<'a>(
         },
       );
 
-      Some(JsErrorBox::new(error.get_class(), message))
+      Some(enhanced)
     })
 }
 
