@@ -98,8 +98,7 @@ class NodeTestContext {
   }
 
   get mock() {
-    notImplemented("test.TestContext.mock");
-    return null;
+    return mock;
   }
 
   runOnly() {
