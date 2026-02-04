@@ -990,8 +990,7 @@ async fn install_global_compiled(
   };
 
   let mut new_flags = flags.as_ref().clone();
-  new_flags.subcommand =
-    DenoSubcommand::Compile(compile_flags.clone());
+  new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
   // `is_package_manager_subcommand` forces managed resolver for deno install
   // but we loose that with DenoSubcommand::Command. Explicitly set that here.
   if new_flags.node_modules_dir.is_none() {
