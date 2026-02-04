@@ -802,7 +802,7 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags {
     InstallFlags::Global(global_flags) => {
-      install_global(flags, global_flags).await
+      Box::pin(install_global(flags, global_flags)).await
     }
     InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
