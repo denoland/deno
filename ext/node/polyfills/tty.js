@@ -19,8 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_bootstrap_color_depth, op_node_is_tty } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { op_node_is_tty } from "ext:core/ops";
 const {
   ArrayPrototypeSome,
   Error,
