@@ -86,6 +86,27 @@ Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is
   });
 });
 
+// https://github.com/denoland/deno/issues/28629
+// randomBytes should return a buffer with its own ArrayBuffer, not a shared pool
+Deno.test("randomBytes buffer has correct byteLength and unique values", function () {
+  // Test that the underlying ArrayBuffer has the expected size
+  const buf8 = randomBytes(8);
+  assertEquals(buf8.buffer.byteLength, 8, "buffer.byteLength should match requested size");
+
+  // Test that multiple calls return buffers with different underlying data
+  // This was broken when using shared pool allocation
+  const val1 = new BigUint64Array(randomBytes(8).buffer)[0];
+  const val2 = new BigUint64Array(randomBytes(8).buffer)[0];
+  const val3 = new BigUint64Array(randomBytes(8).buffer)[0];
+
+  // While extremely unlikely to be identical by chance, this tests the fix
+  // for the bug where all values were the same due to shared pool
+  assert(
+    val1 !== val2 || val2 !== val3,
+    "random values should not all be identical (was caused by shared buffer pool)",
+  );
+});
+
 // https://github.com/denoland/deno/issues/21632
 Deno.test("pseudoRandomBytes works", function () {
   assertEquals(pseudoRandomBytes(0).length, 0, "len: " + 0);
