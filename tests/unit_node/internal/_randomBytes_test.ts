@@ -102,7 +102,7 @@ Deno.test("randomBytes buffer has correct byteLength and unique values", functio
   // While extremely unlikely to be identical by chance, this tests the fix
   // for the bug where all values were the same due to shared pool
   assert(
-    val1 !== val2 || val2 !== val3,
+    !(val1 === val2 && val2 === val3),
     "random values should not all be identical (was caused by shared buffer pool)",
   );
 });
