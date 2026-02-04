@@ -4,15 +4,17 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use deno_config::deno_json::CompilerOptions;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use lsp_types::Uri;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -21,7 +23,8 @@ use super::language_server::StateSnapshot;
 use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
-use crate::lsp::performance::Performance;
+use crate::lsp::documents::Document;
+use crate::lsp::urls::uri_to_url;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,33 +36,68 @@ pub struct TsGoCompletionItemData {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TsGoRequest {
-  ScopedRequest {
+  LanguageServiceMethod {
     name: String,
     args: serde_json::Value,
     compiler_options_key: CompilerOptionsKey,
     notebook_uri: Option<Arc<Uri>>,
   },
-  UnscopedRequest {
-    name: String,
-    args: serde_json::Value,
+  GetAmbientModules {
+    compiler_options_key: CompilerOptionsKey,
+    notebook_uri: Option<Arc<Uri>>,
   },
+  WorkspaceSymbol {
+    query: String,
+  },
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum TsGoFileChangeKind {
+  Opened,
+  Closed,
+  Modified,
+}
+
+impl From<super::tsc::ChangeKind> for TsGoFileChangeKind {
+  fn from(value: super::tsc::ChangeKind) -> Self {
+    match value {
+      super::tsc::ChangeKind::Opened => Self::Opened,
+      super::tsc::ChangeKind::Closed => Self::Closed,
+      super::tsc::ChangeKind::Modified => Self::Modified,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoFileChange {
+  uri: Arc<Uri>,
+  kind: TsGoFileChangeKind,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoConfigurationChange {
+  pub new_compiler_options_by_key:
+    BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
+  pub new_notebook_keys: BTreeMap<Arc<Uri>, CompilerOptionsKey>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DidChangeConfigurationParams {
-  pub by_compiler_options_by_key:
-    Option<BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>>,
-  pub by_notebook_uri: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
+struct TsGoProjectChange {
+  files: Vec<TsGoFileChange>,
+  configuration: Option<TsGoConfigurationChange>,
 }
 
 #[derive(Debug)]
-struct TsGoServerInner {}
+struct TsGoServerInner {
+  pending_change: Mutex<Option<TsGoProjectChange>>,
+}
 
 #[derive(Debug)]
 pub struct TsGoServer {
-  enable_tracing: Arc<AtomicBool>,
-  performance: Arc<Performance>,
   deno_dir: DenoDir,
   http_client_provider: Arc<HttpClientProvider>,
   inner: tokio::sync::OnceCell<TsGoServerInner>,
@@ -67,13 +105,10 @@ pub struct TsGoServer {
 
 impl TsGoServer {
   pub fn new(
-    performance: Arc<Performance>,
     deno_dir: &DenoDir,
     http_client_provider: &Arc<HttpClientProvider>,
   ) -> Self {
     Self {
-      enable_tracing: Default::default(),
-      performance,
       deno_dir: deno_dir.clone(),
       http_client_provider: http_client_provider.clone(),
       inner: Default::default(),
@@ -99,6 +134,62 @@ impl TsGoServer {
     self.inner.initialized()
   }
 
+  pub fn project_changed(
+    &self,
+    documents: &[(Document, super::tsc::ChangeKind)],
+    configuration_changed: bool,
+    snapshot: Arc<StateSnapshot>,
+  ) {
+    let Some(inner) = self.inner.get() else {
+      return;
+    };
+    let mut pending_change = inner.pending_change.lock();
+    if pending_change.is_none() {
+      *pending_change = Some(TsGoProjectChange {
+        files: documents
+          .iter()
+          .map(|(d, k)| TsGoFileChange {
+            uri: d.uri().clone(),
+            kind: (*k).into(),
+          })
+          .collect(),
+        configuration: configuration_changed.then(|| TsGoConfigurationChange {
+          new_compiler_options_by_key: snapshot
+            .compiler_options_resolver
+            .entries()
+            .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
+            .collect(),
+          new_notebook_keys: snapshot
+            .document_modules
+            .documents
+            .cells_by_notebook_uri()
+            .keys()
+            .map(|u| {
+              let compiler_options_key = snapshot
+                .compiler_options_resolver
+                .entry_for_specifier(&uri_to_url(u))
+                .0;
+              (u.clone(), compiler_options_key.clone())
+            })
+            .collect(),
+        }),
+      })
+    }
+  }
+
+  async fn request<R>(
+    &self,
+    request: TsGoRequest,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<R, AnyError>
+  where
+    R: DeserializeOwned,
+  {
+    let inner = self.inner().await;
+    todo!("{:?}", &inner.pending_change)
+  }
+
   pub async fn get_ambient_modules(
     &self,
     compiler_options_key: &CompilerOptionsKey,
@@ -106,7 +197,16 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Vec<String>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::GetAmbientModules {
+          compiler_options_key: compiler_options_key.clone(),
+          notebook_uri: notebook_uri.cloned(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_diagnostics(
@@ -115,7 +215,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::DocumentDiagnosticReport, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideDiagnostics".to_string(),
+          args: json!([&module.specifier]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_references(
@@ -126,7 +237,22 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideReferences".to_string(),
+          args: json!([{
+            "textDocument": { "uri": &module.specifier },
+            "position": position,
+            "context": context,
+          }]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_code_lenses(
@@ -135,7 +261,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CodeLens>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideCodeLenses".to_string(),
+          args: json!([&module.specifier]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_document_symbols(
@@ -144,7 +281,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::DocumentSymbolResponse>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideDocumentSymbols".to_string(),
+          args: json!([&module.specifier]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_hover(
@@ -154,7 +302,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::Hover>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideHover".to_string(),
+          args: json!([&module.specifier, position]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_code_actions(
@@ -165,7 +324,22 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CodeActionResponse>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideCodeActions".to_string(),
+          args: json!([{
+            "textDocument": { "uri": &module.specifier },
+            "range": range,
+            "context": context,
+          }]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_document_highlights(
@@ -175,7 +349,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::DocumentHighlight>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideDocumentHighlights".to_string(),
+          args: json!([&module.specifier, position]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_definition(
@@ -185,7 +370,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideDefinition".to_string(),
+          args: json!([&module.specifier, position]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_type_definition(
@@ -195,7 +391,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideTypeDefinition".to_string(),
+          args: json!([&module.specifier, position]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_completion(
@@ -206,7 +413,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CompletionResponse>, AnyError> {
-    let response: Result<Option<lsp::CompletionResponse>, AnyError> = todo!();
+    let mut response: Result<Option<lsp::CompletionResponse>, AnyError> = self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideCompletion".to_string(),
+          args: json!([&module.specifier, position, context]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await;
     if let Ok(Some(response)) = &mut response {
       let items = match response {
         lsp::CompletionResponse::Array(items) => items,
@@ -238,7 +456,18 @@ impl TsGoServer {
     token: &CancellationToken,
   ) -> Result<lsp::CompletionItem, AnyError> {
     item.data = Some(data.data);
-    todo!("{:?}", item)
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ResolveCompletionItem".to_string(),
+          args: json!([item]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_implementations(
@@ -248,7 +477,21 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideImplementations".to_string(),
+          args: json!({
+            "textDocument": { "uri": &module.specifier },
+            "position": position,
+          }),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_folding_range(
@@ -257,7 +500,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::FoldingRange>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideFoldingRange".to_string(),
+          args: json!([&module.specifier]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_call_hierarchy_incoming_calls(
@@ -267,7 +521,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideCallHierarchyIncomingCalls".to_string(),
+          args: json!([item]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_call_hierarchy_outgoing_calls(
@@ -277,7 +542,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideCallHierarchyOutgoingCalls".to_string(),
+          args: json!([item]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_prepare_call_hierarchy(
@@ -287,7 +563,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvidePrepareCallHierarchy".to_string(),
+          args: json!([&module.specifier, position]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_rename(
@@ -298,7 +585,22 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideRename".to_string(),
+          args: json!([{
+            "textDocument": { "uri": &module.specifier },
+            "position": position,
+            "newName": new_name,
+          }]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_selection_ranges(
@@ -308,7 +610,21 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SelectionRange>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideSelectionRanges".to_string(),
+          args: json!([{
+            "textDocument": { "uri": &module.specifier },
+            "positions": positions,
+          }]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_signature_help(
@@ -319,7 +635,18 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::SignatureHelp>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideSignatureHelp".to_string(),
+          args: json!([&module.specifier, position, context]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_inlay_hint(
@@ -329,7 +656,21 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::LanguageServiceMethod {
+          name: "ProvideInlayHint".to_string(),
+          args: json!([{
+            "textDocument": { "uri": &module.specifier },
+            "range": range,
+          }]),
+          compiler_options_key: module.compiler_options_key.clone(),
+          notebook_uri: module.notebook_uri.clone(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 
   pub async fn provide_workspace_symbol(
@@ -338,6 +679,14 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
-    todo!()
+    self
+      .request(
+        TsGoRequest::WorkspaceSymbol {
+          query: query.to_string(),
+        },
+        snapshot,
+        token,
+      )
+      .await
   }
 }

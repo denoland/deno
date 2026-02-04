@@ -50,7 +50,7 @@ impl TsModServer {
     http_client_provider: &Arc<HttpClientProvider>,
   ) -> Self {
     if std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
-      Self::Go(TsGoServer::new(performance, deno_dir, http_client_provider))
+      Self::Go(TsGoServer::new(deno_dir, http_client_provider))
     } else {
       Self::Js(TsServer::new(performance))
     }
@@ -60,6 +60,49 @@ impl TsModServer {
     match self {
       Self::Js(ts_server) => ts_server.is_started(),
       Self::Go(ts_server) => ts_server.is_started(),
+    }
+  }
+
+  pub fn project_changed(
+    &self,
+    documents: &[(Document, super::tsc::ChangeKind)],
+    configuration_changed: bool,
+    snapshot: Arc<StateSnapshot>,
+  ) {
+    match self {
+      Self::Js(ts_server) => {
+        let new_compiler_options_by_key = configuration_changed.then(|| {
+          snapshot
+            .compiler_options_resolver
+            .entries()
+            .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
+            .collect()
+        });
+        let new_notebook_keys = configuration_changed.then(|| {
+          snapshot
+            .document_modules
+            .documents
+            .cells_by_notebook_uri()
+            .keys()
+            .map(|u| {
+              let compiler_options_key = snapshot
+                .compiler_options_resolver
+                .entry_for_specifier(&uri_to_url(u))
+                .0;
+              (u.clone(), compiler_options_key.clone())
+            })
+            .collect()
+        });
+        ts_server.project_changed(
+          snapshot,
+          &documents,
+          new_compiler_options_by_key,
+          new_notebook_keys,
+        );
+      }
+      Self::Go(ts_server) => {
+        ts_server.project_changed(documents, configuration_changed, snapshot);
+      }
     }
   }
 

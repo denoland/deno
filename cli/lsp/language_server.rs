@@ -2641,6 +2641,7 @@ impl Inner {
           LspError::internal_error()
         }
       })?;
+    self.performance.measure(mark);
     Ok(response)
   }
 
@@ -3410,41 +3411,14 @@ impl Inner {
     self.ambient_modules_regex_cache.clear();
     self.diagnostics_cache.clear();
     self.project_version += 1; // increment before getting the snapshot
-    match self.ts_server.as_ref() {
-      TsModServer::Js(ts_server) => {
-        ts_server.project_changed(
-          self.snapshot(),
-          &documents,
-          matches!(scopes_change, ProjectScopesChange::Config).then(|| {
-            self
-              .compiler_options_resolver
-              .entries()
-              .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
-              .collect()
-          }),
-          matches!(
-            scopes_change,
-            ProjectScopesChange::OpenNotebooks | ProjectScopesChange::Config
-          )
-          .then(|| {
-            self
-              .document_modules
-              .documents
-              .cells_by_notebook_uri()
-              .keys()
-              .map(|u| {
-                let compiler_options_key = self
-                  .compiler_options_resolver
-                  .entry_for_specifier(&uri_to_url(u))
-                  .0;
-                (u.clone(), compiler_options_key.clone())
-              })
-              .collect()
-          }),
-        );
-      }
-      TsModServer::Go(_) => todo!(),
-    }
+    self.ts_server.project_changed(
+      &documents,
+      matches!(
+        scopes_change,
+        ProjectScopesChange::OpenNotebooks | ProjectScopesChange::Config
+      ),
+      self.snapshot(),
+    );
     // Invalidate the weak references of `documents` before removing expired
     // entries.
     drop(documents);
@@ -4365,6 +4339,7 @@ impl Inner {
           LspError::internal_error()
         }
       })?;
+    self.performance.measure(mark);
     Ok(inlay_hints)
   }
 
