@@ -1544,6 +1544,7 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate-during-query.js": {},
+    "parallel/test-worker-error-stack-getter-throws.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
