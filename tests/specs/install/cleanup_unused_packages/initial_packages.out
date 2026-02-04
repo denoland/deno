@@ -1,2 +1,1 @@
-[WILDCARD]chalk@5.0.1[WILDCARD]
-[WILDCARD]cowsay@1.5.0[WILDCARD]
+chalk: true, cowsay: true

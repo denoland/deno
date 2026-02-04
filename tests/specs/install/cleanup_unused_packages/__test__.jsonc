@@ -12,7 +12,7 @@
           // Verify both packages exist in node_modules/.deno
           "args": [
             "eval",
-            "const entries = Array.from(Deno.readDirSync('node_modules/.deno')).filter(e => !e.name.startsWith('.')).map(e => e.name).sort(); console.log(entries.join('\\n'));"
+            "const entries = Array.from(Deno.readDirSync('node_modules/.deno')).filter(e => !e.name.startsWith('.')).map(e => e.name); const hasChalk = entries.some(e => e.includes('chalk@5.0.1')); const hasCowsay = entries.some(e => e.includes('cowsay@1.5.0')); console.log(`chalk: ${hasChalk}, cowsay: ${hasCowsay}`);"
           ],
           "output": "initial_packages.out"
         },
@@ -33,7 +33,7 @@
           // Verify only chalk remains, cowsay is cleaned up
           "args": [
             "eval",
-            "const entries = Array.from(Deno.readDirSync('node_modules/.deno')).filter(e => !e.name.startsWith('.')).map(e => e.name).sort(); console.log(entries.join('\\n'));"
+            "const entries = Array.from(Deno.readDirSync('node_modules/.deno')).filter(e => !e.name.startsWith('.')).map(e => e.name); const hasChalk = entries.some(e => e.includes('chalk@5.0.1')); const hasCowsay = entries.some(e => e.includes('cowsay@1.5.0')); console.log(`chalk: ${hasChalk}, cowsay: ${hasCowsay}`);"
           ],
           "output": "final_packages.out"
         },
