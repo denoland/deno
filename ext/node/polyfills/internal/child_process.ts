@@ -156,6 +156,8 @@ function flushStdio(subprocess: ChildProcess) {
 // StreamBase, so it can be used with node streams
 class StreamResource implements StreamBase {
   #rid: number;
+  #isUnref = false;
+  #pendingPromises: Set<Promise<number>> = new Set();
   constructor(rid: number) {
     this.#rid = rid;
   }
@@ -164,18 +166,40 @@ class StreamResource implements StreamBase {
   }
   async read(p: Uint8Array): Promise<number | null> {
     const readPromise = core.read(this.#rid, p);
-    core.unrefOpPromise(readPromise);
-    const nread = await readPromise;
-    return nread > 0 ? nread : null;
+    this.#pendingPromises.add(readPromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(readPromise);
+    }
+    try {
+      const nread = await readPromise;
+      return nread > 0 ? nread : null;
+    } finally {
+      this.#pendingPromises.delete(readPromise);
+    }
   }
   ref(): void {
-    return;
+    this.#isUnref = false;
+    for (const promise of this.#pendingPromises) {
+      core.refOpPromise(promise);
+    }
   }
   unref(): void {
-    return;
+    this.#isUnref = true;
+    for (const promise of this.#pendingPromises) {
+      core.unrefOpPromise(promise);
+    }
   }
-  write(p: Uint8Array): Promise<number> {
-    return core.write(this.#rid, p);
+  async write(p: Uint8Array): Promise<number> {
+    const writePromise = core.write(this.#rid, p);
+    this.#pendingPromises.add(writePromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(writePromise);
+    }
+    try {
+      return await writePromise;
+    } finally {
+      this.#pendingPromises.delete(writePromise);
+    }
   }
 }
 
@@ -377,9 +401,25 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
+      // Get stdio rids to create Socket instances
+      const stdioRids = internals.getStdioRids(this.#process);
+
       if (stdin === "pipe") {
         assert(this.#process.stdin);
-        this.stdin = Writable.fromWeb(this.#process.stdin);
+        if (stdioRids.stdinRid !== null) {
+          // Create Socket instance for stdin (like Node.js does)
+          this.stdin = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdinRid),
+            ),
+            writable: true,
+            readable: false,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdin = Writable.fromWeb(this.#process.stdin);
+        }
       }
 
       if (stdin instanceof Stream) {
@@ -395,7 +435,20 @@ export class ChildProcess extends EventEmitter {
       if (stdout === "pipe") {
         assert(this.#process.stdout);
         this[kClosesNeeded]++;
-        this.stdout = Readable.fromWeb(this.#process.stdout);
+        if (stdioRids.stdoutRid !== null) {
+          // Create Socket instance for stdout (like Node.js does)
+          this.stdout = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdoutRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdout = Readable.fromWeb(this.#process.stdout);
+        }
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -404,7 +457,20 @@ export class ChildProcess extends EventEmitter {
       if (stderr === "pipe") {
         assert(this.#process.stderr);
         this[kClosesNeeded]++;
-        this.stderr = Readable.fromWeb(this.#process.stderr);
+        if (stdioRids.stderrRid !== null) {
+          // Create Socket instance for stderr (like Node.js does)
+          this.stderr = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stderrRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stderr = Readable.fromWeb(this.#process.stderr);
+        }
         this.stderr.on("close", () => {
           maybeClose(this);
         });
