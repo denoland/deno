@@ -588,8 +588,6 @@ pub fn op_node_dup_fd(
   use std::fs::File as StdFile;
   use std::os::unix::io::FromRawFd;
 
-  eprintln!("[op_node_dup_fd] called with fd: {}", fd);
-
   if fd < 0 {
     return Err(FsError::Io(std::io::Error::new(
       std::io::ErrorKind::InvalidInput,
@@ -599,7 +597,6 @@ pub fn op_node_dup_fd(
 
   // SAFETY: dup() creates a new fd pointing to the same open file description.
   let new_fd = unsafe { libc::dup(fd) };
-  eprintln!("[op_node_dup_fd] dup({}) returned new_fd: {}", fd, new_fd);
   if new_fd < 0 {
     return Err(FsError::Io(std::io::Error::last_os_error()));
   }
@@ -611,33 +608,17 @@ pub fn op_node_dup_fd(
   unsafe {
     let flags = libc::fcntl(new_fd, libc::F_GETFL);
     if flags >= 0 && (flags & libc::O_NONBLOCK) != 0 {
-      // Clear O_NONBLOCK
       libc::fcntl(new_fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
     }
   }
 
   // SAFETY: new_fd is a valid fd we just created via dup().
   let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
-  eprintln!("[op_node_dup_fd] created StdFile from new_fd: {}", new_fd);
-
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  eprintln!("[op_node_dup_fd] created StdFileResourceInner");
-
-  let resource = FileResource::new(file, "fsFile".to_string());
-  eprintln!("[op_node_dup_fd] created FileResource");
-
-  let rid = state.resource_table.add(resource);
-  eprintln!(
-    "[op_node_dup_fd] added to resource table, rid: {}, table size: {}",
-    rid,
-    state.resource_table.len()
-  );
-
-  // Verify the resource exists
-  let exists = state.resource_table.has(rid);
-  eprintln!("[op_node_dup_fd] resource exists after add: {}", exists);
-
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
 
@@ -662,29 +643,14 @@ pub fn op_node_get_fd(
   #[smi] rid: ResourceId,
 ) -> Result<i32, FsError> {
   use deno_core::ResourceHandle;
-
-  eprintln!(
-    "[op_node_get_fd] called with rid: {}, table size: {}",
-    rid,
-    state.resource_table.len()
-  );
-
-  // Check if resource exists
-  let exists = state.resource_table.has(rid);
-  eprintln!("[op_node_get_fd] resource exists: {}", exists);
-
-  let handle = state.resource_table.get_handle(rid).map_err(|e| {
-    eprintln!("[op_node_get_fd] get_handle failed: {:?}", e);
+  let handle = state.resource_table.get_handle(rid).map_err(|_| {
     FsError::Io(std::io::Error::new(
       std::io::ErrorKind::NotFound,
       "Bad resource ID",
     ))
   })?;
   match handle {
-    ResourceHandle::Fd(fd) => {
-      eprintln!("[op_node_get_fd] returning fd: {}", fd);
-      Ok(fd)
-    }
+    ResourceHandle::Fd(fd) => Ok(fd),
     _ => Err(FsError::Io(std::io::Error::other(
       "Resource is not a file descriptor",
     ))),
