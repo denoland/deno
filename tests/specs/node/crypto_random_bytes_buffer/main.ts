@@ -1,4 +1,4 @@
-// Regression test for https://github.com/denoland/deno/issues/28629
+// Regression test for https://github.com/denoland/deno/issues/32047
 // crypto.randomBytes should return a buffer with its own ArrayBuffer,
 // not a shared pool buffer.
 

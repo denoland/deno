@@ -86,7 +86,7 @@ Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is
   });
 });
 
-// https://github.com/denoland/deno/issues/28629
+// https://github.com/denoland/deno/issues/32047
 // randomBytes should return a buffer with its own ArrayBuffer, not a shared pool
 Deno.test("randomBytes buffer has correct byteLength and unique values", function () {
   // Test that the underlying ArrayBuffer has the expected size
