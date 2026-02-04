@@ -749,6 +749,10 @@ Object.defineProperty(process, "platform", {
   get() {
     return platform;
   },
+  set(value) {
+    platform = value;
+  },
+  configurable: true,
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval

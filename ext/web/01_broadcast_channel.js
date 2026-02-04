@@ -32,13 +32,22 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
+const _refed = Symbol("[[refed]]");
+const refBroadcastChannel = Symbol("refBroadcastChannel");
 
 const channels = [];
 let rid = null;
+let recvPromise = null;
+let refedBroadcastChannelsCount = 0;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await op_broadcast_recv(rid);
+    recvPromise = op_broadcast_recv(rid);
+    if (refedBroadcastChannelsCount === 0) {
+      core.unrefOpPromise(recvPromise);
+    }
+    const message = await recvPromise;
+    recvPromise = null;
 
     if (message === null) {
       break;
@@ -77,6 +86,7 @@ function dispatch(source, name, data) {
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
+  [_refed] = true;
 
   get name() {
     return this[_name];
@@ -93,6 +103,7 @@ class BroadcastChannel extends EventTarget {
     this[webidl.brand] = webidl.brand;
 
     ArrayPrototypePush(channels, this);
+    refedBroadcastChannelsCount++;
 
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
@@ -129,6 +140,22 @@ class BroadcastChannel extends EventTarget {
     });
   }
 
+  [refBroadcastChannel](ref) {
+    if (ref && !this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount++;
+      if (refedBroadcastChannelsCount === 1 && recvPromise) {
+        core.refOpPromise(recvPromise);
+      }
+      this[_refed] = true;
+    } else if (!ref && this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
+  }
+
   close() {
     webidl.assertBranded(this, BroadcastChannelPrototype);
     this[_closed] = true;
@@ -136,8 +163,16 @@ class BroadcastChannel extends EventTarget {
     const index = ArrayPrototypeIndexOf(channels, this);
     if (index === -1) return;
 
+    if (this[_refed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
+
     ArrayPrototypeSplice(channels, index, 1);
-    if (channels.length === 0) {
+    if (channels.length === 0 && rid !== null) {
       op_broadcast_unsubscribe(rid);
     }
   }
@@ -162,4 +197,4 @@ defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
-export { BroadcastChannel };
+export { BroadcastChannel, refBroadcastChannel };
