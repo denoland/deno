@@ -54,8 +54,11 @@ fn is_tty(fd: i32) -> bool {
   // SAFETY: GetStdHandle returns a borrowed handle to stdin/stdout/stderr.
   // For fd > 2, we try to use it as a raw handle directly.
   let handle = match fd {
+    // SAFETY: These are valid standard handles.
     0 => unsafe { GetStdHandle(STD_INPUT_HANDLE) },
+    // SAFETY: These are valid standard handles.
     1 => unsafe { GetStdHandle(STD_OUTPUT_HANDLE) },
+    // SAFETY: These are valid standard handles.
     2 => unsafe { GetStdHandle(STD_ERROR_HANDLE) },
     _ => fd as winapi::um::winnt::HANDLE,
   };
