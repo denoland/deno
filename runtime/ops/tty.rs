@@ -59,11 +59,7 @@ use winapi::um::wincon;
 
 deno_core::extension!(
   deno_tty,
-  ops = [
-    op_set_raw,
-    op_console_size,
-    op_read_line_prompt,
-  ],
+  ops = [op_set_raw, op_console_size, op_read_line_prompt,],
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());

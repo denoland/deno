@@ -19,10 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import {
-  op_node_is_tty,
-  op_set_raw,
-} from "ext:core/ops";
+import { op_node_is_tty, op_set_raw } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
@@ -354,6 +351,12 @@ export class ReadStream extends Socket {
     // For fd > 2 (PTY from NAPI modules like node-pty), create a TTYStream wrapper
     const isPty = fd > 2;
     if (isPty) {
+      // Security: Only allow TTY file descriptors. This prevents access to
+      // arbitrary fds (sockets, files, etc.) via tty.ReadStream/WriteStream.
+      // PTY devices from node-pty are real TTYs so isatty() returns true.
+      if (!op_node_is_tty(fd)) {
+        throw new ERR_INVALID_FD(fd);
+      }
       // Get the rid from the fd map (will dup and create resource if needed)
       const rid = getRid(fd);
       const stream = new TTYStream(rid);
@@ -394,6 +397,11 @@ export class WriteStream extends Socket {
 
     let handle;
     if (fd > 2) {
+      // Security: Only allow TTY file descriptors. This prevents access to
+      // arbitrary fds (sockets, files, etc.) via tty.ReadStream/WriteStream.
+      if (!op_node_is_tty(fd)) {
+        throw new ERR_INVALID_FD(fd);
+      }
       // For fd > 2 (PTY from NAPI modules), create a TTYStream wrapper
       const rid = getRid(fd);
       const stream = new TTYStream(rid);
