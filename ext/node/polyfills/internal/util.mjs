@@ -25,6 +25,9 @@ const {
   Promise,
   ReflectApply,
   ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   SafeWeakRef,
   StringPrototypeReplace,
   SymbolFor,
@@ -159,9 +162,17 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
+const codesWarned = new SafeSet();
+
 export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
-  // DEP0184: Calling zlib classes without new is deprecated
-  // For now, just create and return the new instance
+  if (!SetPrototypeHas(codesWarned, deprecationCode)) {
+    SetPrototypeAdd(codesWarned, deprecationCode);
+    globalThis.process.emitWarning(
+      `Instantiating ${Constructor.name} without the 'new' keyword has been deprecated.`,
+      "DeprecationWarning",
+      deprecationCode,
+    );
+  }
   return ReflectConstruct(Constructor, args);
 }
 
