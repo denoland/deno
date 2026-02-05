@@ -1546,6 +1546,7 @@
     "parallel/test-worker-dns-terminate-during-query.js": {},
     "parallel/test-worker-dispose.mjs": {},
     "parallel/test-worker-error-stack-getter-throws.js": {},
+    "parallel/test-worker-esm-exit.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
