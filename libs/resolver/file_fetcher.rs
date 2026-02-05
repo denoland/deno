@@ -911,7 +911,8 @@ mod test {
     let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
     let content = b"console.log('hello')".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
@@ -944,7 +945,8 @@ mod test {
     let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
     let content = b"export {}".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
@@ -977,7 +979,8 @@ mod test {
     let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
     let content = b"export {}".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
