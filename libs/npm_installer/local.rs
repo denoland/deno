@@ -82,6 +82,15 @@ pub trait LocalNpmInstallSys:
 {
 }
 
+#[derive(Debug)]
+pub struct LocalNpmPackageInstallerOptions {
+  pub clean_on_install: bool,
+  pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
+  pub node_modules_folder: PathBuf,
+  pub reporter: Option<Arc<dyn crate::InstallReporter>>,
+  pub system_info: NpmSystemInfo,
+}
+
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 pub struct LocalNpmPackageInstaller<
@@ -97,6 +106,7 @@ pub struct LocalNpmPackageInstaller<
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
+  clean_on_install: bool,
   lifecycle_scripts_config: Arc<LifecycleScriptsConfig>,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
@@ -117,6 +127,7 @@ impl<
       .field("resolution", &self.resolution)
       .field("sys", &self.sys)
       .field("tarball_cache", &self.tarball_cache)
+      .field("clean_on_install", &self.clean_on_install)
       .field("lifecycle_scripts_config", &self.lifecycle_scripts_config)
       .field("root_node_modules_path", &self.root_node_modules_path)
       .field("system_info", &self.system_info)
@@ -151,10 +162,7 @@ impl<
     resolution: Arc<NpmResolutionCell>,
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
-    node_modules_folder: PathBuf,
-    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
-    system_info: NpmSystemInfo,
-    install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+    options: LocalNpmPackageInstallerOptions,
   ) -> Self {
     Self {
       lifecycle_scripts_executor,
@@ -165,10 +173,11 @@ impl<
       resolution,
       tarball_cache,
       sys,
-      lifecycle_scripts_config: lifecycle_scripts,
-      root_node_modules_path: node_modules_folder,
-      system_info,
-      install_reporter,
+      clean_on_install: options.clean_on_install,
+      lifecycle_scripts_config: options.lifecycle_scripts,
+      root_node_modules_path: options.node_modules_folder,
+      install_reporter: options.reporter,
+      system_info: options.system_info,
     }
   }
 
@@ -213,17 +222,19 @@ impl<
     );
 
     // 1. Check if packages changed and clean up if needed
-    let packages_hash = calculate_packages_hash(&package_partitions);
-    if setup_cache.packages_changed(packages_hash) {
-      cleanup_unused_packages(
-        sys.as_ref(),
-        &self.root_node_modules_path,
-        &deno_local_registry_dir,
-        &package_partitions,
-        &mut setup_cache,
-      );
+    if self.clean_on_install {
+      let packages_hash = calculate_packages_hash(&package_partitions);
+      if setup_cache.packages_changed(packages_hash) {
+        cleanup_unused_packages(
+          sys.as_ref(),
+          &self.root_node_modules_path,
+          &deno_local_registry_dir,
+          &package_partitions,
+          &mut setup_cache,
+        );
+      }
+      setup_cache.set_clean_packages_hash(packages_hash);
     }
-    setup_cache.set_packages_hash(packages_hash);
 
     // 2. Write all the packages out the .deno directory.
     //
@@ -1135,7 +1146,7 @@ struct SetupCacheData {
   deno_symlinks: BTreeMap<String, String>,
   dep_symlinks: BTreeMap<String, BTreeMap<String, String>>,
   #[serde(default)]
-  packages_hash: u64,
+  clean_packages_hash: u64,
 }
 
 /// It is very slow to try to re-setup the symlinks each time, so this will
@@ -1262,7 +1273,7 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
     self
       .previous
       .as_ref()
-      .map(|p| p.packages_hash != current_hash)
+      .map(|p| p.clean_packages_hash != current_hash)
       .unwrap_or(true) // If no previous cache, consider it changed
   }
 
@@ -1271,8 +1282,8 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 
   /// Updates the packages hash in the current cache
-  pub fn set_packages_hash(&mut self, hash: u64) {
-    self.current.packages_hash = hash;
+  pub fn set_clean_packages_hash(&mut self, hash: u64) {
+    self.current.clean_packages_hash = hash;
   }
 }
 

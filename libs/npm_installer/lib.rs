@@ -51,6 +51,7 @@ use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
+use self::local::LocalNpmPackageInstallerOptions;
 pub use self::local::LocalSetupCache;
 pub use self::local::node_modules_package_actual_dir_to_name;
 pub use self::local::remove_unused_node_modules_symlinks;
@@ -147,6 +148,7 @@ pub trait NpmInstallerSys:
 }
 
 pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
+  pub clean_on_install: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
@@ -208,10 +210,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_resolution.clone(),
           sys,
           tarball_cache,
-          node_modules_folder,
-          options.lifecycle_scripts,
-          options.system_info,
-          install_reporter,
+          LocalNpmPackageInstallerOptions {
+            clean_on_install: options.clean_on_install,
+            lifecycle_scripts: options.lifecycle_scripts,
+            system_info: options.system_info,
+            reporter: install_reporter,
+            node_modules_folder,
+          },
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
