@@ -201,6 +201,7 @@ class NodeWorker extends EventEmitter {
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      name: this.#name,
       isWorkerThread: true,
     }, options?.transferList ?? []);
     const id = op_create_worker(
@@ -444,6 +445,14 @@ class NodeWorker extends EventEmitter {
     return PromiseResolve({ user, system });
   }
 
+  // https://nodejs.org/api/worker_threads.html#workerthreadname
+  get threadName(): string | null {
+    if (this.#exited) {
+      return null;
+    }
+    return this.#name;
+  }
+
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
   // fake performance
@@ -452,6 +461,7 @@ class NodeWorker extends EventEmitter {
 
 export let isMainThread;
 export let resourceLimits;
+export let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -525,6 +535,7 @@ internals.__initWorkerThreads = (
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
+      threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
         process.env = env;
@@ -533,6 +544,7 @@ internals.__initWorkerThreads = (
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+    defaultExport.threadName = threadName;
 
     patchMessagePortIfFound(workerData);
 
@@ -796,6 +808,7 @@ const defaultExport = {
   setEnvironmentData,
   SHARE_ENV,
   threadId,
+  threadName,
   workerData,
   resourceLimits,
   parentPort,
