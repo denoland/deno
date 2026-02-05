@@ -556,7 +556,7 @@ fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
 
   // SAFETY: Opens a handle to the thread for querying times.
   let thread_handle =
-    unsafe { OpenThread(THREAD_QUERY_INFORMATION, FALSE as i32, thread_id) };
+    unsafe { OpenThread(THREAD_QUERY_INFORMATION, FALSE, thread_id) };
   if thread_handle.is_null() {
     return (0.0, 0.0);
   }
