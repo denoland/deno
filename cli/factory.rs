@@ -67,6 +67,7 @@ use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallFlags;
+use crate::args::InstallFlagsLocal;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -605,13 +606,23 @@ impl CliFactory {
             | DenoSubcommand::ApproveScripts { .. }
             | DenoSubcommand::Remove { .. }
             | DenoSubcommand::Cache { .. }
-            | DenoSubcommand::Clean { .. }
-            | DenoSubcommand::Install { .. }
             | DenoSubcommand::Uninstall { .. } => true,
+            DenoSubcommand::Install(flags) => match flags {
+              InstallFlags::Local(flags) => match flags {
+                InstallFlagsLocal::Add { .. }
+                | InstallFlagsLocal::TopLevel { .. } => true,
+                // someone might be terribly storing dependencies in a
+                // module and needs to populate their node_modules directory
+                // with the dependencies in that file
+                InstallFlagsLocal::Entrypoints { .. } => false,
+              },
+              InstallFlags::Global(_) => false,
+            },
             DenoSubcommand::Audit { .. }
             | DenoSubcommand::Bench { .. }
             | DenoSubcommand::Bundle { .. }
             | DenoSubcommand::Check { .. }
+            | DenoSubcommand::Clean { .. }
             | DenoSubcommand::Compile { .. }
             | DenoSubcommand::Completions { .. }
             | DenoSubcommand::Coverage { .. }
