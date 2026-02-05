@@ -587,6 +587,7 @@
     "parallel/test-fs-symlink.js": {},
     "parallel/test-fs-unlink-type-check.js": {},
     "parallel/test-fs-util-validateoffsetlength.js": {},
+    "parallel/test-fs-write-file.js": {},
     "parallel/test-fs-write-negativeoffset.js": {},
     "parallel/test-fs-write-no-fd.js": {},
     "parallel/test-fs-write-optional-params.js": {},
