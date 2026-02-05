@@ -1544,7 +1544,10 @@ async fn fetch_specifiers_with_test_mode(
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+    if matches!(
+      media_type,
+      MediaType::Unknown | MediaType::Dts | MediaType::Markdown
+    ) {
       *mode = TestMode::Documentation
     }
   }
