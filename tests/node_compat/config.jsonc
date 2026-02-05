@@ -1557,6 +1557,9 @@
     // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
+    "parallel/test-worker-process-env.js": {},
+    // TODO(bartlomieju): this test just hangs
+    // "parallel/test-worker-process-env-shared.js": {},
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},

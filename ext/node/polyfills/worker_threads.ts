@@ -25,6 +25,7 @@ import {
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { EventEmitter } from "node:events";
 import {
   BroadcastChannel as WebBroadcastChannel,
@@ -41,11 +42,13 @@ const {
   JSONParse,
   JSONStringify,
   ObjectHasOwn,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SafeMap,
   SafeSet,
   SafeWeakMap,
+  String,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
@@ -155,14 +158,43 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
-    // One of the most common usages will be to pass `process.env` here,
-    // but because `process.env` is a Proxy in Deno, we need to get a plain
-    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // Handle the `env` option following Node.js semantics:
+    // - undefined/null: snapshot current process.env (isolated copy)
+    // - SHARE_ENV: worker shares the parent's OS environment
+    // - object: use that object, coercing values to strings
+    // - anything else: throw ERR_INVALID_ARG_TYPE
     // See https://github.com/denoland/deno/issues/23522.
     let env_ = undefined;
-    if (options?.env) {
-      env_ = JSONParse(JSONStringify(options?.env));
+    const envOpt = options?.env;
+    if (envOpt != null && envOpt !== SHARE_ENV) {
+      if (typeof envOpt !== "object") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.env",
+          ["object", "undefined", "null", "worker_threads.SHARE_ENV"],
+          envOpt,
+        );
+      }
+      // Snapshot the provided env, coercing values to strings like Node.js.
+      // This also handles passing `process.env` (a Proxy in Deno) by
+      // producing a plain object that can be structured-cloned.
+      const envObj = {};
+      const keys = ObjectKeys(envOpt);
+      for (let i = 0; i < keys.length; i++) {
+        envObj[keys[i]] = String(envOpt[keys[i]]);
+      }
+      env_ = envObj;
+    } else if (envOpt !== SHARE_ENV) {
+      // Default: snapshot current process.env so the worker gets an
+      // isolated copy, not a live reference to the OS environment.
+      const envObj = {};
+      const keys = ObjectKeys(process.env);
+      for (let i = 0; i < keys.length; i++) {
+        envObj[keys[i]] = process.env[keys[i]];
+      }
+      env_ = envObj;
     }
+    // When envOpt === SHARE_ENV, env_ stays undefined and the worker
+    // will use the default process.env backed by Deno.env (shared OS env).
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
@@ -467,12 +499,13 @@ internals.__initWorkerThreads = (
     parentPort.once = function (this: ParentPort, name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
+        listeners.delete(listener);
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
+      this.addEventListener(name, _listener, { once: true });
       return this;
     };
 
