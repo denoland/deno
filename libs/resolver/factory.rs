@@ -1099,7 +1099,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let overrides = match workspace.npm_overrides() {
         Some(overrides_json) => {
           // build root deps for $pkg resolution
-          let root_deps = Self::get_root_deps_for_overrides(workspace);
+          let root_deps = workspace.root_deps_for_npm_overrides();
           match NpmOverrides::from_value(
             serde_json::Value::Object(overrides_json.clone()),
             &root_deps,
@@ -1138,37 +1138,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         overrides: std::sync::Arc::new(overrides),
       }))
     })
-  }
-
-  fn get_root_deps_for_overrides(
-    workspace: &deno_config::workspace::Workspace,
-  ) -> std::collections::HashMap<PackageName, StackString> {
-    let Some(pkg_json) = workspace.root_pkg_json() else {
-      return std::collections::HashMap::new();
-    };
-    let mut deps = std::collections::HashMap::new();
-    // collect from dependencies
-    if let Some(d) = &pkg_json.dependencies {
-      for (k, v) in d {
-        let name = PackageName::from(k.as_str());
-        deps.insert(name, StackString::from(v.as_str()));
-      }
-    }
-    // collect from devDependencies
-    if let Some(d) = &pkg_json.dev_dependencies {
-      for (k, v) in d {
-        let name = PackageName::from(k.as_str());
-        deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
-      }
-    }
-    // collect from optionalDependencies
-    if let Some(d) = &pkg_json.optional_dependencies {
-      for (k, v) in d {
-        let name = PackageName::from(k.as_str());
-        deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
-      }
-    }
-    deps
   }
 
   #[cfg(feature = "deno_ast")]

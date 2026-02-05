@@ -50,10 +50,8 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
 use indexmap::IndexMap;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -952,7 +950,7 @@ impl<'a> ResolverFactory<'a> {
           let workspace = &d.member_dir.workspace;
           let overrides_json = workspace.npm_overrides()?;
           // build root deps for $pkg resolution
-          let root_deps = get_root_deps_for_overrides(workspace);
+          let root_deps = workspace.root_deps_for_npm_overrides();
           match NpmOverrides::from_value(
             serde_json::Value::Object(overrides_json.clone()),
             &root_deps,
@@ -1488,38 +1486,6 @@ impl Drop for AddNpmReqsThread {
 
 static ADD_NPM_REQS_THREAD: Lazy<AddNpmReqsThread> =
   Lazy::new(AddNpmReqsThread::create);
-
-/// Collects root dependencies from package.json for npm overrides $pkg resolution.
-fn get_root_deps_for_overrides(
-  workspace: &deno_config::workspace::Workspace,
-) -> HashMap<PackageName, StackString> {
-  let Some(pkg_json) = workspace.root_pkg_json() else {
-    return HashMap::new();
-  };
-  let mut deps = HashMap::new();
-  // collect from dependencies
-  if let Some(d) = &pkg_json.dependencies {
-    for (k, v) in d {
-      let name = PackageName::from(k.as_str());
-      deps.insert(name, StackString::from(v.as_str()));
-    }
-  }
-  // collect from devDependencies
-  if let Some(d) = &pkg_json.dev_dependencies {
-    for (k, v) in d {
-      let name = PackageName::from(k.as_str());
-      deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
-    }
-  }
-  // collect from optionalDependencies
-  if let Some(d) = &pkg_json.optional_dependencies {
-    for (k, v) in d {
-      let name = PackageName::from(k.as_str());
-      deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
-    }
-  }
-  deps
-}
 
 #[cfg(test)]
 mod tests {

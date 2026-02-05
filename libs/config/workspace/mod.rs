@@ -505,6 +505,50 @@ impl Workspace {
     self.root_pkg_json()?.overrides.as_ref()
   }
 
+  /// Returns root dependencies for npm overrides `$pkg` reference resolution.
+  ///
+  /// Collects dependencies from dependencies, devDependencies, and optionalDependencies
+  /// of the root package.json.
+  pub fn root_deps_for_npm_overrides(
+    &self,
+  ) -> std::collections::HashMap<deno_semver::package::PackageName, deno_semver::StackString>
+  {
+    let Some(pkg_json) = self.root_pkg_json() else {
+      return std::collections::HashMap::new();
+    };
+    let capacity = pkg_json.dependencies.as_ref().map_or(0, |d| d.len())
+      + pkg_json.dev_dependencies.as_ref().map_or(0, |d| d.len())
+      + pkg_json.optional_dependencies.as_ref().map_or(0, |d| d.len());
+    let mut deps = std::collections::HashMap::with_capacity(capacity);
+    // collect from dependencies
+    if let Some(d) = &pkg_json.dependencies {
+      for (k, v) in d {
+        let name = deno_semver::package::PackageName::from(k.as_str());
+        deps.insert(name, deno_semver::StackString::from(v.as_str()));
+      }
+    }
+    // collect from devDependencies
+    if let Some(d) = &pkg_json.dev_dependencies {
+      for (k, v) in d {
+        let name = deno_semver::package::PackageName::from(k.as_str());
+        deps
+          .entry(name)
+          .or_insert_with(|| deno_semver::StackString::from(v.as_str()));
+      }
+    }
+    // collect from optionalDependencies
+    if let Some(d) = &pkg_json.optional_dependencies {
+      for (k, v) in d {
+        let name = deno_semver::package::PackageName::from(k.as_str());
+        deps
+          .entry(name)
+          .or_insert_with(|| deno_semver::StackString::from(v.as_str()));
+      }
+    }
+    debug_assert!(deps.len() <= capacity);
+    deps
+  }
+
   pub fn config_folders(&self) -> &IndexMap<UrlRc, FolderConfigs> {
     &self.config_folders
   }
