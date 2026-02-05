@@ -24,6 +24,7 @@ use deno_lib::version;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
+use sha2::Digest;
 
 use crate::args::Flags;
 use crate::args::UPGRADE_USAGE;
@@ -36,9 +37,9 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
-const CANARY_URL: &str = "https://dl.deno.land/canary";
-const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+static RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+static CANARY_URL: &str = "https://dl.deno.land/canary";
+static DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -484,7 +485,8 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags);
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
-  let current_exe_path = std::env::current_exe()?;
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
   let full_path_output_flag = match &upgrade_flags.output {
     Some(output) => Some(
       std::env::current_dir()
@@ -546,6 +548,11 @@ pub async fn upgrade(
     deno_runtime::exit(1)
   };
 
+  // verify checksum if provided
+  if let Some(expected_checksum) = &upgrade_flags.checksum {
+    verify_checksum(&archive_data, expected_checksum)?;
+  }
+
   log::info!(
     "{}",
     colors::gray(format!(
@@ -554,19 +561,25 @@ pub async fn upgrade(
     ))
   );
 
-  let temp_dir = tempfile::TempDir::new()?;
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
   let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
     exe_name: "deno",
     archive_name: &ARCHIVE_NAME,
     archive_data: &archive_data,
     is_windows: cfg!(windows),
     dest_path: temp_dir.path(),
+  })
+  .context("failed to extract archive")?;
+  fs::set_permissions(&new_exe_path, permissions).with_context(|| {
+    format!("failed to set permissions on '{}'", new_exe_path.display())
   })?;
-  fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
-    fs::remove_file(&new_exe_path)?;
+    fs::remove_file(&new_exe_path).with_context(|| {
+      format!("failed to remove '{}'", new_exe_path.display())
+    })?;
     log::info!("Upgraded successfully (dry run)");
     if requested_version.release_channel() == ReleaseChannel::Stable {
       print_release_notes(
@@ -870,7 +883,12 @@ fn get_download_url(
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
     ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+      let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+        "http://localhost:4545/deno-upgrade"
+      } else {
+        RELEASE_URL
+      };
+      format!("{}/download/v{}/{}", release_url, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Rc => {
       format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
@@ -941,6 +959,26 @@ async fn download_package(
   Ok(response.into_maybe_bytes()?)
 }
 
+fn verify_checksum(
+  data: &[u8],
+  expected_checksum: &str,
+) -> Result<(), AnyError> {
+  let computed = sha2::Sha256::digest(data);
+  let computed_hex = faster_hex::hex_string(&computed);
+
+  let expected_checksum = expected_checksum.trim().to_lowercase();
+  if computed_hex != expected_checksum {
+    bail!(
+      "Checksum verification failed.\n  Actual:   {}\n  Expected: {}",
+      expected_checksum,
+      computed_hex
+    );
+  }
+
+  log::info!("{}", colors::gray("Checksum verified"));
+  Ok(())
+}
+
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
@@ -964,7 +1002,12 @@ fn check_windows_access_denied_error(
   };
 
   if !cfg!(windows) {
-    return Err(err.into());
+    return Err(err).with_context(|| {
+      format!(
+        "failed to replace the executable at '{}'",
+        output_exe_path.display()
+      )
+    });
   }
 
   const WIN_ERROR_ACCESS_DENIED: i32 = 5;
@@ -1021,7 +1064,12 @@ fn set_exe_permissions(
   output_exe_path: &Path,
 ) -> Result<std::fs::Permissions, AnyError> {
   let Ok(metadata) = fs::metadata(output_exe_path) else {
-    let metadata = fs::metadata(current_exe_path)?;
+    let metadata = fs::metadata(current_exe_path).with_context(|| {
+      format!(
+        "failed to get metadata of the current executable at '{}'",
+        current_exe_path.display()
+      )
+    })?;
     return Ok(metadata.permissions());
   };
 
@@ -1052,7 +1100,8 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
-    .output()?;
+    .output()
+    .with_context(|| format!("failed to run '{}'", exe_path.display()))?;
   if !output.status.success() {
     bail!(
       "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
@@ -1151,6 +1200,7 @@ mod test {
       version: None,
       output: None,
       version_or_hash_or_channel: None,
+      checksum: None,
     };
 
     let req_ver =
