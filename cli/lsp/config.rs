@@ -1049,6 +1049,7 @@ impl Config {
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => None,
