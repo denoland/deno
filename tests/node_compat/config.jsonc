@@ -539,6 +539,7 @@
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
     "parallel/test-fs-promises-file-handle-writeFile.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
+    "parallel/test-fs-promises-writefile-typedarray.js": {},
     "parallel/test-fs-promisified.js": {},
     "parallel/test-fs-read-empty-buffer.js": {},
     "parallel/test-fs-read-file-assert-encoding.js": {},
