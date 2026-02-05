@@ -1,0 +1,9 @@
+{
+  "name": "test",
+  "dependencies": {
+    "@denotest/different-nested-dep": "1.0.0"
+  },
+  "overrides": {
+    "@denotest/different-nested-dep-child": "2.0.0"
+  }
+}

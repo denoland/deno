@@ -944,6 +944,7 @@ impl<'a> ResolverFactory<'a> {
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
+        overrides: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),

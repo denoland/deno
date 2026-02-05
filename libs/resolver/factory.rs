@@ -26,7 +26,10 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
+use deno_semver::StackString;
+use deno_semver::package::PackageName;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -1090,6 +1093,28 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_version_resolver.get_or_try_init(|| {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
+
+      // parse npm overrides from root package.json
+      let workspace = &self.workspace_factory.workspace_directory()?.workspace;
+      let overrides = match workspace.npm_overrides() {
+        Some(overrides_json) => {
+          // build root deps for $pkg resolution
+          let root_deps = Self::get_root_deps_for_overrides(workspace);
+          match NpmOverrides::from_value(
+            serde_json::Value::Object(overrides_json.clone()),
+            &root_deps,
+          ) {
+            Ok(overrides) => overrides,
+            Err(e) => {
+              // warn instead of error - don't block resolution
+              log::warn!("failed to parse npm overrides: {}", e);
+              NpmOverrides::default()
+            }
+          }
+        }
+        None => NpmOverrides::default(),
+      };
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1110,8 +1135,40 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           .workspace_npm_link_packages()?
           .0
           .clone(),
+        overrides: std::sync::Arc::new(overrides),
       }))
     })
+  }
+
+  fn get_root_deps_for_overrides(
+    workspace: &deno_config::workspace::Workspace,
+  ) -> std::collections::HashMap<PackageName, StackString> {
+    let Some(pkg_json) = workspace.root_pkg_json() else {
+      return std::collections::HashMap::new();
+    };
+    let mut deps = std::collections::HashMap::new();
+    // collect from dependencies
+    if let Some(d) = &pkg_json.dependencies {
+      for (k, v) in d {
+        let name = PackageName::from(k.as_str());
+        deps.insert(name, StackString::from(v.as_str()));
+      }
+    }
+    // collect from devDependencies
+    if let Some(d) = &pkg_json.dev_dependencies {
+      for (k, v) in d {
+        let name = PackageName::from(k.as_str());
+        deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
+      }
+    }
+    // collect from optionalDependencies
+    if let Some(d) = &pkg_json.optional_dependencies {
+      for (k, v) in d {
+        let name = PackageName::from(k.as_str());
+        deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
+      }
+    }
+    deps
   }
 
   #[cfg(feature = "deno_ast")]

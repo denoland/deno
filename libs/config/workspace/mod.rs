@@ -500,6 +500,11 @@ impl Workspace {
     self.root_folder_configs().pkg_json.as_ref()
   }
 
+  /// Returns the npm overrides from the root package.json, if any.
+  pub fn npm_overrides(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    self.root_pkg_json()?.overrides.as_ref()
+  }
+
   pub fn config_folders(&self) -> &IndexMap<UrlRc, FolderConfigs> {
     &self.config_folders
   }
