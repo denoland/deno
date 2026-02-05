@@ -42,6 +42,7 @@ import process from "node:process";
 import { createRequire } from "node:module";
 
 const {
+  ArrayIsArray,
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
@@ -205,10 +206,30 @@ class NodeWorker extends EventEmitter {
     }
     // When envOpt === SHARE_ENV, env_ stays undefined and the worker
     // will use the default process.env backed by Deno.env (shared OS env).
+
+    // Handle the `argv` option: must be an array or undefined.
+    // Values are coerced to strings like Node.js does.
+    let argv_: string[] | undefined = undefined;
+    if (options?.argv != null) {
+      if (!ArrayIsArray(options.argv)) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.argv",
+          "Array",
+          options.argv,
+        );
+      }
+      argv_ = [];
+      for (let i = 0; i < options.argv.length; i++) {
+        argv_[i] = String(options.argv[i]);
+      }
+    }
+
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      argv: argv_,
+      isEval: !!options?.eval,
       isWorkerThread: true,
     }, options?.transferList ?? []);
     const id = op_create_worker(
@@ -526,6 +547,28 @@ internals.__initWorkerThreads = (
       const env = metadata.env;
       if (env) {
         process.env = env;
+      }
+
+      // Set process.argv for worker threads.
+      // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
+      if (isWorkerThread) {
+        let scriptPath;
+        if (metadata.isEval) {
+          scriptPath = "[worker eval]";
+        } else if (
+          moduleSpecifier &&
+          StringPrototypeStartsWith(moduleSpecifier, "file:")
+        ) {
+          scriptPath = new URL(moduleSpecifier).pathname;
+        } else {
+          scriptPath = moduleSpecifier ?? "";
+        }
+        process.argv = [process.execPath, scriptPath];
+        if (metadata.argv) {
+          for (let i = 0; i < metadata.argv.length; i++) {
+            process.argv[i + 2] = metadata.argv[i];
+          }
+        }
       }
     }
     defaultExport.workerData = workerData;
