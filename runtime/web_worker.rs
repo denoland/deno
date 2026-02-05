@@ -803,7 +803,7 @@ impl WebWorker {
           Some(exception) => {
             let js_error =
               deno_core::error::JsError::from_v8_exception(scope, exception);
-            CoreError::from(Box::new(js_error))
+            CoreError::from(js_error)
           }
           None => CoreError::from(deno_error::JsErrorBox::generic(
             "Bootstrap unexpectedly failed",
