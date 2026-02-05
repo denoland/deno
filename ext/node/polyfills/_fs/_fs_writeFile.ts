@@ -180,8 +180,8 @@ async function writeAll(
   checkAborted(signal);
 
   const written = await w.write(arr.subarray(offset, offset + length));
-
   if (written === length) {
+    checkAborted(signal);
     return;
   }
 
