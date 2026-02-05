@@ -713,6 +713,7 @@ fn load_inner(
     | MediaType::Css
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Html
     | MediaType::Sql
     | MediaType::Wasm

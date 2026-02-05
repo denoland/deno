@@ -134,7 +134,7 @@ impl<'s> WorkerThreadType {
 #[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError),
-  Close,
+  Close(i32),
 }
 
 use deno_core::serde::Serializer;
@@ -146,7 +146,7 @@ impl Serialize for WorkerControlEvent {
   {
     let type_id = match &self {
       WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Close => 3_i32,
+      WorkerControlEvent::Close(_) => 3_i32,
     };
 
     match self {
@@ -159,6 +159,8 @@ impl Serialize for WorkerControlEvent {
             });
             json!({
               "message": js_error.exception_message,
+              "name": js_error.name,
+              "errorMessage": js_error.message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
@@ -171,7 +173,9 @@ impl Serialize for WorkerControlEvent {
 
         Serialize::serialize(&(type_id, value), serializer)
       }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
+      WorkerControlEvent::Close(exit_code) => {
+        Serialize::serialize(&(type_id, exit_code), serializer)
+      }
     }
   }
 }
@@ -573,7 +577,7 @@ impl WebWorker {
       }),
       deno_io::deno_io::init(Some(options.stdio)),
       deno_fs::deno_fs::init(services.fs.clone()),
-      deno_os::deno_os::init(None),
+      deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<
         TInNpmPackageChecker,
