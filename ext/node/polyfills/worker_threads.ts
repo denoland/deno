@@ -4,6 +4,7 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
+  op_host_get_worker_cpu_usage,
   op_host_post_message,
   op_host_recv_ctrl,
   op_host_recv_message,
@@ -25,7 +26,12 @@ import {
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+  ERR_WORKER_NOT_RUNNING,
+} from "ext:deno_node/internal/errors.ts";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
 import {
   BroadcastChannel as WebBroadcastChannel,
@@ -41,9 +47,11 @@ const {
   FunctionPrototypeCall,
   JSONParse,
   JSONStringify,
+  NumberIsFinite,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromiseReject,
   PromiseResolve,
   SafeMap,
   SafeSet,
@@ -52,10 +60,14 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
+  SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Float64Array,
 } = primordials;
+
+const workerCpuUsageBuffer = new Float64Array(2);
 
 const debugWorkerThreads = false;
 function debugWT(...args) {
@@ -280,7 +292,7 @@ class NodeWorker extends EventEmitter {
           this.#status = "CLOSED";
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 0);
+            this.emit("exit", data ?? 0);
           }
           return;
         }
@@ -371,12 +383,65 @@ class NodeWorker extends EventEmitter {
     return PromiseResolve(0);
   }
 
+  async [SymbolAsyncDispose]() {
+    await this.terminate();
+  }
+
   ref() {
     this[privateWorkerRef](true);
   }
 
   unref() {
     this[privateWorkerRef](false);
+  }
+
+  cpuUsage(prevValue?: { user: number; system: number }) {
+    if (prevValue !== undefined) {
+      validateObject(prevValue, "prevValue");
+      if (typeof prevValue.user !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.user",
+          "number",
+          prevValue.user,
+        );
+      }
+      if (!NumberIsFinite(prevValue.user) || prevValue.user < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.user",
+          ">= 0 && <= 2^53",
+          prevValue.user,
+        );
+      }
+      if (typeof prevValue.system !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.system",
+          "number",
+          prevValue.system,
+        );
+      }
+      if (!NumberIsFinite(prevValue.system) || prevValue.system < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.system",
+          ">= 0 && <= 2^53",
+          prevValue.system,
+        );
+      }
+    }
+
+    if (this.#status !== "RUNNING") {
+      return PromiseReject(new ERR_WORKER_NOT_RUNNING());
+    }
+
+    op_host_get_worker_cpu_usage(this.#id, workerCpuUsageBuffer);
+    const user = workerCpuUsageBuffer[0];
+    const system = workerCpuUsageBuffer[1];
+    if (prevValue) {
+      return PromiseResolve({
+        user: user - prevValue.user,
+        system: system - prevValue.system,
+      });
+    }
+    return PromiseResolve({ user, system });
   }
 
   readonly getHeapSnapshot = () =>

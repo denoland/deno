@@ -19,7 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
+import { op_node_is_tty } from "ext:core/ops";
 const {
   ArrayPrototypeSome,
   Error,
@@ -32,9 +33,6 @@ const {
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
 } = primordials;
-const {
-  isTerminal,
-} = core;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
@@ -267,16 +265,7 @@ function isatty(fd) {
   if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
-  try {
-    /**
-     * TODO: Treat `fd` as real file descriptors. Currently, `rid` 0, 1, 2
-     * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
-     * the future.
-     */
-    return isTerminal(fd);
-  } catch (_) {
-    return false;
-  }
+  return op_node_is_tty(fd);
 }
 
 export class ReadStream extends Socket {
