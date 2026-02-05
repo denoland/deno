@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -60,6 +62,7 @@ struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
   cancel_handle: Rc<CancelHandle>,
+  cpu_thread_handle: Arc<AtomicU64>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -92,6 +95,7 @@ deno_core::extension!(
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_recv_message,
+    op_host_get_worker_cpu_usage,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -202,8 +206,15 @@ fn op_create_worker(
   } else {
     None
   };
+  let cpu_thread_handle = Arc::new(AtomicU64::new(0));
+  let cpu_thread_handle_writer = cpu_thread_handle.clone();
+
   // Spawn it
   thread_builder.spawn(move || {
+    // Capture the OS thread handle for CPU usage queries from the host.
+    cpu_thread_handle_writer
+      .store(capture_current_thread_handle(), Ordering::Release);
+
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
@@ -247,6 +258,7 @@ fn op_create_worker(
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
     cancel_handle: CancelHandle::new_rc(),
+    cpu_thread_handle,
     ctrl_closed: false,
     message_closed: false,
   };
@@ -410,4 +422,191 @@ fn op_host_post_message(
     debug!("tried to post message to non-existent worker {}", id);
   }
   Ok(())
+}
+
+#[op2]
+fn op_host_get_worker_cpu_usage(
+  state: &mut OpState,
+  #[serde] id: WorkerId,
+  #[buffer] out: &mut [f64],
+) {
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    let handle = worker_thread.cpu_thread_handle.load(Ordering::Acquire);
+    if handle != 0 {
+      let (user, system) = get_thread_cpu_usage_by_handle(handle);
+      out[0] = user;
+      out[1] = system;
+      return;
+    }
+  }
+  out[0] = 0.0;
+  out[1] = 0.0;
+}
+
+#[cfg(target_os = "macos")]
+fn capture_current_thread_handle() -> u64 {
+  // SAFETY: FFI call to get the current thread's Mach port.
+  unsafe { mach_thread_self() as u64 }
+}
+
+#[cfg(target_os = "macos")]
+fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
+  let thread_port = handle as u32;
+  // SAFETY: thread_info() will initialize this
+  let mut info: ThreadBasicInfo = unsafe { std::mem::zeroed() };
+  let mut count: u32 = THREAD_BASIC_INFO_COUNT;
+
+  // SAFETY: FFI call to query thread CPU times
+  let kr = unsafe {
+    thread_info(
+      thread_port,
+      THREAD_BASIC_INFO,
+      (&raw mut info) as *mut i32,
+      &mut count,
+    )
+  };
+
+  if kr != 0 {
+    return (0.0, 0.0);
+  }
+
+  let user =
+    info.user_time_seconds as f64 * 1e6 + info.user_time_microseconds as f64;
+  let system = info.system_time_seconds as f64 * 1e6
+    + info.system_time_microseconds as f64;
+  (user, system)
+}
+
+#[cfg(target_os = "macos")]
+const THREAD_BASIC_INFO: u32 = 3;
+#[cfg(target_os = "macos")]
+const THREAD_BASIC_INFO_COUNT: u32 = 10;
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct ThreadBasicInfo {
+  user_time_seconds: i32,
+  user_time_microseconds: i32,
+  system_time_seconds: i32,
+  system_time_microseconds: i32,
+  cpu_usage: i32,
+  policy: i32,
+  run_state: i32,
+  flags: i32,
+  suspend_count: i32,
+  sleep_time: i32,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+  fn mach_thread_self() -> u32;
+  fn thread_info(
+    target_act: u32,
+    flavor: u32,
+    thread_info_out: *mut i32,
+    thread_info_outCnt: *mut u32,
+  ) -> i32;
+}
+
+#[cfg(target_os = "linux")]
+fn capture_current_thread_handle() -> u64 {
+  // SAFETY: syscall to get the current thread ID.
+  unsafe { libc::syscall(libc::SYS_gettid) as u64 }
+}
+
+#[cfg(target_os = "linux")]
+fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
+  let tid = handle as i32;
+  let path = format!("/proc/self/task/{}/stat", tid);
+  #[allow(clippy::disallowed_methods)]
+  if let Ok(contents) = std::fs::read_to_string(&path) {
+    // Parse utime and stime after pid(comm)
+    if let Some(pos) = contents.rfind(')') {
+      let rest = &contents[pos + 2..]; // skip ") "
+      let fields: Vec<&str> = rest.split_whitespace().collect();
+      // 0=state 1=ppid ... 11=utime 12=stime
+      if fields.len() > 12 {
+        // SAFETY: sysconf call to get clock ticks per second.
+        let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+        let utime = fields[11].parse::<f64>().unwrap_or(0.0);
+        let stime = fields[12].parse::<f64>().unwrap_or(0.0);
+        let user_us = utime / ticks_per_sec * 1e6;
+        let system_us = stime / ticks_per_sec * 1e6;
+        return (user_us, system_us);
+      }
+    }
+  }
+  (0.0, 0.0)
+}
+
+#[cfg(windows)]
+fn capture_current_thread_handle() -> u64 {
+  // SAFETY: Returns the thread ID of the calling thread.
+  unsafe { winapi::um::processthreadsapi::GetCurrentThreadId() as u64 }
+}
+
+#[cfg(windows)]
+fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::minwindef::FILETIME;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::processthreadsapi::GetThreadTimes;
+  use winapi::um::processthreadsapi::OpenThread;
+  use winapi::um::winnt::THREAD_QUERY_INFORMATION;
+
+  let thread_id = handle as u32;
+
+  // SAFETY: Opens a handle to the thread for querying times.
+  let thread_handle =
+    unsafe { OpenThread(THREAD_QUERY_INFORMATION, FALSE, thread_id) };
+  if thread_handle.is_null() {
+    return (0.0, 0.0);
+  }
+
+  let mut creation_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut exit_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+  let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
+
+  // SAFETY: Queries thread CPU times.
+  let ret = unsafe {
+    GetThreadTimes(
+      thread_handle,
+      creation_time.as_mut_ptr(),
+      exit_time.as_mut_ptr(),
+      kernel_time.as_mut_ptr(),
+      user_time.as_mut_ptr(),
+    )
+  };
+
+  // SAFETY: Close the thread handle.
+  unsafe { CloseHandle(thread_handle) };
+
+  if ret == FALSE {
+    return (0.0, 0.0);
+  }
+
+  // SAFETY: values are initialized.
+  let user_time = unsafe { user_time.assume_init() };
+  // SAFETY: values are initialized.
+  let kernel_time = unsafe { kernel_time.assume_init() };
+
+  // FILETIME is in 100-nanosecond intervals, convert to microseconds.
+  let user_us = ((user_time.dwHighDateTime as u64) << 32
+    | user_time.dwLowDateTime as u64) as f64
+    / 10.0;
+  let system_us = ((kernel_time.dwHighDateTime as u64) << 32
+    | kernel_time.dwLowDateTime as u64) as f64
+    / 10.0;
+  (user_us, system_us)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn capture_current_thread_handle() -> u64 {
+  0
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn get_thread_cpu_usage_by_handle(_handle: u64) -> (f64, f64) {
+  (0.0, 0.0)
 }

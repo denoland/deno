@@ -98,7 +98,7 @@ twox-hash.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 windows-sys.workspace = true
 
