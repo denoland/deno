@@ -32,7 +32,6 @@ pub mod resolution;
 mod rt;
 
 pub use bin_entries::BinEntries;
-pub use bin_entries::BinEntriesError;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
@@ -411,12 +410,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if pkg_json_remote_pkgs.iter().all(|pkg| {
-      self
-        .npm_resolution
-        .resolve_pkg_id_from_pkg_req(&pkg.req)
-        .is_ok()
-    }) {
+    if !self.npm_resolution.is_pending()
+      && pkg_json_remote_pkgs.iter().all(|pkg| {
+        self
+          .npm_resolution
+          .resolve_pkg_id_from_pkg_req(&pkg.req)
+          .is_ok()
+      })
+    {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );

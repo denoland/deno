@@ -197,22 +197,15 @@ impl FsCleaner {
   }
 
   pub fn rm_rf(&mut self, path: &Path) -> Result<(), std::io::Error> {
+    let sys = CliSys::default();
+    let sys = sys.with_paths_in_errors();
     for entry in walkdir::WalkDir::new(path).contents_first(true) {
-      let entry = entry.map_err(|e| std::io::Error::other(e.to_string()))?;
+      let entry = entry.map_err(std::io::Error::other)?;
 
       if entry.file_type().is_dir() {
         self.dirs_removed += 1;
         self.update_progress();
-        std::fs::remove_dir_all(entry.path()).map_err(|err| {
-          std::io::Error::new(
-            err.kind(),
-            format!(
-              "Failed to remove directory {}: {}",
-              entry.path().display(),
-              err
-            ),
-          )
-        })?;
+        sys.fs_remove_dir_all(entry.path())?;
       } else {
         self.remove_file(entry.path(), entry.metadata().ok())?;
       }

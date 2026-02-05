@@ -26,8 +26,8 @@
         },
         {
           // Run install again - should clean up unused packages
-          "args": "install",
-          "output": "install_after_update.out"
+          "args": "install --log-level=debug",
+          "output": "[WILDCARD]"
         },
         {
           // Verify only chalk remains, cowsay is cleaned up

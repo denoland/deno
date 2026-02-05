@@ -41,7 +41,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
-use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
@@ -189,18 +188,13 @@ impl<
       return Ok(());
     }
 
+    let sys = self.sys.with_paths_in_errors();
     let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
-    self
-      .sys
-      .fs_create_dir_all(&deno_node_modules_dir)
-      .map_err(|source| SyncResolutionWithFsError::Creating {
-        path: deno_node_modules_dir.to_path_buf(),
-        source,
-      })?;
+    sys.fs_create_dir_all(&deno_node_modules_dir)?;
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
     let single_process_lock = LaxSingleProcessFsFlag::lock(
-      &self.sys,
+      sys.as_ref(),
       deno_local_registry_dir.join(".deno.lock"),
       &self.reporter,
       // similar message used by cargo build
@@ -214,7 +208,7 @@ impl<
 
     // load this after we get the directory lock
     let mut setup_cache = LocalSetupCache::load(
-      self.sys.clone(),
+      sys.as_ref().clone(),
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
@@ -222,7 +216,7 @@ impl<
     let packages_hash = calculate_packages_hash(&package_partitions);
     if setup_cache.packages_changed(packages_hash) {
       cleanup_unused_packages(
-        &self.sys,
+        sys.as_ref(),
         &self.root_node_modules_path,
         &deno_local_registry_dir,
         &package_partitions,
@@ -240,12 +234,12 @@ impl<
       &StackString,
       &NpmResolutionPackage,
     > = HashMap::with_capacity(package_partitions.packages.len());
-    let bin_entries = Rc::new(RefCell::new(BinEntries::new(&self.sys)));
+    let bin_entries = Rc::new(RefCell::new(BinEntries::new(sys)));
     let lifecycle_scripts = Rc::new(RefCell::new(LifecycleScripts::new(
-      &self.sys,
+      sys.as_ref(),
       &self.lifecycle_scripts_config,
       LocalLifecycleScripts {
-        sys: &self.sys,
+        sys: sys.as_ref(),
         deno_local_registry_dir: &deno_local_registry_dir,
         install_reporter: self.install_reporter.clone(),
       },
@@ -298,7 +292,7 @@ impl<
       }
       let initialized_file = folder_path.join(".initialized");
       let package_state = if tags.is_empty() {
-        if self.sys.fs_exists_no_err(&initialized_file) {
+        if sys.fs_exists_no_err(&initialized_file) {
           PackageFolderState::UpToDate
         } else {
           PackageFolderState::Uninitialized
@@ -430,7 +424,7 @@ impl<
         }
       } else {
         if matches!(package_state, PackageFolderState::TagsOutdated) {
-          write_initialized_file(&self.sys, &initialized_file, &tags)?;
+          write_initialized_file(sys.as_ref(), &initialized_file, &tags)?;
         }
 
         if package.has_bin || package.has_scripts {
@@ -534,7 +528,7 @@ impl<
       let destination_path = deno_local_registry_dir
         .join(get_package_folder_id_folder_name(&package_cache_folder_id));
       let initialized_file = destination_path.join(".initialized");
-      if !self.sys.fs_exists_no_err(&initialized_file) {
+      if !sys.fs_exists_no_err(&initialized_file) {
         let sub_node_modules = destination_path.join("node_modules");
         let package_path =
           join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
@@ -556,7 +550,8 @@ impl<
               clone_dir_recursive(&sys, &source_path, &package_path)
                 .map_err(JsErrorBox::from_err)?;
               // write out a file that indicates this folder has been initialized
-              create_initialized_file(&sys, &initialized_file)?;
+              create_initialized_file(&sys, &initialized_file)
+                .map_err(JsErrorBox::from_err)?;
               Ok::<_, JsErrorBox>(())
             })
             .await
@@ -607,7 +602,7 @@ impl<
             &dep_id.nv.name,
           );
           symlink_package_dir(
-            &self.sys,
+            sys.as_ref(),
             &dep_folder_path,
             &join_package_name(Cow::Borrowed(&sub_node_modules), name),
           )?;
@@ -681,19 +676,14 @@ impl<
           // symlink the dep into the package's child node_modules folder
           let dest_node_modules = remote.base_dir.join("node_modules");
           if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
-            self.sys.fs_create_dir_all(&dest_node_modules).map_err(
-              |source| SyncResolutionWithFsError::Creating {
-                path: dest_node_modules.clone(),
-                source,
-              },
-            )?;
+            sys.fs_create_dir_all(&dest_node_modules)?;
             existing_child_node_modules_dirs.insert(dest_node_modules.clone());
           }
           let mut dest_path = dest_node_modules;
           dest_path.push(remote_alias);
 
           symlink_package_dir(
-            &self.sys,
+            sys.as_ref(),
             &local_registry_package_path,
             &dest_path,
           )?;
@@ -703,7 +693,7 @@ impl<
             .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
           {
             symlink_package_dir(
-              &self.sys,
+              sys.as_ref(),
               &local_registry_package_path,
               &join_package_name(
                 Cow::Borrowed(&self.root_node_modules_path),
@@ -748,7 +738,7 @@ impl<
         );
 
         symlink_package_dir(
-          &self.sys,
+          sys.as_ref(),
           &local_registry_package_path,
           &join_package_name(
             Cow::Borrowed(&self.root_node_modules_path),
@@ -786,7 +776,7 @@ impl<
         );
 
         symlink_package_dir(
-          &self.sys,
+          sys.as_ref(),
           &local_registry_package_path,
           &join_package_name(
             Cow::Borrowed(&deno_node_modules_dir),
@@ -813,7 +803,7 @@ impl<
               package_path,
               extra,
               ..
-            } if has_lifecycle_scripts(&self.sys, extra, package_path)
+            } if has_lifecycle_scripts(sys.as_ref(), extra, package_path)
               && lifecycle_scripts.can_run_scripts(&package.id.nv)
               && !lifecycle_scripts.has_run_scripts(package) =>
             {
@@ -836,7 +826,7 @@ impl<
           continue;
         };
         symlink_package_dir(
-          &self.sys,
+          sys.as_ref(),
           &pkg.target_dir,
           &self.root_node_modules_path.join(pkg_alias),
         )?;
@@ -883,10 +873,10 @@ impl<
     let lifecycle_scripts = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
-        &self.sys,
+        sys.as_ref(),
         &self.lifecycle_scripts_config,
         LocalLifecycleScripts {
-          sys: &self.sys,
+          sys: sys.as_ref(),
           deno_local_registry_dir: &deno_local_registry_dir,
           install_reporter: self.install_reporter.clone(),
         },
@@ -910,9 +900,10 @@ impl<
           root_node_modules_dir_path: &self.root_node_modules_path,
           on_ran_pkg_scripts: &|pkg| {
             create_initialized_file(
-              &self.sys,
+              sys.as_ref(),
               &ran_scripts_file(&deno_local_registry_dir, pkg),
             )
+            .map_err(JsErrorBox::from_err)
           },
           snapshot,
           system_packages: &package_partitions.packages,
@@ -956,32 +947,6 @@ impl<
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SyncResolutionWithFsError {
-  #[class(inherit)]
-  #[error("Creating '{path}'")]
-  Creating {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error("Copying '{from}' to '{to}'")]
-  Copying {
-    from: PathBuf,
-    to: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error(transparent)]
-  CopyDirRecursive(#[from] crate::fs::CopyDirRecursiveError),
-  #[class(inherit)]
-  #[error(transparent)]
-  SymlinkPackageDir(#[from] SymlinkPackageDirError),
-  #[class(inherit)]
-  #[error(transparent)]
-  BinEntries(#[from] crate::bin_entries::BinEntriesError),
   #[class(generic)]
   #[error(transparent)]
   LifecycleScripts(AnyError),
@@ -997,14 +962,10 @@ fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
-) -> Result<(), SyncResolutionWithFsError> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   _ = sys.fs_remove_dir_all(to);
-  sys.fs_create_dir_all(to).map_err(|source| {
-    SyncResolutionWithFsError::Creating {
-      path: to.to_path_buf(),
-      source,
-    }
-  })?;
+  sys.fs_create_dir_all(to)?;
   for entry in sys.fs_read_dir(from)? {
     let entry = entry?;
     if entry.file_name().to_str() == Some("node_modules") {
@@ -1015,18 +976,14 @@ fn clone_dir_recursive_except_node_modules_child(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      clone_dir_recursive_except_node_modules_child(sys, &new_from, &new_to)?;
+      clone_dir_recursive_except_node_modules_child(
+        sys.as_ref(),
+        &new_from,
+        &new_to,
+      )?;
     } else if file_type.is_file() {
-      hard_link_file(sys, &new_from, &new_to).or_else(|_| {
-        sys
-          .fs_copy(&new_from, &new_to)
-          .map_err(|source| SyncResolutionWithFsError::Copying {
-            from: new_from.clone(),
-            to: new_to.clone(),
-            source,
-          })
-          .map(|_| ())
-      })?;
+      hard_link_file(sys.as_ref(), &new_from, &new_to)
+        .or_else(|_| sys.fs_copy(&new_from, &new_to).map(|_| ()))?;
     }
   }
   Ok(())
@@ -1319,28 +1276,6 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum SymlinkPackageDirError {
-  #[class(inherit)]
-  #[error("Creating '{parent}'")]
-  Creating {
-    parent: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[from] std::io::Error),
-  #[class(inherit)]
-  #[error("Creating junction in node_modules folder")]
-  FailedCreatingJunction {
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-}
-
 fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
@@ -1350,16 +1285,12 @@ fn symlink_package_dir(
    ),
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), SymlinkPackageDirError> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
     // create the parent folder that will contain the symlink
-    sys.fs_create_dir_all(new_parent).map_err(|source| {
-      SymlinkPackageDirError::Creating {
-        parent: new_parent.to_path_buf(),
-        source,
-      }
-    })?;
+    sys.fs_create_dir_all(new_parent)?
   }
 
   // need to delete the previous symlink before creating a new one
@@ -1369,9 +1300,14 @@ fn symlink_package_dir(
     .unwrap_or_else(|| old_path.to_path_buf());
 
   if sys_traits::impls::is_windows() {
-    junction_or_symlink_dir(sys, &old_path_relative, old_path, new_path)
+    junction_or_symlink_dir(
+      sys.as_ref(),
+      &old_path_relative,
+      old_path,
+      new_path,
+    )
   } else {
-    symlink_dir(sys, &old_path_relative, new_path).map_err(Into::into)
+    symlink_dir(sys.as_ref(), &old_path_relative, new_path)
   }
 }
 
@@ -1384,33 +1320,27 @@ fn junction_or_symlink_dir(
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), SymlinkPackageDirError> {
+) -> Result<(), std::io::Error> {
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+  let sys = sys.with_paths_in_errors();
 
   if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
     // Use junctions because they're supported on ntfs file systems without
     // needing to elevate privileges on Windows.
     // Note: junctions don't support relative paths, so we need to use the
     // absolute path here.
-    return sys
-      .fs_create_junction(old_path, new_path)
-      .map_err(|source| SymlinkPackageDirError::FailedCreatingJunction {
-        source,
-      });
+    return sys.fs_create_junction(old_path, new_path);
   }
 
-  match symlink_dir(sys, old_path_relative, new_path) {
+  match symlink_dir(sys.as_ref(), old_path_relative, new_path) {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys
-        .fs_create_junction(old_path, new_path)
-        .map_err(|source| SymlinkPackageDirError::FailedCreatingJunction {
-          source,
-        })
+      sys.fs_create_junction(old_path, new_path)
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1418,11 +1348,7 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys
-        .fs_create_junction(old_path, new_path)
-        .map_err(|source| SymlinkPackageDirError::FailedCreatingJunction {
-          source,
-        })
+      sys.fs_create_junction(old_path, new_path)
     }
   }
 }
@@ -1431,35 +1357,24 @@ fn write_initialized_file(
   sys: &(impl FsWrite + FsOpen),
   path: &Path,
   text: &str,
-) -> Result<(), JsErrorBox> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   if text.is_empty() {
     // one less syscall
-    create_initialized_file(sys, path)
+    create_initialized_file(sys.as_ref(), path)
   } else {
-    sys.fs_write(path, text).map_err(|err| {
-      JsErrorBox::generic(format!(
-        "Failed writing '{}': {}",
-        path.display(),
-        err
-      ))
-    })
+    sys.fs_write(path, text)
   }
 }
 
 fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
   sys: &F,
   path: &Path,
-) -> Result<(), JsErrorBox> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   sys
     .fs_open_boxed(path, &sys_traits::OpenOptions::new_write())
     .map(|_| ())
-    .map_err(|err| {
-      JsErrorBox::generic(format!(
-        "Failed to create '{}': {}",
-        path.display(),
-        err
-      ))
-    })
 }
 
 fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
@@ -1540,8 +1455,8 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   let remove_symlink = |path: &Path| -> std::io::Result<()> {
     if sys_traits::impls::is_windows() {
       sys
-        .fs_remove_file(path)
-        .or_else(|_| sys.fs_remove_dir(path))
+        .fs_remove_dir(path)
+        .or_else(|_| sys.fs_remove_file(path))
     } else {
       sys.fs_remove_file(path)
     }
@@ -1616,9 +1531,9 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
 
   for entry in entries.flatten() {
     let entry_path = dir.join(entry.file_name());
-    let metadata = sys.fs_symlink_metadata(&entry_path)?;
-    if metadata.file_type().is_symlink() {
-      let target = sys.fs_read_link(&entry_path)?;
+    // use fs_read_link to detect both symlinks and junctions on Windows
+    // (is_symlink() returns false for junctions)
+    if let Ok(target) = sys.fs_read_link(&entry_path) {
       let name = node_modules_package_actual_dir_to_name(&target);
       if let Some(name) = name
         && !keep_names.contains(&*name)

@@ -9282,9 +9282,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.23"
+version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1717755444072f1fce0f3d5b9891397f7951c42a059c1536f19a41eecdedb559"
+checksum = "5410f31d223892c1ce7a098da845c99d023b4c7f18632bc8f09e60dfae3cbb75"
 dependencies = [
  "filetime",
  "getrandom 0.2.14",

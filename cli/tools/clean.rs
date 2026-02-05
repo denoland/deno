@@ -555,6 +555,18 @@ fn clean_node_modules(
     }
   }
 
+  let mut remove_symlink = |path: &Path| -> std::io::Result<()> {
+    if dry_run {
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!(" {}", path.display());
+      }
+      Ok(())
+    } else {
+      cleaner.remove_file(path, None)
+    }
+  };
+
   // remove top level symlinks from node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
   deno_npm_installer::remove_unused_node_modules_symlinks(
@@ -563,15 +575,7 @@ fn clean_node_modules(
     &keep_ids,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
-      if dry_run {
-        #[allow(clippy::print_stderr)]
-        {
-          eprintln!(" {}", path.display());
-        }
-        Ok(())
-      } else {
-        cleaner.remove_file(path, None)
-      }
+      remove_symlink(path)
     },
   )
   .map_err(AnyError::from)?;
@@ -585,15 +589,7 @@ fn clean_node_modules(
     &keep_ids,
     &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
-      if dry_run {
-        #[allow(clippy::print_stderr)]
-        {
-          eprintln!(" {}", path.display());
-        }
-        Ok(())
-      } else {
-        cleaner.remove_file(path, None)
-      }
+      remove_symlink(path)
     },
   )
   .map_err(AnyError::from)?;
