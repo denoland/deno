@@ -1122,26 +1122,25 @@ pub async fn run_web_worker(
     print_worker_error(&e, &name, format_js_error_fn.as_deref());
     // For Node workers, convert "Module not found" to Node-compatible
     // "Cannot find module" format so it matches Node.js error behavior.
-    let e =
-      if internal_handle.worker_type == WorkerThreadType::Node {
-        let msg = e.to_string();
-        if msg.starts_with("Module not found") {
-          let path = specifier.to_file_path().ok();
-          let display = path
-            .as_deref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| specifier.to_string());
-          CoreErrorKind::JsBox(deno_error::JsErrorBox::new(
-            "Error",
-            format!("Cannot find module '{display}'"),
-          ))
-          .into_box()
-        } else {
-          e
-        }
+    let e = if internal_handle.worker_type == WorkerThreadType::Node {
+      let msg = e.to_string();
+      if msg.starts_with("Module not found") {
+        let path = specifier.to_file_path().ok();
+        let display = path
+          .as_deref()
+          .map(|p| p.display().to_string())
+          .unwrap_or_else(|| specifier.to_string());
+        CoreErrorKind::JsBox(deno_error::JsErrorBox::new(
+          "Error",
+          format!("Cannot find module '{display}'"),
+        ))
+        .into_box()
       } else {
         e
-      };
+      }
+    } else {
+      e
+    };
     internal_handle
       .post_event(WorkerControlEvent::TerminalError(e))
       .expect("Failed to post message to host");
