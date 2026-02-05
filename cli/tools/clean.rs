@@ -604,7 +604,6 @@ fn clean_node_modules(
   Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
   use std::path::Path;

@@ -1614,41 +1614,44 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
       return Err(SyncResolutionWithFsError::Io(io::Error::new(
         e.kind(),
         format!("Failed to read directory {}: {}", dir.display(), e),
-      )))
+      )));
     }
   };
 
   for entry in entries.flatten() {
     let entry_path = dir.join(entry.file_name());
-    let metadata = sys
-      .fs_symlink_metadata(&entry_path)
-      .map_err(|e| {
+    let metadata = sys.fs_symlink_metadata(&entry_path).map_err(|e| {
+      SyncResolutionWithFsError::Io(io::Error::new(
+        e.kind(),
+        format!(
+          "Failed to read symlink metadata for {}: {}",
+          entry_path.display(),
+          e
+        ),
+      ))
+    })?;
+    if metadata.file_type().is_symlink() {
+      let target = sys.fs_read_link(&entry_path).map_err(|e| {
         SyncResolutionWithFsError::Io(io::Error::new(
           e.kind(),
           format!(
-            "Failed to read symlink metadata for {}: {}",
+            "Failed to read symlink target for {}: {}",
             entry_path.display(),
             e
           ),
         ))
       })?;
-    if metadata.file_type().is_symlink() {
-      let target = sys.fs_read_link(&entry_path).map_err(|e| {
-        SyncResolutionWithFsError::Io(io::Error::new(
-          e.kind(),
-          format!("Failed to read symlink target for {}: {}", entry_path.display(), e),
-        ))
-      })?;
       let name = node_modules_package_actual_dir_to_name(&target);
       if let Some(name) = name
-        && !keep_names.contains(&*name) {
-          on_remove(&name, &entry_path).map_err(|e| {
-            SyncResolutionWithFsError::Io(io::Error::new(
-              e.kind(),
-              format!("Failed to remove symlink {}: {}", entry_path.display(), e),
-            ))
-          })?;
-        }
+        && !keep_names.contains(&*name)
+      {
+        on_remove(&name, &entry_path).map_err(|e| {
+          SyncResolutionWithFsError::Io(io::Error::new(
+            e.kind(),
+            format!("Failed to remove symlink {}: {}", entry_path.display(), e),
+          ))
+        })?;
+      }
     }
   }
   Ok(())

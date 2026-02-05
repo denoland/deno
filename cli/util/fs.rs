@@ -200,9 +200,7 @@ impl FsCleaner {
 
   pub fn rm_rf(&mut self, path: &Path) -> Result<(), std::io::Error> {
     for entry in walkdir::WalkDir::new(path).contents_first(true) {
-      let entry = entry.map_err(|e| {
-        std::io::Error::other(e.to_string())
-      })?;
+      let entry = entry.map_err(|e| std::io::Error::other(e.to_string()))?;
 
       if entry.file_type().is_dir() {
         self.dirs_removed += 1;
