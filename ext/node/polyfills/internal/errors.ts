@@ -877,6 +877,12 @@ export class ERR_BROTLI_INVALID_PARAM extends NodeRangeError {
   }
 }
 
+export class ERR_ZSTD_INVALID_PARAM extends NodeRangeError {
+  constructor(x: string) {
+    super("ERR_ZSTD_INVALID_PARAM", `${x} is not a valid zstd parameter`);
+  }
+}
+
 export class ERR_BUFFER_OUT_OF_BOUNDS extends NodeRangeError {
   constructor(name?: string) {
     super(
@@ -2416,8 +2422,8 @@ export class ERR_WORKER_UNSUPPORTED_OPERATION extends NodeTypeError {
   }
 }
 export class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
-  constructor() {
-    super("ERR_ZLIB_INITIALIZATION_FAILED", `Initialization failed`);
+  constructor(message = "Initialization failed") {
+    super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
 export class ERR_FALSY_VALUE_REJECTION extends NodeError {
@@ -2884,6 +2890,8 @@ codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
+codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2949,6 +2957,7 @@ export default {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
   ERR_BROTLI_INVALID_PARAM,
+  ERR_ZSTD_INVALID_PARAM,
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_BUFFER_TOO_LARGE,
   ERR_CANNOT_WATCH_SIGINT,

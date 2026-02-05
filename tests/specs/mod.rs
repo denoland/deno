@@ -471,6 +471,9 @@ fn should_run(if_cond: Option<&str>) -> bool {
         cfg!(unix)
           && !(cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
       }
+      "notWindowsArm" => {
+        !(cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
+      }
       value => panic!("Unknown if condition: {}", value),
     }
   } else {

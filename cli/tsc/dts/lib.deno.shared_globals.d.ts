@@ -588,13 +588,13 @@ interface WorkerOptions {
  */
 interface Worker extends EventTarget {
   /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
-  onerror: (this: Worker, e: ErrorEvent) => any | null;
+  onerror: ((this: Worker, e: ErrorEvent) => any) | null;
 
   /** Event handler for message events. Fired when the worker sends data back to the main thread. */
-  onmessage: (this: Worker, e: MessageEvent) => any | null;
+  onmessage: ((this: Worker, e: MessageEvent) => any) | null;
 
   /** Event handler for message error events. Fired when a message cannot be deserialized. */
-  onmessageerror: (this: Worker, e: MessageEvent) => any | null;
+  onmessageerror: ((this: Worker, e: MessageEvent) => any) | null;
 
   /**
    * Sends a message to the worker, transferring ownership of the specified transferable objects.

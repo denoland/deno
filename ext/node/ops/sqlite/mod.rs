@@ -2,13 +2,16 @@
 
 mod backup;
 mod database;
+mod lru_cache;
 mod session;
+mod sql_tag_store;
 mod statement;
 mod validators;
 
 pub use backup::op_node_database_backup;
 pub use database::DatabaseSync;
 pub use session::Session;
+pub use sql_tag_store::SQLTagStore;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
