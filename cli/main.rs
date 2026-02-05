@@ -551,7 +551,14 @@ fn setup_panic_hook() {
     }
 
     orig_hook(panic_info);
-    deno_runtime::exit(1);
+    // Don't exit for worker threads - let the thread unwind naturally
+    // so the parent can handle the failure as a JS error.
+    let is_worker = std::thread::current()
+      .name()
+      .is_some_and(|n| n.starts_with("worker-"));
+    if !is_worker {
+      deno_runtime::exit(1);
+    }
   }));
 
   fn error_handler(file: &str, line: i32, message: &str) {
