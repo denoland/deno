@@ -12,14 +12,13 @@ use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
-use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
+use deno_resolver::factory::npm_overrides_from_workspace;
 use deno_npm_cache::TarballCache;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::initializer::NpmResolutionInitializer;
@@ -946,22 +945,7 @@ impl<'a> ResolverFactory<'a> {
       // parse npm overrides from workspace config
       let overrides = self
         .config_data
-        .and_then(|d| {
-          let workspace = &d.member_dir.workspace;
-          let overrides_json = workspace.npm_overrides()?;
-          // build root deps for $pkg resolution
-          let root_deps = workspace.root_deps_for_npm_overrides();
-          match NpmOverrides::from_value(
-            serde_json::Value::Object(overrides_json.clone()),
-            &root_deps,
-          ) {
-            Ok(overrides) => Some(overrides),
-            Err(e) => {
-              log::warn!("failed to parse npm overrides: {}", e);
-              None
-            }
-          }
-        })
+        .map(|d| npm_overrides_from_workspace(&d.member_dir.workspace))
         .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
