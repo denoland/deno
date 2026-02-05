@@ -42,7 +42,6 @@ import process from "node:process";
 import { createRequire } from "node:module";
 
 const {
-  ArrayIsArray,
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
