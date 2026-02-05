@@ -47,7 +47,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFile("some/path", "some data", "made-up-encoding", () => {});
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
   );
 
   assertThrows(
@@ -56,7 +56,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFileSync("some/path", "some data", "made-up-encoding");
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
   );
 
   assertThrows(
@@ -72,7 +72,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       );
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
   );
 
   assertThrows(
@@ -83,30 +83,9 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       });
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
   );
 });
-
-Deno.test(
-  "Unsupported encoding results in error()",
-  function testUnsupportedEncoding() {
-    assertThrows(
-      () => {
-        writeFile("some/path", "some data", "utf16le", () => {});
-      },
-      Error,
-      `Not implemented: "utf16le" encoding`,
-    );
-
-    assertThrows(
-      () => {
-        writeFileSync("some/path", "some data", "utf16le");
-      },
-      Error,
-      `Not implemented: "utf16le" encoding`,
-    );
-  },
-);
 
 Deno.test(
   {
