@@ -159,6 +159,8 @@ impl Serialize for WorkerControlEvent {
             });
             json!({
               "message": js_error.exception_message,
+              "name": js_error.name,
+              "errorMessage": js_error.message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
