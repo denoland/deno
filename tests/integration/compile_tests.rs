@@ -943,8 +943,13 @@ fn compile_node_modules_symlink_outside() {
     .path()
     .join("compile")
     .join("node_modules_symlink_outside");
+  context
+    .new_command()
+    .current_dir(&project_dir)
+    .args("install")
+    .run()
+    .skip_output_check();
   let symlink_target_dir = temp_dir.path().join("some_folder");
-  project_dir.join("node_modules").create_dir_all();
   symlink_target_dir.create_dir_all();
   symlink_target_dir.join("file.txt").write("5");
   let symlink_target_file = temp_dir.path().join("target.txt");
@@ -956,7 +961,7 @@ fn compile_node_modules_symlink_outside() {
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
+    .args("compile --allow-read --no-check --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -979,7 +984,7 @@ fn compile_node_modules_symlink_outside() {
   // compile
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
+    .args("compile --allow-read --no-check --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
@@ -997,11 +1002,23 @@ fn compile_node_modules_symlink_outside() {
 fn compile_node_modules_symlink_non_existent() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
+  temp_dir
+    .join("package.json")
+    .write_json(&serde_json::json!({
+      "dependencies": {
+        "@denotest/esm-basic": "*"
+      }
+    }));
   temp_dir.join("main.ts").write(
-    r#"import { getValue, setValue } from "npm:@denotest/esm-basic";
+    r#"import { getValue, setValue } from "@denotest/esm-basic";
 setValue(4);
 console.log(getValue());"#,
   );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
   let node_modules_dir = temp_dir.join("node_modules");
   node_modules_dir.create_dir_all();
   // create a symlink that points to a non_existent file
@@ -1009,14 +1026,11 @@ console.log(getValue());"#,
   // compile folder
   let output = context
     .new_command()
-    .args("compile --allow-read --node-modules-dir=auto --output bin main.ts")
+    .args("compile --allow-read --output bin main.ts")
     .run();
   output.assert_exit_code(0);
   output.assert_matches_text(
-    r#"Download http://localhost:4260/@denotest%2fesm-basic
-Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
-Initialize @denotest/esm-basic@1.0.0
-Check main.ts
+    r#"Check main.ts
 Compile main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]

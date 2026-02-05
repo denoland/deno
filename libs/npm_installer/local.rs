@@ -44,6 +44,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
+use sys_traits::PathsInErrorsExt;
 
 use crate::BinEntries;
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -1541,9 +1542,8 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
       sys
         .fs_remove_file(path)
         .or_else(|_| sys.fs_remove_dir(path))
-        .map(|_| ())
     } else {
-      sys.fs_remove_file(path).map(|_| ())
+      sys.fs_remove_file(path)
     }
   };
 
@@ -1606,51 +1606,24 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
   dir: &Path,
   keep_names: &HashSet<String>,
   on_remove: &mut dyn FnMut(&str, &Path) -> std::io::Result<()>,
-) -> Result<(), SyncResolutionWithFsError> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   let entries = match sys.fs_read_dir(dir) {
     Ok(entries) => entries,
     Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()), // Directory doesn't exist, nothing to clean
-    Err(e) => {
-      return Err(SyncResolutionWithFsError::Io(io::Error::new(
-        e.kind(),
-        format!("Failed to read directory {}: {}", dir.display(), e),
-      )));
-    }
+    Err(e) => return Err(e),
   };
 
   for entry in entries.flatten() {
     let entry_path = dir.join(entry.file_name());
-    let metadata = sys.fs_symlink_metadata(&entry_path).map_err(|e| {
-      SyncResolutionWithFsError::Io(io::Error::new(
-        e.kind(),
-        format!(
-          "Failed to read symlink metadata for {}: {}",
-          entry_path.display(),
-          e
-        ),
-      ))
-    })?;
+    let metadata = sys.fs_symlink_metadata(&entry_path)?;
     if metadata.file_type().is_symlink() {
-      let target = sys.fs_read_link(&entry_path).map_err(|e| {
-        SyncResolutionWithFsError::Io(io::Error::new(
-          e.kind(),
-          format!(
-            "Failed to read symlink target for {}: {}",
-            entry_path.display(),
-            e
-          ),
-        ))
-      })?;
+      let target = sys.fs_read_link(&entry_path)?;
       let name = node_modules_package_actual_dir_to_name(&target);
       if let Some(name) = name
         && !keep_names.contains(&*name)
       {
-        on_remove(&name, &entry_path).map_err(|e| {
-          SyncResolutionWithFsError::Io(io::Error::new(
-            e.kind(),
-            format!("Failed to remove symlink {}: {}", entry_path.display(), e),
-          ))
-        })?;
+        on_remove(&name, &entry_path)?;
       }
     }
   }

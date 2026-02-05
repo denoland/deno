@@ -13,10 +13,8 @@ use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
-use sys_traits::FsRemoveDir;
-use sys_traits::FsRemoveFile;
+use sys_traits::PathsInErrorsExt;
 
 use super::progress_bar::UpdateGuard;
 use crate::sys::CliSys;
@@ -251,24 +249,17 @@ pub fn remove_file_or_symlink<
   sys: &TSys,
   path: &Path,
 ) -> Result<(), Error> {
+  let sys = sys.with_paths_in_errors();
   match sys.fs_remove_file(path) {
     Err(e) => {
       if sys_traits::impls::is_windows()
         && let Ok(meta) = sys.fs_symlink_metadata(path)
         && meta.file_type().is_symlink()
       {
-        sys.fs_remove_dir(path).map_err(|err| {
-          std::io::Error::new(
-            err.kind(),
-            format!("Failed to remove symlink {}: {}", path.display(), err),
-          )
-        })?;
+        sys.fs_remove_dir(path)?;
         return Ok(());
       }
-      Err(std::io::Error::new(
-        e.kind(),
-        format!("Failed to remove file {}: {}", path.display(), e),
-      ))
+      Err(e)
     }
     _ => Ok(()),
   }
