@@ -213,29 +213,10 @@ class NodeWorker extends EventEmitter {
     }
     // When envOpt === SHARE_ENV, env_ stays undefined and the worker
     // will use the default process.env backed by Deno.env (shared OS env).
-
-    // Handle the `argv` option: must be an array or undefined.
-    // Values are coerced to strings like Node.js does.
-    let argv_: string[] | undefined = undefined;
-    if (options?.argv != null) {
-      if (!ArrayIsArray(options.argv)) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "options.argv",
-          "Array",
-          options.argv,
-        );
-      }
-      argv_ = [];
-      for (let i = 0; i < options.argv.length; i++) {
-        argv_[i] = String(options.argv[i]);
-      }
-    }
-
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
-      argv: argv_,
       isEval: !!options?.eval,
       isWorkerThread: true,
     }, options?.transferList ?? []);
