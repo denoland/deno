@@ -232,6 +232,9 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     filter: impl FnMut(&NpmResolutionPackage) -> bool,
     mut handler: impl FnMut(&EntrySetupOutcome<'_>),
   ) -> Result<(), BinEntriesError> {
+    // todo(dsherret): change the code below to create this
+    // folder on NotExists error instead of doing this check for
+    // if it exists first
     if !self.entries.is_empty()
       && !self.sys.fs_exists_no_err(bin_node_modules_dir_path)
     {

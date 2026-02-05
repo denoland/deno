@@ -11,9 +11,12 @@ use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
-use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
+use sys_traits::FsRemoveDir;
+use sys_traits::FsRemoveFile;
 
 use super::progress_bar::UpdateGuard;
 use crate::sys::CliSys;
@@ -195,14 +198,25 @@ impl FsCleaner {
     }
   }
 
-  pub fn rm_rf(&mut self, path: &Path) -> Result<(), AnyError> {
+  pub fn rm_rf(&mut self, path: &Path) -> Result<(), std::io::Error> {
     for entry in walkdir::WalkDir::new(path).contents_first(true) {
-      let entry = entry?;
+      let entry = entry.map_err(|e| {
+        std::io::Error::other(e.to_string())
+      })?;
 
       if entry.file_type().is_dir() {
         self.dirs_removed += 1;
         self.update_progress();
-        std::fs::remove_dir_all(entry.path())?;
+        std::fs::remove_dir_all(entry.path()).map_err(|err| {
+          std::io::Error::new(
+            err.kind(),
+            format!(
+              "Failed to remove directory {}: {}",
+              entry.path().display(),
+              err
+            ),
+          )
+        })?;
       } else {
         self.remove_file(entry.path(), entry.metadata().ok())?;
       }
@@ -215,35 +229,50 @@ impl FsCleaner {
     &mut self,
     path: &Path,
     meta: Option<std::fs::Metadata>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), std::io::Error> {
     if let Some(meta) = meta {
       self.bytes_removed += meta.len();
     }
     self.files_removed += 1;
     self.update_progress();
-    match std::fs::remove_file(path)
-      .with_context(|| format!("Failed to remove file: {}", path.display()))
-    {
-      Err(e) => {
-        if cfg!(windows)
-          && let Ok(meta) = path.symlink_metadata()
-          && meta.is_symlink()
-        {
-          std::fs::remove_dir(path).with_context(|| {
-            format!("Failed to remove symlink: {}", path.display())
-          })?;
-          return Ok(());
-        }
-        Err(e)
-      }
-      _ => Ok(()),
-    }
+    remove_file_or_symlink(&CliSys::default(), path)
   }
 
   fn update_progress(&self) {
     if let Some(pg) = &self.progress_guard {
       pg.set_position(self.files_removed + self.dirs_removed);
     }
+  }
+}
+
+pub fn remove_file_or_symlink<
+  TSys: sys_traits::BaseFsRemoveFile
+    + sys_traits::BaseFsRemoveDir
+    + sys_traits::BaseFsMetadata,
+>(
+  sys: &TSys,
+  path: &Path,
+) -> Result<(), Error> {
+  match sys.fs_remove_file(path) {
+    Err(e) => {
+      if sys_traits::impls::is_windows()
+        && let Ok(meta) = sys.fs_symlink_metadata(path)
+        && meta.file_type().is_symlink()
+      {
+        sys.fs_remove_dir(path).map_err(|err| {
+          std::io::Error::new(
+            err.kind(),
+            format!("Failed to remove symlink {}: {}", path.display(), err),
+          )
+        })?;
+        return Ok(());
+      }
+      Err(std::io::Error::new(
+        e.kind(),
+        format!("Failed to remove file {}: {}", path.display(), e),
+      ))
+    }
+    _ => Ok(()),
   }
 }
 

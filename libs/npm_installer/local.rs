@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -40,6 +41,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
 
@@ -76,6 +78,7 @@ pub trait LocalNpmInstallSys:
   + sys_traits::EnvVar
   + sys_traits::FsSymlinkDir
   + sys_traits::FsCreateJunction
+  + sys_traits::FsRemoveDir
 {
 }
 
@@ -195,14 +198,6 @@ impl<
         source,
       })?;
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
-    self
-      .sys
-      .fs_create_dir_all(&bin_node_modules_dir_path)
-      .map_err(|source| SyncResolutionWithFsError::Creating {
-        path: bin_node_modules_dir_path.to_path_buf(),
-        source,
-      })?;
-
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       &self.sys,
       deno_local_registry_dir.join(".deno.lock"),
@@ -231,7 +226,7 @@ impl<
         &deno_local_registry_dir,
         &package_partitions,
         &mut setup_cache,
-      )?;
+      );
     }
     setup_cache.set_packages_hash(packages_hash);
 
@@ -1505,7 +1500,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   deno_local_registry_dir: &Path,
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
   setup_cache: &mut LocalSetupCache<TSys>,
-) -> Result<(), SyncResolutionWithFsError> {
+) {
   // Collect all package folder names that should exist in .deno/
   let expected_folders: HashSet<_> = package_partitions
     .iter_all()
@@ -1532,27 +1527,130 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     }
   }
 
-  if let Some(previous) = &mut setup_cache.previous {
-    // Clean up .deno/node_modules/* symlinks for packages no longer needed
-    let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
-    for name in std::mem::take(&mut previous.deno_symlinks).keys() {
-      let path = deno_node_modules_dir.join(name);
-      let _ignore = sys.fs_remove_dir_all(&path);
+  // Build set of package folder names that should exist
+  let keep_names = package_partitions
+    .iter_all()
+    .map(|package| {
+      get_package_folder_id_folder_name(&package.get_package_cache_folder_id())
+    })
+    .collect::<HashSet<_>>();
+
+  // Helper closure for removing symlinks cross-platform
+  let remove_symlink = |path: &Path| -> std::io::Result<()> {
+    if sys_traits::impls::is_windows() {
+      sys
+        .fs_remove_file(path)
+        .or_else(|_| sys.fs_remove_dir(path))
+        .map(|_| ())
+    } else {
+      sys.fs_remove_file(path).map(|_| ())
     }
+  };
 
-    // Clean up root node_modules/* symlinks for packages no longer needed
-    for name in std::mem::take(&mut previous.root_symlinks).keys() {
-      let path = root_node_modules_dir.join(name);
-      let _ignore = sys.fs_remove_dir_all(&path);
-    }
+  // Clean up .deno/node_modules/* symlinks for packages no longer needed
+  let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
+  let _ignore = remove_unused_node_modules_symlinks(
+    sys,
+    &deno_node_modules_dir,
+    &keep_names,
+    &mut |name, path| {
+      setup_cache.remove_deno_symlink(name);
+      remove_symlink(path)
+    },
+  );
 
-    previous.deno_symlinks = Default::default();
-  }
+  // Clean up root node_modules/* symlinks for packages no longer needed
+  let _ignore = remove_unused_node_modules_symlinks(
+    sys,
+    root_node_modules_dir,
+    &keep_names,
+    &mut |name, path| {
+      setup_cache.remove_root_symlink(name);
+      remove_symlink(path)
+    },
+  );
 
-  // Always clean up .bin directory (will be recreated with correct entries)
+  // remove the .bin directory entries
   let bin_dir = root_node_modules_dir.join(".bin");
-  let _ignore = sys.fs_remove_dir_all(&bin_dir);
+  if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
+    for entry in entries.flatten() {
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if file_type.is_file() {
+        let _ignore = sys.fs_remove_file(entry.path());
+      } else {
+        let _ignore = sys.fs_remove_dir_all(entry.path());
+      }
+    }
+  }
+}
 
+/// Extracts the package folder name from a node_modules symlink target path.
+/// e.g. node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
+pub fn node_modules_package_actual_dir_to_name(
+  path: &Path,
+) -> Option<Cow<'_, str>> {
+  path
+    .parent()?
+    .parent()?
+    .file_name()
+    .map(|name| name.to_string_lossy())
+}
+
+/// Remove symlinks from a node_modules directory where the target package
+/// is not in the keep_names set. The on_remove callback is responsible for
+/// the actual removal and receives the package name and path.
+pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  dir: &Path,
+  keep_names: &HashSet<String>,
+  on_remove: &mut dyn FnMut(&str, &Path) -> std::io::Result<()>,
+) -> Result<(), SyncResolutionWithFsError> {
+  let entries = match sys.fs_read_dir(dir) {
+    Ok(entries) => entries,
+    Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()), // Directory doesn't exist, nothing to clean
+    Err(e) => {
+      return Err(SyncResolutionWithFsError::Io(io::Error::new(
+        e.kind(),
+        format!("Failed to read directory {}: {}", dir.display(), e),
+      )))
+    }
+  };
+
+  for entry in entries.flatten() {
+    let entry_path = dir.join(entry.file_name());
+    let metadata = sys
+      .fs_symlink_metadata(&entry_path)
+      .map_err(|e| {
+        SyncResolutionWithFsError::Io(io::Error::new(
+          e.kind(),
+          format!(
+            "Failed to read symlink metadata for {}: {}",
+            entry_path.display(),
+            e
+          ),
+        ))
+      })?;
+    if metadata.file_type().is_symlink() {
+      let target = sys.fs_read_link(&entry_path).map_err(|e| {
+        SyncResolutionWithFsError::Io(io::Error::new(
+          e.kind(),
+          format!("Failed to read symlink target for {}: {}", entry_path.display(), e),
+        ))
+      })?;
+      let name = node_modules_package_actual_dir_to_name(&target);
+      if let Some(name) = name
+        && !keep_names.contains(&*name) {
+          on_remove(&name, &entry_path).map_err(|e| {
+            SyncResolutionWithFsError::Io(io::Error::new(
+              e.kind(),
+              format!("Failed to remove symlink {}: {}", entry_path.display(), e),
+            ))
+          })?;
+        }
+    }
+  }
   Ok(())
 }
 

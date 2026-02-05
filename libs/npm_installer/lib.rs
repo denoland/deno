@@ -53,6 +53,8 @@ use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
 pub use self::local::LocalSetupCache;
+pub use self::local::node_modules_package_actual_dir_to_name;
+pub use self::local::remove_unused_node_modules_symlinks;
 use self::package_json::NpmInstallDepsProvider;
 use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
