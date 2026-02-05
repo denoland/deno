@@ -8,8 +8,7 @@ import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Buffer } from "node:buffer";
 import {
   CallbackWithError,
-  checkEncoding,
-  getEncoding,
+  getValidatedEncoding,
   isFileOptions,
   WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
@@ -18,12 +17,19 @@ import {
   denoErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
+  constants,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { primordials } from "ext:core/mod.js";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+
+const { Error, MathMin, TypeError, Uint8Array } = primordials;
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -73,9 +79,9 @@ export function writeFile(
     ? options.mode
     : undefined;
 
-  const encoding = checkEncoding(getEncoding(options)) || "utf8";
+  const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBuffer.isView(data)) {
+  if (!ArrayBuffer.isView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -86,17 +92,18 @@ export function writeFile(
   let error: Error | null = null;
   (async () => {
     try {
+      const signal = isFileOptions(options) ? options.signal : undefined;
+
       const rid = await getRid(pathOrRid, flag);
+      checkAborted(signal);
       file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
       if (!isRid && mode) {
         await Deno.chmod(pathOrRid as string, mode);
+        checkAborted(signal);
       }
 
-      const signal: AbortSignal | undefined = isFileOptions(options)
-        ? options.signal
-        : undefined;
-      await writeAll(file, data as Uint8Array, { signal });
+      await writeAll(file, data, encoding, signal);
     } catch (e) {
       error = e instanceof Error
         ? denoErrorToNodeError(e, { syscall: "write" })
@@ -130,7 +137,7 @@ export function writeFileSync(
     ? options.mode
     : undefined;
 
-  const encoding = checkEncoding(getEncoding(options)) || "utf8";
+  const encoding = getValidatedEncoding(options) || "utf8";
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
@@ -166,30 +173,49 @@ export function writeFileSync(
   if (error) throw error;
 }
 
-interface WriteAllOptions {
-  offset?: number;
-  length?: number;
-  signal?: AbortSignal;
-}
 async function writeAll(
   w: Writer,
-  arr: Uint8Array,
-  options: WriteAllOptions = {},
+  data: Uint8Array | Iterable<Uint8Array>,
+  encoding: BufferEncoding,
+  signal?: AbortSignal,
 ) {
-  const { offset = 0, length = arr.byteLength, signal } = options;
-  checkAborted(signal);
-
-  const written = await w.write(arr.subarray(offset, offset + length));
-  if (written === length) {
-    checkAborted(signal);
-    return;
+  if (!isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const writeSize = MathMin(constants.kWriteFileMaxChunkSize, remaining);
+      const bytesWritten = await w.write(
+        data.subarray(data.byteLength - remaining, writeSize),
+      );
+      remaining -= bytesWritten;
+      checkAborted(signal);
+      data = new Uint8Array(
+        data.buffer,
+        data.byteOffset + bytesWritten,
+        data.byteLength - bytesWritten,
+      );
+    }
+  } else {
+    for await (const buf of data) {
+      checkAborted(signal);
+      const toWrite = isArrayBufferView(buf) ? buf : Buffer.from(buf, encoding);
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const writeSize = MathMin(constants.kWriteFileMaxChunkSize, remaining);
+        const bytesWritten = await w.write(
+          toWrite.subarray(toWrite.byteLength - remaining, writeSize),
+        );
+        remaining -= bytesWritten;
+        checkAborted(signal);
+      }
+    }
   }
 
-  await writeAll(w, arr, {
-    offset: offset + written,
-    length: length - written,
-    signal,
-  });
+  checkAborted(signal);
+}
+
+function isCustomIterable(obj: unknown): obj is Iterable<Uint8Array> {
+  return isIterable(obj) && !isArrayBufferView(obj) && typeof obj !== "string";
 }
 
 function checkAborted(signal?: AbortSignal) {
