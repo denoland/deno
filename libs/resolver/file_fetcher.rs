@@ -855,11 +855,12 @@ mod test {
   fn create_test_loader(
     sys: InMemorySys,
   ) -> DenoGraphLoader<NullBlobStore, InMemorySys, TestHttpClient> {
+    let cwd = get_cwd();
     let factory = WorkspaceFactory::new(
       sys.clone(),
-      PathBuf::from("/project"),
+      cwd.join("project"),
       WorkspaceFactoryOptions {
-        maybe_custom_deno_dir_root: Some(PathBuf::from("/deno_dir")),
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
         config_discovery: ConfigDiscoveryOption::Disabled,
         ..Default::default()
       },
@@ -906,10 +907,11 @@ mod test {
 
   #[test]
   fn file_content_overrides_load_returns_overridden_content() {
-    let sys = InMemorySys::default();
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::parse("file:///test.ts").unwrap();
+    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
     let content = b"console.log('hello')".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
@@ -938,10 +940,11 @@ mod test {
 
   #[test]
   fn file_content_overrides_load_includes_header_overrides() {
-    let sys = InMemorySys::default();
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::parse("file:///test.ts").unwrap();
+    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
     let content = b"export {}".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
@@ -970,10 +973,11 @@ mod test {
 
   #[test]
   fn file_content_overrides_ensure_cached_returns_cached() {
-    let sys = InMemorySys::default();
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
     let mut loader = create_test_loader(sys);
 
-    let specifier = Url::parse("file:///test.ts").unwrap();
+    let specifier = Url::from_file_path(cwd.join("test.ts")).unwrap();
     let content = b"export {}".as_slice().into();
     let mut overrides = HashMap::new();
     overrides.insert(specifier.clone(), content);
@@ -988,5 +992,13 @@ mod test {
       result,
       Some(deno_graph::source::CacheResponse::Cached)
     ));
+  }
+
+  fn get_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from("K:\\folder\\")
+    } else {
+      PathBuf::from("/")
+    }
   }
 }
