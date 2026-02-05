@@ -197,12 +197,19 @@ class NodeWorker extends EventEmitter {
     } else if (envOpt !== SHARE_ENV) {
       // Default: snapshot current process.env so the worker gets an
       // isolated copy, not a live reference to the OS environment.
-      const envObj = {};
-      const keys = ObjectKeys(process.env);
-      for (let i = 0; i < keys.length; i++) {
-        envObj[keys[i]] = process.env[keys[i]];
+      // Wrap in try/catch because accessing process.env requires
+      // --allow-env permission in Deno. If unavailable, fall back to
+      // shared OS env (env_ stays undefined).
+      try {
+        const envObj = {};
+        const keys = ObjectKeys(process.env);
+        for (let i = 0; i < keys.length; i++) {
+          envObj[keys[i]] = process.env[keys[i]];
+        }
+        env_ = envObj;
+      } catch {
+        // No env permission - worker will share the OS environment.
       }
-      env_ = envObj;
     }
     // When envOpt === SHARE_ENV, env_ stays undefined and the worker
     // will use the default process.env backed by Deno.env (shared OS env).
