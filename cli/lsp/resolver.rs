@@ -12,11 +12,13 @@ use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::TarballCache;
 use deno_npm_installer::LifecycleScriptsConfig;
@@ -48,8 +50,10 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use indexmap::IndexMap;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -941,10 +945,30 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
         None,
       ));
+      // parse npm overrides from workspace config
+      let overrides = self
+        .config_data
+        .and_then(|d| {
+          let workspace = &d.member_dir.workspace;
+          let overrides_json = workspace.npm_overrides()?;
+          // build root deps for $pkg resolution
+          let root_deps = get_root_deps_for_overrides(workspace);
+          match NpmOverrides::from_value(
+            serde_json::Value::Object(overrides_json.clone()),
+            &root_deps,
+          ) {
+            Ok(overrides) => Some(overrides),
+            Err(e) => {
+              log::warn!("failed to parse npm overrides: {}", e);
+              None
+            }
+          }
+        })
+        .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
-        overrides: Default::default(),
+        overrides: Arc::new(overrides),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -1464,6 +1488,38 @@ impl Drop for AddNpmReqsThread {
 
 static ADD_NPM_REQS_THREAD: Lazy<AddNpmReqsThread> =
   Lazy::new(AddNpmReqsThread::create);
+
+/// Collects root dependencies from package.json for npm overrides $pkg resolution.
+fn get_root_deps_for_overrides(
+  workspace: &deno_config::workspace::Workspace,
+) -> HashMap<PackageName, StackString> {
+  let Some(pkg_json) = workspace.root_pkg_json() else {
+    return HashMap::new();
+  };
+  let mut deps = HashMap::new();
+  // collect from dependencies
+  if let Some(d) = &pkg_json.dependencies {
+    for (k, v) in d {
+      let name = PackageName::from(k.as_str());
+      deps.insert(name, StackString::from(v.as_str()));
+    }
+  }
+  // collect from devDependencies
+  if let Some(d) = &pkg_json.dev_dependencies {
+    for (k, v) in d {
+      let name = PackageName::from(k.as_str());
+      deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
+    }
+  }
+  // collect from optionalDependencies
+  if let Some(d) = &pkg_json.optional_dependencies {
+    for (k, v) in d {
+      let name = PackageName::from(k.as_str());
+      deps.entry(name).or_insert_with(|| StackString::from(v.as_str()));
+    }
+  }
+  deps
+}
 
 #[cfg(test)]
 mod tests {
