@@ -29,7 +29,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
-  ERR_WORKER_INVALID_EXEC_ARGV
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
 } from "ext:deno_node/internal/errors.ts";
 import { validateArray, validateObject } from "ext:deno_node/internal/validators.mjs";
