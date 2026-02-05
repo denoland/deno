@@ -49,6 +49,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
+  SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
@@ -337,6 +338,10 @@ class NodeWorker extends EventEmitter {
     }
 
     return PromiseResolve(0);
+  }
+
+  async [SymbolAsyncDispose]() {
+    await this.terminate();
   }
 
   ref() {

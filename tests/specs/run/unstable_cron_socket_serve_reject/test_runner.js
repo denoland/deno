@@ -23,8 +23,21 @@ const mainProcess = new Deno.Command(Deno.execPath(), {
   },
 }).spawn();
 
-// Give Deno a moment to start and create its control socket
-await new Promise((resolve) => setTimeout(resolve, 100));
+// Wait for control socket to be available
+let i = 0;
+while (true) {
+  try {
+    await Deno.lstat(controlSocketPath);
+    break;
+  } catch {}
+
+  i += 1;
+  if (i > 100) {
+    throw new Error(`${controlSocketPath} did not exist`);
+  }
+
+  await new Promise((r) => setTimeout(r, 10));
+}
 
 // 3. Connect to control socket (Deno is the server, we are the client)
 const controlConn = await Deno.connect({
