@@ -246,6 +246,16 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          if (this.listenerCount("error") > 0) {
+            const err = new Error(data.errorMessage ?? data.message);
+            if (data.name) {
+              err.name = data.name;
+            }
+            // Stack is unavailable from the worker context (e.g. prepareStackTrace
+            // may have thrown). Match Node.js behavior of setting stack to undefined.
+            err.stack = undefined;
+            this.emit("error", err);
+          }
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", 1);
