@@ -32,7 +32,10 @@ import {
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
 } from "ext:deno_node/internal/errors.ts";
-import { validateArray, validateObject } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateArray,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
 import {
   BroadcastChannel as WebBroadcastChannel,
