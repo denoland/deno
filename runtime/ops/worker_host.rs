@@ -242,12 +242,9 @@ fn op_create_worker(
   })?;
 
   // Receive WebWorkerHandle from newly created worker
-  let worker_handle = handle_receiver.recv().map_err(|_| {
-    std::io::Error::new(
-      std::io::ErrorKind::Other,
-      "Worker initialization failed",
-    )
-  })?;
+  let worker_handle = handle_receiver
+    .recv()
+    .map_err(|_| std::io::Error::other("Worker initialization failed"))?;
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
