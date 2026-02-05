@@ -45,8 +45,6 @@ const {
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
-  JSONParse,
-  JSONStringify,
   NumberIsFinite,
   ObjectHasOwn,
   ObjectKeys,
