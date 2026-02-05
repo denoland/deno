@@ -237,10 +237,12 @@ class NodeWorker extends EventEmitter {
           if (data.name) {
             err.name = data.name;
           }
-          // When prepareStackTrace throws, stack should be undefined
-          // like Node.js behavior
+          // Stack is unavailable from the worker context (e.g. prepareStackTrace
+          // may have thrown). Match Node.js behavior of setting stack to undefined.
           err.stack = undefined;
-          this.emit("error", err);
+          if (this.listenerCount("error") > 0) {
+            this.emit("error", err);
+          }
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", 1);
