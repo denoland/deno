@@ -28,8 +28,15 @@ import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { primordials } from "ext:core/mod.js";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
-const { Error, MathMin, TypeError, Uint8Array } = primordials;
+const {
+  MathMin,
+  ObjectPrototypeIsPrototypeOf,
+  SymbolFor,
+  Uint8Array,
+} = primordials;
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -59,29 +66,36 @@ export function writeFile(
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
-  const callbackFn: CallbackWithError | undefined =
-    optOrCallback instanceof Function ? optOrCallback : callback;
-  const options: Encodings | WriteFileOptions | undefined =
-    optOrCallback instanceof Function ? undefined : optOrCallback;
+  let flag: string | undefined;
+  let mode: number | undefined;
+  let signal: AbortSignal | undefined;
+  let options: Encodings | WriteFileOptions | undefined;
 
-  if (!callbackFn) {
-    throw new TypeError("Callback must be a function.");
+  if (typeof optOrCallback === "function") {
+    callback = optOrCallback;
+    options = undefined;
+  } else {
+    options = optOrCallback;
   }
 
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
-  pathOrRid = pathOrRid instanceof FileHandle ? pathOrRid.fd : pathOrRid;
+  validateFunction(callback, "callback");
 
-  const flag: string | undefined = isFileOptions(options)
-    ? options.flag
-    : undefined;
+  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
+    ? pathFromURL(pathOrRid as URL)
+    : pathOrRid;
+  pathOrRid = ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)
+    ? (pathOrRid as FileHandle).fd
+    : pathOrRid as string | number;
 
-  const mode: number | undefined = isFileOptions(options)
-    ? options.mode
-    : undefined;
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+    signal = options.signal;
+  }
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBuffer.isView(data) && !isCustomIterable(data)) {
+  if (!isArrayBufferView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -92,11 +106,9 @@ export function writeFile(
   let error: Error | null = null;
   (async () => {
     try {
-      const signal = isFileOptions(options) ? options.signal : undefined;
-
       const rid = await getRid(pathOrRid, flag);
+      file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
       checkAborted(signal);
-      file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
       if (!isRid && mode) {
         await Deno.chmod(pathOrRid as string, mode);
@@ -105,13 +117,11 @@ export function writeFile(
 
       await writeAll(file, data, encoding, signal);
     } catch (e) {
-      error = e instanceof Error
-        ? denoErrorToNodeError(e, { syscall: "write" })
-        : new Error("[non-error thrown]");
+      error = denoErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
-      callbackFn(error);
+      callback(error);
     }
   })();
 }
@@ -127,19 +137,21 @@ export function writeFileSync(
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) {
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
+  let flag: string | undefined;
+  let mode: number | undefined;
 
-  const flag: string | undefined = isFileOptions(options)
-    ? options.flag
-    : undefined;
+  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
+    ? pathFromURL(pathOrRid as URL)
+    : pathOrRid as string | number;
 
-  const mode: number | undefined = isFileOptions(options)
-    ? options.mode
-    : undefined;
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+  }
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBuffer.isView(data)) {
+  if (!isArrayBufferView(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -150,7 +162,7 @@ export function writeFileSync(
   let error: Error | null = null;
   try {
     const rid = getRidSync(pathOrRid, flag);
-    file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 
     if (!isRid && mode) {
       Deno.chmodSync(pathOrRid as string, mode);
@@ -162,9 +174,7 @@ export function writeFileSync(
       nwritten += file.writeSync((data as Uint8Array).subarray(nwritten));
     }
   } catch (e) {
-    error = e instanceof Error
-      ? denoErrorToNodeError(e, { syscall: "write" })
-      : new Error("[non-error thrown]");
+    error = denoErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
     // Make sure to close resource
     if (!isRid && file) file.close();
