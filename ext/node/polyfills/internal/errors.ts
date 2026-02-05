@@ -2382,7 +2382,7 @@ export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
   constructor(errors: string[], msg = "invalid execArgv flags") {
     super(
       "ERR_WORKER_INVALID_EXEC_ARGV",
-      `Initiated Worker with ${msg}: ${errors.join(", ")}`,
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
     );
   }
 }
