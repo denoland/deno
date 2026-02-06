@@ -533,6 +533,24 @@ const ci = {
             profile: "release",
             use_sysroot: true,
             skip_pr: true,
+          }, {
+            os: "linux" as const,
+            arch: "x86_64" as const,
+            runner: "ubuntu-latest",
+            job: "libs",
+            profile: "debug",
+          }, {
+            os: "macos" as const,
+            arch: "aarch64" as const,
+            runner: "macos-latest",
+            job: "libs",
+            profile: "debug",
+          }, {
+            os: "windows" as const,
+            arch: "x86_64" as const,
+            runner: "windows-latest",
+            job: "libs",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -588,7 +606,7 @@ const ci = {
         },
         {
           if:
-            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
+            "(matrix.job == 'test' || matrix.job == 'bench' || matrix.job == 'libs') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -1013,6 +1031,42 @@ const ci = {
             `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
         },
         {
+          name: "Install wasm target",
+          if: "matrix.job == 'libs' && matrix.os == 'linux'",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        // we want these crates to be Wasm compatible
+        {
+          name: "Cargo check (deno_resolver)",
+          if: "matrix.job == 'libs' && matrix.os == 'linux'",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          if: "matrix.job == 'libs' && matrix.os == 'linux'",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          if: "matrix.job == 'libs' && matrix.os == 'linux'",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+            "cargo check -p deno --features=lsp-tracing",
+          ].join("\n"),
+        },
+        {
+          name: "Test libs",
+          if: "matrix.job == 'libs'",
+          run: `cargo test --locked ${libTestPackageArgs}`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
           name: "Ensure no git changes",
           if: "matrix.job == 'test' && github.event_name == 'pull_request'",
           run: [
@@ -1317,81 +1371,6 @@ const ci = {
         },
         saveCacheMainStep,
       ],
-    },
-    libs: {
-      name: "libs ${{ matrix.os }}",
-      needs: ["pre_build"],
-      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
-      "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 30,
-      env: {
-        // override .cargo/config.toml linker flags (lld, framework links)
-        // because we don't need them for testing the libs
-        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: "",
-        CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS: "",
-      },
-      strategy: {
-        matrix: {
-          include: [{
-            os: "linux",
-            runner: "ubuntu-latest",
-          }, {
-            os: "macos",
-            runner: "macos-latest",
-          }, {
-            os: "windows",
-            runner: "windows-latest",
-          }],
-        },
-      },
-      steps: skipJobsIfPrAndMarkedSkip([
-        ...cloneRepoSteps,
-        cacheCargoHomeStep,
-        installRustStep,
-        {
-          name: "Install wasm target",
-          if: "matrix.os == 'linux'",
-          run: "rustup target add wasm32-unknown-unknown",
-        },
-        // we want these crates to be Wasm compatible
-        {
-          name: "Cargo check (deno_resolver)",
-          if: "matrix.os == 'linux'",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-        },
-        {
-          name: "Cargo check (deno_npm_installer)",
-          if: "matrix.os == 'linux'",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-        },
-        {
-          name: "Cargo check (deno_config)",
-          if: "matrix.os == 'linux'",
-          run: [
-            "cargo check --no-default-features -p deno_config",
-            "cargo check --no-default-features --features workspace -p deno_config",
-            "cargo check --no-default-features --features package_json -p deno_config",
-            "cargo check --no-default-features --features workspace --features sync -p deno_config",
-            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-            "cargo check -p deno --features=lsp-tracing",
-          ].join("\n"),
-        },
-        {
-          name: "Test libs",
-          run: `cargo test --locked ${libTestPackageArgs}`,
-        },
-        // cancel all jobs on failure
-        {
-          name: "Cancel on failure",
-          if: "failure() && github.event_name == 'pull_request'",
-          run: "gh run cancel ${{ github.run_id }}",
-          env: {
-            GITHUB_TOKEN: "${{ github.token }}",
-          },
-        },
-      ]),
     },
     "publish-canary": {
       name: "publish canary",
