@@ -475,13 +475,9 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-/// Filters destructive ANSI escape sequences from user output while preserving
-/// colors/styles (SGR sequences). This prevents user code from clearing the
-/// screen, moving the cursor, or otherwise disrupting the test reporter output.
-///
-/// Returns `Cow::Borrowed` when no filtering is needed (fast path).
+/// Strips destructive ANSI escape sequences from user output while preserving
+/// SGR (color/style) sequences. Returns `Cow::Borrowed` when no filtering needed.
 fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
-  // Fast path: if no escape characters, BEL, BS, or CR exist, return as-is
   if !input
     .iter()
     .any(|&b| b == 0x1b || b == 0x07 || b == 0x08 || b == b'\r')
@@ -489,157 +485,87 @@ fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
     return Cow::Borrowed(input);
   }
 
-  let mut output = Vec::with_capacity(input.len());
+  let mut out = Vec::with_capacity(input.len());
   let mut i = 0;
 
   while i < input.len() {
     match input[i] {
-      // BEL and BS are stripped
-      0x07 | 0x08 => {
-        i += 1;
+      0x07 | 0x08 => i += 1,
+      // Strip standalone \r (line-overwrite), keep \r\n
+      b'\r' if i + 1 < input.len() && input[i + 1] == b'\n' => {
+        out.extend_from_slice(b"\r\n");
+        i += 2;
       }
-      // Standalone CR is stripped (used for overwriting lines).
-      // CR followed by LF (\r\n) is kept as a normal line ending.
-      b'\r' => {
-        if i + 1 < input.len() && input[i + 1] == b'\n' {
-          output.push(b'\r');
-          output.push(b'\n');
-          i += 2;
-        } else {
-          i += 1;
-        }
-      }
+      b'\r' => i += 1,
+      0x1b if i + 1 >= input.len() => i += 1,
       0x1b => {
-        if i + 1 >= input.len() {
-          // Trailing ESC at end of chunk — drop it
-          i += 1;
-          continue;
-        }
         match input[i + 1] {
-          // CSI sequence: ESC [
           b'[' => {
-            let (is_sgr, seq_len) = parse_csi(&input[i..]);
-            if is_sgr {
-              // SGR (colors/styles) — keep it
-              output.extend_from_slice(&input[i..i + seq_len]);
+            let seq_end = skip_csi(&input[i..]);
+            // Keep SGR sequences (final byte 'm', no private marker '?'/'>'/'<')
+            let final_byte = input.get(i + seq_end - 1);
+            let has_private =
+              input.get(i + 2).is_some_and(|&b| matches!(b, b'?' | b'>' | b'<'));
+            if final_byte == Some(&b'm') && !has_private {
+              out.extend_from_slice(&input[i..i + seq_end]);
             }
-            // Non-SGR CSI — strip it
-            i += seq_len;
+            i += seq_end;
           }
-          // OSC sequence: ESC ]
-          b']' => {
-            i += skip_osc(&input[i..]);
-          }
-          // DCS (ESC P), PM (ESC ^), APC (ESC _)
-          b'P' | b'^' | b'_' => {
-            i += skip_string_sequence(&input[i..]);
-          }
-          // Fe sequences (ESC + 0x40..=0x5F except [ ] P ^ _ handled above)
-          // Fp sequences (ESC + 0x30..=0x3F, e.g., ESC 7, ESC 8)
-          // Fs sequences (ESC + 0x60..=0x7E, e.g., ESC c RIS)
-          0x30..=0x5F | 0x60..=0x7E => {
-            i += 2;
-          }
-          // nF sequences: ESC + intermediate bytes (0x20..=0x2F) + final byte
+          // OSC/DCS/PM/APC: string sequences terminated by BEL/ST
+          b']' | b'P' | b'^' | b'_' => i += skip_str_seq(&input[i..]),
+          // Two-byte ESC sequences (Fe/Fp/Fs)
+          0x30..=0x5F | 0x60..=0x7E => i += 2,
+          // nF: ESC + intermediate bytes (0x20..=0x2F) + final byte
           0x20..=0x2F => {
             i += 2;
             while i < input.len() && (0x20..=0x2F).contains(&input[i]) {
               i += 1;
             }
-            // Skip the final byte
             if i < input.len() && (0x30..=0x7E).contains(&input[i]) {
               i += 1;
             }
           }
-          // ESC followed by something unexpected — drop just the ESC
-          _ => {
-            i += 1;
-          }
+          _ => i += 1,
         }
       }
-      // Normal byte — keep it
       b => {
-        output.push(b);
+        out.push(b);
         i += 1;
       }
     }
   }
 
-  Cow::Owned(output)
+  Cow::Owned(out)
 }
 
-/// Parses a CSI sequence starting at `data[0] == ESC, data[1] == '['`.
-/// Returns `(is_sgr, total_length)` where `is_sgr` is true if the final byte
-/// is `m` (SGR sequence) and there are no private-mode markers (`?`, `>`, `<`).
-fn parse_csi(data: &[u8]) -> (bool, usize) {
-  debug_assert!(data.len() >= 2 && data[0] == 0x1b && data[1] == b'[');
-
+/// Returns the length of a CSI sequence (`ESC [` params final-byte).
+fn skip_csi(data: &[u8]) -> usize {
   let mut j = 2;
-  let mut has_private_marker = false;
-
-  // Check for private mode marker
   if j < data.len() && matches!(data[j], b'?' | b'>' | b'<') {
-    has_private_marker = true;
     j += 1;
   }
-
-  // Skip parameter bytes (0x30..=0x3F: digits, semicolons, etc.)
   while j < data.len() && (0x30..=0x3F).contains(&data[j]) {
     j += 1;
   }
-
-  // Skip intermediate bytes (0x20..=0x2F)
   while j < data.len() && (0x20..=0x2F).contains(&data[j]) {
     j += 1;
   }
-
-  // Final byte (0x40..=0x7E)
   if j < data.len() && (0x40..=0x7E).contains(&data[j]) {
-    let final_byte = data[j];
     j += 1;
-    let is_sgr = final_byte == b'm' && !has_private_marker;
-    (is_sgr, j)
-  } else {
-    // Malformed/incomplete CSI — consume what we've seen
-    (false, j)
   }
-}
-
-/// Skips an OSC sequence: ESC ] ... (terminated by BEL or ST).
-/// ST is either ESC \\ (0x1b 0x5c) or the C1 code 0x9c.
-fn skip_osc(data: &[u8]) -> usize {
-  debug_assert!(data.len() >= 2 && data[0] == 0x1b && data[1] == b']');
-
-  let mut j = 2;
-  while j < data.len() {
-    match data[j] {
-      0x07 => return j + 1,          // BEL terminator
-      0x9c => return j + 1,          // ST (C1)
-      0x1b if j + 1 < data.len() && data[j + 1] == b'\\' => return j + 2, // ST (ESC \)
-      _ => j += 1,
-    }
-  }
-  // Unterminated — consume everything
   j
 }
 
-/// Skips a DCS/PM/APC string sequence (ESC P / ESC ^ / ESC _) terminated by ST.
-fn skip_string_sequence(data: &[u8]) -> usize {
-  debug_assert!(
-    data.len() >= 2
-      && data[0] == 0x1b
-      && matches!(data[1], b'P' | b'^' | b'_')
-  );
-
+/// Skips an OSC/DCS/PM/APC string sequence terminated by BEL, ST (ESC \), or 0x9c.
+fn skip_str_seq(data: &[u8]) -> usize {
   let mut j = 2;
   while j < data.len() {
     match data[j] {
-      0x9c => return j + 1,          // ST (C1)
-      0x1b if j + 1 < data.len() && data[j + 1] == b'\\' => return j + 2, // ST (ESC \)
+      0x07 | 0x9c => return j + 1,
+      0x1b if data.get(j + 1) == Some(&b'\\') => return j + 2,
       _ => j += 1,
     }
   }
-  // Unterminated — consume everything
   j
 }
 
