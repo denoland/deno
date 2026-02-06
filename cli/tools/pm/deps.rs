@@ -666,6 +666,7 @@ impl DepManager {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: false,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;

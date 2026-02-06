@@ -1551,6 +1551,7 @@
     "parallel/test-worker-esm-missing-main.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
+    "parallel/test-worker-execargv-invalid.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
     "parallel/test-worker-message-port-infinite-message-loop.js": {},
@@ -1562,6 +1563,10 @@
     // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
+    // "parallel/test-worker-process-argv.js": {},
+    "parallel/test-worker-process-env.js": {},
+    // TODO(bartlomieju): this test just hangs
+    // "parallel/test-worker-process-env-shared.js": {},
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
