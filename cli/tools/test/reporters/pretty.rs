@@ -504,8 +504,9 @@ fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
             let seq_end = skip_csi(&input[i..]);
             // Keep SGR sequences (final byte 'm', no private marker '?'/'>'/'<')
             let final_byte = input.get(i + seq_end - 1);
-            let has_private =
-              input.get(i + 2).is_some_and(|&b| matches!(b, b'?' | b'>' | b'<'));
+            let has_private = input
+              .get(i + 2)
+              .is_some_and(|&b| matches!(b, b'?' | b'>' | b'<'));
             if final_byte == Some(&b'm') && !has_private {
               out.extend_from_slice(&input[i..i + seq_end]);
             }
@@ -514,7 +515,7 @@ fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
           // OSC/DCS/PM/APC: string sequences terminated by BEL/ST
           b']' | b'P' | b'^' | b'_' => i += skip_str_seq(&input[i..]),
           // Two-byte ESC sequences (Fe/Fp/Fs)
-          0x30..=0x5F | 0x60..=0x7E => i += 2,
+          0x30..=0x7E => i += 2,
           // nF: ESC + intermediate bytes (0x20..=0x2F) + final byte
           0x20..=0x2F => {
             i += 2;
