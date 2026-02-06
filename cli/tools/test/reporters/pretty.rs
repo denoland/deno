@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::io::IsTerminal;
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -288,12 +289,13 @@ impl TestReporter for PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
-    } else {
+    } else if std::io::stdout().is_terminal() {
       // We believe the cursor is right after "test name ...", but external
       // output (e.g. from native addons writing directly to fd 1) may have
       // moved it. Use \r to return to column 0 and re-write the test name
       // so the result line is always intact. For normal tests this harmlessly
-      // overwrites the same bytes.
+      // overwrites the same bytes. Only do this on a real terminal — on pipes
+      // \r is a literal byte that would produce doubled output.
       write!(&mut self.writer, "\r").ok();
       if self.parallel {
         write!(
