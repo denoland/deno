@@ -276,6 +276,7 @@ pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
   pub only: bool,
+  pub sanitize_only: bool,
   pub origin: String,
   pub location: TestLocation,
   pub sanitize_ops: bool,
@@ -937,20 +938,24 @@ fn compute_tests_to_run(
 ) -> (Vec<(&TestDescription, v8::Global<v8::Function>)>, bool) {
   let mut tests_to_run = Vec::with_capacity(descs.len());
   let mut used_only = false;
+  let mut has_only = false;
   for ((_, d), f) in descs.tests.iter().zip(test_functions) {
     if !filter.includes(&d.name) {
       continue;
     }
 
     // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
-    if used_only && !d.only {
+    if has_only && !d.only {
       continue;
     }
 
     // If this is the first "only: true" test we've seen, clear the other tests since they were
     // only: false.
-    if d.only && !used_only {
-      used_only = true;
+    if d.only && !has_only {
+      has_only = true;
+      if d.sanitize_only {
+        used_only = true;
+      }
       tests_to_run.clear();
     }
     tests_to_run.push((d, f));
@@ -1544,7 +1549,10 @@ async fn fetch_specifiers_with_test_mode(
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+    if matches!(
+      media_type,
+      MediaType::Unknown | MediaType::Dts | MediaType::Markdown
+    ) {
       *mode = TestMode::Documentation
     }
   }

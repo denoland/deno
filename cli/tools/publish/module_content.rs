@@ -92,6 +92,7 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
           MediaType::SourceMap
           | MediaType::Unknown
           | MediaType::Html
+          | MediaType::Markdown
           | MediaType::Sql
           | MediaType::Json
           | MediaType::Jsonc

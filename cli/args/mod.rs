@@ -1133,6 +1133,7 @@ impl CliOptions {
         "jsr.io:443",
         "deno.land:443",
         "esm.sh:443",
+        "raw.esm.sh:443",
         "cdn.jsdelivr.net:443",
         "raw.githubusercontent.com:443",
         "gist.githubusercontent.com:443",

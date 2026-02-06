@@ -24,7 +24,7 @@ function generateRandomBytes(size: number) {
     );
   }
 
-  const bytes = Buffer.allocUnsafe(size);
+  const bytes = Buffer.allocUnsafeSlow(size);
 
   //Work around for getRandomValues max generation
   if (size > MAX_RANDOM_VALUES) {

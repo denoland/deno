@@ -1148,8 +1148,8 @@ impl BundleLoadError {
       BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.error.as_kind(),
-            ModuleErrorKind::UnsupportedMediaType { .. },
+            e.original().as_module_error_kind(),
+            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
           ),
           _ => false,
         },
@@ -1329,6 +1329,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1685,6 +1686,7 @@ fn media_type_to_loader(
     Json => esbuild_client::BuiltinLoader::Json,
     Jsonc => esbuild_client::BuiltinLoader::Text,
     Json5 => esbuild_client::BuiltinLoader::Text,
+    Markdown => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,

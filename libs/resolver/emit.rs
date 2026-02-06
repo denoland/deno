@@ -359,6 +359,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       | MediaType::Json
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html

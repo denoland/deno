@@ -65,16 +65,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.52.0", features = ["transpiling"] }
-deno_core = { version = "0.383.0" }
+deno_ast = { version = "=0.53.0", features = ["transpiling"] }
+deno_core = { version = "0.385.0" }
 
-deno_cache_dir = "=0.26.3"
-deno_doc = "=0.189.1"
+deno_cache_dir = "=0.27.0"
+deno_doc = "=0.190.1"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.106.0", default-features = false }
-deno_lint = "=0.82.0"
+deno_graph = { version = "=0.107.0", default-features = false }
+deno_lint = "=0.83.0"
 deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.3.0", features = ["module_specifier"] }
+deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.43.0"
 deno_path_util = "=0.6.4"
@@ -83,7 +83,7 @@ deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.108.0"
+eszip = "=0.109.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -140,7 +140,7 @@ node_shim = { version = "0.5.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-deno_tunnel = "0.8.0"
+deno_tunnel = "0.8.1"
 
 # widely used libraries
 anyhow = "1.0.57"
@@ -166,6 +166,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 color-print = "0.3.5"
+comrak = "0.29.0"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
@@ -314,10 +315,10 @@ crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
 dprint-core = "=0.67.4"
-dprint-plugin-json = "=0.21.0"
+dprint-plugin-json = "=0.21.1"
 dprint-plugin-jupyter = "=0.2.1"
 dprint-plugin-markdown = "=0.20.0"
-dprint-plugin-typescript = "=0.95.13"
+dprint-plugin-typescript = "=0.95.15"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.12.6"
