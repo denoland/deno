@@ -1,10 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use futures::io::AllowStdIo;
-use futures::io::BufReader;
+#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout)]
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+
+use futures::io::AllowStdIo;
+use futures::io::BufReader;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -154,8 +154,9 @@ pub struct ModuleSource {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   #[test]
   fn file_format_parse() {

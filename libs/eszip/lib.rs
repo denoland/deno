@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -10,6 +10,8 @@ pub mod v2;
 
 use std::sync::Arc;
 
+pub use deno_ast;
+pub use deno_graph;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
@@ -25,9 +27,6 @@ pub use crate::v1::EszipV1;
 pub use crate::v2::EszipRelativeFileBaseUrl;
 pub use crate::v2::EszipV2;
 pub use crate::v2::FromGraphOptions;
-
-pub use deno_ast;
-pub use deno_graph;
 
 pub enum Eszip {
   V1(EszipV1),
@@ -222,11 +221,12 @@ pub enum ModuleKind {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use futures::StreamExt;
   use futures::TryStreamExt;
   use futures::io::AllowStdIo;
   use futures::stream;
+
+  use super::*;
 
   #[tokio::test]
   async fn parse_v1() {

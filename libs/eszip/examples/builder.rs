@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+#![allow(clippy::print_stdout)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

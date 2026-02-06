@@ -11,26 +11,6 @@ https://eszip-viewer.deno.dev/ is a tool for inspecting eszip files.
 
 [module_graph]: https://docs.rs/deno_graph/latest/deno_graph/struct.ModuleGraph.html
 
-## Examples
-
-### Creating an eszip
-
-```shell
-cargo run --example eszip_builder https://deno.land/std/http/file_server.ts file_server.eszip2
-```
-
-### Viewing the contents of an eszip
-
-```shell
-cargo run --example eszip_viewer file_server.eszip2
-```
-
-### Loading the eszip into V8
-
-```shell
-cargo run --example eszip_load file_server.eszip2 https://deno.land/std/http/file_server.ts
-```
-
 ## File format
 
 The file format looks as follows:
@@ -58,11 +38,3 @@ SourceMaps:
 There is one optimization for empty source / source map entries. If both the
 offset and size are set to 0, no entry and no hash is present in the data
 sections for that module.
-
-## Development
-
-When opening a PR make sure to rebuild Wasm by running:
-
-```
-deno task build
-```
