@@ -42,7 +42,7 @@ fn main() {
       strategy: Box::<TestPerFileCollectionStrategy>::default(),
       filter_override: None,
     },
-    RunOptions { parallel: true },
+    RunOptions::default(),
     run_test,
   )
 }
@@ -53,7 +53,7 @@ fn run_test(test: &CollectedTest) -> TestResult {
       async move {
         if test.name.starts_with("specs::config_changes::") {
           config_changes_test(test).await;
-          TestResult::Passed
+          TestResult::Passed { duration: None }
         } else if test.name.starts_with("specs::transforms::") {
           transforms_test(test).await
         } else {
@@ -324,7 +324,7 @@ async fn transforms_test(test: &CollectedTest) -> TestResult {
       format!("{}{}", original_section.emit(), expected_section.emit()),
     )
     .unwrap();
-    TestResult::Passed
+    TestResult::Passed { duration: None }
   } else {
     let mut sub_tests = Vec::with_capacity(2);
     sub_tests.push(SubTestResult {
@@ -350,7 +350,10 @@ async fn transforms_test(test: &CollectedTest) -> TestResult {
         assert_eq!(lockfile.as_json_string().trim(), actual_text.trim());
       })),
     });
-    TestResult::SubTests(sub_tests)
+    TestResult::SubTests {
+      duration: None,
+      sub_tests,
+    }
   }
 }
 

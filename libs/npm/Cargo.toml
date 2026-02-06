@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 description = "npm registry client and dependency resolver used in the Deno CLI"
 
+[lib]
+path = "./lib.rs"
+
 [features]
 tracing = []
 

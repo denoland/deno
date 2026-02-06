@@ -33,6 +33,7 @@ members = [
   "ext/webstorage",
   "libs/config",
   "libs/crypto",
+  "libs/eszip",
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
@@ -83,7 +84,6 @@ deno_task_shell = "=0.28.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.109.0"
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -136,6 +136,7 @@ deno_runtime = { version = "0.238.0", path = "./runtime" }
 deno_snapshots = { version = "0.45.0", path = "./cli/snapshot" }
 deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.25.0" }
 deno_typescript_go_client_rust = { version = "0.12.0", path = "./libs/typescript_go_client" }
+eszip = { version = "=0.109.0", path = "./libs/eszip" }
 napi_sym = { version = "0.160.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.68.0", path = "./libs/node_resolver" }
 node_shim = { version = "0.5.0", path = "libs/node_shim" }
