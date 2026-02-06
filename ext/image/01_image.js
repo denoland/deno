@@ -244,6 +244,8 @@ function createImageBitmap(
         mimeType = 5;
       } else if (mimeTypeString === "image/webp") {
         mimeType = 6;
+      } else if (mimeTypeString === "image/avif") {
+        mimeType = 7;
       } else {
         return PromiseReject(
           new DOMException(

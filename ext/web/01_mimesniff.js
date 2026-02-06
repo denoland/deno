@@ -22,6 +22,7 @@ const {
   Uint8Array,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeIncludes,
+  MathMin,
 } = primordials;
 
 import {
@@ -395,10 +396,6 @@ const ImageTypePatternTable = [
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm
- * NOTE: Some browsers have implementation-defined image formats.
- * For example, The AVIF image format is supported by all browsers today.
- * However, the standardization seems to have hard going.
- * See: https://github.com/whatwg/mimesniff/issues/143
  * @param {Uint8Array} input
  * @returns {string | undefined}
  */
@@ -420,6 +417,111 @@ function imageTypePatternMatchingAlgorithm(input) {
 }
 
 /**
+ * https://aomediacodec.github.io/av1-avif/#image-and-image-collection-brand
+ * @type {Map<number, number>}
+ */
+const MP4_MAJOR_BRAND = new SafeMap([
+  [0x61766966, 1], // avif
+  [0x61766973, 2], // avis
+]);
+
+/**
+ * Blink: 144
+ * https://source.chromium.org/chromium/chromium/src/+/68cb614cb19c91d08da59d9a7a2f1c8dc671e9cc:third_party/blink/renderer/platform/image-decoders/avif/avif_image_decoder.cc;l=488-500
+ * Gecko: 512
+ * https://github.com/mozilla-firefox/firefox/blob/e1eada69e2ddd86a398ccb141dcbf772254162eb/toolkit/components/mediasniffer/nsMediaSniffer.cpp#L32-L33
+ * WebKit: 100
+ * https://github.com/WebKit/WebKit/blob/c9d41ab32a016631dd0b0c23249ea274a27d2046/Source/WebCore/platform/graphics/cg/ImageDecoderCG.cpp#L731-L740
+ *
+ * The structure of FileTypeBox is no guarantee that present at the beginning of the file.
+ * So we need to traverse until we find a match for a particular signature, with some upper bound.
+ */
+const MAX_BYTES_SNIFFED = 64;
+
+/**
+ * AVIF is based on ISO-BMFF structures to generate a HEIF/MIAF compatible file,
+ * so we can use the same logic as MP4 to sniff the file format.
+ *
+ * https://mimesniff.spec.whatwg.org/#signature-for-mp4
+ * @param {Uint8Array} byteSequence
+ * @param {number} maxAttemptLength
+ * @returns {Map<number, number> | false}
+ */
+function matchesMP4(byteSequence, maxAttemptLength) {
+  // 3. Assert 12 bytes to determine major brand later
+  if (maxAttemptLength < 12) {
+    return false;
+  }
+  // 4.
+  const boxSize = (
+    (byteSequence[0] << 24) |
+    (byteSequence[1] << 16) |
+    (byteSequence[2] << 8) |
+    byteSequence[3]
+  ) >>> 0;
+  // 5.
+  if (maxAttemptLength < boxSize || boxSize % 4 !== 0) {
+    return false;
+  }
+  // 6. Check 4 bytes box type
+  // 0x66 0x74 0x79 0x70 ("ftyp")
+  if (
+    byteSequence[4] !== 0x66 ||
+    byteSequence[5] !== 0x74 ||
+    byteSequence[6] !== 0x79 ||
+    byteSequence[7] !== 0x70
+  ) {
+    return false;
+  }
+  // 7. Assert 4 bytes ("<major brand>")
+  const brandInt32 = (
+    (byteSequence[8] << 24) |
+    (byteSequence[9] << 16) |
+    (byteSequence[10] << 8) |
+    byteSequence[11]
+  ) >>> 0;
+  if (MapPrototypeHas(MP4_MAJOR_BRAND, brandInt32)) {
+    return MapPrototypeGet(MP4_MAJOR_BRAND, brandInt32);
+  }
+  // 8. Skip minor version (4 bytes)
+  let bytesRead = 16;
+  // 9. Check compatible brands
+  while (bytesRead < boxSize) {
+    const compatibleBrandInt32 = (
+      (byteSequence[bytesRead] << 24) |
+      (byteSequence[bytesRead + 1] << 16) |
+      (byteSequence[bytesRead + 2] << 8) |
+      byteSequence[bytesRead + 3]
+    ) >>> 0;
+    const brand = MapPrototypeGet(MP4_MAJOR_BRAND, compatibleBrandInt32);
+    if (brand) {
+      return brand;
+    }
+    bytesRead += 4;
+  }
+  // 10.
+  return false;
+}
+
+/**
+ * @param {Uint8Array} byteSequence
+ * @returns {string | null}
+ */
+function getAvifMimeType(byteSequence) {
+  const length = TypedArrayPrototypeGetLength(byteSequence);
+  const maxAttemptLength = MathMin(length, MAX_BYTES_SNIFFED);
+  const brand = matchesMP4(byteSequence, maxAttemptLength);
+  if (brand === false) {
+    return null;
+  }
+  /**
+   * TODO: return a unique number to avoid conversion from string to number in
+   * {@link file://./../image/01_image.js}
+   */
+  return "image/avif";
+}
+
+/**
  * Ref: https://mimesniff.spec.whatwg.org/#rules-for-sniffing-images-specifically
  * @param {string | null} mimeTypeString
  * @param {Uint8Array} byteSequence
@@ -436,6 +538,15 @@ function sniffImage(mimeTypeString, byteSequence) {
   const imageTypeMatched = imageTypePatternMatchingAlgorithm(byteSequence);
   if (imageTypeMatched !== undefined) {
     return imageTypeMatched;
+  }
+
+  // NOTE: Some browsers have implementation-defined image formats.
+  // For example, The AVIF image format is supported by all browsers today.
+  // However, the mime sniffing standardization seems to have hard going.
+  // See: https://github.com/whatwg/mimesniff/issues/143
+  const avifMimeType = getAvifMimeType(byteSequence);
+  if (avifMimeType !== null) {
+    return avifMimeType;
   }
 
   return mimeTypeString;
