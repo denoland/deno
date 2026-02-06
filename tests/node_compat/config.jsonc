@@ -1157,6 +1157,7 @@
     "parallel/test-stdin-pipe-resume.js": {},
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
+    "parallel/test-stdin-script-child.js": {},
     "parallel/test-stdio-pipe-access.js": {},
     "parallel/test-stdio-pipe-redirect.js": {},
     "parallel/test-stdio-pipe-stderr.js": {
