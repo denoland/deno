@@ -47,6 +47,7 @@ hyper-util.workspace = true
 idna.workspace = true
 ipnetwork.workspace = true
 libc.workspace = true
+libuvrust.workspace = true
 libz-sys.workspace = true
 log.workspace = true
 node_resolver.workspace = true

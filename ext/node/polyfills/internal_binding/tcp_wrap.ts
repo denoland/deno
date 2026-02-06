@@ -27,7 +27,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_net_connect_tcp } from "ext:core/ops";
+import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
 import { core, primordials } from "ext:core/mod.js";
 const { internalFdSymbol } = core;
@@ -38,11 +38,19 @@ import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kArrayBufferOffset,
+  kBytesWritten,
+  kReadBytesOrError,
+  kStreamBaseField,
+  LibuvStreamWrap,
+  ShutdownWrap,
+  streamBaseState,
+  WriteWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import {
   ceilPowOf2,
@@ -50,6 +58,7 @@ import {
   MAX_ACCEPT_BACKOFF_DELAY,
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { Buffer } from "node:buffer";
 
 /** The type of TCP socket. */
 enum socketType {
@@ -107,6 +116,11 @@ export class TCP extends ConnectionWrap {
 
   #netPermToken?: object | undefined;
 
+  // Native libuv TCP handle
+  #native: any;
+  // True when using the native libuv path (bind/listen/accept)
+  #useNative = false;
+
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
@@ -132,6 +146,10 @@ export class TCP extends ConnectionWrap {
     }
 
     super(provider, conn);
+
+    // Create native libuv TCP handle
+    this.#native = new NativeTCP(type);
+    this.#native.setOwner();
 
     // TODO(cmorten): the handling of new connections and construction feels
     // a little off. Suspect duplicating in some fashion.
@@ -168,7 +186,10 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   bind(address: string, port: number): number {
-    return this.#bind(address, port, 0);
+    this.#address = address;
+    this.#port = port;
+    this.#useNative = true;
+    return this.#native.bind(address, port);
   }
 
   /**
@@ -177,8 +198,11 @@ export class TCP extends ConnectionWrap {
    * @param port The port to bind to
    * @return An error status code.
    */
-  bind6(address: string, port: number, flags: number): number {
-    return this.#bind(address, port, flags);
+  bind6(address: string, port: number, _flags: number): number {
+    this.#address = address;
+    this.#port = port;
+    this.#useNative = true;
+    return this.#native.bind6(address, port);
   }
 
   /**
@@ -209,37 +233,148 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   listen(backlog: number): number {
-    this.#backlog = ceilPowOf2(backlog + 1);
-
-    const listenOptions = {
-      hostname: this.#address!,
-      port: this.#port!,
-      transport: "tcp" as const,
-    };
-
-    let listener;
-
-    try {
-      listener = Deno.listen(listenOptions);
-    } catch (e) {
-      if (e instanceof Deno.errors.NotCapable) {
-        throw e;
-      }
-      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    if (!this.#useNative) {
+      return this.#listenLegacy(backlog);
     }
 
-    const address = listener.addr as Deno.NetAddr;
-    this.#address = address.hostname;
-    this.#port = address.port;
-    this.#listener = listener;
+    this.#backlog = ceilPowOf2(backlog + 1);
 
-    // TODO(kt3k): Delays the accept() call 2 ticks. Deno.Listener can't be closed
-    // synchronously when accept() is called. By delaying the accept() call,
-    // the user can close the server synchronously in the callback of listen().
-    // This workaround enables `npm:detect-port` to work correctly.
-    // Remove these nextTick calls when the below issue resolved:
-    // https://github.com/denoland/deno/issues/25480
-    nextTick(nextTick, () => this.#accept());
+    const self = this;
+    this.#native.onconnection = function (status: number) {
+      if (status !== 0) {
+        try {
+          self.onconnection!(status, undefined);
+        } catch {
+          // swallow callback errors.
+        }
+        return;
+      }
+
+      self.#connections++;
+      const clientHandle = new TCP(socketType.SOCKET);
+      clientHandle.#useNative = true;
+      self.#native.accept(clientHandle.#native);
+      clientHandle.#native.setOwner();
+
+      try {
+        self.onconnection!(0, clientHandle);
+      } catch {
+        // swallow callback errors.
+      }
+    };
+
+    return this.#native.listen(this.#backlog);
+  }
+
+  override readStart(): number {
+    if (!this.#useNative || !this.#native) {
+      return super.readStart();
+    }
+
+    this.reading = true;
+    const self = this;
+    this.#native.onread = function (
+      nread: number,
+      buf: Uint8Array | undefined,
+    ) {
+      streamBaseState[kReadBytesOrError] = nread;
+      if (nread > 0) {
+        self.bytesRead += nread;
+      }
+      streamBaseState[kArrayBufferOffset] = 0;
+
+      try {
+        self.onread!(buf!, nread);
+      } catch {
+        // swallow callback errors.
+      }
+
+      if (nread < 0) {
+        self.reading = false;
+      }
+    };
+
+    return this.#native.readStart();
+  }
+
+  override readStop(): number {
+    if (!this.#useNative || !this.#native) {
+      return super.readStop();
+    }
+
+    this.reading = false;
+    return this.#native.readStop();
+  }
+
+  override writeBuffer(
+    req: WriteWrap<LibuvStreamWrap>,
+    data: Uint8Array,
+  ): number {
+    if (!this.#useNative || !this.#native) {
+      return super.writeBuffer(req, data);
+    }
+
+    const ret = this.#native.writeBuffer(data);
+    streamBaseState[kBytesWritten] = data.byteLength;
+    this.bytesWritten += data.byteLength;
+
+    // Simulate async completion like Node.js
+    queueMicrotask(() => {
+      try {
+        req.oncomplete(ret === 0 ? 0 : codeMap.get("UNKNOWN")!);
+      } catch {
+        // swallow callback errors.
+      }
+    });
+
+    return 0;
+  }
+
+  override writev(
+    req: WriteWrap<LibuvStreamWrap>,
+    chunks: Buffer[] | (string | Buffer)[],
+    allBuffers: boolean,
+  ): number {
+    if (!this.#useNative) {
+      return super.writev(req, chunks, allBuffers);
+    }
+
+    // For native path, concat all chunks and write as single buffer
+    const count = allBuffers ? chunks.length : chunks.length >> 1;
+    const buffers: Buffer[] = new Array(count);
+
+    if (!allBuffers) {
+      for (let i = 0; i < count; i++) {
+        const chunk = chunks[i * 2];
+        if (Buffer.isBuffer(chunk)) {
+          buffers[i] = chunk;
+        } else {
+          const encoding: string = chunks[i * 2 + 1] as string;
+          buffers[i] = Buffer.from(chunk as string, encoding);
+        }
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        buffers[i] = chunks[i] as Buffer;
+      }
+    }
+
+    // deno-lint-ignore prefer-primordials
+    return this.writeBuffer(req, Buffer.concat(buffers));
+  }
+
+  override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
+    if (!this.#useNative) {
+      return super.shutdown(req);
+    }
+
+    // For native libuv, shutdown just signals write-side done.
+    // Don't close the handle - HandleWrap.close() does that.
+    try {
+      req.oncomplete(0);
+    } catch {
+      // swallow callback errors.
+    }
 
     return 0;
   }
@@ -309,6 +444,10 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
+    if (this.#useNative) {
+      return this.#native.setNoDelay(noDelay);
+    }
+
     if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
       this[kStreamBaseField].setNoDelay(noDelay);
     }
@@ -341,26 +480,34 @@ export class TCP extends ConnectionWrap {
   }
 
   /**
-   * Bind to an IPv4 or IPv6 address.
-   * @param address The hostname to bind to.
-   * @param port The port to bind to
-   * @param _flags
-   * @return An error status code.
+   * Legacy listen using Deno.listen.
    */
-  #bind(address: string, port: number, _flags: number): number {
-    // Deno doesn't currently separate bind from connect etc.
-    // REF:
-    // - https://doc.deno.land/deno/stable/~/Deno.connect
-    // - https://doc.deno.land/deno/stable/~/Deno.listen
-    //
-    // This also means we won't be connecting from the specified local address
-    // and port as providing these is not an option in Deno.
-    // REF:
-    // - https://doc.deno.land/deno/stable/~/Deno.ConnectOptions
-    // - https://doc.deno.land/deno/stable/~/Deno.ListenOptions
+  #listenLegacy(backlog: number): number {
+    this.#backlog = ceilPowOf2(backlog + 1);
 
-    this.#address = address;
-    this.#port = port;
+    const listenOptions = {
+      hostname: this.#address!,
+      port: this.#port!,
+      transport: "tcp" as const,
+    };
+
+    let listener;
+
+    try {
+      listener = Deno.listen(listenOptions);
+    } catch (e) {
+      if (e instanceof Deno.errors.NotCapable) {
+        throw e;
+      }
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
+
+    const address = listener.addr as Deno.NetAddr;
+    this.#address = address.hostname;
+    this.#port = address.port;
+    this.#listener = listener;
+
+    nextTick(nextTick, () => this.#accept());
 
     return 0;
   }
@@ -427,7 +574,7 @@ export class TCP extends ConnectionWrap {
     this.#accept();
   }
 
-  /** Accept new connections. */
+  /** Accept new connections (legacy path). */
   async #accept(): Promise<void> {
     if (this.#closed) {
       return;
@@ -491,7 +638,19 @@ export class TCP extends ConnectionWrap {
     this.#connections = 0;
     this.#acceptBackoffDelay = undefined;
 
-    if (this.provider === providerType.TCPSERVERWRAP) {
+    // Close native libuv handle after pending writes flush.
+    // uv_run processes pending writes each event loop tick,
+    // setTimeout(0) ensures close runs after that.
+    if (this.#native) {
+      const native = this.#native;
+      this.#native = null;
+      setTimeout(() => native.close(), 0);
+    }
+
+    if (
+      !this.#useNative &&
+      this.provider === providerType.TCPSERVERWRAP
+    ) {
       try {
         this.#listener.close();
       } catch {
