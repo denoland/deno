@@ -14,7 +14,7 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   AbortError,
-  denoErrorToNodeError,
+  denoWriteFileErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   constants,
@@ -134,7 +134,7 @@ export function writeFile(
         signal,
       );
     } catch (e) {
-      error = denoErrorToNodeError(e as Error, { syscall: "write" });
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
@@ -191,7 +191,7 @@ export function writeFileSync(
       encoding,
     );
   } catch (e) {
-    error = denoErrorToNodeError(e as Error, { syscall: "write" });
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
     // Make sure to close resource
     if (!isRid && file) file.close();
