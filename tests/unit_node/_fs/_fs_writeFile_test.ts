@@ -134,12 +134,16 @@ Deno.test(
   "Data is written to correct file encodings",
   async function testCorrectWriteUsingDifferentEncodings() {
     const encodings = [
-      ["hex", "68656c6c6f20776f726c64"],
-      ["HEX", "68656c6c6f20776f726c64"],
-      ["base64", "aGVsbG8gd29ybGQ="],
-      ["BASE64", "aGVsbG8gd29ybGQ="],
-      ["utf8", "hello world"],
-      ["utf-8", "hello world"],
+      ["hex", "68656c6c6f20776f726c642121212121"],
+      ["HEX", "68656c6c6f20776f726c642121212121"],
+      ["base64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["BASE64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["utf8", "hello world!!!!!"],
+      ["utf-8", "hello world!!!!!"],
+      ["utf16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["utf-16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["ucs2", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["latin1", "hello world!!!!!"],
     ];
 
     for (const [encoding, value] of encodings) {
@@ -155,7 +159,7 @@ Deno.test(
       const data = await Deno.readFile("_fs_writeFile_test_file.txt");
       await Deno.remove("_fs_writeFile_test_file.txt");
       assertEquals(res, null);
-      assertEquals(decoder.decode(data), "hello world");
+      assertEquals(decoder.decode(data), "hello world!!!!!");
     }
   },
 );
@@ -284,12 +288,16 @@ Deno.test(
   "Data is written to correct file encodings",
   function testCorrectWriteSyncUsingDifferentEncodings() {
     const encodings = [
-      ["hex", "68656c6c6f20776f726c64"],
-      ["HEX", "68656c6c6f20776f726c64"],
-      ["base64", "aGVsbG8gd29ybGQ="],
-      ["BASE64", "aGVsbG8gd29ybGQ="],
-      ["utf8", "hello world"],
-      ["utf-8", "hello world"],
+      ["hex", "68656c6c6f20776f726c642121212121"],
+      ["HEX", "68656c6c6f20776f726c642121212121"],
+      ["base64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["BASE64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["utf8", "hello world!!!!!"],
+      ["utf-8", "hello world!!!!!"],
+      ["utf16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["utf-16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["ucs2", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["latin1", "hello world!!!!!"],
     ];
 
     for (const [encoding, value] of encodings) {
@@ -298,7 +306,7 @@ Deno.test(
 
       const data = Deno.readFileSync(file);
       Deno.removeSync(file);
-      assertEquals(decoder.decode(data), "hello world");
+      assertEquals(decoder.decode(data), "hello world!!!!!");
     }
   },
 );
