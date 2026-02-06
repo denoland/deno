@@ -1,0 +1,44 @@
+# original
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@^1.0.0"
+      ]
+    }
+  }
+}
+
+# add nested npm overrides
+{
+  "packageJson": {
+    "dependencies": ["npm:foo@^1.0.0"]
+  },
+  "npmOverrides": {
+    "foo": {
+      ".": "1.5.0",
+      "bar": "2.0.0"
+    },
+    "baz@^1.0.0": "1.2.3"
+  }
+}
+
+# nested npm overrides should be serialized correctly
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@1"
+      ],
+      "overrides": {
+        "baz@^1.0.0": "1.2.3",
+        "foo": {
+          ".": "1.5.0",
+          "bar": "2.0.0"
+        }
+      }
+    }
+  }
+}
