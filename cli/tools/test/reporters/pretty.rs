@@ -106,6 +106,15 @@ impl PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
+    } else {
+      write!(&mut self.writer, "\r").ok();
+      write!(
+        &mut self.writer,
+        "{}{} ...",
+        "  ".repeat(description.level),
+        description.name
+      )
+      .ok();
     }
 
     if !self.parallel {
@@ -279,6 +288,25 @@ impl TestReporter for PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
+    } else {
+      // We believe the cursor is right after "test name ...", but external
+      // output (e.g. from native addons writing directly to fd 1) may have
+      // moved it. Use \r to return to column 0 and re-write the test name
+      // so the result line is always intact. For normal tests this harmlessly
+      // overwrites the same bytes.
+      write!(&mut self.writer, "\r").ok();
+      if self.parallel {
+        write!(
+          &mut self.writer,
+          "{}",
+          colors::gray(format!(
+            "{} => ",
+            to_relative_path_or_remote_url(&self.cwd, &description.origin)
+          ))
+        )
+        .ok();
+      }
+      write!(&mut self.writer, "{} ...", description.name).ok();
     }
 
     let status = match result {
