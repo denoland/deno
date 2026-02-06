@@ -1382,6 +1382,15 @@ const ci = {
           name: "Test libs",
           run: `cargo test --locked ${libTestPackageArgs}`,
         },
+        // cancel all jobs on failure
+        {
+          name: "Cancel on failure",
+          if: "failure() && github.event_name == 'pull_request'",
+          run: "gh run cancel ${{ github.run_id }}",
+          env: {
+            GITHUB_TOKEN: "${{ github.token }}",
+          },
+        },
       ]),
     },
     "publish-canary": {

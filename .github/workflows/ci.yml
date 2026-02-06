@@ -933,6 +933,11 @@ jobs:
       - name: Test libs
         run: cargo test --locked -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
         if: '!(matrix.skip)'
+      - name: Cancel on failure
+        if: '!(matrix.skip) && (failure() && github.event_name == ''pull_request'')'
+        run: 'gh run cancel ${{ github.run_id }}'
+        env:
+          GITHUB_TOKEN: '${{ github.token }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-24.04
