@@ -17,11 +17,11 @@ Deno.describe("suite", () => {
     logs.push("afterEach");
   });
 
-  Deno.it("test 1", () => {
+  Deno.test("test 1", () => {
     logs.push("test 1");
   });
 
-  Deno.it("test 2", () => {
+  Deno.test("test 2", () => {
     logs.push("test 2");
   });
 
@@ -34,7 +34,7 @@ Deno.describe("suite", () => {
       logs.push("nested afterEach");
     });
 
-    Deno.it("test 3", () => {
+    Deno.test("test 3", () => {
       logs.push("test 3");
     });
   });

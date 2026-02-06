@@ -210,9 +210,19 @@ function testInner(
     return;
   }
 
-  // Inside a describe() block, Deno.test() behaves like Deno.it()
+  // Inside a describe() block, collect as a suite child
   if (currentSuite !== null) {
-    return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides);
+    const { name, fn, options } = parseBddArgs(
+      nameOrFnOrOptions,
+      optionsOrFn,
+      maybeFn,
+      overrides,
+    );
+    ArrayPrototypePush(currentSuite.children, {
+      type: "test",
+      definition: { name, fn, options },
+    });
+    return;
   }
 
   let testDesc;
@@ -751,45 +761,6 @@ describe.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
 
 describe.skip = describe.ignore;
 
-function itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
-  // No-op if we're not running in `deno test` subcommand.
-  if (typeof op_register_test !== "function") {
-    return;
-  }
-
-  const { name, fn, options } = parseBddArgs(
-    nameOrFnOrOptions,
-    optionsOrFn,
-    maybeFn,
-    overrides,
-  );
-
-  if (currentSuite !== null) {
-    // Inside a describe block: add to suite's children
-    ArrayPrototypePush(currentSuite.children, {
-      type: "test",
-      definition: { name, fn, options },
-    });
-  } else {
-    // Top-level it(): delegate to Deno.test()
-    testInner({ name, fn, ...options });
-  }
-}
-
-function it(nameOrFnOrOptions, optionsOrFn, maybeFn) {
-  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
-}
-
-it.only = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
-  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
-};
-
-it.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
-  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { ignore: true });
-};
-
-it.skip = it.ignore;
-
 function bddHook(hookType, suiteKey) {
   return function (fn) {
     if (currentSuite) {
@@ -807,7 +778,6 @@ const bddAfterEach = bddHook("afterEach", "afterEachFns");
 
 globalThis.Deno.test = test;
 globalThis.Deno.describe = describe;
-globalThis.Deno.it = it;
 globalThis.Deno.beforeEach = bddBeforeEach;
 globalThis.Deno.afterEach = bddAfterEach;
 globalThis.Deno.beforeAll = bddBeforeAll;

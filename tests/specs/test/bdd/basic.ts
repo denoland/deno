@@ -1,9 +1,9 @@
 Deno.describe("math", () => {
-  Deno.it("adds numbers", () => {
+  Deno.test("adds numbers", () => {
     if (1 + 1 !== 2) throw new Error("fail");
   });
 
-  Deno.it("subtracts numbers", () => {
+  Deno.test("subtracts numbers", () => {
     if (2 - 1 !== 1) throw new Error("fail");
   });
 });

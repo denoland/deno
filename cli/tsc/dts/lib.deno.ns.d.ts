@@ -1263,28 +1263,14 @@ declare namespace Deno {
   }
 
   /**
-   * Options for a BDD-style it block.
-   *
-   * @category Testing
-   */
-  export interface ItDefinition {
-    /** The name of the test. */
-    name?: string;
-    /** The test function. */
-    fn?: () => void | Promise<void>;
-    /** If truthy, the test will be ignored/skipped. */
-    ignore?: boolean;
-    /** If truthy, only this test (and other `only` tests) will run. */
-    only?: boolean;
-  }
-
-  /**
    * Register a BDD-style test suite using `Deno.describe()`. The suite body
-   * is executed synchronously to collect `it()` tests and nested `describe()` blocks.
+   * is executed synchronously to collect tests and nested `describe()` blocks.
+   * Use `Deno.test()` inside a `describe()` block to register tests as steps
+   * of the suite.
    *
    * ```ts
    * Deno.describe("math", () => {
-   *   Deno.it("adds numbers", () => {
+   *   Deno.test("adds numbers", () => {
    *     if (1 + 1 !== 2) throw new Error("fail");
    *   });
    * });
@@ -1309,44 +1295,6 @@ declare namespace Deno {
 
   /** @category Testing */
   export const describe: DenoDescribe;
-
-  /**
-   * Register a BDD-style test case using `Deno.it()`. When used inside a
-   * `Deno.describe()` block, the test becomes a step of the suite. When used
-   * at the top level, it behaves like `Deno.test()`.
-   *
-   * ```ts
-   * Deno.describe("math", () => {
-   *   Deno.it("adds numbers", () => {
-   *     if (1 + 1 !== 2) throw new Error("fail");
-   *   });
-   * });
-   *
-   * // Top-level it() works like Deno.test()
-   * Deno.it("standalone test", () => {
-   *   // ...
-   * });
-   * ```
-   *
-   * @category Testing
-   */
-  export interface DenoIt {
-    (name: string, fn: () => void | Promise<void>): void;
-    (fn: () => void | Promise<void>): void;
-    (options: ItDefinition): void;
-    (name: string, options: Omit<ItDefinition, "fn" | "name">, fn: () => void | Promise<void>): void;
-    (options: Omit<ItDefinition, "fn">, fn: () => void | Promise<void>): void;
-
-    /** Run only this test and other `only` tests. */
-    only: DenoIt;
-    /** Skip this test. */
-    ignore: DenoIt;
-    /** Skip this test. */
-    skip: DenoIt;
-  }
-
-  /** @category Testing */
-  export const it: DenoIt;
 
   /** Register a function to run before each test in the current `describe()` scope.
    * When used outside a `describe()`, delegates to `Deno.test.beforeEach()`.

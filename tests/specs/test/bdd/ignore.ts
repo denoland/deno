@@ -1,18 +1,18 @@
 Deno.describe("suite", () => {
-  Deno.it("runs", () => {
+  Deno.test("runs", () => {
     // this runs
   });
 
-  Deno.it.ignore("skipped via ignore", () => {
+  Deno.test.ignore("skipped via ignore", () => {
     throw new Error("should not run");
   });
 
-  Deno.it.skip("skipped via skip", () => {
+  Deno.test.ignore("skipped via skip", () => {
     throw new Error("should not run");
   });
 
   Deno.describe.skip("skipped suite", () => {
-    Deno.it("should not run", () => {
+    Deno.test("should not run", () => {
       throw new Error("should not run");
     });
   });

@@ -574,11 +574,6 @@ const finalDenoNs = {
     ignore: () => {},
     skip: () => {},
   }),
-  it: ObjectAssign(() => {}, {
-    only: () => {},
-    ignore: () => {},
-    skip: () => {},
-  }),
   beforeEach: () => {},
   afterEach: () => {},
   beforeAll: () => {},

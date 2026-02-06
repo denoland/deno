@@ -1,10 +1,12 @@
 Deno.describe("outer", () => {
-  Deno.it("outer test", () => {
+  Deno.test("outer test", () => {
+    // deno-lint-ignore no-constant-condition
     if (true !== true) throw new Error("fail");
   });
 
   Deno.describe("inner", () => {
-    Deno.it("inner test", () => {
+    Deno.test("inner test", () => {
+      // deno-lint-ignore no-constant-condition
       if (1 + 1 !== 2) throw new Error("fail");
     });
   });
