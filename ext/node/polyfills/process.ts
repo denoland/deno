@@ -680,12 +680,6 @@ process.exit = exit;
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
 
-/** https://nodejs.org/api/process.html#processopenStdin */
-process.openStdin = () => {
-  process.stdin.resume();
-  return process.stdin;
-};
-
 // NB(bartlomieju): this is a private API in Node.js, but there are packages like
 // `aws-iot-device-sdk-v2` that depend on it
 // https://github.com/denoland/deno/issues/30115
