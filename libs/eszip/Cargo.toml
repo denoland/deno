@@ -52,4 +52,5 @@ insta = "1.34.0"
 jsonc-parser.workspace = true
 pretty_assertions.workspace = true
 reqwest = { workspace = true, features = ["rustls-tls"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
