@@ -1289,8 +1289,6 @@ declare namespace Deno {
     only: DenoDescribe;
     /** Skip this suite. */
     ignore: DenoDescribe;
-    /** Skip this suite. */
-    skip: DenoDescribe;
   }
 
   /** @category Testing */

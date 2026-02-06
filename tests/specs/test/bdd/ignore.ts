@@ -11,7 +11,7 @@ Deno.describe("suite", () => {
     throw new Error("should not run");
   });
 
-  Deno.describe.skip("skipped suite", () => {
+  Deno.describe.ignore("skipped suite", () => {
     Deno.test("should not run", () => {
       throw new Error("should not run");
     });

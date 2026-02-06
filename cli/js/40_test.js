@@ -759,7 +759,6 @@ describe.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
   });
 };
 
-describe.skip = describe.ignore;
 
 function bddHook(hookType, suiteKey) {
   return function (fn) {
