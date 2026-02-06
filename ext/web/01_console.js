@@ -3907,7 +3907,8 @@ class Console {
       message,
     };
     ErrorCaptureStackTrace(err, this.trace);
-    this.error(err.stack);
+    this.#printFunc(err.stack, 4);
+    this.#printFunc("\n", 4);
   };
 
   // These methods are noops, but when the inspector is connected, they
