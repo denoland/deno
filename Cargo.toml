@@ -66,7 +66,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.53.0", features = ["transpiling"] }
-deno_core = { version = "0.383.0" }
+deno_core = { path = "../deno_core/core" }
 
 deno_cache_dir = "=0.27.0"
 deno_doc = "=0.190.1"
@@ -387,6 +387,7 @@ memmap2 = "0.9"
 # napi
 libloading = "0.7"
 libuv-sys-lite = "=1.48.2"
+libuvrust = { path = "../libuvrust", features = ["tokio"] }
 napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 

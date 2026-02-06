@@ -421,6 +421,7 @@ deno_core::extension!(deno_node,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
+    ops::libuv_stream::TCP,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -696,6 +697,7 @@ deno_core::extension!(deno_node,
     }
 
     state.put(AsyncId::default());
+
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,

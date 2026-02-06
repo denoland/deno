@@ -62,6 +62,7 @@ idna.workspace = true
 ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
+libuvrust.workspace = true
 libz-sys.workspace = true
 log.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
