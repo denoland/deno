@@ -8,7 +8,7 @@
 [CRON SERVER] Received: {"kind":"register","crons":[{"name":"other-cron","schedule":"*/5 * * * * *"}]}
 [CRON SERVER] Registered 1 crons
 [CRON SERVER] Cron names: other-cron
-[CRON SERVER] Invoked cron: test-cron
+[CRON SERVER] Invoking cron: test-cron
 [ISOLATE] test-cron executed
 [CRON SERVER] Received: {"kind":"result","name":"test-cron","success":true}
 [CRON SERVER] Result for test-cron: SUCCESS

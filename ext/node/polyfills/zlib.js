@@ -51,6 +51,7 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   ERR_TRAILING_JUNK_AFTER_STREAM_END,
+  ERR_ZLIB_INITIALIZATION_FAILED,
   ERR_ZSTD_INVALID_PARAM,
 } = errorCodes;
 
@@ -123,12 +124,12 @@ const {
   ZSTD_e_end,
 } = zlibConstants;
 
-export const constants = zlibConstants;
+export const constants = ObjectFreeze(zlibConstants);
 
 // Translation table for return codes.
 export const codes = {
   Z_OK: constants.Z_OK,
-  Z_STREAM_END: constants.Z_STREAM_EBROTLI_COMPRESSND,
+  Z_STREAM_END: constants.Z_STREAM_END,
   Z_NEED_DICT: constants.Z_NEED_DICT,
   Z_ERRNO: constants.Z_ERRNO,
   Z_STREAM_ERROR: constants.Z_STREAM_ERROR,
@@ -141,6 +142,8 @@ export const codes = {
 for (const ckey of ObjectKeys(codes)) {
   codes[codes[ckey]] = ckey;
 }
+
+ObjectFreeze(codes);
 
 function zlibBuffer(engine, buffer, callback) {
   validateFunction(callback, "callback");
@@ -225,8 +228,16 @@ function zlibOnError(message, errno, code) {
   const error = genericNodeError(message, { errno, code });
   error.errno = errno;
   error.code = code;
-  self.destroy(error);
+  // Set the error synchronously so sync operations can check it immediately
   self[kError] = error;
+
+  // Defer destroy to allow error listeners to be attached.
+  // In Node.js, zlib operations run on the libuv threadpool and callbacks
+  // are invoked asynchronously. Deno's implementation is synchronous, so
+  // we need to explicitly defer to match Node.js behavior.
+  process.nextTick(() => {
+    self.destroy(error);
+  });
 }
 
 const FLUSH_BOUND = [
@@ -465,7 +476,8 @@ function processChunkSync(self, chunk, flushFlag) {
     error = er;
   });
 
-  if (chunk instanceof DataView) {
+  // The native binding expects a Uint8Array
+  if (!isUint8Array(chunk)) {
     chunk = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
   }
 
@@ -539,6 +551,11 @@ function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
 
+  // The native binding expects a Uint8Array
+  if (!isUint8Array(chunk)) {
+    chunk = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+
   handle.buffer = chunk;
   handle.cb = cb;
   handle.availOutBefore = self._chunkSize - self._outOffset;
@@ -546,15 +563,23 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
 
-  handle.write(
-    flushFlag,
-    chunk, // in
-    0, // in_off
-    handle.availInBefore, // in_len
-    self._outBuffer, // out
-    self._outOffset, // out_off
-    handle.availOutBefore,
-  ); // out_len
+  try {
+    handle.write(
+      flushFlag,
+      chunk, // in
+      0, // in_off
+      handle.availInBefore, // in_len
+      self._outBuffer, // out
+      self._outOffset, // out_off
+      handle.availOutBefore,
+    ); // out_len
+  } catch (err) {
+    // Set appropriate error code for zstd errors
+    if (err.message && err.message.includes("Src size is incorrect")) {
+      err.code = "ZSTD_error_srcSize_wrong";
+    }
+    self.destroy(err);
+  }
 }
 
 function processCallback() {
@@ -746,6 +771,14 @@ function Zlib(opts, mode) {
         );
       }
     }
+    // The native binding expects a Uint8Array, convert other ArrayBufferViews
+    if (dictionary !== undefined && !isUint8Array(dictionary)) {
+      dictionary = new Uint8Array(
+        dictionary.buffer,
+        dictionary.byteOffset,
+        dictionary.byteLength,
+      );
+    }
   }
 
   const handle = new binding.Zlib(mode);
@@ -925,7 +958,14 @@ function Brotli(opts, mode) {
     : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
-  handle.init(brotliInitParamsArray, this._writeState, processCallback);
+  const success = handle.init(
+    brotliInitParamsArray,
+    this._writeState,
+    processCallback,
+  );
+  if (!success) {
+    throw new ERR_ZLIB_INITIALIZATION_FAILED("Initialization failed");
+  }
 
   ReflectApply(ZlibBase, this, [opts, mode, handle, brotliDefaultOpts]);
 }
@@ -983,18 +1023,24 @@ class Zstd extends ZlibBase {
     }
 
     const handle = mode === ZSTD_COMPRESS
-      ? new binding.ZstdCompress()
-      : new binding.ZstdDecompress();
-
-    const pledgedSrcSize = opts?.pledgedSrcSize ?? undefined;
+      ? new binding.ZstdCompress(mode)
+      : new binding.ZstdDecompress(mode);
 
     const writeState = new Uint32Array(2);
-    handle.init(
+    // pledgedSrcSize is only used for compression, use -1 to indicate "not set"
+    const pledgedSrcSize =
+      mode === ZSTD_COMPRESS && opts?.pledgedSrcSize != null
+        ? opts.pledgedSrcSize
+        : -1;
+    const success = handle.init(
       initParamsArray,
-      pledgedSrcSize,
       writeState,
       processCallback,
+      pledgedSrcSize,
     );
+    if (!success) {
+      throw new ERR_ZLIB_INITIALIZATION_FAILED("Setting parameter failed");
+    }
     super(opts, mode, handle, zstdDefaultOpts);
     this._writeState = writeState;
   }
