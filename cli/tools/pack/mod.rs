@@ -141,7 +141,7 @@ pub async fn pack(
     })?;
 
     // Collect files from the graph
-    let collected_paths = collect_graph_modules(&graph, &package)?;
+    let collected_paths = collect_graph_modules(&graph, &package, &pack_flags)?;
 
     log::info!("  {} modules collected", collected_paths.len());
 
@@ -241,9 +241,13 @@ struct CollectedPath {
 fn collect_graph_modules(
   graph: &ModuleGraph,
   package: &JsrPackageConfig,
+  pack_flags: &PackFlags,
 ) -> Result<Vec<CollectedPath>, AnyError> {
   let package_dir = &package.config_file.dir_path();
   let mut paths = Vec::new();
+
+  // Create file patterns from pack_flags
+  let file_patterns = pack_flags.files.as_file_patterns(package_dir)?;
 
   for module in graph.modules() {
     if let Module::Js(js_module) = module {
@@ -253,11 +257,14 @@ fn collect_graph_modules(
       if specifier.scheme() == "file" {
         if let Ok(path) = specifier.to_file_path() {
           if path.starts_with(package_dir) {
-            let relative = path.strip_prefix(package_dir).unwrap();
-            paths.push(CollectedPath {
-              specifier: specifier.clone(),
-              relative_path: relative.to_string_lossy().to_string(),
-            });
+            // Check if the path matches the file patterns
+            if file_patterns.matches_path(&path, deno_config::glob::PathKind::File) {
+              let relative = path.strip_prefix(package_dir).unwrap();
+              paths.push(CollectedPath {
+                specifier: specifier.clone(),
+                relative_path: relative.to_string_lossy().to_string(),
+              });
+            }
           }
         }
       }
@@ -601,11 +608,18 @@ fn process_modules(
 
     // Transpile if needed
     let (mut js_content, output_ext) = if media_type.is_emittable() {
+      let source_map_option = if pack_flags.no_source_maps {
+        deno_ast::SourceMapOption::None
+      } else {
+        deno_ast::SourceMapOption::Inline
+      };
+
       let transpiled = parsed.transpile(
         &transpile_options,
         &deno_ast::TranspileModuleOptions::default(),
         &deno_ast::EmitOptions {
-          source_map: deno_ast::SourceMapOption::None,
+          source_map: source_map_option,
+          inline_sources: true,
           ..Default::default()
         },
       )?;

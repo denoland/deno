@@ -571,12 +571,14 @@ pub struct PublishFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackFlags {
+  pub files: FileFlags,
   pub output: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
   pub allow_dirty: bool,
   pub set_version: Option<String>,
   pub no_shim: bool,
+  pub no_source_maps: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4574,6 +4576,27 @@ fn pack_subcommand() -> Command {
             .help("Don't automatically add @deno/shim-deno dependency")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("no-source-maps")
+            .long("no-source-maps")
+            .help("Don't include source maps in the output")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("files")
+            .help("List of file patterns to include")
+            .num_args(..)
+            .action(ArgAction::Append),
+        )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .require_equals(true)
+            .help("Ignore files matching these patterns")
+            .value_hint(ValueHint::AnyPath),
+        )
     })
 }
 
@@ -7160,13 +7183,26 @@ fn pack_parse(
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   config_args_parse(flags, matches);
 
+  let include = match matches.remove_many::<String>("files") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
+
   flags.subcommand = DenoSubcommand::Pack(PackFlags {
+    files: FileFlags { include, ignore },
     output: matches.remove_one("output"),
     dry_run: matches.get_flag("dry-run"),
     allow_slow_types: matches.get_flag("allow-slow-types"),
     allow_dirty: matches.get_flag("allow-dirty"),
     set_version: matches.remove_one::<String>("set-version"),
     no_shim: matches.get_flag("no-deno-shim"),
+    no_source_maps: matches.get_flag("no-source-maps"),
   });
 
   Ok(())
