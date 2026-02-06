@@ -1163,7 +1163,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       },
       pkg_req_name,
       version_req.version_text(),
-      pkg_nv.to_string(),
+      pkg_nv,
     );
 
     if let Some(reporter) = &self.reporter {

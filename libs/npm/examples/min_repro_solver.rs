@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(clippy::print_stderr)]
+
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -63,7 +65,10 @@ async fn main() {
   eprintln!("Test code");
   eprintln!("===========================");
   let test_code = solver.get_test_code();
-  println!("{}", test_code);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("{}", test_code);
+  }
   solver.output_bench_registry_folder();
 }
 

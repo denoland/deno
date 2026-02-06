@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 use std::collections::BTreeMap;
 
 use serde::Serialize;
