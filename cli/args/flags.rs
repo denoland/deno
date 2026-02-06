@@ -405,6 +405,11 @@ pub struct RunFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
+  pub cpu_prof: bool,
+  pub cpu_prof_dir: Option<String>,
+  pub cpu_prof_name: Option<String>,
+  pub cpu_prof_interval: Option<i32>,
+  pub cpu_prof_md: bool,
   pub print_task_list: bool,
 }
 
@@ -416,6 +421,11 @@ impl RunFlags {
       watch: None,
       bare: false,
       coverage_dir: None,
+      cpu_prof: false,
+      cpu_prof_dir: None,
+      cpu_prof_name: None,
+      cpu_prof_interval: None,
+      cpu_prof_md: false,
       print_task_list: false,
     }
   }
@@ -3914,6 +3924,11 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
     .arg(coverage_arg())
+    .arg(cpu_prof_arg())
+    .arg(cpu_prof_dir_arg())
+    .arg(cpu_prof_name_arg())
+    .arg(cpu_prof_interval_arg())
+    .arg(cpu_prof_md_arg())
     .arg(tunnel_arg())
 }
 
@@ -5397,6 +5412,45 @@ fn coverage_arg() -> Arg {
     .value_hint(ValueHint::AnyPath)
 }
 
+fn cpu_prof_arg() -> Arg {
+  Arg::new("cpu-prof")
+    .long("cpu-prof")
+    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_dir_arg() -> Arg {
+  Arg::new("cpu-prof-dir")
+    .long("cpu-prof-dir")
+    .value_name("DIR")
+    .help("Directory where the V8 CPU profiles will be written (defaults to current directory)")
+    .value_hint(ValueHint::DirPath)
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_name_arg() -> Arg {
+  Arg::new("cpu-prof-name")
+    .long("cpu-prof-name")
+    .value_name("NAME")
+    .help("Filename for the CPU profile (defaults to CPU.<timestamp>.<pid>.cpuprofile)")
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_interval_arg() -> Arg {
+  Arg::new("cpu-prof-interval")
+    .long("cpu-prof-interval")
+    .value_name("MICROSECONDS")
+    .help("Sampling interval in microseconds for CPU profiling (default: 1000)")
+    .value_parser(value_parser!(i32))
+}
+
+fn cpu_prof_md_arg() -> Arg {
+  Arg::new("cpu-prof-md")
+    .long("cpu-prof-md")
+    .help("Generate a human-readable markdown report alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
 fn permit_no_files_arg() -> Arg {
   Arg::new("permit-no-files")
     .long("permit-no-files")
@@ -6669,6 +6723,11 @@ fn run_parse(
   flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
+  let cpu_prof = matches.get_flag("cpu-prof");
+  let cpu_prof_dir = matches.remove_one::<String>("cpu-prof-dir");
+  let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
+  let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
+  let cpu_prof_md = matches.get_flag("cpu-prof-md");
 
   match matches.remove_many::<String>("script_arg") {
     Some(mut script_arg) => {
@@ -6679,6 +6738,11 @@ fn run_parse(
         watch: watch_arg_parse_with_paths(matches)?,
         bare,
         coverage_dir,
+        cpu_prof,
+        cpu_prof_dir,
+        cpu_prof_name,
+        cpu_prof_interval,
+        cpu_prof_md,
         print_task_list: false,
       });
     }
@@ -6695,6 +6759,11 @@ fn run_parse(
           watch: None,
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: true,
         });
       }
@@ -7814,6 +7883,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7841,6 +7915,11 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7869,6 +7948,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7897,6 +7981,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7925,6 +8014,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7954,6 +8048,11 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -7986,6 +8085,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8017,6 +8121,11 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8045,6 +8154,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8074,6 +8188,11 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8102,6 +8221,11 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8142,6 +8266,11 @@ mod tests {
           watch: None,
           bare: false,
           coverage_dir: Some("foo".to_string()),
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8395,6 +8524,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -9773,6 +9907,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10006,6 +10145,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10307,6 +10451,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         ..Flags::default()
@@ -10628,6 +10777,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         log_level: Some(Level::Error),
@@ -10750,6 +10904,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -10923,6 +11082,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
@@ -12150,6 +12314,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
@@ -12855,6 +13024,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -13467,6 +13641,11 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          cpu_prof: false,
+          cpu_prof_dir: None,
+          cpu_prof_name: None,
+          cpu_prof_interval: None,
+          cpu_prof_md: false,
           print_task_list: false,
         }),
         config_flag: ConfigFlag::Disabled,
