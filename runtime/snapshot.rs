@@ -34,7 +34,10 @@ pub fn create_runtime_snapshot(
     deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::lazy_init(),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::lazy_init(),
     deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler>(),

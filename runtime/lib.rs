@@ -5,6 +5,7 @@ pub use deno_core;
 pub use deno_cron;
 pub use deno_crypto;
 pub use deno_fetch;
+#[cfg(feature = "ffi")]
 pub use deno_ffi;
 pub use deno_fs;
 pub use deno_http;

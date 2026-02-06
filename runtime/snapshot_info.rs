@@ -29,7 +29,10 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_websocket::deno_websocket::init(),
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::init(None),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::init(),
     deno_net::deno_net::init(None, None),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::init(
