@@ -63,29 +63,25 @@ function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
 export function writeFile(
   pathOrRid: string | number | URL | FileHandle,
   data: string | Uint8Array,
-  optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
+  options: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
   let flag: string | undefined;
   let mode: number | undefined;
   let signal: AbortSignal | undefined;
-  let options: Encodings | WriteFileOptions | undefined;
 
-  if (typeof optOrCallback === "function") {
-    callback = optOrCallback;
+  if (typeof options === "function") {
+    callback = options;
     options = undefined;
-  } else {
-    options = optOrCallback;
   }
 
   validateFunction(callback, "callback");
 
-  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
-    ? pathFromURL(pathOrRid as URL)
-    : pathOrRid;
-  pathOrRid = ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)
-    ? (pathOrRid as FileHandle).fd
-    : pathOrRid as string | number;
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)) {
+    pathOrRid = pathFromURL(pathOrRid as URL);
+  } else if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  }
 
   if (isFileOptions(options)) {
     flag = options.flag;
@@ -106,7 +102,7 @@ export function writeFile(
   let error: Error | null = null;
   (async () => {
     try {
-      const rid = await getRid(pathOrRid, flag);
+      const rid = await getRid(pathOrRid as string | number, flag);
       file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
       checkAborted(signal);
 
