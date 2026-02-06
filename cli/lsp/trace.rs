@@ -181,24 +181,24 @@ pub(crate) enum TracingCollector {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(default, rename_all = "camelCase")]
-pub(crate) struct TracingConfig {
+pub struct TracingConfig {
   /// Enable tracing.
-  pub(crate) enable: bool,
+  pub enable: bool,
 
   /// The collector to use. Defaults to `OpenTelemetry`.
   /// If `Logging` is used, the collected traces will be written to stderr.
-  pub(crate) collector: TracingCollector,
+  pub collector: TracingCollector,
 
   /// The filter to use. Defaults to `INFO`.
-  pub(crate) filter: Option<String>,
+  pub filter: Option<String>,
 
   /// The endpoint to use for the OpenTelemetry collector.
-  pub(crate) collector_endpoint: Option<String>,
+  pub collector_endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
-pub(crate) enum TracingConfigOrEnabled {
+pub enum TracingConfigOrEnabled {
   Config(TracingConfig),
   Enabled(bool),
 }
@@ -222,7 +222,7 @@ impl From<TracingConfigOrEnabled> for TracingConfig {
 }
 
 impl TracingConfigOrEnabled {
-  pub(crate) fn enabled(&self) -> bool {
+  pub fn enabled(&self) -> bool {
     match self {
       TracingConfigOrEnabled::Config(config) => config.enable,
       TracingConfigOrEnabled::Enabled(enabled) => *enabled,
