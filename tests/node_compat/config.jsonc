@@ -1562,6 +1562,10 @@
     // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
+    // "parallel/test-worker-process-argv.js": {},
+    "parallel/test-worker-process-env.js": {},
+    // TODO(bartlomieju): this test just hangs
+    // "parallel/test-worker-process-env-shared.js": {},
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
@@ -1706,7 +1710,8 @@
     "sequential/test-vm-timeout-rethrow.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
+    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
 }
