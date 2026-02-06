@@ -112,6 +112,9 @@ impl Session {
     }
 
     self.freed.set(true);
+    if self.db.borrow().is_none() {
+      return Ok(());
+    }
     // Safety: `self.inner` is a valid session. double free is
     // prevented by `freed` flag.
     unsafe {

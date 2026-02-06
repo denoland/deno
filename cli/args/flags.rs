@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::num::NonZeroU8;
 use std::num::NonZeroU32;
@@ -52,6 +53,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
+pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
@@ -60,6 +62,7 @@ use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
 use log::Level;
 use log::debug;
+use node_shim::parse_node_options_env_var;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -552,6 +555,7 @@ pub struct UpgradeFlags {
   pub version: Option<String>,
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
+  pub checksum: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -812,6 +816,29 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   }
 }
 
+/// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
+pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
+  let mut result = InspectPublishUid {
+    console: false,
+    http: false,
+  };
+  for part in s.split(',') {
+    let part = part.trim();
+    match part {
+      "stderr" => result.console = true,
+      "http" => result.http = true,
+      "" => {}
+      _ => {
+        return Err(format!(
+          "--inspect-publish-uid destination can be stderr or http, got '{}'",
+          part
+        ));
+      }
+    }
+  }
+  Ok(result)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InternalFlags {
   /// Used when the language server is configured with an
@@ -851,6 +878,7 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
+  pub inspect_publish_uid: Option<InspectPublishUid>,
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
@@ -1882,6 +1910,8 @@ pub fn flags_from_vec_with_initial_cwd(
       }
     }
   }
+
+  apply_node_options(&mut flags);
 
   Ok(flags)
 }
@@ -3887,6 +3917,71 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(tunnel_arg())
 }
 
+#[cfg(test)]
+thread_local! {
+  static TEST_NODE_OPTIONS: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Reads some flags from NODE_OPTIONS:
+/// https://nodejs.org/api/cli.html#node_optionsoptions
+/// Currently supports:
+/// - `--require` / `-r`
+/// - `--inspect-publish-uid`
+fn apply_node_options(flags: &mut Flags) {
+  let node_options = match std::env::var("NODE_OPTIONS") {
+    Ok(val) if !val.is_empty() => val,
+    _ => {
+      #[cfg(test)]
+      {
+        match TEST_NODE_OPTIONS.with(|opt| opt.borrow().clone()) {
+          Some(val) if !val.is_empty() => val,
+          _ => return,
+        }
+      }
+      #[cfg(not(test))]
+      return;
+    }
+  };
+
+  // Filter out unsupported flags, since they can consume the supported flags as
+  // values.
+  let args = parse_node_options_env_var(&node_options).unwrap_or_default();
+  let args = args
+    .iter()
+    .map(String::as_str)
+    .scan(false, |prev_was_require, word| {
+      if word == "--require" || word == "-r" {
+        *prev_was_require = true;
+        return Some((word, true));
+      }
+      if word.starts_with("--inspect-publish-uid=") || *prev_was_require {
+        *prev_was_require = false;
+        return Some((word, true));
+      }
+      *prev_was_require = false;
+      Some((word, false))
+    })
+    .filter_map(|(word, should_keep)| should_keep.then_some(word));
+
+  let cmd = Command::new("node-options-parser")
+    .arg(require_arg().short('r'))
+    .arg(inspect_publish_uid_arg())
+    .ignore_errors(true);
+  let mut matches =
+    cmd.get_matches_from(std::iter::once("node-options-parser").chain(args));
+
+  if let Some(require_values) = matches.remove_many::<String>("require") {
+    let mut merged_require: Vec<String> = require_values.collect();
+    merged_require.append(&mut flags.require);
+    flags.require = merged_require;
+  }
+
+  if flags.inspect_publish_uid.is_none() {
+    flags.inspect_publish_uid =
+      matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
+  }
+}
+
 fn run_subcommand() -> Command {
   run_args(command("run", cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
@@ -4338,6 +4433,13 @@ update to a different location, use the <c>--output</> flag:
           .action(ArgAction::Append)
           .trailing_var_arg(true),
       )
+      .arg(
+        Arg::new("checksum")
+          .long("checksum")
+          .help("Verify the downloaded archive against the provided SHA256 checksum")
+          .value_parser(value_parser!(String))
+          .help_heading(UPGRADE_HEADING),
+      )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
   })
@@ -4480,7 +4582,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -4903,7 +5005,7 @@ fn allow_import_arg() -> Arg {
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
     .help(cstr!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }
@@ -4921,45 +5023,124 @@ fn deny_import_arg() -> Arg {
   .value_parser(flags_net::validator)
 }
 
+pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
+  const DEFAULT_HOST: &str = "127.0.0.1";
+  const DEFAULT_PORT: u16 = 9229;
+
+  fn parse_port(port: &str) -> Result<u16, String> {
+    port
+      .parse::<u16>()
+      .map_err(|_| format!("Invalid inspector port '{port}'"))
+  }
+
+  let default_host: IpAddr = DEFAULT_HOST.parse().unwrap();
+
+  if host_and_port.is_empty() {
+    return Err("Inspector address cannot be empty".to_string());
+  }
+
+  if let Some(port_part) = host_and_port.strip_prefix(':') {
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+    return Ok(SocketAddr::new(default_host, port));
+  }
+
+  if host_and_port.contains(':') {
+    if let Ok(addr) = host_and_port.parse::<SocketAddr>() {
+      return Ok(addr);
+    }
+
+    if let Ok(host_ip) = host_and_port.parse::<IpAddr>() {
+      return Ok(SocketAddr::new(host_ip, DEFAULT_PORT));
+    }
+
+    let (host_part, port_part) = host_and_port
+      .rsplit_once(':')
+      .ok_or_else(|| format!("Invalid inspector address '{host_and_port}'"))?;
+
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+
+    let host_ip = host_part
+      .parse::<IpAddr>()
+      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
+
+    return Ok(SocketAddr::new(host_ip, port));
+  }
+
+  if host_and_port.chars().all(|c| c.is_ascii_digit()) {
+    let port = parse_port(host_and_port)?;
+    return Ok(SocketAddr::new(default_host, port));
+  }
+
+  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
+    format!("Invalid inspector host '{host_and_port}': {:?}", e)
+  })?;
+
+  Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
+}
+
 fn inspect_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("inspect")
         .long("inspect")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
-        .help(cstr!("Activate inspector on host:port <p(245)>[default: 127.0.0.1:9229]</>"))
+        .help(cstr!("Activate inspector on host:port <p(245)>[default: 127.0.0.1:9229]</>. Host and port are optional. Using port 0 will assign a random free port."))
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
     .arg(
       Arg::new("inspect-brk")
         .long("inspect-brk")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
     .arg(
       Arg::new("inspect-wait")
         .long("inspect-wait")
-        .value_name("HOST_AND_PORT")
+        .value_name("HOST_PORT")
         .default_missing_value("127.0.0.1:9229")
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr))
+        .value_parser(inspect_value_parser)
         .help_heading(DEBUGGING_HEADING),
     )
+    .arg(inspect_publish_uid_arg())
+}
+
+fn inspect_publish_uid_value_parser(
+  value: &str,
+) -> Result<InspectPublishUid, String> {
+  parse_inspect_publish_uid(value)
+}
+
+fn inspect_publish_uid_arg() -> Arg {
+  Arg::new("inspect-publish-uid")
+    .long("inspect-publish-uid")
+    .value_name("VALUE")
+    .require_equals(true)
+    .value_parser(inspect_publish_uid_value_parser)
+    .hide(true)
 }
 
 fn import_map_arg() -> Arg {
@@ -5876,7 +6057,19 @@ fn completions_parse(
     "bash" => generate(Bash, &mut app, name, &mut buf),
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
-    "zsh" => generate(Zsh, &mut app, name, &mut buf),
+    "zsh" => {
+      generate(Zsh, &mut app, name, &mut buf);
+      // The hidden script_arg (for implicit run subcommand) must come AFTER _deno_commands.
+      // Otherwise zsh parses 'run' into script_arg before trying subcommands.
+      let content = String::from_utf8_lossy(&buf).into_owned();
+      buf = content
+        .replacen(
+          "'::script_arg -- Script arg:_files' \\\n\":: :_deno_commands\"",
+          "\":: :_deno_commands\" \\\n'::script_arg -- Script arg:_files'",
+          1,
+        )
+        .into_bytes();
+    }
     "fig" => generate(Fig, &mut app, name, &mut buf),
     _ => unreachable!(),
   }
@@ -6659,7 +6852,25 @@ function _clap_dynamic_completer_NAME() {
   )}")
 
   if [[ -n $completions ]]; then
-      _describe -V 'values' completions -o nosort
+      local -a dirs=()
+      local -a other=()
+      local completion
+      for completion in $completions; do
+          local value="${completion%%:*}"
+          if [[ "$value" == */ ]]; then
+              local dir_no_slash="${value%/}"
+              if [[ "$completion" == *:* ]]; then
+                  local desc="${completion#*:}"
+                  dirs+=("$dir_no_slash:$desc")
+              else
+                  dirs+=("$dir_no_slash")
+              fi
+          else
+              other+=("$completion")
+          fi
+      done
+      [[ -n $dirs ]] && _describe -V 'values' dirs -o nosort -S '/' -r '/'
+      [[ -n $other ]] && _describe -V 'values' other -o nosort
   fi
 }
 
@@ -6818,6 +7029,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let output = matches.remove_one::<String>("output");
   let version_or_hash_or_channel =
     matches.remove_one::<String>("version-or-hash-or-channel");
+  let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -6826,6 +7038,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     version,
     output,
     version_or_hash_or_channel,
+    checksum,
   });
 }
 
@@ -7159,6 +7372,8 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.inspect = matches.remove_one::<SocketAddr>("inspect");
   flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
   flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
+  flags.inspect_publish_uid =
+    matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
 }
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -7523,6 +7738,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -7543,6 +7759,7 @@ mod tests {
           version: None,
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -10907,7 +11124,7 @@ mod tests {
       .filter(|arg| arg.get_id() == "inspect")
       .collect::<Vec<_>>();
     // The value_name cannot have a : otherwise it breaks shell completions for zsh.
-    let value_name = "HOST_AND_PORT";
+    let value_name = "HOST_PORT";
     let arg = inspect_args
       .iter()
       .any(|v| v.get_value_names().unwrap() == [value_name]);
@@ -11577,6 +11794,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -11598,6 +11816,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -14172,5 +14391,216 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn inspect_flag_parsing() {
+    use std::net::IpAddr;
+    use std::net::Ipv4Addr;
+
+    let cases = vec![
+      (
+        "127.0.0.1:9229",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9229),
+      ),
+      (
+        "192.168.0.1",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 9229),
+      ),
+      (
+        "10000",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10000),
+      ),
+      (
+        ":10000",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10000),
+      ),
+      (
+        ":0",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
+      ),
+      (
+        "0",
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
+      ),
+    ];
+
+    for case in cases {
+      let flags = flags_from_vec(svec![
+        "deno",
+        "run",
+        &format!("--inspect={}", case.0),
+        "script.ts",
+      ])
+      .unwrap();
+      assert_eq!(
+        flags,
+        Flags {
+          subcommand: DenoSubcommand::Run(RunFlags {
+            script: "script.ts".to_string(),
+            ..Default::default()
+          }),
+          inspect: Some(case.1),
+          code_cache_enabled: true,
+          ..Flags::default()
+        }
+      );
+    }
+  }
+
+  #[test]
+  fn inspect_publish_uid_flag_parsing() {
+    // Test with both stderr and http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr,http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: true,
+      })
+    );
+
+    // Test with only stderr
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=stderr",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: false,
+      })
+    );
+
+    // Test with only http
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect",
+      "--inspect-publish-uid=http",
+      "script.ts",
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: false,
+        http: true,
+      })
+    );
+
+    // Test without the flag (should be None)
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--inspect", "script.ts",]).unwrap();
+    assert_eq!(flags.inspect_publish_uid, None);
+  }
+
+  fn set_test_node_options(value: Option<&str>) {
+    TEST_NODE_OPTIONS.with(|opt| {
+      *opt.borrow_mut() = value.map(|s| s.to_string());
+    });
+  }
+
+  #[test]
+  fn node_options_require() {
+    // Test NODE_OPTIONS --require when no CLI --require is passed
+    set_test_node_options(Some("--require only.js"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["only.js"]);
+  }
+
+  #[test]
+  fn node_options_require_prepend_to_cli() {
+    // Test NODE_OPTIONS --require is prepended to CLI --require values
+    set_test_node_options(Some("--require foo.js --require bar.js"));
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--require", "cli.js", "script.ts",])
+        .unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["foo.js", "bar.js", "cli.js"]);
+  }
+
+  #[test]
+  fn node_options_inspect_publish_uid() {
+    set_test_node_options(Some("--inspect-publish-uid=http"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: false,
+        http: true,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_inspect_publish_uid_cli_precedence() {
+    set_test_node_options(Some("--inspect-publish-uid=http"));
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-publish-uid=stderr",
+      "script.ts",
+    ])
+    .unwrap();
+    set_test_node_options(None);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: false,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_combined() {
+    // Test NODE_OPTIONS with both --require and --inspect-publish-uid
+    set_test_node_options(Some(
+      "--require foo.js --inspect-publish-uid=stderr,http",
+    ));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["foo.js"]);
+    assert_eq!(
+      flags.inspect_publish_uid,
+      Some(InspectPublishUid {
+        console: true,
+        http: true,
+      })
+    );
+  }
+
+  #[test]
+  fn node_options_empty() {
+    set_test_node_options(Some(""));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert!(flags.require.is_empty());
+    assert_eq!(flags.inspect_publish_uid, None);
+  }
+
+  #[test]
+  fn node_options_ignores_unknown_flags() {
+    set_test_node_options(Some(
+      "--require known.js --unknown-flag --another-unknown",
+    ));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.require, vec!["known.js"]);
   }
 }

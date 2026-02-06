@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
@@ -13,7 +12,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   AggregateError,
   ArrayIsArray,
@@ -34,7 +33,10 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeErrorPrototype,
@@ -67,11 +69,18 @@ import {
   mapSysErrnoToUvErrno,
   UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
+
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 export { errorMap };
 
@@ -139,6 +148,17 @@ export function isStackOverflowError(err: Error): boolean {
 
   return err && err.name === maxStackErrorName &&
     err.message === maxStackErrorMessage;
+}
+
+export function isErrorStackTraceLimitWritable(): boolean {
+  const desc = ObjectGetOwnPropertyDescriptor(Error, "stackTraceLimit");
+  if (desc === undefined) {
+    return ObjectIsExtensible(Error);
+  }
+
+  return ObjectPrototypeHasOwnProperty(desc, "writable")
+    ? desc.writable
+    : desc.set !== undefined;
 }
 
 function addNumericalSeparator(val: string) {
@@ -797,6 +817,7 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
     input: unknown,
     replaceDefaultBoolean = false,
   ) {
+    assert ??= lazyLoadAssert();
     assert(range, 'Missing "range" argument');
     let msg = replaceDefaultBoolean
       ? str
@@ -852,6 +873,12 @@ export class ERR_ASYNC_TYPE extends NodeTypeError {
 export class ERR_BROTLI_INVALID_PARAM extends NodeRangeError {
   constructor(x: string) {
     super("ERR_BROTLI_INVALID_PARAM", `${x} is not a valid Brotli parameter`);
+  }
+}
+
+export class ERR_ZSTD_INVALID_PARAM extends NodeRangeError {
+  constructor(x: string) {
+    super("ERR_ZSTD_INVALID_PARAM", `${x} is not a valid zstd parameter`);
   }
 }
 
@@ -913,6 +940,15 @@ export class ERR_CONSOLE_WRITABLE_STREAM extends NodeTypeError {
     super(
       "ERR_CONSOLE_WRITABLE_STREAM",
       `Console expects a writable stream instance for ${x}`,
+    );
+  }
+}
+
+export class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_REQUIRED",
+      `Class constructor ${x} cannot be invoked without \`new\``,
     );
   }
 }
@@ -1967,6 +2003,7 @@ export class ERR_SOCKET_BAD_BUFFER_SIZE extends NodeTypeError {
 }
 export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
   constructor(name: string, port: unknown, allowZero = true) {
+    assert ??= lazyLoadAssert();
     assert(
       typeof allowZero === "boolean",
       "The 'allowZero' argument must be of type boolean.",
@@ -2341,6 +2378,14 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
@@ -2384,8 +2429,8 @@ export class ERR_WORKER_UNSUPPORTED_OPERATION extends NodeTypeError {
   }
 }
 export class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
-  constructor() {
-    super("ERR_ZLIB_INITIALIZATION_FAILED", `Initialization failed`);
+  constructor(message = "Initialization failed") {
+    super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
 export class ERR_FALSY_VALUE_REJECTION extends NodeError {
@@ -2585,6 +2630,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
       target.length &&
       !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
+      assert ??= lazyLoadAssert();
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
@@ -2851,6 +2897,8 @@ codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
+codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2916,6 +2964,7 @@ export default {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
   ERR_BROTLI_INVALID_PARAM,
+  ERR_ZSTD_INVALID_PARAM,
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_BUFFER_TOO_LARGE,
   ERR_CANNOT_WATCH_SIGINT,
@@ -2923,6 +2972,7 @@ export default {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
@@ -3161,6 +3211,7 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
@@ -3184,6 +3235,7 @@ export default {
   exceptionWithHostPort,
   genericNodeError,
   hideStackFrames,
+  isErrorStackTraceLimitWritable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,

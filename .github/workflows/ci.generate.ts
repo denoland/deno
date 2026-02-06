@@ -5,13 +5,14 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 90;
+const cacheVersion = 93;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
 const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
+const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
@@ -60,6 +61,11 @@ const Runners = {
     arch: "x86_64",
     runner:
       `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+  },
+  windowsArm: {
+    os: "windows",
+    arch: "aarch64",
+    runner: windowsArmRunner,
   },
 } as const;
 
@@ -172,7 +178,7 @@ const cloneRepoSteps = [{
   ].join("\n"),
 }, {
   name: "Clone repository",
-  uses: "actions/checkout@v4",
+  uses: "actions/checkout@v6",
   with: {
     // Use depth > 1, because sometimes we need to rebuild main and if
     // other commits have landed it will become impossible to rebuild if
@@ -192,7 +198,7 @@ const installRustStep = {
 };
 const installPythonSteps = [{
   name: "Install Python",
-  uses: "actions/setup-python@v5",
+  uses: "actions/setup-python@v6",
   with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
@@ -207,8 +213,8 @@ const installPythonSteps = [{
 }];
 const installNodeStep = {
   name: "Install Node",
-  uses: "actions/setup-node@v4",
-  with: { "node-version": 18 },
+  uses: "actions/setup-node@v6",
+  with: { "node-version": 22 },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -261,7 +267,7 @@ const saveCacheMainStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v2",
+  uses: "google-github-actions/auth@v3",
   with: {
     "project_id": "denoland",
     "credentials_json": "${{ secrets.GCP_SA_KEY }}",
@@ -463,6 +469,15 @@ const ci = {
             profile: "release",
             skip_pr: true,
           }, {
+            ...Runners.windowsArm,
+            job: "test",
+            profile: "debug",
+          }, {
+            ...Runners.windowsArm,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
             ...Runners.linuxX86Xl,
             job: "test",
             profile: "release",
@@ -546,7 +561,8 @@ const ci = {
           run: "sudo modprobe vsock_loopback",
         },
         {
-          if: "matrix.job == 'test' || matrix.job == 'bench'",
+          if:
+            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -579,7 +595,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          uses: "google-github-actions/setup-gcloud@v2",
+          uses: "google-github-actions/setup-gcloud@v3",
           with: {
             project_id: "denoland",
           },
@@ -686,7 +702,7 @@ const ci = {
         },
         {
           name: "Set up playwright cache",
-          uses: "actions/cache@v4",
+          uses: "actions/cache@v5",
           with: {
             path: "./.ms-playwright",
             key: "playwright-${{ runner.os }}-${{ runner.arch }}",
@@ -765,7 +781,7 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          uses: "actions/upload-artifact@v4",
+          uses: "actions/upload-artifact@v6",
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
@@ -987,7 +1003,8 @@ const ci = {
           if: [
             "always() &&",
             "matrix.job == 'test' &&",
-            "!startsWith(github.ref, 'refs/tags/')",
+            "!startsWith(github.ref, 'refs/tags/') &&",
+            "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ].join("\n"),
           run: "deno run -RWN ./tools/combine_test_results.js",
         },
@@ -997,7 +1014,8 @@ const ci = {
           if: [
             "always() &&",
             "matrix.job == 'test' &&",
-            "!startsWith(github.ref, 'refs/tags/')",
+            "!startsWith(github.ref, 'refs/tags/') &&",
+            "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ].join("\n"),
           with: {
             name:
@@ -1169,7 +1187,7 @@ const ci = {
         },
         {
           name: "Upload release to GitHub",
-          uses: "softprops/action-gh-release@v0.1.15",
+          uses: "softprops/action-gh-release@v2",
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
@@ -1185,6 +1203,10 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
               "target/release/denort-x86_64-pc-windows-msvc.zip",
               "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
+              "target/release/deno-aarch64-pc-windows-msvc.zip",
+              "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
+              "target/release/denort-aarch64-pc-windows-msvc.zip",
+              "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
               "target/release/denort-x86_64-unknown-linux-gnu.zip",

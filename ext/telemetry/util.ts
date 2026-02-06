@@ -32,6 +32,14 @@ export function updateSpanFromResponse(span: Span, response: Response) {
 
 // deno-lint-ignore no-explicit-any
 export function updateSpanFromError(span: Span, error: any) {
-  span.setAttribute("error.type", error.name ?? "Error");
+  const errorType = error.name ?? "Error";
+  span.setAttribute("error.type", errorType);
+  span.setAttribute("exception.type", errorType);
+  if (error.message != null) {
+    span.setAttribute("exception.message", error.message);
+  }
+  if (error.stack != null) {
+    span.setAttribute("exception.stacktrace", error.stack);
+  }
   span.setStatus({ code: 2, message: error.message ?? String(error) });
 }

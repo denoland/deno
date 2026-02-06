@@ -553,6 +553,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     | MediaType::Html
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
@@ -700,17 +701,17 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(_)) => {
-      if let Some(npm) = maybe_npm
-        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
-      {
-        let package_folder = npm
-          .npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+    Some(Module::Npm(module)) => {
+      if let Some(npm) = maybe_npm {
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            module.pkg_req_ref.req(),
+            referrer,
+          )?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            req_ref.sub_path(),
+            module.pkg_req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -884,7 +885,14 @@ pub fn exec(
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut remapped_specifiers = HashMap::new();
-  log::debug!("exec request, root_names: {:?}", request.root_names);
+  log::debug!(
+    "exec request, root_names: {:?}",
+    request
+      .root_names
+      .iter()
+      .map(|r| (r.0.as_str(), r.1))
+      .collect::<Vec<_>>()
+  );
   let root_names: Vec<String> = request
     .root_names
     .iter()

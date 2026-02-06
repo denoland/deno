@@ -2557,7 +2557,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 
 /// Gets the corresponding @types package for the provided package name
 /// returning `None` when the package is already a @types package.
-fn types_package_name(package_name: &str) -> Option<String> {
+pub fn types_package_name(package_name: &str) -> Option<String> {
   if package_name.starts_with("@types/") {
     return None;
   }

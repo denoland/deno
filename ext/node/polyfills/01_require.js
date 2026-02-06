@@ -98,6 +98,7 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
+import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -201,6 +202,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
+    "internal/assert/myers_diff": internalAssertMyersDiff,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -1078,8 +1080,9 @@ Module._extensions[".mjs"] = loadESMFromCJS;
 Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadMaybeCjs(module, filename) {
-  const content = op_require_read_file(filename);
-  const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
+  const isMaybeCjs = op_require_is_maybe_cjs(filename);
+  const format = isMaybeCjs ? undefined : "module";
+  const content = isMaybeCjs ? op_require_read_file(filename) : undefined;
   module._compile(content, filename, format);
 }
 

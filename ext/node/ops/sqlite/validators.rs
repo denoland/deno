@@ -133,3 +133,29 @@ pub(super) fn read_big_ints_bool(
     "The \"readBigInts\" argument must be a boolean.",
   ))
 }
+
+pub(super) fn return_arrays_bool(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"returnArrays\" argument must be a boolean.",
+  ))
+}
+
+pub(super) fn active_bool(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"active\" argument must be a boolean.",
+  ))
+}

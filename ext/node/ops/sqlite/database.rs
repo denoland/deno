@@ -23,6 +23,7 @@ use deno_core::v8_static_strings;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::ffi::SQLITE_DBCONFIG_DEFENSIVE;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DML;
 use rusqlite::ffi::sqlite3_create_window_function;
@@ -33,6 +34,7 @@ use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 use super::session::SessionOptions;
+use super::sql_tag_store::SQLTagStore;
 use super::statement::InnerStatementPtr;
 use super::statement::check_error_code;
 use super::statement::check_error_code2;
@@ -48,6 +50,11 @@ struct DatabaseSyncOptions {
   read_only: bool,
   allow_extension: bool,
   enable_double_quoted_string_literals: bool,
+  use_big_int_arguments: bool,
+  allow_bare_named_params: bool,
+  return_arrays: bool,
+  allow_unknown_named_params: bool,
+  is_defensive_mode: bool,
   timeout: u64,
 }
 
@@ -79,6 +86,11 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       ALLOW_EXTENSION_STRING = "allowExtension",
       ENABLE_DOUBLE_QUOTED_STRING_LITERALS_STRING = "enableDoubleQuotedStringLiterals",
       TIMEOUT_STRING = "timeout",
+      READ_BIG_INTS = "readBigInts",
+      RETURN_ARRAYS = "returnArrays",
+      ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
+      ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
+      DEFENSIVE_STRING = "defensive",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -175,6 +187,79 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       }
     }
 
+    let read_big_ints_string = READ_BIG_INTS.v8_string(scope).unwrap();
+    if let Some(read_big_ints) = obj.get(scope, read_big_ints_string.into())
+      && !read_big_ints.is_undefined()
+    {
+      options.use_big_int_arguments =
+        v8::Local::<v8::Boolean>::try_from(read_big_ints)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.readBigInts\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let return_arrays_string = RETURN_ARRAYS.v8_string(scope).unwrap();
+    if let Some(return_arrays) = obj.get(scope, return_arrays_string.into())
+      && !return_arrays.is_undefined()
+    {
+      options.return_arrays = v8::Local::<v8::Boolean>::try_from(return_arrays)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.returnArrays\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
+    }
+
+    let allow_bare_named_params_string =
+      ALLOW_BARE_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_bare_named_params) =
+      obj.get(scope, allow_bare_named_params_string.into())
+      && !allow_bare_named_params.is_undefined()
+    {
+      options.allow_bare_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_bare_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowBareNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let allow_unknown_named_params_string =
+      ALLOW_UNKNOWN_NAMED_PARAMS.v8_string(scope).unwrap();
+    if let Some(allow_unknown_named_params) =
+      obj.get(scope, allow_unknown_named_params_string.into())
+      && !allow_unknown_named_params.is_undefined()
+    {
+      options.allow_unknown_named_params =
+        v8::Local::<v8::Boolean>::try_from(allow_unknown_named_params)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowUnknownNamedParameters\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
+    let defensive_string = DEFENSIVE_STRING.v8_string(scope).unwrap();
+    if let Some(is_defensive_mode) = obj.get(scope, defensive_string.into())
+      && !is_defensive_mode.is_undefined()
+    {
+      options.is_defensive_mode =
+        v8::Local::<v8::Boolean>::try_from(is_defensive_mode)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.defensive\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
+    }
+
     Ok(options)
   }
 }
@@ -187,6 +272,11 @@ impl Default for DatabaseSyncOptions {
       read_only: false,
       allow_extension: false,
       enable_double_quoted_string_literals: false,
+      use_big_int_arguments: false,
+      return_arrays: false,
+      allow_bare_named_params: true,
+      allow_unknown_named_params: false,
+      is_defensive_mode: false,
       timeout: 0,
     }
   }
@@ -426,6 +516,7 @@ pub struct DatabaseSync {
   options: DatabaseSyncOptions,
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  authorizer_data: Rc<RefCell<Option<*mut AuthorizerData>>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -492,6 +583,12 @@ fn open_db(
       ));
     }
 
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_DEFENSIVE,
+      options.is_defensive_mode,
+    ));
+
     return Ok(conn);
   }
 
@@ -530,6 +627,12 @@ fn open_db(
       ));
     }
 
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_DEFENSIVE,
+      options.is_defensive_mode,
+    ));
+
     return Ok(conn);
   }
 
@@ -549,6 +652,12 @@ fn open_db(
   if disable_attach {
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
   }
+
+  assert!(set_db_config(
+    &conn,
+    SQLITE_DBCONFIG_DEFENSIVE,
+    options.is_defensive_mode,
+  ));
 
   Ok(conn)
 }
@@ -583,7 +692,7 @@ impl DatabaseSync {
   fn new(
     state: &mut OpState,
     #[string] location: String,
-    #[from_v8] options: DatabaseSyncOptions,
+    #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
     let db = if options.open {
       let db = open_db(state, &location, &options)?;
@@ -615,6 +724,7 @@ impl DatabaseSync {
       location,
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
+      authorizer_data: Rc::new(RefCell::new(None)),
     })
   }
 
@@ -674,6 +784,16 @@ impl DatabaseSync {
           stmt.set(None);
         }
       };
+    }
+
+    {
+      let mut authorizer_data = self.authorizer_data.borrow_mut();
+      if let Some(data_ptr) = authorizer_data.take() {
+        // SAFETY: data_ptr was allocated in authorizer setup.
+        unsafe {
+          free_authorizer_data(data_ptr);
+        }
+      }
     }
 
     let _ = self.conn.borrow_mut().take();
@@ -748,9 +868,12 @@ impl DatabaseSync {
       db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
-      use_big_ints: Cell::new(false),
-      allow_bare_named_params: Cell::new(true),
-      allow_unknown_named_params: Cell::new(false),
+      return_arrays: Cell::new(self.options.return_arrays),
+      use_big_ints: Cell::new(self.options.use_big_int_arguments),
+      allow_bare_named_params: Cell::new(self.options.allow_bare_named_params),
+      allow_unknown_named_params: Cell::new(
+        self.options.allow_unknown_named_params,
+      ),
       is_iter_finished: Cell::new(false),
     })
   }
@@ -1181,7 +1304,7 @@ impl DatabaseSync {
   #[cppgc]
   fn create_session(
     &self,
-    #[from_v8] options: OptionUndefined<SessionOptions>,
+    #[scoped] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
     let db = self.conn.borrow();
@@ -1279,6 +1402,103 @@ impl DatabaseSync {
     .unwrap();
 
     Ok(filename.into())
+  }
+
+  #[fast]
+  #[validate(is_open)]
+  fn enable_defensive(
+    &self,
+    #[validate(validators::active_bool)] is_enabled: bool,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    assert!(set_db_config(conn, SQLITE_DBCONFIG_DEFENSIVE, is_enabled));
+    Ok(())
+  }
+
+  // Sets an authorizer callback that SQLite will invoke whenever it attempts
+  // to access data or modify the database schema through prepared statements.
+  // This can be used to implement security policies, audit access, or restrict
+  // certain operations.
+  #[fast]
+  #[validate(is_open)]
+  #[undefined]
+  fn set_authorizer<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    callback: v8::Local<'a, v8::Value>,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { conn.handle() };
+
+    {
+      let mut authorizer_data = self.authorizer_data.borrow_mut();
+      if let Some(old_data_ptr) = authorizer_data.take() {
+        // SAFETY: data_ptr was allocated in authorizer setup.
+        unsafe {
+          free_authorizer_data(old_data_ptr);
+        }
+      }
+    }
+
+    if callback.is_null() {
+      // SAFETY: `raw_handle` is a valid database handle.
+      let result = unsafe {
+        libsqlite3_sys::sqlite3_set_authorizer(
+          raw_handle,
+          None,
+          std::ptr::null_mut(),
+        )
+      };
+      check_error_code(result, raw_handle)?;
+      return Ok(());
+    }
+
+    let Ok(function) = v8::Local::<v8::Function>::try_from(callback) else {
+      return Err(
+        validators::Error::InvalidArgType(
+          "The \"callback\" argument must be a function or null.",
+        )
+        .into(),
+      );
+    };
+
+    let callback_global = v8::Global::new(scope, function).into_raw();
+    let context_global =
+      v8::Global::new(scope, scope.get_current_context()).into_raw();
+
+    let data = Box::new(AuthorizerData {
+      callback: callback_global,
+      context: context_global,
+      ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+    });
+    let data_ptr = Box::into_raw(data);
+
+    // SAFETY: `raw_handle` is a valid database handle.
+    // `data_ptr` points to a valid memory location.
+    let result = unsafe {
+      libsqlite3_sys::sqlite3_set_authorizer(
+        raw_handle,
+        Some(authorizer_callback),
+        data_ptr as *mut c_void,
+      )
+    };
+
+    if result != libsqlite3_sys::SQLITE_OK {
+      // Clean up the data we allocated if setting the authorizer failed
+      // SAFETY: we just allocated this data and it failed to be registered
+      unsafe {
+        free_authorizer_data(data_ptr);
+      }
+      check_error_code(result, raw_handle)?;
+    }
+
+    *self.authorizer_data.borrow_mut() = Some(data_ptr);
+
+    Ok(())
   }
 
   #[getter]
@@ -1419,6 +1639,38 @@ impl DatabaseSync {
     check_error_code(r, raw_handle)?;
 
     Ok(())
+  }
+
+  #[validate(is_open)]
+  #[cppgc]
+  fn create_tag_store(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<SQLTagStore, SqliteError> {
+    let capacity = if let Some(args) = args
+      && args.length() > 0
+    {
+      let val = args.get(0);
+      if val.is_number() {
+        val.uint32_value(scope).unwrap_or(1000)
+      } else {
+        1000
+      }
+    } else {
+      1000
+    };
+
+    let db_object = args.map(|a| a.this()).ok_or(SqliteError::AlreadyClosed)?;
+
+    Ok(SQLTagStore::create(
+      self.conn.clone(),
+      self.statements.clone(),
+      capacity,
+      self.options.return_arrays,
+      self.options.use_big_int_arguments,
+      v8::Global::new(scope, db_object),
+    ))
   }
 }
 
@@ -1757,6 +2009,12 @@ struct CustomFunctionData {
   ignore_next_sqlite_error: Rc<Cell<bool>>,
 }
 
+struct AuthorizerData {
+  callback: NonNull<v8::Function>,
+  context: NonNull<v8::Context>,
+  ignore_next_sqlite_error: Rc<Cell<bool>>,
+}
+
 unsafe extern "C" fn custom_function_handler(
   ctx: *mut libsqlite3_sys::sqlite3_context,
   argc: i32,
@@ -1994,6 +2252,134 @@ fn sqlite_result_error(
       msg.as_ptr(),
       msg.as_bytes().len() as i32,
     );
+  }
+}
+
+macro_rules! nullable_cstring_to_v8_value {
+  ($scope:expr, $ptr:expr) => {{
+    if ($ptr).is_null() {
+      v8::null($scope).into()
+    } else {
+      let cstr = CStr::from_ptr($ptr);
+      v8::String::new_from_utf8(
+        $scope,
+        cstr.to_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .map(|s| s.into())
+      .unwrap_or_else(|| v8::null($scope).into())
+    }
+  }};
+}
+
+unsafe extern "C" fn authorizer_callback(
+  user_data: *mut c_void,
+  action_code: i32,
+  param1: *const c_char,
+  param2: *const c_char,
+  param3: *const c_char,
+  param4: *const c_char,
+) -> i32 {
+  // SAFETY: `user_data` is a valid pointer to AuthorizerData.
+  unsafe {
+    let data_ptr = user_data as *mut AuthorizerData;
+    if data_ptr.is_null() {
+      return libsqlite3_sys::SQLITE_DENY;
+    }
+
+    let data = &*data_ptr;
+    let context_local: v8::Local<v8::Context> =
+      std::mem::transmute(data.context.as_ptr());
+
+    v8::callback_scope!(unsafe cb_scope, context_local);
+    v8::scope!(scope, cb_scope);
+
+    let result: Option<v8::Local<'_, v8::Value>>;
+    {
+      v8::tc_scope!(tc_scope, scope);
+
+      let function_local: v8::Local<v8::Function> =
+        std::mem::transmute(data.callback.as_ptr());
+
+      let action_code_js = v8::Integer::new(tc_scope, action_code).into();
+
+      let param1_js: v8::Local<v8::Value> =
+        nullable_cstring_to_v8_value!(tc_scope, param1);
+      let param2_js: v8::Local<v8::Value> =
+        nullable_cstring_to_v8_value!(tc_scope, param2);
+      let param3_js: v8::Local<v8::Value> =
+        nullable_cstring_to_v8_value!(tc_scope, param3);
+      let param4_js: v8::Local<v8::Value> =
+        nullable_cstring_to_v8_value!(tc_scope, param4);
+
+      let js_args =
+        [action_code_js, param1_js, param2_js, param3_js, param4_js];
+      let recv = v8::undefined(tc_scope).into();
+      result = function_local.call(tc_scope, recv, &js_args);
+
+      if tc_scope.has_caught() {
+        data.ignore_next_sqlite_error.set(true);
+        tc_scope.rethrow();
+        return libsqlite3_sys::SQLITE_DENY;
+      }
+    }
+
+    let Some(value) = result else {
+      data.ignore_next_sqlite_error.set(true);
+      return libsqlite3_sys::SQLITE_DENY;
+    };
+
+    if !value.is_int32() {
+      let message = v8::String::new(
+        scope,
+        "Authorizer callback must return an integer authorization code",
+      )
+      .unwrap();
+      let err = v8::Exception::type_error(scope, message);
+      data.ignore_next_sqlite_error.set(true);
+      scope.throw_exception(err);
+      return libsqlite3_sys::SQLITE_DENY;
+    }
+
+    let int_result = value
+      .int32_value(scope)
+      .unwrap_or(libsqlite3_sys::SQLITE_DENY);
+
+    if int_result != libsqlite3_sys::SQLITE_OK
+      && int_result != libsqlite3_sys::SQLITE_DENY
+      && int_result != libsqlite3_sys::SQLITE_IGNORE
+    {
+      let message = v8::String::new(
+        scope,
+        "Authorizer callback returned a invalid authorization code",
+      )
+      .unwrap();
+      let err = v8::Exception::range_error(scope, message);
+      data.ignore_next_sqlite_error.set(true);
+      scope.throw_exception(err);
+      return libsqlite3_sys::SQLITE_DENY;
+    }
+
+    int_result
+  }
+}
+
+unsafe fn free_authorizer_data(data_ptr: *mut AuthorizerData) {
+  if data_ptr.is_null() {
+    return;
+  }
+  // SAFETY: `data_ptr` is a valid pointer to AuthorizerData.
+  // The v8 handles are properly dropped here.
+  unsafe {
+    let data = Box::from_raw(data_ptr);
+    let context_local: v8::Local<v8::Context> =
+      std::mem::transmute(data.context.as_ptr());
+
+    v8::callback_scope!(unsafe cb_scope, context_local);
+    v8::scope!(scope, cb_scope);
+
+    let _ = v8::Global::from_raw(scope, data.callback);
+    let _ = v8::Global::from_raw(scope, data.context);
   }
 }
 

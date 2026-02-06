@@ -578,7 +578,6 @@ impl Inner {
     let npm_search_api = CliNpmSearchApi::new(
       module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
       }),
@@ -835,7 +834,6 @@ impl Inner {
     self.npm_search_api = CliNpmSearchApi::new(
       self.module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         // todo(dsherret): the npm_search_api should probably be specific
         // to each workspace so that the link packages can be properly
         // hooked up
@@ -1145,6 +1143,7 @@ impl Inner {
             | MediaType::Css
             | MediaType::Html
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Unknown => {
               continue;

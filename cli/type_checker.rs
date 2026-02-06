@@ -21,7 +21,7 @@ use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
-use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
@@ -699,8 +699,8 @@ impl<'a> GraphWalker<'a> {
   pub fn add_config_import(&mut self, specifier: &'a Url, referrer: &Url) {
     let specifier = self.graph.resolve(specifier);
     if self.seen.insert(specifier) {
-      match NpmPackageNvReference::from_specifier(specifier) {
-        Ok(nv_ref) => match self.resolve_npm_nv_ref(&nv_ref, referrer) {
+      match NpmPackageReqReference::from_specifier(specifier) {
+        Ok(req_ref) => match self.resolve_npm_req_ref(&req_ref, referrer) {
           Some(resolved) => {
             let mt = MediaType::from_specifier(&resolved);
             self.roots.push((resolved, mt));
@@ -895,6 +895,7 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Wasm
           | MediaType::Css
           | MediaType::Html
+          | MediaType::Markdown
           | MediaType::SourceMap
           | MediaType::Sql
           | MediaType::Unknown => None,
@@ -963,22 +964,22 @@ impl<'a> GraphWalker<'a> {
     }
   }
 
-  fn resolve_npm_nv_ref(
+  fn resolve_npm_req_ref(
     &self,
-    nv_ref: &NpmPackageNvReference,
+    req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     let pkg_dir = self
       .npm_resolver
       .as_managed()
       .unwrap()
-      .resolve_pkg_folder_from_deno_module(nv_ref.nv())
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())
       .ok()?;
     let resolved = self
       .node_resolver
       .resolve_package_subpath_from_deno_module(
         &pkg_dir,
-        nv_ref.sub_path(),
+        req_ref.sub_path(),
         Some(referrer),
         node_resolver::ResolutionMode::Import,
         node_resolver::NodeResolutionKind::Types,
@@ -1010,6 +1011,7 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Json
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Wasm
     | MediaType::Css
     | MediaType::Html

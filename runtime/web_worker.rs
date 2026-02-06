@@ -37,7 +37,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
 use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -64,8 +64,7 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
-use crate::inspector_server::InspectorServer;
-use crate::inspector_server::MainInspectorSessionChannel;
+use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -135,7 +134,7 @@ impl<'s> WorkerThreadType {
 #[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError),
-  Close,
+  Close(i32),
 }
 
 use deno_core::serde::Serializer;
@@ -147,7 +146,7 @@ impl Serialize for WorkerControlEvent {
   {
     let type_id = match &self {
       WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Close => 3_i32,
+      WorkerControlEvent::Close(_) => 3_i32,
     };
 
     match self {
@@ -160,6 +159,8 @@ impl Serialize for WorkerControlEvent {
             });
             json!({
               "message": js_error.exception_message,
+              "name": js_error.name,
+              "errorMessage": js_error.message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
@@ -172,7 +173,9 @@ impl Serialize for WorkerControlEvent {
 
         Serialize::serialize(&(type_id, value), serializer)
       }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
+      WorkerControlEvent::Close(exit_code) => {
+        Serialize::serialize(&(type_id, exit_code), serializer)
+      }
     }
   }
 }
@@ -377,7 +380,6 @@ pub struct WebWorkerServiceOptions<
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
@@ -567,7 +569,7 @@ impl WebWorker {
         ),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(LocalCronHandler::new()),
+      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
@@ -575,7 +577,7 @@ impl WebWorker {
       }),
       deno_io::deno_io::init(Some(options.stdio)),
       deno_fs::deno_fs::init(services.fs.clone()),
-      deno_os::deno_os::init(None),
+      deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node::deno_node::init::<
         TInNpmPackageChecker,
@@ -648,7 +650,6 @@ impl WebWorker {
           options.enable_raw_imports,
         ))),
       ),
-      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),

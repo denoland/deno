@@ -101,6 +101,7 @@ pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
 pub(crate) const SOCKET_DEV_API_PORT: u16 = 4268;
+pub(crate) const PUBLIC_NPM_JSR_REGISTRY_PORT: u16 = 4269;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -156,6 +157,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+  let npm_jsr_registry_server_futs =
+    npm_registry::public_npm_jsr_registry(PUBLIC_NPM_JSR_REGISTRY_PORT);
   let socket_dev_api_futs = socket_dev::api(SOCKET_DEV_API_PORT);
 
   // for serving node header files to node-gyp in tests
@@ -198,6 +201,7 @@ pub async fn run_all_servers() {
   futures.extend(private_npm_registry_1_server_futs);
   futures.extend(private_npm_registry_2_server_futs);
   futures.extend(private_npm_registry_3_server_futs);
+  futures.extend(npm_jsr_registry_server_futs);
   futures.extend(socket_dev_api_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
@@ -1154,6 +1158,44 @@ console.log("imported", import.meta.url);
         .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
         .unwrap(),
     ),
+    // for testing deno upgrade
+    (&Method::GET, path)
+      if path.starts_with("/deno-upgrade/download/")
+        && path.ends_with(".zip") =>
+    {
+      let version = path
+        .strip_prefix("/deno-upgrade/download/v")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("unknown");
+
+      let mut zip_bytes = Vec::new();
+      {
+        use std::io::Write;
+        let mut zip_writer =
+          zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+        let options = zip::write::SimpleFileOptions::default()
+          .compression_method(zip::CompressionMethod::Stored);
+
+        let exe_name = if path.contains("windows") {
+          "deno.exe"
+        } else {
+          "deno"
+        };
+
+        zip_writer.start_file(exe_name, options).unwrap();
+        let content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+        zip_writer.write_all(content.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+      }
+
+      Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/zip")
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(zip_bytes))))
+          .unwrap(),
+      )
+    }
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1496,6 +1538,7 @@ const fn tsgo_platform() -> &'static str {
     std::env::consts::ARCH.as_bytes(),
   ) {
     (b"windows", b"x86_64") => "windows-x64",
+    (b"windows", b"aarch64") => "windows-arm64",
     (b"macos", b"x86_64") => "macos-x64",
     (b"macos", b"aarch64") => "macos-arm64",
     (b"linux", b"x86_64") => "linux-x64",

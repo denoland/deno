@@ -32,7 +32,7 @@ jobs:
           git config --global fetch.parallel 32
         if: github.event.pull_request.draft == true
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -91,6 +91,17 @@ jobs:
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+          - os: windows
+            arch: aarch64
+            runner: windows-11-arm
+            job: test
+            profile: debug
+          - os: windows
+            arch: aarch64
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
+            job: test
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: linux
             arch: x86_64
             runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -135,7 +146,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -173,21 +184,21 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '90-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '90-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.os == ''linux'' && matrix.arch == ''aarch64'')'
         name: Load 'vsock_loopback; kernel module
         run: sudo modprobe vsock_loopback
-      - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && ((matrix.job == ''test'' || matrix.job == ''bench'') && !(matrix.os == ''windows'' && matrix.arch == ''aarch64''))'
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
         if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
@@ -201,9 +212,9 @@ jobs:
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
         name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 22
       - if: |-
           !(matrix.skip) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -211,7 +222,7 @@ jobs:
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
         name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -225,7 +236,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Setup gcloud (windows)
@@ -379,14 +390,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '90-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
       - name: Set up playwright cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
@@ -431,7 +442,7 @@ jobs:
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))))
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
           path: target/release/deno
@@ -587,14 +598,16 @@ jobs:
         if: |-
           !(matrix.skip) && (always() &&
           matrix.job == 'test' &&
-          !startsWith(github.ref, 'refs/tags/'))
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: |-
           !(matrix.skip) && (always() &&
           matrix.job == 'test' &&
-          !startsWith(github.ref, 'refs/tags/'))
+          !startsWith(github.ref, 'refs/tags/') &&
+          !(matrix.os == 'windows' && matrix.arch == 'aarch64'))
         with:
           name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
           path: target/test_results.json
@@ -715,7 +728,7 @@ jobs:
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v0.1.15
+        uses: softprops/action-gh-release@v2
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
@@ -729,6 +742,10 @@ jobs:
             target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+            target/release/deno-aarch64-pc-windows-msvc.zip
+            target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
+            target/release/denort-aarch64-pc-windows-msvc.zip
+            target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum
             target/release/denort-x86_64-unknown-linux-gnu.zip
@@ -759,7 +776,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '90-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
@@ -794,7 +811,7 @@ jobs:
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -810,8 +827,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '90-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '90-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2
@@ -828,7 +845,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '90-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: test_format.js
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
@@ -848,7 +865,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '90-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:
@@ -863,7 +880,7 @@ jobs:
           git config --global fetch.parallel 32
         if: '!(matrix.skip)'
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 5
           submodules: false
@@ -896,7 +913,7 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
