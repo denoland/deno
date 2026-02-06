@@ -124,12 +124,12 @@ const {
   ZSTD_e_end,
 } = zlibConstants;
 
-export const constants = zlibConstants;
+export const constants = ObjectFreeze(zlibConstants);
 
 // Translation table for return codes.
 export const codes = {
   Z_OK: constants.Z_OK,
-  Z_STREAM_END: constants.Z_STREAM_EBROTLI_COMPRESSND,
+  Z_STREAM_END: constants.Z_STREAM_END,
   Z_NEED_DICT: constants.Z_NEED_DICT,
   Z_ERRNO: constants.Z_ERRNO,
   Z_STREAM_ERROR: constants.Z_STREAM_ERROR,
@@ -142,6 +142,8 @@ export const codes = {
 for (const ckey of ObjectKeys(codes)) {
   codes[codes[ckey]] = ckey;
 }
+
+ObjectFreeze(codes);
 
 function zlibBuffer(engine, buffer, callback) {
   validateFunction(callback, "callback");
@@ -956,7 +958,14 @@ function Brotli(opts, mode) {
     : new binding.BrotliEncoder(mode);
 
   this._writeState = new Uint32Array(2);
-  handle.init(brotliInitParamsArray, this._writeState, processCallback);
+  const success = handle.init(
+    brotliInitParamsArray,
+    this._writeState,
+    processCallback,
+  );
+  if (!success) {
+    throw new ERR_ZLIB_INITIALIZATION_FAILED("Initialization failed");
+  }
 
   ReflectApply(ZlibBase, this, [opts, mode, handle, brotliDefaultOpts]);
 }

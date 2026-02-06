@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
@@ -2379,6 +2378,14 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
@@ -3204,6 +3211,7 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
