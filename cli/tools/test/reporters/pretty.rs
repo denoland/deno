@@ -453,8 +453,11 @@ impl TestReporter for PrettyTestReporter {
 ///
 /// Returns `Cow::Borrowed` when no filtering is needed (fast path).
 fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
-  // Fast path: if no escape characters, BEL, or BS exist, return as-is
-  if !input.iter().any(|&b| b == 0x1b || b == 0x07 || b == 0x08) {
+  // Fast path: if no escape characters, BEL, BS, or CR exist, return as-is
+  if !input
+    .iter()
+    .any(|&b| b == 0x1b || b == 0x07 || b == 0x08 || b == b'\r')
+  {
     return Cow::Borrowed(input);
   }
 
@@ -466,6 +469,17 @@ fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
       // BEL and BS are stripped
       0x07 | 0x08 => {
         i += 1;
+      }
+      // Standalone CR is stripped (used for overwriting lines).
+      // CR followed by LF (\r\n) is kept as a normal line ending.
+      b'\r' => {
+        if i + 1 < input.len() && input[i + 1] == b'\n' {
+          output.push(b'\r');
+          output.push(b'\n');
+          i += 2;
+        } else {
+          i += 1;
+        }
       }
       0x1b => {
         if i + 1 >= input.len() {
@@ -701,10 +715,26 @@ mod tests {
 
   #[test]
   fn filter_destructive_ansi_preserves_whitespace() {
-    let input = b"line1\nline2\ttab\rcarriage";
+    let input = b"line1\nline2\ttab";
     let result = filter_destructive_ansi(input);
     assert!(matches!(result, Cow::Borrowed(_)));
-    assert_eq!(&*result, b"line1\nline2\ttab\rcarriage");
+    assert_eq!(&*result, b"line1\nline2\ttab");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_standalone_cr() {
+    // Standalone \r (used by progress bars to overwrite lines) is stripped
+    let input = b"progress\roverwrite";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"progressoverwrite");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_crlf() {
+    // \r\n line endings are preserved
+    let input = b"line1\r\nline2\r\n";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"line1\r\nline2\r\n");
   }
 
   #[test]
