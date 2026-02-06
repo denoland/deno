@@ -1,6 +1,7 @@
-#!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
+#!/usr/bin/env -S deno run --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
+import { parse as parseToml } from "jsr:@std/toml";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -68,6 +69,31 @@ const Runners = {
     runner: windowsArmRunner,
   },
 } as const;
+
+// discover all non-binary, non-test workspace members for the libs test job
+const rootCargoToml = parseToml(
+  Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+) as { workspace: { members: string[] } };
+
+const libPackages: string[] = [];
+for (const member of rootCargoToml.workspace.members) {
+  // test crates depend on the deno binary at runtime
+  if (member.startsWith("tests")) continue;
+
+  const cargoToml = parseToml(
+    Deno.readTextFileSync(
+      new URL(`../../${member}/Cargo.toml`, import.meta.url),
+    ),
+  ) as { package: { name: string }; bin?: unknown[] };
+
+  // skip binary crates (they need their own build step)
+  if (cargoToml.bin) continue;
+
+  libPackages.push(cargoToml.package.name);
+}
+
+const libTestPackageArgs = libPackages.map((p) => `-p ${p}`).join(" ");
+const libExcludeArgs = libPackages.map((p) => `--exclude ${p}`).join(" ");
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
@@ -955,7 +981,8 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace",
+          run:
+            `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -968,8 +995,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace",
-            "cargo test --locked --tests --features=panic-trace",
+            `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
+            `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -982,7 +1009,8 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked --features=panic-trace",
+          run:
+            `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
         },
         {
           name: "Ensure no git changes",
@@ -1291,31 +1319,47 @@ const ci = {
       ],
     },
     libs: {
-      name: "build libs",
+      name: "libs ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
-      "runs-on": ubuntuX86Runner,
+      "runs-on": "${{ matrix.runner }}",
       "timeout-minutes": 30,
+      strategy: {
+        matrix: {
+          include: [{
+            ...Runners.linuxX86,
+          }, {
+            ...Runners.macosX86,
+          }, {
+            ...Runners.windowsX86,
+          }],
+        },
+      },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoSteps,
+        cacheCargoHomeStep,
         installRustStep,
         {
           name: "Install wasm target",
+          if: "matrix.os == 'linux'",
           run: "rustup target add wasm32-unknown-unknown",
         },
         // we want these crates to be Wasm compatible
         {
           name: "Cargo check (deno_resolver)",
+          if: "matrix.os == 'linux'",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
         },
         {
           name: "Cargo check (deno_npm_installer)",
+          if: "matrix.os == 'linux'",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
         },
         {
           name: "Cargo check (deno_config)",
+          if: "matrix.os == 'linux'",
           run: [
             "cargo check --no-default-features -p deno_config",
             "cargo check --no-default-features --features workspace -p deno_config",
@@ -1324,6 +1368,10 @@ const ci = {
             "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
             "cargo check -p deno --features=lsp-tracing",
           ].join("\n"),
+        },
+        {
+          name: "Test libs",
+          run: `cargo test --locked ${libTestPackageArgs}`,
         },
       ]),
     },

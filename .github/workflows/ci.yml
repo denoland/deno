@@ -570,7 +570,7 @@ jobs:
           matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') &&
           matrix.os == 'linux')
-        run: cargo test --locked --features=panic-trace
+        run: cargo test --workspace --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: 'Test (fast, debug)'
@@ -579,8 +579,8 @@ jobs:
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
-          cargo test --locked --lib --features=panic-trace
-          cargo test --locked --tests --features=panic-trace
+          cargo test --workspace --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --lib --features=panic-trace
+          cargo test --workspace --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --tests --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)
@@ -590,7 +590,7 @@ jobs:
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
-        run: cargo test --release --locked --features=panic-trace
+        run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
         if: '!(matrix.skip) && (matrix.job == ''test'' && github.event_name == ''pull_request'')'
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -867,12 +867,24 @@ jobs:
             !./target/*/*.tar.gz
           key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
-    name: build libs
+    name: 'libs ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
-    runs-on: ubuntu-24.04
+    runs-on: '${{ matrix.runner }}'
     timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+          - os: macos
+            arch: x86_64
+            runner: macos-15-intel
+          - os: windows
+            arch: x86_64
+            runner: windows-2022
     steps:
       - name: Configure git
         run: |-
@@ -885,18 +897,32 @@ jobs:
           fetch-depth: 5
           submodules: false
         if: '!(matrix.skip)'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+        if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - name: Install wasm target
+        if: '!(matrix.skip) && (matrix.os == ''linux'')'
         run: rustup target add wasm32-unknown-unknown
-        if: '!(matrix.skip)'
       - name: Cargo check (deno_resolver)
+        if: '!(matrix.skip) && (matrix.os == ''linux'')'
         run: cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast
-        if: '!(matrix.skip)'
       - name: Cargo check (deno_npm_installer)
+        if: '!(matrix.skip) && (matrix.os == ''linux'')'
         run: cargo check --target wasm32-unknown-unknown -p deno_npm_installer
-        if: '!(matrix.skip)'
       - name: Cargo check (deno_config)
+        if: '!(matrix.skip) && (matrix.os == ''linux'')'
         run: |-
           cargo check --no-default-features -p deno_config
           cargo check --no-default-features --features workspace -p deno_config
@@ -904,6 +930,8 @@ jobs:
           cargo check --no-default-features --features workspace --features sync -p deno_config
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
           cargo check -p deno --features=lsp-tracing
+      - name: Test libs
+        run: cargo test --locked -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
