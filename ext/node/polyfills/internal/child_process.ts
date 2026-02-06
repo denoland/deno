@@ -1231,9 +1231,10 @@ function splitShellArgs(str: string): string[] {
 
 /**
  * Splits a shell command string into the command arguments part and a shell
- * operator suffix (redirections like `< file`, `> file`, pipes `|`, etc.).
+ * operator suffix (redirections like `< file`, `1>&-`, pipes `|`, etc.).
  * Respects quoted strings so that operators inside quotes are not treated as
- * shell syntax.
+ * shell syntax. Handles fd numbers before redirections (e.g. "1>" is part
+ * of the suffix).
  */
 function splitShellSuffix(
   str: string,
@@ -1249,10 +1250,20 @@ function splitShellSuffix(
       inSingle = !inSingle;
     } else if (!inDouble && !inSingle) {
       // Check for shell operators: <, >, |, &, ;
-      if (ch === "<" || ch === ">" || ch === "|" || ch === ";" || ch === "&") {
-        // Found a shell operator outside quotes - split here
-        const argsStr = str.slice(0, i).trimEnd();
-        const shellSuffix = " " + str.slice(i);
+      if (
+        ch === "<" || ch === ">" || ch === "|" || ch === ";" || ch === "&"
+      ) {
+        // For redirections, include a preceding fd number (e.g. "1>" or "2>")
+        let splitIdx = i;
+        if (
+          (ch === "<" || ch === ">") && i > 0 &&
+          str[i - 1] >= "0" && str[i - 1] <= "9" &&
+          (i < 2 || str[i - 2] === " " || str[i - 2] === "\t")
+        ) {
+          splitIdx = i - 1;
+        }
+        const argsStr = str.slice(0, splitIdx).trimEnd();
+        const shellSuffix = " " + str.slice(splitIdx);
         return { argsStr, shellSuffix };
       }
     }
@@ -1319,7 +1330,7 @@ function transformDenoShellCommand(
   }
 
   // Separate shell operators (redirections, pipes, etc.) from command arguments.
-  // Shell operators like `< file`, `> file`, `|`, `&&` are processed by the
+  // Shell operators like `< file`, `1>&-`, `|`, `&&` are processed by the
   // shell, not by the command, so they should not be passed to the arg parser.
   const { argsStr, shellSuffix } = splitShellSuffix(rest);
 
@@ -1410,6 +1421,21 @@ function buildCommand(
       } else {
         env.NODE_OPTIONS = options;
       }
+    }
+  }
+
+  // When spawning a shell with `-c` (e.g. spawn('/bin/sh', ['-c', cmd])),
+  // transform any Deno commands inside the shell command string so that
+  // Node.js flags are translated and `-A` is added.
+  if (
+    file !== Deno.execPath() &&
+    args.length >= 2 &&
+    args[0] === "-c"
+  ) {
+    const transformed = transformDenoShellCommand(args[1], env);
+    if (transformed !== args[1]) {
+      args = args.slice();
+      args[1] = transformed;
     }
   }
 
