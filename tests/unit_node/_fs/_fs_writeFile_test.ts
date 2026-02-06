@@ -36,7 +36,7 @@ Deno.test("Callback must be a function error", function fn() {
       writeFile("some/path", "some data", "utf8");
     },
     TypeError,
-    "Callback must be a function.",
+    "The \"callback\" argument must be of type function. Received undefined",
   );
 });
 
