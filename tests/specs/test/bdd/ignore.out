@@ -1,0 +1,11 @@
+Check [WILDCARD]ignore.ts
+running 1 test from ./ignore.ts
+suite ...
+  runs ... ok ([WILDCARD])
+  skipped via ignore ... ignored ([WILDCARD])
+  skipped via skip ... ignored ([WILDCARD])
+  skipped suite ... ignored ([WILDCARD])
+suite ... ok ([WILDCARD])
+
+ok | 1 passed (1 step) | 0 failed | 0 ignored (3 steps) ([WILDCARD])
+

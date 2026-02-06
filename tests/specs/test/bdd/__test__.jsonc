@@ -1,0 +1,34 @@
+{
+  "tests": {
+    "basic": {
+      "args": "test basic.ts",
+      "output": "basic.out",
+      "exitCode": 0
+    },
+    "nested": {
+      "args": "test nested.ts",
+      "output": "nested.out",
+      "exitCode": 0
+    },
+    "hooks": {
+      "args": "test hooks.ts",
+      "output": "hooks.out",
+      "exitCode": 0
+    },
+    "only": {
+      "args": "test only.ts",
+      "output": "only.out",
+      "exitCode": 0
+    },
+    "ignore": {
+      "args": "test ignore.ts",
+      "output": "ignore.out",
+      "exitCode": 0
+    },
+    "top_level_it": {
+      "args": "test top_level_it.ts",
+      "output": "top_level_it.out",
+      "exitCode": 0
+    }
+  }
+}

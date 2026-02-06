@@ -1,0 +1,15 @@
+Check [WILDCARD]hooks.ts
+running 1 test from ./hooks.ts
+suite ...
+  test 1 ... ok ([WILDCARD])
+  test 2 ... ok ([WILDCARD])
+  nested ...
+    test 3 ... ok ([WILDCARD])
+  nested ... ok ([WILDCARD])
+suite ... ok ([WILDCARD])
+------- post-test output -------
+["beforeAll","beforeEach","test 1","afterEach","beforeEach","test 2","afterEach","beforeEach","nested beforeEach","test 3","nested afterEach","afterEach","afterAll"]
+----- post-test output end -----
+
+ok | 1 passed (4 steps) | 0 failed ([WILDCARD])
+

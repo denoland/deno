@@ -569,6 +569,20 @@ const finalDenoNs = {
   // contexts.
   test: () => {},
   bench: () => {},
+  describe: ObjectAssign(() => {}, {
+    only: () => {},
+    ignore: () => {},
+    skip: () => {},
+  }),
+  it: ObjectAssign(() => {}, {
+    only: () => {},
+    ignore: () => {},
+    skip: () => {},
+  }),
+  beforeEach: () => {},
+  afterEach: () => {},
+  beforeAll: () => {},
+  afterAll: () => {},
   lint: {
     runPlugin: () => {
       throw new Error(

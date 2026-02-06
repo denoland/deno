@@ -536,4 +536,334 @@ function wrapTest(desc) {
   return wrapOuter(testFn, desc);
 }
 
+// BDD-style testing: describe/it/hooks
+// Builds on top of Deno.test() + t.step()
+
+let currentSuite = null;
+
+function createSuite(name, options) {
+  return {
+    name,
+    options: options || { __proto__: null },
+    children: [],
+    beforeAllFns: [],
+    afterAllFns: [],
+    beforeEachFns: [],
+    afterEachFns: [],
+  };
+}
+
+function parseDescribeArgs(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
+  let name;
+  let fn;
+  let options = {};
+
+  if (typeof nameOrFnOrOptions === "string") {
+    name = nameOrFnOrOptions;
+    if (typeof optionsOrFn === "function") {
+      fn = optionsOrFn;
+    } else if (typeof optionsOrFn === "object" && optionsOrFn !== null) {
+      options = optionsOrFn;
+      fn = maybeFn;
+    } else {
+      fn = maybeFn;
+    }
+  } else if (typeof nameOrFnOrOptions === "function") {
+    fn = nameOrFnOrOptions;
+    name = nameOrFnOrOptions.name;
+  } else if (typeof nameOrFnOrOptions === "object" && nameOrFnOrOptions !== null) {
+    options = nameOrFnOrOptions;
+    name = options.name;
+    if (typeof optionsOrFn === "function") {
+      fn = optionsOrFn;
+    } else {
+      fn = options.fn;
+    }
+  }
+
+  if (!name) {
+    throw new TypeError("The describe name can't be empty");
+  }
+  if (typeof fn !== "function") {
+    throw new TypeError("Expected a function for describe body");
+  }
+
+  return { name, fn, options: { ...options, ...overrides } };
+}
+
+function parseItArgs(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
+  let name;
+  let fn;
+  let options = {};
+
+  if (typeof nameOrFnOrOptions === "string") {
+    name = nameOrFnOrOptions;
+    if (typeof optionsOrFn === "function") {
+      fn = optionsOrFn;
+    } else if (typeof optionsOrFn === "object" && optionsOrFn !== null) {
+      options = optionsOrFn;
+      fn = maybeFn;
+    } else {
+      fn = maybeFn;
+    }
+  } else if (typeof nameOrFnOrOptions === "function") {
+    fn = nameOrFnOrOptions;
+    name = nameOrFnOrOptions.name;
+  } else if (typeof nameOrFnOrOptions === "object" && nameOrFnOrOptions !== null) {
+    options = nameOrFnOrOptions;
+    name = options.name;
+    if (typeof optionsOrFn === "function") {
+      fn = optionsOrFn;
+    } else {
+      fn = options.fn;
+    }
+  }
+
+  if (!name) {
+    throw new TypeError("The test name can't be empty");
+  }
+  if (typeof fn !== "function") {
+    throw new TypeError("Missing test function");
+  }
+
+  return { name, fn, options: { ...options, ...overrides } };
+}
+
+function describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
+  const { name, fn, options } = parseDescribeArgs(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+    overrides,
+  );
+
+  const suite = createSuite(name, options);
+  const parentSuite = currentSuite;
+
+  // Execute fn synchronously to collect children
+  currentSuite = suite;
+  try {
+    const result = fn();
+    if (result instanceof Promise) {
+      throw new TypeError(
+        "describe() body must not be async. Move async code into beforeAll(), beforeEach(), or it() blocks.",
+      );
+    }
+  } finally {
+    currentSuite = parentSuite;
+  }
+
+  // Handle `only` propagation: if any child has only, ignore non-only siblings
+  let hasOnly = false;
+  for (let i = 0; i < suite.children.length; i++) {
+    if (suite.children[i].definition.options && suite.children[i].definition.options.only) {
+      hasOnly = true;
+      break;
+    }
+  }
+  if (hasOnly) {
+    for (let i = 0; i < suite.children.length; i++) {
+      const child = suite.children[i];
+      if (!child.definition.options || !child.definition.options.only) {
+        if (!child.definition.options) {
+          child.definition.options = {};
+        }
+        child.definition.options.ignore = true;
+      }
+    }
+  }
+
+  if (parentSuite !== null) {
+    // Nested suite: add to parent
+    ArrayPrototypePush(parentSuite.children, {
+      type: "suite",
+      definition: suite,
+    });
+  } else {
+    // Top-level suite: register as a Deno.test
+    registerTopLevelSuite(suite);
+  }
+}
+
+function registerTopLevelSuite(suite) {
+  const suiteOptions = suite.options || {};
+  testInner({
+    name: suite.name,
+    ignore: suiteOptions.ignore || false,
+    only: suiteOptions.only || false,
+    sanitizeOps: suiteOptions.sanitizeOps ?? true,
+    sanitizeResources: suiteOptions.sanitizeResources ?? true,
+    sanitizeExit: suiteOptions.sanitizeExit ?? true,
+    fn: async (t) => {
+      await runSuite(suite, t, [], []);
+    },
+  });
+}
+
+async function runSuite(suite, t, parentBeforeEachFns, parentAfterEachFns) {
+  // Accumulated hooks: beforeEach outermost-first, afterEach innermost-first
+  const allBeforeEachFns = [
+    ...new SafeArrayIterator(parentBeforeEachFns),
+    ...new SafeArrayIterator(suite.beforeEachFns),
+  ];
+  const allAfterEachFns = [
+    ...new SafeArrayIterator(suite.afterEachFns),
+    ...new SafeArrayIterator(parentAfterEachFns),
+  ];
+
+  // Run beforeAll hooks (FIFO)
+  for (let i = 0; i < suite.beforeAllFns.length; i++) {
+    await suite.beforeAllFns[i]();
+  }
+
+  try {
+    for (let i = 0; i < suite.children.length; i++) {
+      const child = suite.children[i];
+
+      if (child.type === "test") {
+        const def = child.definition;
+        const testOpts = def.options || {};
+        await t.step({
+          name: def.name,
+          ignore: testOpts.ignore || false,
+          fn: async () => {
+            // Run all beforeEach hooks (outermost-first)
+            for (let j = 0; j < allBeforeEachFns.length; j++) {
+              await allBeforeEachFns[j]();
+            }
+            try {
+              await def.fn();
+            } finally {
+              // Run all afterEach hooks (innermost-first)
+              for (let j = 0; j < allAfterEachFns.length; j++) {
+                await allAfterEachFns[j]();
+              }
+            }
+          },
+        });
+      } else if (child.type === "suite") {
+        const nestedSuite = child.definition;
+        const suiteOpts = nestedSuite.options || {};
+        await t.step({
+          name: nestedSuite.name,
+          ignore: suiteOpts.ignore || false,
+          fn: async (innerT) => {
+            await runSuite(
+              nestedSuite,
+              innerT,
+              allBeforeEachFns,
+              allAfterEachFns,
+            );
+          },
+        });
+      }
+    }
+  } finally {
+    // Run afterAll hooks (LIFO)
+    for (let i = suite.afterAllFns.length - 1; i >= 0; i--) {
+      await suite.afterAllFns[i]();
+    }
+  }
+}
+
+function describe(nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
+}
+
+describe.only = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn, {
+    only: true,
+  });
+};
+
+describe.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn, {
+    ignore: true,
+  });
+};
+
+describe.skip = describe.ignore;
+
+function itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
+  const { name, fn, options } = parseItArgs(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+    overrides,
+  );
+
+  if (currentSuite !== null) {
+    // Inside a describe block: add to suite's children
+    ArrayPrototypePush(currentSuite.children, {
+      type: "test",
+      definition: { name, fn, options },
+    });
+  } else {
+    // Top-level it(): delegate to Deno.test()
+    testInner({ name, fn, ...options });
+  }
+}
+
+function it(nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
+}
+
+it.only = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+it.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { ignore: true });
+};
+
+it.skip = it.ignore;
+
+function bddBeforeAll(fn) {
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeAllFns, fn);
+  } else {
+    registerHook("beforeAll", fn);
+  }
+}
+
+function bddAfterAll(fn) {
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterAllFns, fn);
+  } else {
+    registerHook("afterAll", fn);
+  }
+}
+
+function bddBeforeEach(fn) {
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeEachFns, fn);
+  } else {
+    registerHook("beforeEach", fn);
+  }
+}
+
+function bddAfterEach(fn) {
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterEachFns, fn);
+  } else {
+    registerHook("afterEach", fn);
+  }
+}
+
 globalThis.Deno.test = test;
+globalThis.Deno.describe = describe;
+globalThis.Deno.it = it;
+globalThis.Deno.beforeEach = bddBeforeEach;
+globalThis.Deno.afterEach = bddAfterEach;
+globalThis.Deno.beforeAll = bddBeforeAll;
+globalThis.Deno.afterAll = bddAfterAll;

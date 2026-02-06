@@ -1,0 +1,9 @@
+Check [WILDCARD]basic.ts
+running 1 test from ./basic.ts
+math ...
+  adds numbers ... ok ([WILDCARD])
+  subtracts numbers ... ok ([WILDCARD])
+math ... ok ([WILDCARD])
+
+ok | 1 passed (2 steps) | 0 failed ([WILDCARD])
+

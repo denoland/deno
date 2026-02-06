@@ -1,0 +1,11 @@
+Check [WILDCARD]nested.ts
+running 1 test from ./nested.ts
+outer ...
+  outer test ... ok ([WILDCARD])
+  inner ...
+    inner test ... ok ([WILDCARD])
+  inner ... ok ([WILDCARD])
+outer ... ok ([WILDCARD])
+
+ok | 1 passed (3 steps) | 0 failed ([WILDCARD])
+
