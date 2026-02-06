@@ -1319,7 +1319,7 @@ const ci = {
       ],
     },
     libs: {
-      name: "libs ${{ matrix.os }}-${{ matrix.arch }}",
+      name: "libs ${{ matrix.os }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
@@ -1327,11 +1327,14 @@ const ci = {
       strategy: {
         matrix: {
           include: [{
-            ...Runners.linuxX86,
+            os: "linux",
+            runner: "ubuntu-latest",
           }, {
-            ...Runners.macosX86,
+            os: "macos",
+            runner: "macos-latest",
           }, {
-            ...Runners.windowsX86,
+            os: "windows",
+            runner: "windows-latest",
           }],
         },
       },

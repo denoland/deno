@@ -867,7 +867,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
-    name: 'libs ${{ matrix.os }}-${{ matrix.arch }}'
+    name: 'libs ${{ matrix.os }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
@@ -877,14 +877,11 @@ jobs:
       matrix:
         include:
           - os: linux
-            arch: x86_64
-            runner: ubuntu-24.04
+            runner: ubuntu-latest
           - os: macos
-            arch: x86_64
-            runner: macos-15-intel
+            runner: macos-latest
           - os: windows
-            arch: x86_64
-            runner: windows-2022
+            runner: windows-latest
     steps:
       - name: Configure git
         run: |-
