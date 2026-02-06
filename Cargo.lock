@@ -997,7 +997,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "lazy-regex",
  "nix 0.27.1",
  "once_cell",
@@ -1717,7 +1717,7 @@ dependencies = [
  "http-body-util",
  "import_map",
  "indexmap 2.9.0",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "jupyter-protocol",
  "keyring",
  "lazy-regex",
@@ -1939,7 +1939,7 @@ dependencies = [
  "ignore",
  "import_map",
  "indexmap 2.9.0",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "log",
  "pretty_assertions",
  "serde",
@@ -2887,7 +2887,7 @@ dependencies = [
  "http 1.1.0",
  "import_map",
  "indexmap 2.9.0",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "log",
  "node_resolver",
  "once_cell",
@@ -4084,7 +4084,7 @@ dependencies = [
  "import_map",
  "indexmap 2.9.0",
  "insta",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "pretty_assertions",
  "reqwest",
  "serde",
@@ -5794,15 +5794,15 @@ name = "jsonc-parser"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01958dcb05b69d9612853b47df8f7881810e4f61b5cedd8894be04291f28ccb9"
-dependencies = [
- "serde_json",
-]
 
 [[package]]
 name = "jsonc-parser"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b187b7e06feb2c205d8ec71f12cd8f553e33477ec155ebfc34f8daa7f3ae4eab"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "junction"
@@ -9701,7 +9701,7 @@ dependencies = [
  "hyper-util",
  "indexmap 2.9.0",
  "inventory",
- "jsonc-parser 0.27.1",
+ "jsonc-parser 0.28.0",
  "lazy-regex",
  "libc",
  "lsp-types",
