@@ -67,6 +67,7 @@ use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallFlags;
+use crate::args::InstallFlagsLocal;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -600,6 +601,54 @@ impl CliFactory {
           .cloned()
           .map(|r| r as Arc<dyn deno_npm_installer::InstallReporter>),
         NpmInstallerFactoryOptions {
+          clean_on_install: match cli_options.sub_command() {
+            DenoSubcommand::Add { .. }
+            | DenoSubcommand::ApproveScripts { .. }
+            | DenoSubcommand::Remove { .. }
+            | DenoSubcommand::Cache { .. }
+            | DenoSubcommand::Uninstall { .. } => true,
+            DenoSubcommand::Install(flags) => match flags {
+              InstallFlags::Local(flags) => match flags {
+                InstallFlagsLocal::Add { .. }
+                | InstallFlagsLocal::TopLevel { .. } => true,
+                // someone might be terribly storing dependencies in a
+                // module and needs to populate their node_modules directory
+                // with the dependencies in that file
+                InstallFlagsLocal::Entrypoints { .. } => false,
+              },
+              InstallFlags::Global(_) => false,
+            },
+            DenoSubcommand::Audit { .. }
+            | DenoSubcommand::Bench { .. }
+            | DenoSubcommand::Bundle { .. }
+            | DenoSubcommand::Check { .. }
+            | DenoSubcommand::Clean { .. }
+            | DenoSubcommand::Compile { .. }
+            | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Coverage { .. }
+            | DenoSubcommand::Deploy { .. }
+            | DenoSubcommand::Doc { .. }
+            | DenoSubcommand::Eval { .. }
+            | DenoSubcommand::Fmt { .. }
+            | DenoSubcommand::Init { .. }
+            | DenoSubcommand::Info { .. }
+            | DenoSubcommand::JSONReference { .. }
+            | DenoSubcommand::Jupyter { .. }
+            | DenoSubcommand::Lsp
+            | DenoSubcommand::Lint { .. }
+            | DenoSubcommand::Repl { .. }
+            | DenoSubcommand::Run { .. }
+            | DenoSubcommand::Serve { .. }
+            | DenoSubcommand::Task { .. }
+            | DenoSubcommand::Test { .. }
+            | DenoSubcommand::Outdated { .. }
+            | DenoSubcommand::Types
+            | DenoSubcommand::Upgrade { .. }
+            | DenoSubcommand::Vendor
+            | DenoSubcommand::Publish { .. }
+            | DenoSubcommand::Help { .. }
+            | DenoSubcommand::X { .. } => false,
+          },
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),
