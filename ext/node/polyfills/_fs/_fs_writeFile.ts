@@ -25,13 +25,29 @@ import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { primordials } from "ext:core/mod.js";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import { URLPrototype } from "ext:deno_web/00_url.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
+type WriteFileSyncData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | Iterable<NodeJS.TypedArray | string>;
+
+type WriteFileData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | AsyncIterable<NodeJS.TypedArray | string>;
+
 const {
+  kWriteFileMaxChunkSize,
+} = constants;
+
+const {
+  ArrayBufferIsView,
   MathMin,
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
@@ -39,7 +55,7 @@ const {
 } = primordials;
 
 interface Writer {
-  write(p: Uint8Array): Promise<number>;
+  write(p: NodeJS.TypedArray): Promise<number>;
 }
 
 async function getRid(
@@ -62,7 +78,7 @@ function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
 
 export function writeFile(
   pathOrRid: string | number | URL | FileHandle,
-  data: string | Uint8Array,
+  data: WriteFileData,
   options: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
@@ -91,7 +107,7 @@ export function writeFile(
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!isArrayBufferView(data) && !isCustomIterable(data)) {
+  if (!ArrayBufferIsView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -111,7 +127,12 @@ export function writeFile(
         checkAborted(signal);
       }
 
-      await writeAll(file, data, encoding, signal);
+      await writeAll(
+        file,
+        data as (Exclude<WriteFileData, string>),
+        encoding,
+        signal,
+      );
     } catch (e) {
       error = denoErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
@@ -124,13 +145,13 @@ export function writeFile(
 
 export const writeFilePromise = promisify(writeFile) as (
   pathOrRid: string | number | URL,
-  data: string | Uint8Array,
+  data: WriteFileData,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
   pathOrRid: string | number | URL,
-  data: string | Uint8Array,
+  data: WriteFileSyncData,
   options?: Encodings | WriteFileOptions,
 ) {
   let flag: string | undefined;
@@ -147,7 +168,7 @@ export function writeFileSync(
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!isArrayBufferView(data)) {
+  if (!ArrayBufferIsView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -164,11 +185,11 @@ export function writeFileSync(
       Deno.chmodSync(pathOrRid as string, mode);
     }
 
-    // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
-    let nwritten = 0;
-    while (nwritten < (data as Uint8Array).length) {
-      nwritten += file.writeSync((data as Uint8Array).subarray(nwritten));
-    }
+    writeAllSync(
+      file,
+      data as (Exclude<WriteFileSyncData, string>),
+      encoding,
+    );
   } catch (e) {
     error = denoErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
@@ -179,9 +200,44 @@ export function writeFileSync(
   if (error) throw error;
 }
 
+async function writeAllSync(
+  file: FsFile,
+  data: Exclude<WriteFileSyncData, string>,
+  encoding: BufferEncoding,
+) {
+  if (!isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      const bytesWritten = file.writeSync(
+        data.subarray(data.byteLength - remaining, writeSize),
+      );
+      remaining -= bytesWritten;
+      data = new Uint8Array(
+        data.buffer,
+        data.byteOffset + bytesWritten,
+        data.byteLength - bytesWritten,
+      );
+    }
+  } else {
+    for (const buf of data) {
+      const toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        const bytesWritten = await file.write(
+          toWrite.subarray(toWrite.byteLength - remaining, writeSize),
+        );
+        remaining -= bytesWritten;
+      }
+    }
+  }
+}
+
 async function writeAll(
   w: Writer,
-  data: Uint8Array | Iterable<Uint8Array>,
+  data: Exclude<WriteFileData, string>,
   encoding: BufferEncoding,
   signal?: AbortSignal,
 ) {
@@ -189,7 +245,7 @@ async function writeAll(
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     let remaining = data.byteLength;
     while (remaining > 0) {
-      const writeSize = MathMin(constants.kWriteFileMaxChunkSize, remaining);
+      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
       const bytesWritten = await w.write(
         data.subarray(data.byteLength - remaining, writeSize),
       );
@@ -204,10 +260,10 @@ async function writeAll(
   } else {
     for await (const buf of data) {
       checkAborted(signal);
-      const toWrite = isArrayBufferView(buf) ? buf : Buffer.from(buf, encoding);
+      const toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
-        const writeSize = MathMin(constants.kWriteFileMaxChunkSize, remaining);
+        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
         const bytesWritten = await w.write(
           toWrite.subarray(toWrite.byteLength - remaining, writeSize),
         );
@@ -220,8 +276,12 @@ async function writeAll(
   checkAborted(signal);
 }
 
-function isCustomIterable(obj: unknown): obj is Iterable<Uint8Array> {
-  return isIterable(obj) && !isArrayBufferView(obj) && typeof obj !== "string";
+function isCustomIterable(
+  obj: unknown,
+): obj is
+  | Iterable<NodeJS.TypedArray | string>
+  | AsyncIterable<NodeJS.TypedArray | string> {
+  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
 }
 
 function checkAborted(signal?: AbortSignal) {
