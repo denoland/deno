@@ -77,11 +77,7 @@ pub fn op_node_translate_cli_args(
   // `node` with no args reads and executes piped stdin.
   if args.is_empty() {
     return Ok(TranslatedArgs {
-      deno_args: vec![
-        "run".to_string(),
-        "-A".to_string(),
-        "-".to_string(),
-      ],
+      deno_args: vec!["run".to_string(), "-A".to_string(), "-".to_string()],
       node_options: vec![],
       needs_npm_process_state: script_in_npm_package,
     });
