@@ -1324,6 +1324,12 @@ const ci = {
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
       "timeout-minutes": 30,
+      env: {
+        // override .cargo/config.toml linker flags (lld, framework links)
+        // because we don't need them for testing the libs
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: "",
+        CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS: "",
+      },
       strategy: {
         matrix: {
           include: [{

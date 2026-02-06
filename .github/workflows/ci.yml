@@ -873,6 +873,9 @@ jobs:
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
     timeout-minutes: 30
+    env:
+      CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: ''
+      CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS: ''
     strategy:
       matrix:
         include:
