@@ -210,6 +210,11 @@ function testInner(
     return;
   }
 
+  // Inside a describe() block, Deno.test() behaves like Deno.it()
+  if (currentSuite !== null) {
+    return itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides);
+  }
+
   let testDesc;
   const defaults = {
     ignore: false,
@@ -553,45 +558,7 @@ function createSuite(name, options) {
   };
 }
 
-function parseDescribeArgs(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
-  let name;
-  let fn;
-  let options = {};
-
-  if (typeof nameOrFnOrOptions === "string") {
-    name = nameOrFnOrOptions;
-    if (typeof optionsOrFn === "function") {
-      fn = optionsOrFn;
-    } else if (typeof optionsOrFn === "object" && optionsOrFn !== null) {
-      options = optionsOrFn;
-      fn = maybeFn;
-    } else {
-      fn = maybeFn;
-    }
-  } else if (typeof nameOrFnOrOptions === "function") {
-    fn = nameOrFnOrOptions;
-    name = nameOrFnOrOptions.name;
-  } else if (typeof nameOrFnOrOptions === "object" && nameOrFnOrOptions !== null) {
-    options = nameOrFnOrOptions;
-    name = options.name;
-    if (typeof optionsOrFn === "function") {
-      fn = optionsOrFn;
-    } else {
-      fn = options.fn;
-    }
-  }
-
-  if (!name) {
-    throw new TypeError("The describe name can't be empty");
-  }
-  if (typeof fn !== "function") {
-    throw new TypeError("Expected a function for describe body");
-  }
-
-  return { name, fn, options: { ...options, ...overrides } };
-}
-
-function parseItArgs(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
+function parseBddArgs(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
   let name;
   let fn;
   let options = {};
@@ -635,7 +602,7 @@ function describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
     return;
   }
 
-  const { name, fn, options } = parseDescribeArgs(
+  const { name, fn, options } = parseBddArgs(
     nameOrFnOrOptions,
     optionsOrFn,
     maybeFn,
@@ -686,23 +653,18 @@ function describeInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
     });
   } else {
     // Top-level suite: register as a Deno.test
-    registerTopLevelSuite(suite);
+    testInner({
+      name: suite.name,
+      ignore: options.ignore || false,
+      only: options.only || false,
+      sanitizeOps: options.sanitizeOps ?? true,
+      sanitizeResources: options.sanitizeResources ?? true,
+      sanitizeExit: options.sanitizeExit ?? true,
+      fn: async (t) => {
+        await runSuite(suite, t, [], []);
+      },
+    });
   }
-}
-
-function registerTopLevelSuite(suite) {
-  const suiteOptions = suite.options || {};
-  testInner({
-    name: suite.name,
-    ignore: suiteOptions.ignore || false,
-    only: suiteOptions.only || false,
-    sanitizeOps: suiteOptions.sanitizeOps ?? true,
-    sanitizeResources: suiteOptions.sanitizeResources ?? true,
-    sanitizeExit: suiteOptions.sanitizeExit ?? true,
-    fn: async (t) => {
-      await runSuite(suite, t, [], []);
-    },
-  });
 }
 
 async function runSuite(suite, t, parentBeforeEachFns, parentAfterEachFns) {
@@ -795,7 +757,7 @@ function itInner(nameOrFnOrOptions, optionsOrFn, maybeFn, overrides) {
     return;
   }
 
-  const { name, fn, options } = parseItArgs(
+  const { name, fn, options } = parseBddArgs(
     nameOrFnOrOptions,
     optionsOrFn,
     maybeFn,
@@ -828,37 +790,20 @@ it.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
 
 it.skip = it.ignore;
 
-function bddBeforeAll(fn) {
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.beforeAllFns, fn);
-  } else {
-    registerHook("beforeAll", fn);
-  }
+function bddHook(hookType, suiteKey) {
+  return function (fn) {
+    if (currentSuite) {
+      ArrayPrototypePush(currentSuite[suiteKey], fn);
+    } else {
+      registerHook(hookType, fn);
+    }
+  };
 }
 
-function bddAfterAll(fn) {
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.afterAllFns, fn);
-  } else {
-    registerHook("afterAll", fn);
-  }
-}
-
-function bddBeforeEach(fn) {
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.beforeEachFns, fn);
-  } else {
-    registerHook("beforeEach", fn);
-  }
-}
-
-function bddAfterEach(fn) {
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.afterEachFns, fn);
-  } else {
-    registerHook("afterEach", fn);
-  }
-}
+const bddBeforeAll = bddHook("beforeAll", "beforeAllFns");
+const bddAfterAll = bddHook("afterAll", "afterAllFns");
+const bddBeforeEach = bddHook("beforeEach", "beforeEachFns");
+const bddAfterEach = bddHook("afterEach", "afterEachFns");
 
 globalThis.Deno.test = test;
 globalThis.Deno.describe = describe;

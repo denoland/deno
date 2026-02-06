@@ -29,6 +29,11 @@
       "args": "test top_level_it.ts",
       "output": "top_level_it.out",
       "exitCode": 0
+    },
+    "vitest": {
+      "args": "test vitest.ts",
+      "output": "vitest.out",
+      "exitCode": 0
     }
   }
 }

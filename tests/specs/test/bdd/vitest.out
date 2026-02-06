@@ -1,0 +1,14 @@
+Check [WILDCARD]vitest.ts
+running 1 test from ./vitest.ts
+foo ...
+  add ... ok ([WILDCARD])
+  add2 ... ok ([WILDCARD])
+  bar ...
+    add3 ... ok ([WILDCARD])
+    add4 ... ok ([WILDCARD])
+  bar ... ok ([WILDCARD])
+  add5 ... ok ([WILDCARD])
+foo ... ok ([WILDCARD])
+
+ok | 1 passed (6 steps) | 0 failed ([WILDCARD])
+
