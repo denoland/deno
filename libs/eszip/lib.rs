@@ -230,7 +230,7 @@ mod tests {
 
   #[tokio::test]
   async fn parse_v1() {
-    let file = std::fs::File::open("./src/testdata/basic.json").unwrap();
+    let file = std::fs::File::open("./testdata/basic.json").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     fut.await.unwrap();
     assert!(matches!(eszip, Eszip::V1(_)));
@@ -240,7 +240,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn parse_v2() {
-    let file = std::fs::File::open("./src/testdata/redirect.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/redirect.eszip2").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     fut.await.unwrap();
     assert!(matches!(eszip, Eszip::V2(_)));
@@ -249,7 +249,7 @@ mod tests {
 
   #[tokio::test]
   async fn take_source_v1() {
-    let file = std::fs::File::open("./src/testdata/basic.json").unwrap();
+    let file = std::fs::File::open("./testdata/basic.json").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     fut.await.unwrap();
     assert!(matches!(eszip, Eszip::V1(_)));
@@ -268,7 +268,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn take_source_v2() {
-    let file = std::fs::File::open("./src/testdata/redirect.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/redirect.eszip2").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     fut.await.unwrap();
     assert!(matches!(eszip, Eszip::V2(_)));
@@ -292,7 +292,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_eszip_v1_iterator() {
-    let file = std::fs::File::open("./src/testdata/basic.json").unwrap();
+    let file = std::fs::File::open("./testdata/basic.json").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     tokio::spawn(fut);
     assert!(matches!(eszip, Eszip::V1(_)));
@@ -326,7 +326,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn test_eszip_v2_iterator() {
-    let file = std::fs::File::open("./src/testdata/redirect.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/redirect.eszip2").unwrap();
     let (eszip, fut) = Eszip::parse(AllowStdIo::new(file)).await.unwrap();
     tokio::spawn(fut);
     assert!(matches!(eszip, Eszip::V2(_)));
@@ -369,7 +369,7 @@ mod tests {
 
   #[tokio::test]
   async fn parse_small_chunks_reader() {
-    let bytes = std::fs::read("./src/testdata/redirect.eszip2")
+    let bytes = std::fs::read("./testdata/redirect.eszip2")
       .unwrap()
       .chunks(2)
       .map(|chunk| chunk.to_vec())

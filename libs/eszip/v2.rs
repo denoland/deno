@@ -2164,7 +2164,7 @@ mod tests {
           });
         }
         assert_eq!(scheme, "file");
-        let path = format!("./src/testdata/source{}", specifier.path());
+        let path = format!("./testdata/source{}", specifier.path());
         Box::pin(async move {
           let path = Path::new(&path);
           let resolved = path.canonicalize().unwrap();
@@ -2218,7 +2218,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -2265,7 +2265,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -2311,7 +2311,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -2351,7 +2351,7 @@ mod tests {
 
   #[tokio::test]
   async fn loads_eszip_with_wasm() {
-    let file = std::fs::File::open("./src/testdata/wasm.eszip2_3").unwrap();
+    let file = std::fs::File::open("./testdata/wasm.eszip2_3").unwrap();
     let (eszip, fut) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -2376,7 +2376,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -2421,7 +2421,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -2599,7 +2599,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn file_format_parse_redirect() {
-    let file = std::fs::File::open("./src/testdata/redirect.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/redirect.eszip2").unwrap();
     let (eszip, fut) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -2630,7 +2630,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn file_format_parse_json() {
-    let file = std::fs::File::open("./src/testdata/json.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/json.eszip2").unwrap();
     let (eszip, fut) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -2660,7 +2660,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn file_format_roundtrippable() {
-    let file = std::fs::File::open("./src/testdata/redirect.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/redirect.eszip2").unwrap();
     let (eszip, fut) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -2693,7 +2693,7 @@ mod tests {
   #[tokio::test]
   async fn import_map() {
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     let resp = deno_graph::source::Loader::load(
       &loader,
@@ -2777,7 +2777,7 @@ mod tests {
   #[tokio::test]
   async fn import_map_imported_from_program() {
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     let resp = deno_graph::source::Loader::load(
       &loader,
@@ -2850,7 +2850,7 @@ mod tests {
   #[tokio::test]
   async fn deno_jsonc_as_import_map() {
     let loader = FileLoader {
-      base_dir: "./src/testdata/deno_jsonc_as_import_map".to_string(),
+      base_dir: "./testdata/deno_jsonc_as_import_map".to_string(),
     };
     let resp = deno_graph::source::Loader::load(
       &loader,
@@ -2934,7 +2934,7 @@ mod tests {
   #[tokio::test]
   async fn eszipv2_iterator_yields_all_modules() {
     let loader = FileLoader {
-      base_dir: "./src/testdata/deno_jsonc_as_import_map".to_string(),
+      base_dir: "./testdata/deno_jsonc_as_import_map".to_string(),
     };
     let resp = deno_graph::source::Loader::load(
       &loader,
@@ -3036,7 +3036,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -3116,8 +3116,7 @@ mod tests {
   #[tokio::test]
   async fn npm_packages_loaded_file() {
     // packages
-    let file =
-      std::fs::File::open("./src/testdata/npm_packages.eszip2_1").unwrap();
+    let file = std::fs::File::open("./testdata/npm_packages.eszip2_1").unwrap();
     let (mut eszip, _) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -3149,7 +3148,7 @@ mod tests {
 
     // no packages
     let file =
-      std::fs::File::open("./src/testdata/no_npm_packages.eszip2_1").unwrap();
+      std::fs::File::open("./testdata/no_npm_packages.eszip2_1").unwrap();
     let (mut eszip, _) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -3158,7 +3157,7 @@ mod tests {
 
     // invalid file with one byte changed in the npm snapshot
     let file =
-      std::fs::File::open("./src/testdata/npm_packages_invalid_1.eszip2_1")
+      std::fs::File::open("./testdata/npm_packages_invalid_1.eszip2_1")
         .unwrap();
     let err = super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
       .await
@@ -3173,7 +3172,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
@@ -3221,7 +3220,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
 
     mock_npm_resolver!(
@@ -3364,7 +3363,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
 
     mock_npm_resolver!(
@@ -3506,7 +3505,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
 
     graph
@@ -3597,7 +3596,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
 
     mock_npm_resolver!(
@@ -3676,7 +3675,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
 
     graph
@@ -3783,7 +3782,7 @@ mod tests {
   #[cfg(feature = "sha256")]
   #[tokio::test]
   async fn v2_1_and_older_default_to_sha256_checksum() {
-    let file = std::fs::File::open("./src/testdata/json.eszip2").unwrap();
+    let file = std::fs::File::open("./testdata/json.eszip2").unwrap();
     let (eszip, fut) =
       super::EszipV2::parse(BufReader::new(AllowStdIo::new(file)))
         .await
@@ -3987,7 +3986,7 @@ mod tests {
     let analyzer = CapturingModuleAnalyzer::default();
     let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
     let loader = FileLoader {
-      base_dir: "./src/testdata/source".to_string(),
+      base_dir: "./testdata/source".to_string(),
     };
     graph
       .build(
