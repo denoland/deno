@@ -202,7 +202,7 @@ fn parse_url(
 
   let (file_quirks, _) = FileUrlQuirks::analyze(href, base_file_host);
 
-  match Url::options().base_url(base_url.as_ref()).parse(&href) {
+  match Url::options().base_url(base_url.as_ref()).parse(href) {
     Ok(mut url) => {
       let is_file_url = url.scheme() == "file";
       let is_special = matches!(
@@ -223,18 +223,18 @@ fn parse_url(
 
       // Restore host for file URLs if missing after standard parsing.
       // Standard parser normalizes "file://host/C:/" to "file:///C:/".
-      if is_file_url && url.host().is_none() {
-        if let Some(Host::Domain(ref host)) = file_quirks.host {
-          if host != "localhost" {
-            let _ = quirks::set_host(&mut url, &host);
-          }
-        }
+      if is_file_url
+        && url.host().is_none()
+        && let Some(Host::Domain(ref host)) = file_quirks.host
+        && host != "localhost"
+      {
+        let _ = quirks::set_host(&mut url, host);
       }
 
       // Apply file quirks to restore extra slashes.
       // The standard parser normalizes "file:////" to "file:///".
       let (serialization, inner_url) = if is_file_url {
-        file_quirks.apply(&mut url)
+        file_quirks.apply(&url)
       } else {
         (url.as_str().to_owned(), quirks::internal_components(&url))
       };
