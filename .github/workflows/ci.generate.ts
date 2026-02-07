@@ -1322,7 +1322,7 @@ const ci = {
       ],
     },
     libs: {
-      name: "libs ${{ matrix.os }}-${{ matrix.arch }}",
+      name: "libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
@@ -1346,6 +1346,7 @@ const ci = {
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoSteps,
+        submoduleStep("./tests/util/std"),
         cacheCargoHomeStep("cargo-home"),
         installRustStep,
         {

@@ -867,7 +867,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
-    name: 'libs ${{ matrix.os }}-${{ matrix.arch }}'
+    name: 'libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
@@ -902,6 +902,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+        if: '!(matrix.skip)'
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
         if: '!(matrix.skip)'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
