@@ -5,10 +5,10 @@ use std::borrow::Cow;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::url::Host;
 use deno_core::url::Url;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
-use deno_core::url::Host;
 use deno_error::JsErrorBox;
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
@@ -76,22 +76,30 @@ pub fn op_url_parse(
 struct FileUrlQuirks {
   leading_slash_count: usize,
   post_host_slash_count: usize,
-  host: Option<Host>
+  host: Option<Host>,
 }
 
 impl FileUrlQuirks {
   fn analyze(href: &str, base_host: Option<Host>) -> (Self, &str) {
-    let prefix_len = if href.starts_with("file:") { "file:".len() } else { 0 };
- 
+    let prefix_len = if href.starts_with("file:") {
+      "file:".len()
+    } else {
+      0
+    };
+
     let mut leading_slash_count = count_consecutive_slashes(href, prefix_len);
     let rest_after_slashes = &href[(prefix_len + leading_slash_count)..];
 
-    let (href_host, remaining_after_host) = 
-      if leading_slash_count == 2 { get_file_host(href) } else { (None, "") };
-    
+    let (href_host, remaining_after_host) = if leading_slash_count == 2 {
+      get_file_host(href)
+    } else {
+      (None, "")
+    };
+
     let mut post_host_slash_count = 0;
     if let Some(ref host) = href_host {
-      let after_host_slashes = count_consecutive_slashes(remaining_after_host, 0);
+      let after_host_slashes =
+        count_consecutive_slashes(remaining_after_host, 0);
 
       match host {
         Host::Domain(h) if h == "localhost" => {
@@ -107,14 +115,25 @@ impl FileUrlQuirks {
     let host = match leading_slash_count {
       n if n >= 3 => None,
 
-      2 if rest_after_slashes.is_empty() || starts_with_windows_drive_letter(rest_after_slashes) => None,
+      2 if rest_after_slashes.is_empty()
+        || starts_with_windows_drive_letter(rest_after_slashes) =>
+      {
+        None
+      }
 
       2 => href_host.or(base_host),
-      
-      _ => base_host
+
+      _ => base_host,
     };
 
-    (Self{leading_slash_count, post_host_slash_count, host}, rest_after_slashes)
+    (
+      Self {
+        leading_slash_count,
+        post_host_slash_count,
+        host,
+      },
+      rest_after_slashes,
+    )
   }
 
   fn apply(&self, url: &Url) -> (String, quirks::InternalComponents) {
@@ -129,8 +148,12 @@ impl FileUrlQuirks {
       let extra = (self.leading_slash_count - 3) as u32;
       serialization.insert_str("file:///".len(), &"/".repeat(extra as usize));
 
-      if q_start != 0 { q_start += extra; }
-      if f_start != 0 { f_start += extra; }
+      if q_start != 0 {
+        q_start += extra;
+      }
+      if f_start != 0 {
+        f_start += extra;
+      }
     }
 
     // Case B: Host exists (e.g., file://host///)
@@ -139,8 +162,12 @@ impl FileUrlQuirks {
       let extra = (self.post_host_slash_count - 1) as u32;
       serialization.insert_str(insert_pos, &"/".repeat(extra as usize));
 
-      if q_start != 0 { q_start += extra; }
-      if f_start != 0 { f_start += extra; }
+      if q_start != 0 {
+        q_start += extra;
+      }
+      if f_start != 0 {
+        f_start += extra;
+      }
     }
 
     inner_url.query_start = if q_start == 0 { None } else { Some(q_start) };
@@ -178,13 +205,18 @@ fn parse_url(
   match Url::options().base_url(base_url.as_ref()).parse(&href) {
     Ok(mut url) => {
       let is_file_url = url.scheme() == "file";
-      let is_special = matches!(url.scheme(), "http" | "https" | "ws" | "wss" | "ftp" | "file");
+      let is_special = matches!(
+        url.scheme(),
+        "http" | "https" | "ws" | "wss" | "ftp" | "file"
+      );
 
       // Non-special scheme whitespace normalization
       // e.g., "non-special:opaque #hi" -> "non-special:opaque%20#hi"
       if !is_special {
         let s = href.replace(" ?", "%20?").replace(" #", "%20#");
-        if let Ok(normalized_url) = Url::options().base_url(base_url.as_ref()).parse(&s) {
+        if let Ok(normalized_url) =
+          Url::options().base_url(base_url.as_ref()).parse(&s)
+        {
           url = normalized_url
         }
       }
@@ -245,7 +277,7 @@ fn count_consecutive_slashes(s: &str, offset: usize) -> usize {
       if c == '/' || c == '\\' {
         count += 1;
       } else {
-          break;
+        break;
       }
     }
   }
@@ -279,7 +311,12 @@ fn get_file_host(url: &str) -> (Option<Host>, &str) {
   let remaining = &authority[bytes..];
 
   let host_str: Cow<str> = if has_ignored_chars {
-    Cow::Owned(raw_host.chars().filter(|&c| !matches!(c, '\t' | '\n' | '\r')).collect())
+    Cow::Owned(
+      raw_host
+        .chars()
+        .filter(|&c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect(),
+    )
   } else {
     Cow::Borrowed(raw_host)
   };
@@ -293,24 +330,26 @@ fn get_file_host(url: &str) -> (Option<Host>, &str) {
   }
 
   match Host::parse(&host_str) {
-      Ok(Host::Domain(ref d)) if d == "localhost" => (Some(Host::Domain(d.clone())), remaining),
-      Ok(host) => (Some(host), remaining),
-      Err(_) => (None, remaining)
+    Ok(Host::Domain(ref d)) if d == "localhost" => {
+      (Some(Host::Domain(d.clone())), remaining)
+    }
+    Ok(host) => (Some(host), remaining),
+    Err(_) => (None, remaining),
   }
 }
 
 #[inline]
 fn is_windows_drive_letter(segment: &str) -> bool {
-    segment.len() == 2 && starts_with_windows_drive_letter(segment)
+  segment.len() == 2 && starts_with_windows_drive_letter(segment)
 }
 
 #[inline]
 fn starts_with_windows_drive_letter(s: &str) -> bool {
   let b = s.as_bytes();
-    s.len() >= 2
-        && (b[0].is_ascii_alphabetic())
-        && matches!(b[1], b':' | b'|')
-        && (s.len() == 2 || matches!(b[2], b'/' | b'\\' | b'?' | b'#'))
+  s.len() >= 2
+    && (b[0].is_ascii_alphabetic())
+    && matches!(b[1], b':' | b'|')
+    && (s.len() == 2 || matches!(b[2], b'/' | b'\\' | b'?' | b'#'))
 }
 
 #[allow(dead_code)]
