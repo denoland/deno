@@ -224,10 +224,22 @@ const installRustStep = {
 };
 const installLldStep = {
   name: "Install macOS aarch64 lld",
+  if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
   env: {
     GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
   },
-  run: "./tools/install_prebuilt.js ld64.lld",
+  run: [
+    "./tools/install_prebuilt.js ld64.lld",
+  ].join("\n"),
+};
+const updatePrebuiltGithubPath = {
+  if: `matrix.os == 'macos'`,
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
+  run: [
+    "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+  ].join("\n"),
 };
 const installPythonSteps = [{
   name: "Install Python",
@@ -254,29 +266,27 @@ const installDenoStep = {
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 };
-function cacheCargoHomeStep(prefix: string) {
-  return {
-    name: "Cache Cargo home",
-    uses: "cirruslabs/cache@v4",
-    with: {
-      // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-      // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-      path: [
-        "~/.cargo/.crates.toml",
-        "~/.cargo/.crates2.json",
-        "~/.cargo/bin",
-        "~/.cargo/registry/index",
-        "~/.cargo/registry/cache",
-        "~/.cargo/git/db",
-      ].join("\n"),
-      key:
-        `${cacheVersion}-${prefix}-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-      // We will try to restore from the closest cargo-home we can find
-      "restore-keys":
-        `${cacheVersion}-${prefix}-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-    },
-  };
-}
+const cacheCargoHomeStep = {
+  name: "Cache Cargo home",
+  uses: "cirruslabs/cache@v4",
+  with: {
+    // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+    // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+    path: [
+      "~/.cargo/.crates.toml",
+      "~/.cargo/.crates2.json",
+      "~/.cargo/bin",
+      "~/.cargo/registry/index",
+      "~/.cargo/registry/cache",
+      "~/.cargo/git/db",
+    ].join("\n"),
+    key:
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+    // We will try to restore from the closest cargo-home we can find
+    "restore-keys":
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+  },
+};
 const restoreCachePrStep = {
   // Restore cache from the latest 'main' branch build.
   name: "Restore cache build output (PR)",
@@ -588,38 +598,37 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
-        cacheCargoHomeStep("cargo-home"),
+        cacheCargoHomeStep,
         installRustStep,
         {
           if: "matrix.os == 'linux' && matrix.arch == 'aarch64'",
           name: "Load 'vsock_loopback; kernel module",
           run: "sudo modprobe vsock_loopback",
         },
-        {
-          if:
-            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
-          ...installDenoStep,
-        },
+        withCondition(
+          installDenoStep,
+          "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
+        ),
         ...installPythonSteps.map((s) =>
           withCondition(
             s,
             "matrix.os != 'linux' || matrix.arch != 'aarch64'",
           )
         ),
-        {
-          if: "matrix.job == 'bench' || matrix.job == 'test'",
-          ...installNodeStep,
-        },
-        {
-          if: [
+        withCondition(
+          installNodeStep,
+          "matrix.job == 'bench' || matrix.job == 'test'",
+        ),
+        withCondition(
+          authenticateWithGoogleCloud,
+          [
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          ...authenticateWithGoogleCloud,
-        },
+        ),
         {
           name: "Setup gcloud (unix)",
           if: [
@@ -678,21 +687,16 @@ const ci = {
           ].join("\n"),
           if: `matrix.os == 'macos'`,
         },
-        {
-          ...installLldStep,
-          if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
-        },
+        installLldStep,
         {
           name: "Install rust-codesign",
           env: {
             GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
           },
-          run: [
-            "./tools/install_prebuilt.js rcodesign",
-            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-          ].join("\n"),
+          run: "./tools/install_prebuilt.js rcodesign",
           if: `matrix.os == 'macos'`,
         },
+        updatePrebuiltGithubPath,
         {
           name: "Log versions",
           run: [
@@ -1295,7 +1299,7 @@ const ci = {
       steps: [
         ...cloneRepoSteps,
         submoduleStep("./tests/util/std"),
-        cacheCargoHomeStep("cargo-home"),
+        cacheCargoHomeStep,
         installRustStep,
         installDenoStep,
         restoreCachePrStep,
@@ -1347,16 +1351,14 @@ const ci = {
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoSteps,
         submoduleStep("./tests/util/std"),
-        cacheCargoHomeStep("cargo-home"),
+        cacheCargoHomeStep,
         installRustStep,
         {
           if: "matrix.os == 'macos'",
           ...installDenoStep,
         },
-        {
-          ...installLldStep,
-          if: "matrix.os == 'macos'",
-        },
+        installLldStep,
+        updatePrebuiltGithubPath,
         {
           name: "Install wasm target",
           if: "matrix.os == 'linux'",
