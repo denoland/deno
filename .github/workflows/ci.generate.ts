@@ -222,6 +222,13 @@ const submoduleStep = (submodule: string) => ({
 const installRustStep = {
   uses: "dsherret/rust-toolchain-file@v1",
 };
+const installLldStep = {
+  name: "Install macOS aarch64 lld",
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
+  run: "./tools/install_prebuilt.js ld64.lld",
+};
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v6",
@@ -247,27 +254,29 @@ const installDenoStep = {
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 };
-const cacheCargoHomeStep = {
-  name: "Cache Cargo home",
-  uses: "cirruslabs/cache@v4",
-  with: {
-    // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-    // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-    path: [
-      "~/.cargo/.crates.toml",
-      "~/.cargo/.crates2.json",
-      "~/.cargo/bin",
-      "~/.cargo/registry/index",
-      "~/.cargo/registry/cache",
-      "~/.cargo/git/db",
-    ].join("\n"),
-    key:
-      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-    // We will try to restore from the closest cargo-home we can find
-    "restore-keys":
-      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-  },
-};
+function cacheCargoHomeStep(prefix: string) {
+  return {
+    name: "Cache Cargo home",
+    uses: "cirruslabs/cache@v4",
+    with: {
+      // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+      // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+      path: [
+        "~/.cargo/.crates.toml",
+        "~/.cargo/.crates2.json",
+        "~/.cargo/bin",
+        "~/.cargo/registry/index",
+        "~/.cargo/registry/cache",
+        "~/.cargo/git/db",
+      ].join("\n"),
+      key:
+        `${cacheVersion}-${prefix}-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+      // We will try to restore from the closest cargo-home we can find
+      "restore-keys":
+        `${cacheVersion}-${prefix}-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+    },
+  };
+}
 const restoreCachePrStep = {
   // Restore cache from the latest 'main' branch build.
   name: "Restore cache build output (PR)",
@@ -533,24 +542,6 @@ const ci = {
             profile: "release",
             use_sysroot: true,
             skip_pr: true,
-          }, {
-            os: "linux" as const,
-            arch: "x86_64" as const,
-            runner: "ubuntu-latest",
-            job: "libs",
-            profile: "debug",
-          }, {
-            os: "macos" as const,
-            arch: "aarch64" as const,
-            runner: "macos-latest",
-            job: "libs",
-            profile: "debug",
-          }, {
-            os: "windows" as const,
-            arch: "x86_64" as const,
-            runner: "windows-latest",
-            job: "libs",
-            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -597,7 +588,7 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
-        cacheCargoHomeStep,
+        cacheCargoHomeStep("cargo-home"),
         installRustStep,
         {
           if: "matrix.os == 'linux' && matrix.arch == 'aarch64'",
@@ -606,7 +597,7 @@ const ci = {
         },
         {
           if:
-            "(matrix.job == 'test' || matrix.job == 'bench' || matrix.job == 'libs') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
+            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -688,13 +679,7 @@ const ci = {
           if: `matrix.os == 'macos'`,
         },
         {
-          name: "Install macOS aarch64 lld",
-          env: {
-            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-          },
-          run: [
-            "./tools/install_prebuilt.js ld64.lld",
-          ].join("\n"),
+          ...installLldStep,
           if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
         },
         {
@@ -1031,42 +1016,6 @@ const ci = {
             `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
         },
         {
-          name: "Install wasm target",
-          if: "matrix.job == 'libs' && matrix.os == 'linux'",
-          run: "rustup target add wasm32-unknown-unknown",
-        },
-        // we want these crates to be Wasm compatible
-        {
-          name: "Cargo check (deno_resolver)",
-          if: "matrix.job == 'libs' && matrix.os == 'linux'",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-        },
-        {
-          name: "Cargo check (deno_npm_installer)",
-          if: "matrix.job == 'libs' && matrix.os == 'linux'",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-        },
-        {
-          name: "Cargo check (deno_config)",
-          if: "matrix.job == 'libs' && matrix.os == 'linux'",
-          run: [
-            "cargo check --no-default-features -p deno_config",
-            "cargo check --no-default-features --features workspace -p deno_config",
-            "cargo check --no-default-features --features package_json -p deno_config",
-            "cargo check --no-default-features --features workspace --features sync -p deno_config",
-            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-            "cargo check -p deno --features=lsp-tracing",
-          ].join("\n"),
-        },
-        {
-          name: "Test libs",
-          if: "matrix.job == 'libs'",
-          run: `cargo test --locked ${libTestPackageArgs}`,
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        },
-        {
           name: "Ensure no git changes",
           if: "matrix.job == 'test' && github.event_name == 'pull_request'",
           run: [
@@ -1346,7 +1295,7 @@ const ci = {
       steps: [
         ...cloneRepoSteps,
         submoduleStep("./tests/util/std"),
-        cacheCargoHomeStep,
+        cacheCargoHomeStep("cargo-home"),
         installRustStep,
         installDenoStep,
         restoreCachePrStep,
@@ -1371,6 +1320,78 @@ const ci = {
         },
         saveCacheMainStep,
       ],
+    },
+    libs: {
+      name: "libs ${{ matrix.os }}-${{ matrix.arch }}",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 30,
+      strategy: {
+        matrix: {
+          include: [{
+            ...Runners.linuxX86,
+            profile: "debug",
+            job: "libs",
+          }, {
+            ...Runners.macosArm,
+            profile: "debug",
+            job: "libs",
+          }, {
+            ...Runners.windowsX86,
+            profile: "debug",
+            job: "libs",
+          }],
+        },
+      },
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoSteps,
+        cacheCargoHomeStep("cargo-home"),
+        installRustStep,
+        {
+          if: "matrix.os == 'macos'",
+          ...installDenoStep,
+        },
+        {
+          ...installLldStep,
+          if: "matrix.os == 'macos'",
+        },
+        {
+          name: "Install wasm target",
+          if: "matrix.os == 'linux'",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        // we want these crates to be Wasm compatible
+        {
+          name: "Cargo check (deno_resolver)",
+          if: "matrix.os == 'linux'",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          if: "matrix.os == 'linux'",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          if: "matrix.os == 'linux'",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+            "cargo check -p deno --features=lsp-tracing",
+          ].join("\n"),
+        },
+        {
+          name: "Test libs",
+          run: `cargo test --locked ${libTestPackageArgs}`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+      ]),
     },
     "publish-canary": {
       name: "publish canary",
