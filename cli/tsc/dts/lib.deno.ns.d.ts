@@ -6353,6 +6353,9 @@ declare namespace Deno {
    *  - TCP socket: this sends all requests to a specified TCP socket.
    *  - Unix domain socket: this sends all requests to a local Unix domain
    *    socket rather than a TCP socket. *Not supported on Windows.*
+   *  - SOCKS5 over Unix domain socket: this uses the SOCKS5 protocol to tunnel
+   *    TCP connections through a SOCKS5 proxy listening on a Unix domain socket.
+   *    *Not supported on Windows.*
    *  - Vsock socket: this sends all requests to a local vsock socket.
    *    *Only supported on Linux and macOS.*
    *
@@ -6382,6 +6385,12 @@ declare namespace Deno {
     transport: "unix";
     /** The path to the unix domain socket to use. */
     path: string;
+  } | {
+    transport: "socks5Unix";
+    /** The path to the unix domain socket of the SOCKS5 proxy. */
+    path: string;
+    /** The basic auth credentials to be used against the proxy server. */
+    basicAuth?: BasicAuth;
   } | {
     transport: "vsock";
     /** The CID (Context Identifier) of the vsock to connect to. */
