@@ -12,17 +12,14 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use libuvrust::UvBuf;
-use libuvrust::stream::UvStream;
-use libuvrust::stream::UvWrite;
-use libuvrust::tcp::UvTcp;
-use libuvrust::uv_loop::UvLoop;
+use libuvrust::backend::UvBuf;
+use libuvrust::backend::UvHandle;
+use libuvrust::backend::UvLoop;
+use libuvrust::backend::UvStream;
+use libuvrust::backend::UvTcp;
+use libuvrust::backend::UvWrite;
 
 use super::handle_wrap::AsyncId;
-
-const UV_HANDLE_BOUND: u32 = 0x00000004;
-const UV_HANDLE_WRITABLE: u32 = 0x00000008;
-const UV_HANDLE_READABLE: u32 = 0x00000010;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
@@ -69,8 +66,8 @@ impl TCP {
   fn init_handle(&self, state: &mut OpState) {
     let loop_ptr = &mut *state.uv_loop as *mut UvLoop;
     unsafe {
-      let tcp = Box::into_raw(Box::new(UvTcp::new()));
-      libuvrust::tcp::uv_tcp_init(loop_ptr, tcp);
+      let tcp = Box::into_raw(Box::new(libuvrust::backend::new_tcp()));
+      libuvrust::backend::uv_tcp_init(loop_ptr, tcp);
       *self.handle.borrow_mut() = tcp;
     }
   }
@@ -91,7 +88,7 @@ impl TCP {
 }
 
 unsafe fn context_from_loop(
-  loop_ptr: *mut libuvrust::uv_loop::UvLoop,
+  loop_ptr: *mut libuvrust::backend::UvLoop,
 ) -> Option<v8::Local<'static, v8::Context>> {
   unsafe {
     let ctx_ptr = (*loop_ptr).data;
@@ -104,8 +101,8 @@ unsafe fn context_from_loop(
   }
 }
 
-unsafe fn stream_alloc_cb(
-  handle: *mut libuvrust::handle::UvHandle,
+unsafe extern "C" fn stream_alloc_cb(
+  handle: *mut UvHandle,
   _suggested_size: usize,
   buf: *mut UvBuf,
 ) {
@@ -116,18 +113,18 @@ unsafe fn stream_alloc_cb(
       (*buf).len = 0;
       return;
     }
-    (*buf).base = (*data).read_buf.as_mut_ptr();
-    (*buf).len = (*data).read_buf.len();
+    (*buf).base = (*data).read_buf.as_mut_ptr() as *mut _;
+    (*buf).len = (*data).read_buf.len() as _;
   }
 }
 
-unsafe fn stream_read_cb(
+unsafe extern "C" fn stream_read_cb(
   stream: *mut UvStream,
   nread: isize,
   _buf: *const UvBuf,
 ) {
   unsafe {
-    let data = (*stream).handle.data as *mut StreamHandleData;
+    let data = (*stream).data as *mut StreamHandleData;
     if data.is_null() {
       return;
     }
@@ -136,14 +133,14 @@ unsafe fn stream_read_cb(
       None => return,
     };
 
-    let context = match context_from_loop((*stream).handle.loop_ptr) {
+    let context = match context_from_loop((*stream).loop_) {
       Some(c) => c,
       None => return,
     };
     v8::callback_scope!(unsafe let scope, context);
     v8::tc_scope!(let scope, scope);
 
-    let this = v8::Local::new(scope, js_obj);
+    let this: v8::Local<v8::Object> = v8::Local::new(scope, js_obj);
 
     let key = v8::String::new(scope, "onread").unwrap();
     let onread = this.get(scope, key.into());
@@ -172,9 +169,9 @@ unsafe fn stream_read_cb(
   }
 }
 
-unsafe fn server_connection_cb(server: *mut UvStream, status: i32) {
+unsafe extern "C" fn server_connection_cb(server: *mut UvStream, status: i32) {
   unsafe {
-    let data = (*server).handle.data as *mut StreamHandleData;
+    let data = (*server).data as *mut StreamHandleData;
     if data.is_null() {
       return;
     }
@@ -183,14 +180,14 @@ unsafe fn server_connection_cb(server: *mut UvStream, status: i32) {
       None => return,
     };
 
-    let context = match context_from_loop((*server).handle.loop_ptr) {
+    let context = match context_from_loop((*server).loop_) {
       Some(c) => c,
       None => return,
     };
     v8::callback_scope!(unsafe let scope, context);
     v8::tc_scope!(let scope, scope);
 
-    let this = v8::Local::new(scope, js_obj);
+    let this: v8::Local<v8::Object> = v8::Local::new(scope, js_obj);
 
     let key = v8::String::new(scope, "onconnection").unwrap();
     let onconnection = this.get(scope, key.into());
@@ -204,7 +201,7 @@ unsafe fn server_connection_cb(server: *mut UvStream, status: i32) {
   }
 }
 
-unsafe fn write_cb(req: *mut UvWrite, _status: i32) {
+unsafe extern "C" fn write_cb(req: *mut UvWrite, _status: i32) {
   unsafe {
     // req is the first field of WriteReq (#[repr(C)]),
     // so the pointer is the same as the WriteReq pointer.
@@ -212,7 +209,7 @@ unsafe fn write_cb(req: *mut UvWrite, _status: i32) {
   }
 }
 
-unsafe fn tcp_close_cb(handle: *mut libuvrust::handle::UvHandle) {
+unsafe extern "C" fn tcp_close_cb(handle: *mut UvHandle) {
   unsafe {
     // Handle has been fully removed from the loop's data structures.
     // Now safe to free the UvTcp memory.
@@ -253,7 +250,7 @@ impl TCP {
     let data_ptr =
       &*handle_data as *const StreamHandleData as *mut StreamHandleData;
     unsafe {
-      (*(tcp.raw())).stream.handle.data = data_ptr as *mut c_void;
+      (*(tcp.raw() as *mut UvHandle)).data = data_ptr as *mut c_void;
     }
     tcp.handle_data.replace(Some(handle_data));
 
@@ -287,15 +284,12 @@ impl TCP {
       if tcp.is_null() {
         return -1;
       }
-      let stream = tcp as *mut UvStream;
-      (*stream).io_watcher.fd = fd;
       let flags = libc::fcntl(fd, libc::F_GETFL);
       if flags != -1 {
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
       }
-      (*stream).handle.flags |=
-        UV_HANDLE_BOUND | UV_HANDLE_READABLE | UV_HANDLE_WRITABLE;
-      0
+      // For C libuv, use uv_tcp_open to assign an existing fd
+      libuvrust::backend::uv_tcp_open(tcp, fd)
     }
   }
 
@@ -317,7 +311,7 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      libuvrust::tcp::uv_tcp_bind(tcp, sa, sa_len, 0)
+      libuvrust::backend::uv_tcp_bind(tcp, sa, sa_len, 0)
     }
   }
 
@@ -339,7 +333,7 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      libuvrust::tcp::uv_tcp_bind(tcp, sa, sa_len, 0)
+      libuvrust::backend::uv_tcp_bind(tcp, sa, sa_len, 0)
     }
   }
 
@@ -350,7 +344,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::stream::uv_listen(stream, backlog, Some(server_connection_cb))
+      libuvrust::backend::uv_listen(stream, backlog, Some(server_connection_cb))
     }
   }
 
@@ -362,7 +356,7 @@ impl TCP {
       if server_stream.is_null() || client_stream.is_null() {
         return -1;
       }
-      libuvrust::stream::uv_accept(server_stream, client_stream)
+      libuvrust::backend::uv_accept(server_stream, client_stream)
     }
   }
 
@@ -373,7 +367,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::stream::uv_read_start(
+      libuvrust::backend::uv_read_start(
         stream,
         Some(stream_alloc_cb),
         Some(stream_read_cb),
@@ -388,7 +382,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::stream::uv_read_stop(stream)
+      libuvrust::backend::uv_read_stop(stream)
     }
   }
 
@@ -402,17 +396,17 @@ impl TCP {
       let data_vec = data.to_vec();
       let data_len = data_vec.len();
       let mut write_req = Box::new(WriteReq {
-        uv_req: UvWrite::new(),
+        uv_req: libuvrust::backend::new_write(),
         _data: data_vec,
       });
       let buf = UvBuf {
-        base: write_req._data.as_mut_ptr(),
-        len: data_len,
+        base: write_req._data.as_mut_ptr() as *mut _,
+        len: data_len as _,
       };
       let req_ptr = &mut write_req.uv_req as *mut UvWrite;
       Box::into_raw(write_req); // leak; freed in write_cb
       let ret =
-        libuvrust::stream::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
+        libuvrust::backend::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
       if ret != 0 {
         // Failed to queue write, reclaim the WriteReq
         let _ = Box::from_raw(req_ptr as *mut WriteReq);
@@ -432,7 +426,7 @@ impl TCP {
       if tcp.is_null() {
         return -1;
       }
-      libuvrust::tcp::uv_tcp_nodelay(tcp, enable as i32)
+      libuvrust::backend::uv_tcp_nodelay(tcp, enable as i32)
     }
   }
 
@@ -456,13 +450,13 @@ impl TCP {
       let tcp = self.raw();
       if !tcp.is_null() {
         // Null out the handle's data pointer (non-owning).
-        (*tcp).stream.handle.data = ptr::null_mut();
+        (*(tcp as *mut UvHandle)).data = ptr::null_mut();
         // Use uv_close (not uv_tcp_close) so the handle is properly:
         // 1. Removed from the loop's handle queue
         // 2. Pending writes cancelled with UV_ECANCELED
         // 3. Handle memory freed only in the callback (after libuv is done)
-        libuvrust::uv_loop::uv_close(
-          tcp as *mut libuvrust::handle::UvHandle,
+        libuvrust::backend::uv_close(
+          tcp as *mut UvHandle,
           Some(tcp_close_cb),
         );
       }
