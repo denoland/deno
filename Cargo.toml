@@ -3,6 +3,8 @@
 [workspace]
 resolver = "2"
 members = [
+  "libdeno",
+  "libdeno_bindings",
   "cli",
   "cli/lib",
   "cli/rt",

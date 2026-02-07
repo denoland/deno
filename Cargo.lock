@@ -5869,6 +5869,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "libdeno"
+version = "2.6.8"
+dependencies = [
+ "anyhow",
+ "deno",
+ "log",
+]
+
+[[package]]
+name = "libdeno_bindings"
+version = "2.6.8"
+
+[[package]]
 name = "libffi"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

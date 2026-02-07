@@ -832,7 +832,7 @@ pub enum ExecError {
 }
 
 #[derive(Clone)]
-pub(crate) struct CompressedSource {
+pub struct CompressedSource {
   bytes: &'static [u8],
   uncompressed: OnceLock<Arc<str>>,
 }
