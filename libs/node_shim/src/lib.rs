@@ -3151,6 +3151,18 @@ impl TranslateOptions {
       wrap_eval_code: true,
     }
   }
+
+  /// Options for transforming commands embedded in shell strings.
+  /// Like child_process but without eval wrapping, since the shell
+  /// handles quoting and wrapping would introduce metacharacters.
+  pub fn for_shell_command() -> Self {
+    Self {
+      use_node_subcommand: false,
+      add_unstable_flags: true,
+      add_standalone_config: false,
+      wrap_eval_code: false,
+    }
+  }
 }
 
 /// Result of translating Node.js CLI args to Deno args

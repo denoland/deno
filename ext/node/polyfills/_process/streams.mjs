@@ -38,11 +38,27 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
-      writer.writeSync(
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-          ? buf
-          : Buffer.from(buf, enc),
-      );
+      try {
+        writer.writeSync(
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+            ? buf
+            : Buffer.from(buf, enc),
+        );
+      } catch (e) {
+        // BrokenPipe errors should be emitted as async 'error' events,
+        // not thrown synchronously, matching Node.js behavior.
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+        ) {
+          const err = new Error("write EPIPE");
+          err.code = "EPIPE";
+          err.errno = -32;
+          err.syscall = "write";
+          cb(err);
+          return;
+        }
+        throw e;
+      }
       cb();
     },
     destroy(err, cb) {
