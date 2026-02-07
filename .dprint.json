@@ -41,6 +41,7 @@
     "cli/tools/doc/prism.js",
     "ext/node/polyfills/deps",
     "ext/websocket/autobahn/reports",
+    "libs/eszip/testdata",
     "gh-pages",
     "libs/config/testdata",
     "target",

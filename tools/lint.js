@@ -73,6 +73,7 @@ async function dlint() {
     ":!:cli/tsc/compiler.d.ts",
     ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
+    ":!:libs/eszip/testdata/**",
     ":!:target/",
     ":!:tests/ffi/tests/test.js",
     ":!:tests/registry/**",
