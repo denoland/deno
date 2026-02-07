@@ -5,7 +5,6 @@ import { Buffer } from "node:buffer";
 import {
   assert,
   assertEquals,
-  assertExists,
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
