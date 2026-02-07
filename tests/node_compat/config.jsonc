@@ -1711,7 +1711,8 @@
     "sequential/test-vm-timeout-rethrow.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
+    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
 }
