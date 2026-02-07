@@ -499,16 +499,17 @@ mod test {
     let result = transform3_to_4(data).unwrap();
     assert_eq!(result, serde_json::from_value(json!({
       "version": "4",
-      "specifiers": {
-        "npm:package-a": "3.3.4",
+      "remote": {
+        "https://github.com/": "asdf",
+        "https://github.com/mod.ts": "asdf2",
       },
       "npm": {
         "package-a@3.3.4": {
           "integrity": "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==",
           "dependencies": [
-            "other@npm:package-d@1.0.0",
             "package-b",
             "package-c@1.0.0",
+            "other@npm:package-d@1.0.0",
           ]
         },
         "package-b@1.0.0": {
@@ -536,10 +537,9 @@ mod test {
           ]
         }
       },
-      "remote": {
-        "https://github.com/": "asdf",
-        "https://github.com/mod.ts": "asdf2",
-      },
+      "specifiers": {
+        "npm:package-a": "3.3.4",
+      }
     })).unwrap());
   }
 
