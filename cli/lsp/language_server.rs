@@ -580,6 +580,7 @@ impl Inner {
       Arc::new(NpmVersionResolver {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
+        overrides: Default::default(),
       }),
     );
     let config = Config::default();
@@ -839,6 +840,7 @@ impl Inner {
         // hooked up
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
+        overrides: Default::default(),
       }),
     );
     self.performance.measure(mark);

@@ -964,7 +964,7 @@ dependencies = [
  "bytes",
  "chrono",
  "deno_cache_dir",
- "deno_lockfile",
+ "deno_lockfile 0.32.2",
  "deno_semver",
  "deno_terminal",
  "deno_tower_lsp",
@@ -1632,7 +1632,7 @@ dependencies = [
  "deno_graph",
  "deno_lib",
  "deno_lint",
- "deno_lockfile",
+ "deno_lockfile 0.32.2",
  "deno_media_type",
  "deno_npm",
  "deno_npm_cache",
@@ -2387,8 +2387,19 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.32.2"
+dependencies = [
+ "async-trait",
+ "deno_semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_lockfile"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d71c0df1464034be21a9472e7ec8f9a21958418d203fa2c40507fb5cafe799d"
+checksum = "3153e771fe06c96abfc0d6468a3593a7bbf325cfb2ceac48ce2c295594352974"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2576,14 +2587,12 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.43.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef06bf417c6ca4298c0dafa321a36e5530afee733b977d0d2bcaa6870b26cd82"
 dependencies = [
  "async-trait",
  "capacity_builder",
  "chrono",
  "deno_error",
- "deno_lockfile",
+ "deno_lockfile 0.33.0",
  "deno_semver",
  "futures",
  "indexmap 2.9.0",
@@ -2639,7 +2648,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile",
+ "deno_lockfile 0.32.2",
  "deno_npm",
  "deno_npm_cache",
  "deno_package_json",
@@ -2818,7 +2827,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile",
+ "deno_lockfile 0.32.2",
  "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",

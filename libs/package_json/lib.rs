@@ -268,6 +268,7 @@ pub struct PackageJson {
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
+  pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -339,6 +340,7 @@ impl PackageJson {
         workspaces: None,
         os: None,
         cpu: None,
+        overrides: None,
         resolved_deps: Default::default(),
       });
     }
@@ -488,6 +490,7 @@ impl PackageJson {
       .and_then(parse_string_array);
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
+    let overrides = package_json.remove("overrides").and_then(map_object);
 
     Ok(PackageJson {
       path,
@@ -513,6 +516,7 @@ impl PackageJson {
       workspaces,
       os,
       cpu,
+      overrides,
       resolved_deps: Default::default(),
     })
   }
