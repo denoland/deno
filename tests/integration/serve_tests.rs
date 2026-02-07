@@ -406,3 +406,22 @@ async fn deno_run_serve_with_duplicate_env_addr() {
   child.kill().unwrap();
   child.wait().unwrap();
 }
+
+#[test]
+async fn deno_serve_head_request_http2() {
+  let client = ServeClient::builder()
+    .entry_point("./serve/head_request.ts")
+    .build();
+
+  let endpoint = client.endpoint();
+  let res = client
+    .client
+    .request(reqwest::Method::HEAD, &endpoint)
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(200, res.status());
+  assert_eq!(res.headers().get("content-type").unwrap(), "text/plain");
+  let body = res.bytes().await.unwrap();
+  assert!(body.is_empty(), "HEAD response body must be empty");
+}
