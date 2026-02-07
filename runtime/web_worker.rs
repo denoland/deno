@@ -439,6 +439,7 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
   maybe_coverage_dir: Option<PathBuf>,
+  bootstrap_error: Option<CoreError>,
 }
 
 impl Drop for WebWorker {
@@ -749,6 +750,7 @@ impl WebWorker {
         maybe_worker_metadata: options.maybe_worker_metadata,
         memory_trim_handle: None,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        bootstrap_error: None,
       },
       external_handle,
       options.bootstrap,
@@ -762,6 +764,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     {
       deno_core::scope!(scope, &mut self.js_runtime);
+      v8::tc_scope!(scope, scope);
       let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -789,13 +792,26 @@ impl WebWorker {
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
         self.worker_type.to_v8(scope).into();
-      bootstrap_fn
-        .call(
-          scope,
-          undefined.into(),
-          &[args, name_str, id_str, id, worker_type, worker_data],
-        )
-        .unwrap();
+      let result = bootstrap_fn.call(
+        scope,
+        undefined.into(),
+        &[args, name_str, id_str, id, worker_type, worker_data],
+      );
+
+      if result.is_none() {
+        let error: CoreError = match scope.exception() {
+          Some(exception) => {
+            let js_error =
+              deno_core::error::JsError::from_v8_exception(scope, exception);
+            CoreError::from(js_error)
+          }
+          None => CoreError::from(deno_error::JsErrorBox::generic(
+            "Bootstrap unexpectedly failed",
+          )),
+        };
+        self.bootstrap_error = Some(error);
+        return;
+      }
 
       let context = scope.get_current_context();
       let global = context.global(scope);
@@ -1081,6 +1097,15 @@ pub async fn run_web_worker(
   let name = worker.name.to_string();
   let internal_handle = worker.internal_handle.clone();
 
+  // If the bootstrap failed, report it as a terminal error.
+  if let Some(error) = worker.bootstrap_error.take() {
+    print_worker_error(&error, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(error))
+      .expect("Failed to post message to host");
+    return Ok(());
+  }
+
   // Execute provided source code immediately
   let result = if let Some(source_code) = maybe_source_code.take() {
     let r = worker.execute_script(located_script_name!(), source_code.into());
@@ -1124,6 +1149,27 @@ pub async fn run_web_worker(
 
   if let Err(e) = result {
     print_worker_error(&e, &name, format_js_error_fn.as_deref());
+    // For Node workers, convert "Module not found" to Node-compatible
+    // "Cannot find module" format so it matches Node.js error behavior.
+    let e = if internal_handle.worker_type == WorkerThreadType::Node {
+      let msg = e.to_string();
+      if msg.starts_with("Module not found") {
+        let path = specifier.to_file_path().ok();
+        let display = path
+          .as_deref()
+          .map(|p| p.display().to_string())
+          .unwrap_or_else(|| specifier.to_string());
+        CoreErrorKind::JsBox(deno_error::JsErrorBox::new(
+          "Error",
+          format!("Cannot find module '{display}'"),
+        ))
+        .into_box()
+      } else {
+        e
+      }
+    } else {
+      e
+    };
     internal_handle
       .post_event(WorkerControlEvent::TerminalError(e))
       .expect("Failed to post message to host");
