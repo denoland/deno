@@ -656,12 +656,6 @@ impl Workspace {
                         },
                       }))
                     }
-                    PackageJsonDepValue::JsrReq(req) => {
-                      Some(Dep::Req(JsrDepPackageReq {
-                        kind: PackageKind::Npm,
-                        req: req.clone(),
-                      }))
-                    }
                   })
               })
               .into_iter()

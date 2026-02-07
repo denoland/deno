@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "local_file": {
+      "args": "doc README.md",
+      "output": "expected.out"
+    }
+  }
+}

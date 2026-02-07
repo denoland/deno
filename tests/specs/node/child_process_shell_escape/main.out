@@ -1,0 +1,19 @@
+Test 1: Newline injection in args
+PASS: Newline injection blocked
+Test 2: Semicolon injection in args
+PASS: Semicolon injection blocked
+Test 3: Pipe injection in args
+PASS: Pipe injection blocked
+Test 4: Backtick injection in args
+PASS: Backtick injection blocked
+Test 5: $() injection in args
+PASS: $() injection blocked
+Test 6: Normal args work correctly
+PASS: Normal args work
+Test 7: Args with spaces preserved
+PASS: Args with spaces work
+Test 8: Shell features work with string command
+PASS: Shell features work
+Test 9: Async spawn escapes args
+PASS: Async spawn injection blocked
+All tests passed!

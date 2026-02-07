@@ -38,7 +38,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
-  promises.push(ensureNoNewTopLevelFiles());
+  promises.push(ensureNoNewTopLevelEntries());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -325,29 +325,42 @@ async function ensureNoUnusedOutFiles() {
   }
 }
 
-async function listTopLevelFiles() {
+async function listTopLevelEntries() {
   const files = await gitLsFiles(ROOT_PATH, []);
+  const rootPrefix = ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") +
+    SEPARATOR;
   return [
     ...new Set(
-      files.map((f) =>
-        f.replace(
-          ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") + SEPARATOR,
-          "",
-        )
-      )
-        .filter((file) => !file.includes(SEPARATOR)),
+      files.map((f) => f.replace(rootPrefix, ""))
+        .map((file) => {
+          const sepIndex = file.indexOf(SEPARATOR);
+          // top-level file or first path component (directory)
+          return sepIndex === -1 ? file : file.substring(0, sepIndex);
+        }),
     ),
   ].sort();
 }
 
-async function ensureNoNewTopLevelFiles() {
-  const currentFiles = await listTopLevelFiles();
+async function ensureNoNewTopLevelEntries() {
+  const currentEntries = await listTopLevelEntries();
 
-  const allowedFiles = [
+  // WARNING: When adding anything to this list it must be discussed!
+  // Keep the root of the repository clean.
+  const allowed = new Set([
+    ".cargo",
+    ".devcontainer",
+    ".github",
+    "cli",
+    "ext",
+    "libs",
+    "runtime",
+    "tests",
+    "tools",
     ".dlint.json",
     ".dprint.json",
     ".editorconfig",
     ".gitattributes",
+    // WARNING! See Notice above before adding anything here
     ".gitignore",
     ".gitmodules",
     ".rustfmt.toml",
@@ -361,14 +374,14 @@ async function ensureNoNewTopLevelFiles() {
     "rust-toolchain.toml",
     "flake.nix",
     "flake.lock",
-  ].sort();
+  ]);
 
-  const newFiles = currentFiles.filter((file) => !allowedFiles.includes(file));
-  if (newFiles.length > 0) {
+  const newEntries = currentEntries.filter((e) => !allowed.has(e));
+  if (newEntries.length > 0) {
     throw new Error(
-      `New top-level files detected: ${newFiles.join(", ")}. ` +
-        `Only the following top-level files are allowed: ${
-          allowedFiles.join(", ")
+      `New top-level entries detected: ${newEntries.join(", ")}. ` +
+        `Only the following top-level entries are allowed: ${
+          allowed.join(", ")
         }`,
     );
   }
