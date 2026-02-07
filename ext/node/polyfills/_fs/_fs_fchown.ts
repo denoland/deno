@@ -11,6 +11,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 
 const { PromisePrototypeThen } = primordials;
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 /**
  * Changes the owner and group of a file.
@@ -27,7 +28,7 @@ export function fchown(
   callback = makeCallback(callback);
 
   PromisePrototypeThen(
-    op_fs_fchown_async(fd, uid, gid),
+    op_fs_fchown_async(getRid(fd), uid, gid),
     () => callback(null),
     callback,
   );
@@ -45,7 +46,7 @@ export function fchownSync(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  op_fs_fchown_sync(fd, uid, gid);
+  op_fs_fchown_sync(getRid(fd), uid, gid);
 }
 
 export const fchownPromise = promisify(fchown) as (

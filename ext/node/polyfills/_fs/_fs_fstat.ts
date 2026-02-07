@@ -13,6 +13,7 @@ import {
 } from "ext:deno_node/_fs/_fs_stat.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -42,7 +43,7 @@ export function fstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).stat().then(
+  new FsFile(getRid(fd), Symbol.for("Deno.internal.FsFile")).stat().then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
   );
@@ -62,7 +63,7 @@ export function fstatSync(
   options?: statOptions,
 ): Stats | BigIntStats {
   try {
-    const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
+    const origin = new FsFile(getRid(fd), Symbol.for("Deno.internal.FsFile"))
       .statSync();
     return CFISBIS(origin, options?.bigint || false);
   } catch (err) {
