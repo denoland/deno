@@ -17,9 +17,10 @@ This plan outlines the changes required to allow `deno serve` to listen on a Uni
 - **Update `serve()` function**:
     - If `unix_socket` is set, disable the `--open` functionality as browsers cannot open Unix sockets directly.
     - Set the `DENO_SERVE_ADDRESS` environment variable to `unix:<path>` before creating the worker.
-    - *Discovery*: The `deno serve` command relies on the runtime's internal JS bootstrap to automatically call `Deno.serve` on the default export. The runtime looks at the `DENO_SERVE_ADDRESS` environment variable (already defined in `ENV_VARS` in `flags.rs`) to override the default TCP listener.
+    - *Discovery*: The `deno serve` command relies on `runtime/js/99_main.js` which uses `registerDeclarativeServer` to automatically call `Deno.serve` on the default export.
+    - The underlying `Deno.serve` implementation (in `ext/http`) prioritizes the `DENO_SERVE_ADDRESS` environment variable over the `servePort` and `serveHost` passed via `BootstrapOptions`.
 - **Environment Variable Hand-off**:
-    - By setting `DENO_SERVE_ADDRESS` in the Rust process before the worker starts, the internal JS `Deno.serve` call will pick up the Unix socket path automatically.
+    - By setting `DENO_SERVE_ADDRESS` in the Rust process before the worker starts, the internal JS `Deno.serve` call will pick up the Unix socket path automatically, bypassing the default TCP configuration.
 
 ## 3. Verification
 
