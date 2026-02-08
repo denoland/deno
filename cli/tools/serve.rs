@@ -42,7 +42,10 @@ pub async fn serve(
 
   // Set DENO_SERVE_ADDRESS if --unix-socket is provided
   if let Some(ref socket_path) = serve_flags.unix_socket {
-    unsafe { std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", socket_path)) };
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", socket_path))
+    };
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -194,7 +197,13 @@ async fn serve_with_watch(
       Ok(async move {
         // Set DENO_SERVE_ADDRESS if --unix-socket is provided
         if let Some(ref socket_path) = unix_socket {
-          unsafe { std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", socket_path)) };
+          // SAFETY: We're doing this before any threads are created.
+          unsafe {
+            std::env::set_var(
+              "DENO_SERVE_ADDRESS",
+              format!("unix:{}", socket_path),
+            )
+          };
         }
 
         let factory = CliFactory::from_flags_for_watcher(
