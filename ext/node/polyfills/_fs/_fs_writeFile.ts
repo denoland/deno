@@ -56,6 +56,7 @@ const {
 
 interface Writer {
   write(p: NodeJS.TypedArray): Promise<number>;
+  writeSync(p: NodeJS.TypedArray): number;
 }
 
 async function getRid(
@@ -200,8 +201,8 @@ export function writeFileSync(
   if (error) throw error;
 }
 
-async function writeAllSync(
-  file: FsFile,
+function writeAllSync(
+  w: Writer,
   data: Exclude<WriteFileSyncData, string>,
   encoding: BufferEncoding,
 ) {
@@ -209,25 +210,18 @@ async function writeAllSync(
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     let remaining = data.byteLength;
     while (remaining > 0) {
-      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-      const bytesWritten = file.writeSync(
-        data.subarray(data.byteLength - remaining, writeSize),
+      const bytesWritten = w.writeSync(
+        data.subarray(data.byteLength - remaining),
       );
       remaining -= bytesWritten;
-      data = new Uint8Array(
-        data.buffer,
-        data.byteOffset + bytesWritten,
-        data.byteLength - bytesWritten,
-      );
     }
   } else {
     for (const buf of data) {
       const toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
-        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-        const bytesWritten = await file.write(
-          toWrite.subarray(toWrite.byteLength - remaining, writeSize),
+        const bytesWritten = w.writeSync(
+          toWrite.subarray(toWrite.byteLength - remaining),
         );
         remaining -= bytesWritten;
       }
@@ -246,16 +240,12 @@ async function writeAll(
     let remaining = data.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      const offset = data.byteLength - remaining;
       const bytesWritten = await w.write(
-        data.subarray(data.byteLength - remaining, writeSize),
+        data.subarray(offset, offset + writeSize),
       );
       remaining -= bytesWritten;
       checkAborted(signal);
-      data = new Uint8Array(
-        data.buffer,
-        data.byteOffset + bytesWritten,
-        data.byteLength - bytesWritten,
-      );
     }
   } else {
     for await (const buf of data) {
@@ -264,8 +254,9 @@ async function writeAll(
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        const offset = toWrite.byteLength - remaining;
         const bytesWritten = await w.write(
-          toWrite.subarray(toWrite.byteLength - remaining, writeSize),
+          toWrite.subarray(offset, offset + writeSize),
         );
         remaining -= bytesWritten;
         checkAborted(signal);
