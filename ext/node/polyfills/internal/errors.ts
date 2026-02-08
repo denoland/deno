@@ -2782,6 +2782,40 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   return ex;
 }
 
+export function denoWriteFileErrorToNodeError(
+  e: Error,
+  ctx: UvExceptionContext,
+) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  let errno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof errno === "undefined") {
+    return e;
+  }
+
+  if (isWindows) {
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-#ERROR_ACCESS_DENIED
+    const ERROR_ACCESS_DENIED = 5;
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-#ERROR_INVALID_FLAGS
+    const ERROR_INVALID_FLAGS = 1004;
+
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/deps/uv/src/win/fs.c#L1090-L1092
+    if (errno === ERROR_ACCESS_DENIED) {
+      errno = ERROR_INVALID_FLAGS;
+    }
+  }
+
+  return uvException({
+    errno: mapSysErrnoToUvErrno(errno),
+    ...ctx,
+  });
+}
+
 export const denoErrorToNodeSystemError = hideStackFrames((
   e: Error,
   syscall: string,
