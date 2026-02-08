@@ -5,6 +5,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import {
+  op_get_ca_certificates,
   op_get_root_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
@@ -143,6 +144,10 @@ export function setDefaultCACertificates(certs: string[]) {
   lazyRootCertificates = null;
 }
 
+export function getCACertificates(type: string = "default"): string[] {
+  return op_get_ca_certificates(type);
+}
+
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
@@ -157,6 +162,7 @@ export default {
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
+  getCACertificates,
   getCiphers,
   rootCertificates,
   setDefaultCACertificates,
