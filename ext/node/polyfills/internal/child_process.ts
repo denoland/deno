@@ -1341,18 +1341,29 @@ function transformDenoShellCommand(
     const result = op_node_translate_cli_args(args, false, false);
     // Shell-quote translated args that contain metacharacters so they are
     // safe to embed in a shell command string.
-    // - Args with shell variable refs (${ or $VAR) use double quotes to
-    //   preserve variable expansion.
-    // - Other args with metacharacters use single quotes.
-    const quotedArgs = result.deno_args.map((a) => {
-      if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
-        return '"' + a.replace(/"/g, '\\"') + '"';
-      }
-      if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
-        return "'" + a.replace(/'/g, "'\\''") + "'";
-      }
-      return a;
-    });
+    const quotedArgs = isWindows
+      ? result.deno_args.map((a) => {
+        // Windows cmd.exe: use double quotes for args with spaces or
+        // special chars. Backslash is a path separator, not an escape.
+        if (/[\s"&|<>^]/.test(a)) {
+          let escaped = a.replace(/(\\*)"/g, '$1$1\\"');
+          escaped = escaped.replace(/(\\+)$/, "$1$1");
+          return `"${escaped}"`;
+        }
+        return a;
+      })
+      : result.deno_args.map((a) => {
+        // POSIX: args with shell variable refs use double quotes to
+        // preserve variable expansion. Other metacharacters use single
+        // quotes.
+        if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
+          return '"' + a.replace(/"/g, '\\"') + '"';
+        }
+        if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
+          return "'" + a.replace(/'/g, "'\\''") + "'";
+        }
+        return a;
+      });
     const prefix = shellVarPrefix || command.slice(0, denoPathLength);
     let transformed = prefix + " " + quotedArgs.join(" ") + shellSuffix;
 
@@ -1459,6 +1470,25 @@ function buildCommand(
     if (transformed !== args[1]) {
       args = args.slice();
       args[1] = transformed;
+    }
+  }
+
+  // Windows cmd.exe: args are ["/d", "/s", "/c", '"command"']
+  if (
+    file !== Deno.execPath() &&
+    args.length >= 4 &&
+    args[0] === "/d" && args[1] === "/s" && args[2] === "/c"
+  ) {
+    let cmdStr = args[3];
+    // Remove wrapping quotes added by normalizeSpawnArguments
+    const hasWrappingQuotes = cmdStr.startsWith('"') && cmdStr.endsWith('"');
+    if (hasWrappingQuotes) {
+      cmdStr = cmdStr.slice(1, -1);
+    }
+    const transformed = transformDenoShellCommand(cmdStr, env);
+    if (transformed !== cmdStr) {
+      args = args.slice();
+      args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
     }
   }
 
