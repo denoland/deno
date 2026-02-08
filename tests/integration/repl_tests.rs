@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::io::Write;
+
 use test_util as util;
 use test_util::test;
 use util::TempDir;
@@ -1188,4 +1190,46 @@ fn repl_no_globalthis() {
       console.expect(r#"Hello World"#);
       console.expect(r#"undefined"#);
     });
+}
+
+#[cfg(unix)]
+#[test(flaky)]
+fn repl_json_uncaught_error() {
+  use std::io::Read;
+  use std::os::fd::AsRawFd;
+  use std::os::unix::net::UnixStream;
+
+  let (mut parent_stream, child_stream) =
+    UnixStream::pair().expect("failed to create UnixStream pair");
+
+  let child_stream_fd = child_stream.as_raw_fd();
+
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let _deno_process = context
+    .new_command()
+    .args_vec(["repl", "--json"])
+    .fd3(child_stream_fd)
+    .spawn()
+    .expect("failed to spawn `deno repl --json`");
+
+  let json_payload =
+    r#"{ "type": "Run", "code": "throw new Error('foo')", "output": true }"#;
+  let json_payload_len = json_payload.len() as u32;
+  parent_stream
+    .write_all(&json_payload_len.to_le_bytes())
+    .unwrap();
+  parent_stream.write_all(json_payload.as_bytes()).unwrap();
+  parent_stream.flush().unwrap();
+
+  let mut response_len_buf: [u8; 4] = [0; 4];
+  parent_stream.read_exact(&mut response_len_buf).unwrap();
+  let response_len = u32::from_le_bytes(response_len_buf) as usize;
+  let mut response_buf = vec![0; response_len];
+  parent_stream.read_exact(&mut response_buf).unwrap();
+
+  let response = String::from_utf8(response_buf).unwrap();
+  assert_eq!(
+    response,
+    "{\"type\":\"RunFailure\",\"text\":\"Error: foo\\n    at <anonymous>:1:28\"}"
+  );
 }
