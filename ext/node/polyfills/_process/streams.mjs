@@ -24,6 +24,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 
@@ -52,7 +53,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         ) {
           const err = new Error("write EPIPE");
           err.code = "EPIPE";
-          err.errno = -32;
+          err.errno = codeMap.get("EPIPE");
           err.syscall = "write";
           cb(err);
           return;
