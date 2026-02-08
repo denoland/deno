@@ -536,6 +536,7 @@
     "parallel/test-fs-open-numeric-flags.js": {},
     "parallel/test-fs-open.js": {},
     "parallel/test-fs-promises-exists.js": {},
+    "parallel/test-fs-promises-file-handle-append-file.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
     "parallel/test-fs-promises-file-handle-writeFile.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
