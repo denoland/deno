@@ -158,7 +158,7 @@ bencher = "0.1"
 boxed_error = "0.2.3"
 brotli = { version = "6.0.0", features = ["ffi-api"] }
 bytemuck = "1.17.1"
-bytes = "1.4.0"
+bytes = "1.11.1"
 cache_control = "=0.2.0"
 capacity_builder = "0.5.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
