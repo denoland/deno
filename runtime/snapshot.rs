@@ -38,7 +38,7 @@ pub fn create_runtime_snapshot(
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::lazy_init(),
     deno_kv::deno_kv::lazy_init::<deno_kv::sqlite::SqliteDbHandler>(),
-    deno_cron::deno_cron::init(deno_cron::local::LocalCronHandler::new()),
+    deno_cron::deno_cron::lazy_init(),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),

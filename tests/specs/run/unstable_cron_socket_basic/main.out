@@ -1,0 +1,8 @@
+{"type":"crons","crons":{"success-cron":{"schedule":"* * * * *"},"fail-cron":{"schedule":"*/5 * * * *","backoffSchedule":[100]}}}
+test-cron executed
+{"type":"result","id":1,"success":true}
+Exception in cron handler fail-cron Error: an error
+    at file:///[WILDCARD]/child.ts:[WILDCARD]
+    at executeCron (ext:deno_cron/01_cron.ts:[WILDCARD])
+    at eventLoopTick (ext:core/01_core.js:[WILDCARD])
+{"type":"result","id":2,"success":false}

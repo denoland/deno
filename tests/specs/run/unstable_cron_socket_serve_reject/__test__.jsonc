@@ -1,5 +1,0 @@
-{
-  "if": "unix",
-  "args": "run --quiet --allow-read --allow-write --allow-env --allow-net --allow-run --unstable-cron test_runner.js",
-  "output": "test_runner.out"
-}

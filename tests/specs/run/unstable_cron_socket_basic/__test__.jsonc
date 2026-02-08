@@ -1,5 +1,5 @@
 {
   "if": "unix",
-  "args": "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable-cron test_runner.js",
-  "output": "test_runner.out"
+  "args": "run -A main.ts",
+  "output": "main.out"
 }

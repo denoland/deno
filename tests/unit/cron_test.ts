@@ -5,10 +5,13 @@ import { assertEquals, assertThrows } from "./test_util.ts";
 const {
   formatToCronSchedule,
   parseScheduleToString,
+  allowCronRegistrationAfterStartup,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
+
+Deno.test.beforeAll(allowCronRegistrationAfterStartup);
 
 Deno.test(function noNameTest() {
   assertThrows(

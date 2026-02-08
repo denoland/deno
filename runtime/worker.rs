@@ -35,7 +35,6 @@ use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
-use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -453,16 +452,7 @@ impl MainWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
-      let js_runtime = u.hydrate(services.module_loader);
-
-      let op_state = js_runtime.op_state();
-      let current_handler =
-        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
-      if let Some(new_handler) = current_handler.maybe_reload() {
-        op_state.borrow_mut().put(Rc::new(new_handler));
-      }
-
-      js_runtime
+      u.hydrate(services.module_loader)
     } else {
       let mut extensions = common_extensions::<
         TInNpmPackageChecker,
@@ -1063,7 +1053,7 @@ fn common_extensions<
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+    deno_cron::deno_cron::init(),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
