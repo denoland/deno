@@ -239,6 +239,11 @@ pub enum Proxy {
   Unix {
     path: String,
   },
+  #[serde(rename_all = "camelCase")]
+  Socks5Unix {
+    path: String,
+    basic_auth: Option<BasicAuth>,
+  },
   Vsock {
     cid: u32,
     port: u32,
