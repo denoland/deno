@@ -144,19 +144,24 @@ export function fork(
 
   // Use the Rust parser to translate Node.js CLI args to Deno args
   // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
-  const result = op_node_translate_cli_args(nodeArgs, false);
+  const result = op_node_translate_cli_args(nodeArgs, false, true);
   const denoArgs = result.deno_args;
   const bootstrapArgs = op_bootstrap_unstable_args();
 
-  // Insert bootstrap unstable args after "run" but before other args
-  // denoArgs is like ["run", "-A", "script.js", ...]
-  // We need ["run", ...bootstrapArgs, "-A", "script.js", ...]
+  // Insert bootstrap unstable args after "run" but before other args.
+  // Filter out any that the translator already added to avoid duplicates
+  // (e.g. --unstable-bare-node-builtins).
+  // denoArgs is like ["run", "-A", "--unstable-...", "script.js", ...]
+  // We need ["run", ...uniqueBootstrapArgs, "-A", "--unstable-...", "script.js", ...]
+  const denoArgSet = new Set(denoArgs);
+  const uniqueBootstrapArgs = bootstrapArgs.filter((a) => !denoArgSet.has(a));
   if (
-    denoArgs.length > 0 && denoArgs[0] === "run" && bootstrapArgs.length > 0
+    denoArgs.length > 0 && denoArgs[0] === "run" &&
+    uniqueBootstrapArgs.length > 0
   ) {
-    args = [denoArgs[0], ...bootstrapArgs, ...denoArgs.slice(1)];
+    args = [denoArgs[0], ...uniqueBootstrapArgs, ...denoArgs.slice(1)];
   } else {
-    args = [...bootstrapArgs, ...denoArgs];
+    args = [...uniqueBootstrapArgs, ...denoArgs];
   }
 
   // Handle NODE_OPTIONS if the parser returned any

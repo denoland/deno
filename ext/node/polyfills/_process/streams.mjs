@@ -257,6 +257,28 @@ export const initStdin = (warmup = false) => {
         // Make sure the stdin can't be `.end()`-ed
         stdin._writableState.ended = true;
       }
+
+      // Provide a minimal _handle so code that checks process.stdin._handle
+      // (e.g. test-stdout-close-unref.js) works. We intentionally omit
+      // readStart/readStop/reading so the onpause handler takes the simple
+      // io.stdin UNREF path - adding those methods causes _readableState.reading
+      // to be reset, which triggers duplicate _read() calls and orphaned
+      // reffed promises that prevent process exit.
+      stdin._handle = {
+        close(cb) {
+          io.stdin?.close();
+          if (typeof cb === "function") cb();
+        },
+        ref() {
+          io.stdin?.[io.REF]();
+        },
+        unref() {
+          io.stdin?.[io.UNREF]();
+        },
+        getAsyncId() {
+          return -1;
+        },
+      };
       break;
     }
     default: {
@@ -280,7 +302,7 @@ export const initStdin = (warmup = false) => {
   }
 
   function onpause() {
-    if (!stdin._handle) {
+    if (!stdin._handle || !stdin._handle.readStop) {
       // This allows the process to exit when stdin is paused.
       io.stdin?.[io.UNREF]();
       return;
