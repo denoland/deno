@@ -37,6 +37,8 @@ mod testing;
 mod text;
 mod trace;
 mod tsc;
+mod tsc_go;
+mod tsc_mod;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
