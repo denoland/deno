@@ -469,6 +469,7 @@ pub struct ServeFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
+  pub unix_socket: Option<String>,
   pub parallel: bool,
   pub open_site: bool,
 }
@@ -481,6 +482,7 @@ impl ServeFlags {
       watch: None,
       port,
       host: host.to_owned(),
+      unix_socket: None,
       parallel: false,
       open_site: false,
     }
@@ -4027,18 +4029,28 @@ Start a server defined in server.ts, watching for changes and running on port 50
       Arg::new("port")
         .long("port")
         .help(cstr!("The TCP port to serve on. Pass 0 to pick a random free port <p(245)>[default: 8000]</>"))
-        .value_parser(value_parser!(u16)),
+        .value_parser(value_parser!(u16))
+        .conflicts_with("unix-socket"),
     )
     .arg(
       Arg::new("host")
         .long("host")
         .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces)")
-        .value_parser(serve_host_validator),
-    ).arg(
+        .value_parser(serve_host_validator)
+        .conflicts_with("unix-socket"),
+    )
+    .arg(
+      Arg::new("unix-socket")
+        .long("unix-socket")
+        .help("Serve on a Unix domain socket instead of a TCP port")
+        .value_hint(ValueHint::FilePath),
+    )
+    .arg(
       Arg::new("open")
       .long("open")
       .help("Open the browser on the address that the server is running on.")
       .action(ArgAction::SetTrue)
+      .conflicts_with("unix-socket"),
     )
     .arg(
       parallel_arg("multiple server workers")
@@ -6714,6 +6726,7 @@ fn serve_parse(
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
+  let unix_socket = matches.remove_one::<String>("unix-socket");
   let open_site = matches.remove_one::<bool>("open").unwrap_or(false);
 
   runtime_args_parse(flags, matches, true, true, true)?;
@@ -6741,6 +6754,7 @@ fn serve_parse(
     watch: watch_arg_parse_with_paths(matches)?,
     port,
     host,
+    unix_socket,
     parallel: matches.get_flag("parallel"),
     open_site,
   });
