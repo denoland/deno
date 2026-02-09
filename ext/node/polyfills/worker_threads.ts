@@ -20,6 +20,7 @@ import {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
@@ -67,6 +68,7 @@ const {
   SymbolIterator,
   TypeError,
   Float64Array,
+  FunctionPrototypeBind,
 } = primordials;
 
 const workerCpuUsageBuffer = new Float64Array(2);
@@ -724,6 +726,26 @@ class NodeMessageChannel {
     const { port1, port2 } = new MessageChannel();
     this.port1 = webMessagePortToNodeMessagePort(port1);
     this.port2 = webMessagePortToNodeMessagePort(port2);
+
+    // When one port is closed, the paired port should also receive
+    // a 'close' event (matching Node.js behavior).
+    const origClose1 = FunctionPrototypeBind(port1.close, port1);
+    const origClose2 = FunctionPrototypeBind(port2.close, port2);
+
+    port1.close = () => {
+      origClose1();
+      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
+        port2[nodeWorkerThreadCloseCbInvoked] = true;
+        port2.dispatchEvent(new Event("close"));
+      }
+    };
+    port2.close = () => {
+      origClose2();
+      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
+        port1[nodeWorkerThreadCloseCbInvoked] = true;
+        port1.dispatchEvent(new Event("close"));
+      }
+    };
   }
 }
 
