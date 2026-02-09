@@ -108,10 +108,9 @@ impl PrettyTestReporter {
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
     } else if std::io::stdout().is_terminal() {
-      write!(&mut self.writer, "\r").ok();
       write!(
         &mut self.writer,
-        "{}{} ...",
+        "\r{}{} ...",
         "  ".repeat(description.level),
         description.name
       )
