@@ -169,27 +169,10 @@ class NodeWorker extends EventEmitter {
         "node:worker_threads support only 'file:' and 'data:' URLs",
       );
     }
-    if (options?.eval) {
-      const code = typeof specifier === "string"
-        ? encodeURIComponent(specifier)
-        // deno-lint-ignore prefer-primordials
-        : specifier.toString();
-      specifier = `data:text/javascript,${code}`;
-    } else if (
-      !(typeof specifier === "object" && specifier.protocol === "data:")
-    ) {
-      // deno-lint-ignore prefer-primordials
-      specifier = specifier.toString();
-      specifier = op_worker_threads_filename(specifier) ?? specifier;
-    }
 
-    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
-    // `[worker {threadId}] {name}` or empty string.
-    let name = StringPrototypeTrim(options?.name ?? "");
-    if (options?.eval) {
-      name = "[worker eval]";
-    }
-    this.#name = name;
+    // Serialize workerData before resolving the filename so that
+    // DataCloneError is thrown before file-not-found errors,
+    // matching Node.js behavior.
 
     // Handle the `env` option following Node.js semantics:
     // - undefined/null: snapshot current process.env (isolated copy)
@@ -243,6 +226,29 @@ class NodeWorker extends EventEmitter {
       isEval: !!options?.eval,
       isWorkerThread: true,
     }, options?.transferList ?? []);
+
+    if (options?.eval) {
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
+    } else if (
+      !(typeof specifier === "object" && specifier.protocol === "data:")
+    ) {
+      // deno-lint-ignore prefer-primordials
+      specifier = specifier.toString();
+      specifier = op_worker_threads_filename(specifier) ?? specifier;
+    }
+
+    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
+    // `[worker {threadId}] {name}` or empty string.
+    let name = StringPrototypeTrim(options?.name ?? "");
+    if (options?.eval) {
+      name = "[worker eval]";
+    }
+    this.#name = name;
+
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
