@@ -176,6 +176,8 @@
     "parallel/test-child-process-exec-kill-throws.js": {},
     "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
+    "parallel/test-child-process-exec-timeout-expire.js": {},
+    "parallel/test-child-process-exec-timeout-kill.js": {},
     "parallel/test-child-process-exec-timeout-not-expired.js": {},
     "parallel/test-child-process-execFile-promisified-abortController.js": {},
     "parallel/test-child-process-execfile-maxbuf.js": {},
@@ -1548,8 +1550,10 @@
     "parallel/test-worker-dispose.mjs": {},
     "parallel/test-worker-error-stack-getter-throws.js": {},
     "parallel/test-worker-esm-exit.js": {},
+    "parallel/test-worker-esm-missing-main.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
+    "parallel/test-worker-execargv-invalid.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
     "parallel/test-worker-message-channel.js": {},
@@ -1562,10 +1566,15 @@
     // "parallel/test-worker-name.js": {},
     "parallel/test-worker-on-process-exit.js": {},
     "parallel/test-worker-onmessage.js": {},
+    // "parallel/test-worker-process-argv.js": {},
+    "parallel/test-worker-process-env.js": {},
+    // TODO(bartlomieju): this test just hangs
+    // "parallel/test-worker-process-env-shared.js": {},
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
+    "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
     "parallel/test-worker.mjs": {},
     "parallel/test-zlib-brotli-16GB.js": {},
@@ -1706,7 +1715,8 @@
     "sequential/test-vm-timeout-rethrow.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
+    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
 }

@@ -30,9 +30,13 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
 } from "ext:deno_node/internal/errors.ts";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateArray,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
 import {
   BroadcastChannel as WebBroadcastChannel,
@@ -46,16 +50,16 @@ const {
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
-  JSONParse,
-  JSONStringify,
   NumberIsFinite,
   ObjectHasOwn,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
   SafeMap,
   SafeSet,
   SafeWeakMap,
+  String,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
@@ -139,6 +143,23 @@ class NodeWorker extends EventEmitter {
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
+    if (options?.execArgv) {
+      validateArray(options.execArgv, "options.execArgv");
+      if (options.execArgv.length > 0) {
+        throw new ERR_WORKER_INVALID_EXEC_ARGV(options.execArgv);
+      }
+    }
+
+    if (options?.env) {
+      const nodeOptions = options.env.NODE_OPTIONS;
+      if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
+        throw new ERR_WORKER_INVALID_EXEC_ARGV(
+          [nodeOptions],
+          "invalid NODE_OPTIONS env variable",
+        );
+      }
+    }
+
     if (
       typeof specifier === "object" &&
       !(specifier.protocol === "data:" || specifier.protocol === "file:")
@@ -169,18 +190,56 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
-    // One of the most common usages will be to pass `process.env` here,
-    // but because `process.env` is a Proxy in Deno, we need to get a plain
-    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // Handle the `env` option following Node.js semantics:
+    // - undefined/null: snapshot current process.env (isolated copy)
+    // - SHARE_ENV: worker shares the parent's OS environment
+    // - object: use that object, coercing values to strings
+    // - anything else: throw ERR_INVALID_ARG_TYPE
     // See https://github.com/denoland/deno/issues/23522.
     let env_ = undefined;
-    if (options?.env) {
-      env_ = JSONParse(JSONStringify(options?.env));
+    const envOpt = options?.env;
+    if (envOpt != null && envOpt !== SHARE_ENV) {
+      if (typeof envOpt !== "object") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.env",
+          ["object", "undefined", "null", "worker_threads.SHARE_ENV"],
+          envOpt,
+        );
+      }
+      // Snapshot the provided env, coercing values to strings like Node.js.
+      // This also handles passing `process.env` (a Proxy in Deno) by
+      // producing a plain object that can be structured-cloned.
+      const envObj = {};
+      const keys = ObjectKeys(envOpt);
+      for (let i = 0; i < keys.length; i++) {
+        envObj[keys[i]] = String(envOpt[keys[i]]);
+      }
+      env_ = envObj;
+    } else if (envOpt !== SHARE_ENV) {
+      // Default: snapshot current process.env so the worker gets an
+      // isolated copy, not a live reference to the OS environment.
+      // Wrap in try/catch because accessing process.env requires
+      // --allow-env permission in Deno. If unavailable, fall back to
+      // shared OS env (env_ stays undefined).
+      try {
+        const envObj = {};
+        const keys = ObjectKeys(process.env);
+        for (let i = 0; i < keys.length; i++) {
+          envObj[keys[i]] = process.env[keys[i]];
+        }
+        env_ = envObj;
+      } catch {
+        // No env permission - worker will share the OS environment.
+      }
     }
+    // When envOpt === SHARE_ENV, env_ stays undefined and the worker
+    // will use the default process.env backed by Deno.env (shared OS env).
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      name: this.#name,
+      isEval: !!options?.eval,
       isWorkerThread: true,
     }, options?.transferList ?? []);
     const id = op_create_worker(
@@ -424,6 +483,14 @@ class NodeWorker extends EventEmitter {
     return PromiseResolve({ user, system });
   }
 
+  // https://nodejs.org/api/worker_threads.html#workerthreadname
+  get threadName(): string | null {
+    if (this.#exited) {
+      return null;
+    }
+    return this.#name;
+  }
+
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
   // fake performance
@@ -432,6 +499,7 @@ class NodeWorker extends EventEmitter {
 
 export let isMainThread;
 export let resourceLimits;
+export let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -505,14 +573,38 @@ internals.__initWorkerThreads = (
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
+      threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
         process.env = env;
+      }
+
+      // Set process.argv for worker threads.
+      // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
+      if (isWorkerThread) {
+        let scriptPath;
+        if (metadata.isEval) {
+          scriptPath = "[worker eval]";
+        } else if (
+          moduleSpecifier &&
+          StringPrototypeStartsWith(moduleSpecifier, "file:")
+        ) {
+          scriptPath = new URL(moduleSpecifier).pathname;
+        } else {
+          scriptPath = moduleSpecifier ?? "";
+        }
+        process.argv = [process.execPath, scriptPath];
+        if (metadata.argv) {
+          for (let i = 0; i < metadata.argv.length; i++) {
+            process.argv[i + 2] = metadata.argv[i];
+          }
+        }
       }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+    defaultExport.threadName = threadName;
 
     patchMessagePortIfFound(workerData);
 
@@ -544,12 +636,13 @@ internals.__initWorkerThreads = (
     parentPort.once = function (this: ParentPort, name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
+        listeners.delete(listener);
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
+      this.addEventListener(name, _listener, { once: true });
       return this;
     };
 
@@ -796,6 +889,7 @@ const defaultExport = {
   setEnvironmentData,
   SHARE_ENV,
   threadId,
+  threadName,
   workerData,
   resourceLimits,
   parentPort,
