@@ -1573,6 +1573,7 @@
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
+    "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
     "parallel/test-worker.mjs": {},
     "parallel/test-zlib-brotli-16GB.js": {},
