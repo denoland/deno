@@ -47,7 +47,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFile("some/path", "some data", "made-up-encoding", () => {});
     },
     Error,
-    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -56,7 +56,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFileSync("some/path", "some data", "made-up-encoding");
     },
     Error,
-    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -72,7 +72,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       );
     },
     Error,
-    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -83,7 +83,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       });
     },
     Error,
-    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 });
 
