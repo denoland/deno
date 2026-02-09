@@ -808,7 +808,7 @@ pub async fn install_command(
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
-      install_local(flags, local_flags).await
+      Box::pin(install_local(flags, local_flags)).await
     }
   }
 }
@@ -860,7 +860,8 @@ async fn install_global(
   }
 
   if install_flags_global.compile {
-    return install_global_compiled(flags, install_flags_global).await;
+    return Box::pin(install_global_compiled(flags, install_flags_global))
+      .await;
   }
 
   for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
@@ -991,14 +992,8 @@ async fn install_global_compiled(
 
   let mut new_flags = flags.as_ref().clone();
   new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
-  // `is_package_manager_subcommand` forces managed resolver for deno install
-  // but we loose that with DenoSubcommand::Command. Explicitly set that here.
-  if new_flags.node_modules_dir.is_none() {
-    new_flags.node_modules_dir =
-      Some(deno_config::deno_json::NodeModulesDirMode::Auto);
-  }
 
-  crate::tools::compile::compile(Arc::new(new_flags), compile_flags).await?;
+  crate::tools::compile::compile(new_flags, compile_flags).await?;
 
   log::info!("Successfully installed {}", output);
 
