@@ -68,6 +68,7 @@ const {
   SymbolIterator,
   TypeError,
   Float64Array,
+  FunctionPrototypeBind,
 } = primordials;
 
 const workerCpuUsageBuffer = new Float64Array(2);
@@ -728,8 +729,8 @@ class NodeMessageChannel {
 
     // When one port is closed, the paired port should also receive
     // a 'close' event (matching Node.js behavior).
-    const origClose1 = port1.close.bind(port1);
-    const origClose2 = port2.close.bind(port2);
+    const origClose1 = FunctionPrototypeBind(port1.close, port1);
+    const origClose2 = FunctionPrototypeBind(port2.close, port2);
 
     port1.close = () => {
       origClose1();
