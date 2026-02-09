@@ -542,6 +542,7 @@ export {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,
