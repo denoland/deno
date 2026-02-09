@@ -1,0 +1,20 @@
+{
+  "if": "linux",
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --output main main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "strip",
+      "args": ["./main"],
+      "output": ""
+    },
+    {
+      "commandName": "./main",
+      "args": [],
+      "output": "main.out"
+    }
+  ]
+}
