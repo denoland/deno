@@ -145,7 +145,7 @@ export function writeFile(
 }
 
 export const writeFilePromise = promisify(writeFile) as (
-  pathOrRid: string | number | URL,
+  pathOrRid: string | number | URL | FileHandle,
   data: WriteFileData,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
@@ -217,7 +217,12 @@ function writeAllSync(
     }
   } else {
     for (const buf of data) {
-      const toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const bytesWritten = w.writeSync(
@@ -250,7 +255,12 @@ async function writeAll(
   } else {
     for await (const buf of data) {
       checkAborted(signal);
-      const toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
