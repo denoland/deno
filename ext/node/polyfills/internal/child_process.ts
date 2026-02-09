@@ -1234,9 +1234,9 @@ function splitShellArgs(str: string): string[] {
 
 /**
  * Splits a shell command string into the command arguments part and a shell
- * operator suffix (redirections like `< file`, `> file`, pipes `|`, etc.).
+ * operator suffix (redirections like `< file`, `1>&-`, pipes `|`, etc.).
  * Respects quoted strings so that operators inside quotes are not treated as
- * shell syntax.
+ * shell syntax. Handles fd-prefixed redirections (e.g. `2>`, `10>>`, `&>`).
  */
 function splitShellSuffix(
   str: string,
@@ -1252,10 +1252,36 @@ function splitShellSuffix(
       inSingle = !inSingle;
     } else if (!inDouble && !inSingle) {
       // Check for shell operators: <, >, |, &, ;
-      if (ch === "<" || ch === ">" || ch === "|" || ch === ";" || ch === "&") {
-        // Found a shell operator outside quotes - split here
-        const argsStr = str.slice(0, i).trimEnd();
-        const shellSuffix = " " + str.slice(i);
+      if (
+        ch === "<" || ch === ">" || ch === "|" || ch === ";" || ch === "&"
+      ) {
+        // For redirections, walk backwards to include an optional fd prefix
+        // (e.g. `2>file`, `10>>file`, `&>file`, `2>&1`).
+        let splitIndex = i;
+        if (ch === "<" || ch === ">") {
+          let j = i - 1;
+          // Collect trailing digits directly before the operator.
+          while (j >= 0 && str[j] >= "0" && str[j] <= "9") {
+            j--;
+          }
+          let fdStart = j + 1;
+          // Optionally collect a preceding '&' (for `&>file`).
+          if (j >= 0 && str[j] === "&") {
+            fdStart = j;
+            j--;
+          }
+          // Only treat as fd prefix if at start of string or preceded by
+          // whitespace, so `foo2>out` doesn't mis-parse the `2`.
+          if (
+            fdStart < i &&
+            (fdStart === 0 || str[fdStart - 1] === " " ||
+              str[fdStart - 1] === "\t")
+          ) {
+            splitIndex = fdStart;
+          }
+        }
+        const argsStr = str.slice(0, splitIndex).trimEnd();
+        const shellSuffix = str.slice(splitIndex);
         return { argsStr, shellSuffix };
       }
     }
@@ -1339,7 +1365,11 @@ function transformDenoShellCommand(
       }
     }
     const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-    return prefix + " " + result.deno_args.join(" ") + shellSuffix;
+    let transformed = prefix + " " + result.deno_args.join(" ");
+    if (shellSuffix) {
+      transformed += " " + shellSuffix;
+    }
+    return transformed;
   } catch {
     // If the Rust parser fails (unknown flags), return the original command
     return command;
