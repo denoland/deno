@@ -9,6 +9,7 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use lsp_types::Uri;
 use serde::Deserialize;
@@ -31,24 +32,6 @@ use crate::lsp::urls::uri_to_url;
 pub struct TsGoCompletionItemData {
   pub uri: Uri,
   pub data: serde_json::Value,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-enum TsGoRequest {
-  LanguageServiceMethod {
-    name: String,
-    args: serde_json::Value,
-    compiler_options_key: CompilerOptionsKey,
-    notebook_uri: Option<Arc<Uri>>,
-  },
-  GetAmbientModules {
-    compiler_options_key: CompilerOptionsKey,
-    notebook_uri: Option<Arc<Uri>>,
-  },
-  WorkspaceSymbol {
-    query: String,
-  },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
@@ -76,24 +59,77 @@ struct TsGoFileChange {
   kind: TsGoFileChangeKind,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoConfigurationChange {
-  pub new_compiler_options_by_key:
-    BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
-  pub new_notebook_keys: BTreeMap<Arc<Uri>, CompilerOptionsKey>,
+struct TsGoProjectConfig {
+  compiler_options: Arc<CompilerOptions>,
+  file_names: Vec<Url>,
+  compiler_options_key: CompilerOptionsKey,
+  notebook_uri: Option<Arc<Uri>>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoProjectChange {
-  files: Vec<TsGoFileChange>,
-  configuration: Option<TsGoConfigurationChange>,
+struct TsGoWorkspaceConfig {
+  by_compiler_options_key: BTreeMap<CompilerOptionsKey, TsGoProjectConfig>,
+  by_notebook_uri: BTreeMap<Arc<Uri>, TsGoProjectConfig>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoWorkspaceChange {
+  file_changes: Vec<TsGoFileChange>,
+  new_configuration: Option<TsGoWorkspaceConfig>,
+}
+
+impl TsGoWorkspaceChange {
+  fn coalesce(&mut self, incoming: Self) {
+    for change in incoming.file_changes {
+      if let Some(existing_change) =
+        self.file_changes.iter_mut().find(|c| c.uri == change.uri)
+      {
+        // Modified should never override Opened or Closed.
+        if change.kind != TsGoFileChangeKind::Modified {
+          existing_change.kind = change.kind;
+        }
+      } else {
+        self.file_changes.push(change);
+      }
+    }
+    if incoming.new_configuration.is_some() {
+      self.new_configuration = incoming.new_configuration;
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum TsGoRequest {
+  LanguageServiceMethod {
+    name: String,
+    args: serde_json::Value,
+    compiler_options_key: CompilerOptionsKey,
+    notebook_uri: Option<Arc<Uri>>,
+  },
+  GetAmbientModules {
+    compiler_options_key: CompilerOptionsKey,
+    notebook_uri: Option<Arc<Uri>>,
+  },
+  WorkspaceSymbol {
+    query: String,
+  },
+}
+
+fn fill_workspace_config_file_names(
+  workspace_change: &mut TsGoWorkspaceConfig,
+  snapshot: &StateSnapshot,
+) {
+  todo!()
 }
 
 #[derive(Debug)]
 struct TsGoServerInner {
-  pending_change: Mutex<Option<TsGoProjectChange>>,
+  pending_change: Mutex<Option<TsGoWorkspaceChange>>,
 }
 
 #[derive(Debug)]
@@ -143,37 +179,67 @@ impl TsGoServer {
     let Some(inner) = self.inner.get() else {
       return;
     };
-    let mut pending_change = inner.pending_change.lock();
-    if pending_change.is_none() {
-      *pending_change = Some(TsGoProjectChange {
-        files: documents
-          .iter()
-          .map(|(d, k)| TsGoFileChange {
-            uri: d.uri().clone(),
-            kind: (*k).into(),
+    let incoming = TsGoWorkspaceChange {
+      file_changes: documents
+        .iter()
+        .map(|(d, k)| TsGoFileChange {
+          uri: d.uri().clone(),
+          kind: (*k).into(),
+        })
+        .collect(),
+      new_configuration: configuration_changed.then(|| TsGoWorkspaceConfig {
+        by_compiler_options_key: snapshot
+          .compiler_options_resolver
+          .entries()
+          .map(|(k, d)| {
+            (
+              k.clone(),
+              TsGoProjectConfig {
+                compiler_options: d.compiler_options.clone(),
+                file_names: Vec::new(),
+                compiler_options_key: k.clone(),
+                notebook_uri: None,
+              },
+            )
           })
           .collect(),
-        configuration: configuration_changed.then(|| TsGoConfigurationChange {
-          new_compiler_options_by_key: snapshot
-            .compiler_options_resolver
-            .entries()
-            .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
-            .collect(),
-          new_notebook_keys: snapshot
-            .document_modules
-            .documents
-            .cells_by_notebook_uri()
-            .keys()
-            .map(|u| {
-              let compiler_options_key = snapshot
-                .compiler_options_resolver
-                .entry_for_specifier(&uri_to_url(u))
-                .0;
-              (u.clone(), compiler_options_key.clone())
-            })
-            .collect(),
-        }),
-      })
+        by_notebook_uri: snapshot
+          .document_modules
+          .documents
+          .cells_by_notebook_uri()
+          .keys()
+          .map(|u| {
+            let compiler_options_key = snapshot
+              .compiler_options_resolver
+              .entry_for_specifier(&uri_to_url(u))
+              .0;
+            let compiler_options = snapshot
+              .compiler_options_resolver
+              .for_key(&compiler_options_key)
+              .unwrap()
+              .compiler_options
+              .clone();
+            (
+              u.clone(),
+              TsGoProjectConfig {
+                compiler_options,
+                file_names: Vec::new(),
+                compiler_options_key: compiler_options_key.clone(),
+                notebook_uri: Some(u.clone()),
+              },
+            )
+          })
+          .collect(),
+      }),
+    };
+    if let Some(workspace_config) = &mut incoming.new_configuration {
+      fill_workspace_config_file_names(workspace_change, &snapshot);
+    }
+    let mut pending_change = inner.pending_change.lock();
+    if let Some(existing) = pending_change.as_mut() {
+      existing.coalesce(incoming);
+    } else {
+      *pending_change = Some(incoming);
     }
   }
 
@@ -219,7 +285,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDiagnostics".to_string(),
-          args: json!([&module.specifier]),
+          args: json!([&module.uri]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -242,7 +308,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideReferences".to_string(),
           args: json!([{
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "position": position,
             "context": context,
           }]),
@@ -265,7 +331,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCodeLenses".to_string(),
-          args: json!([&module.specifier]),
+          args: json!([&module.uri]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -285,7 +351,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDocumentSymbols".to_string(),
-          args: json!([&module.specifier]),
+          args: json!([&module.uri]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -306,7 +372,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideHover".to_string(),
-          args: json!([&module.specifier, position]),
+          args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -329,7 +395,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCodeActions".to_string(),
           args: json!([{
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "range": range,
             "context": context,
           }]),
@@ -353,7 +419,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDocumentHighlights".to_string(),
-          args: json!([&module.specifier, position]),
+          args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -374,7 +440,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDefinition".to_string(),
-          args: json!([&module.specifier, position]),
+          args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -395,7 +461,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideTypeDefinition".to_string(),
-          args: json!([&module.specifier, position]),
+          args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -417,7 +483,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCompletion".to_string(),
-          args: json!([&module.specifier, position, context]),
+          args: json!([&module.uri, position, context]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -482,7 +548,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideImplementations".to_string(),
           args: json!({
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "position": position,
           }),
           compiler_options_key: module.compiler_options_key.clone(),
@@ -504,7 +570,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideFoldingRange".to_string(),
-          args: json!([&module.specifier]),
+          args: json!([&module.uri]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -567,7 +633,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvidePrepareCallHierarchy".to_string(),
-          args: json!([&module.specifier, position]),
+          args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -590,7 +656,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideRename".to_string(),
           args: json!([{
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "position": position,
             "newName": new_name,
           }]),
@@ -615,7 +681,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideSelectionRanges".to_string(),
           args: json!([{
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "positions": positions,
           }]),
           compiler_options_key: module.compiler_options_key.clone(),
@@ -639,7 +705,7 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideSignatureHelp".to_string(),
-          args: json!([&module.specifier, position, context]),
+          args: json!([&module.uri, position, context]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -661,7 +727,7 @@ impl TsGoServer {
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideInlayHint".to_string(),
           args: json!([{
-            "textDocument": { "uri": &module.specifier },
+            "textDocument": { "uri": &module.uri },
             "range": range,
           }]),
           compiler_options_key: module.compiler_options_key.clone(),
