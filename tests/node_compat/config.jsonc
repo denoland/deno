@@ -538,8 +538,11 @@
     "parallel/test-fs-open-numeric-flags.js": {},
     "parallel/test-fs-open.js": {},
     "parallel/test-fs-promises-exists.js": {},
+    "parallel/test-fs-promises-file-handle-append-file.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
+    "parallel/test-fs-promises-file-handle-writeFile.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
+    "parallel/test-fs-promises-writefile-typedarray.js": {},
     "parallel/test-fs-promisified.js": {},
     "parallel/test-fs-read-empty-buffer.js": {},
     "parallel/test-fs-read-file-assert-encoding.js": {},
@@ -589,6 +592,10 @@
     "parallel/test-fs-symlink.js": {},
     "parallel/test-fs-unlink-type-check.js": {},
     "parallel/test-fs-util-validateoffsetlength.js": {},
+    "parallel/test-fs-write-file-typedarrays.js": {},
+    "parallel/test-fs-write-file.js": {
+      "flaky": true
+    },
     "parallel/test-fs-write-negativeoffset.js": {},
     "parallel/test-fs-write-no-fd.js": {},
     "parallel/test-fs-write-optional-params.js": {},
