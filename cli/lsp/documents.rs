@@ -207,7 +207,8 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     .ok()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -231,15 +232,6 @@ impl std::ops::Deref for DocumentText {
       Self::Static(s) => s,
       Self::Arc(s) => s,
     }
-  }
-}
-
-impl Serialize for DocumentText {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    (self as &str).serialize(serializer)
   }
 }
 

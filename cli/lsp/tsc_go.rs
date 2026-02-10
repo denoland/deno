@@ -40,6 +40,7 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
+use crate::lsp::documents::DocumentText;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
@@ -50,6 +51,20 @@ use crate::lsp::urls::uri_to_url;
 pub struct TsGoCompletionItemData {
   pub uri: Uri,
   pub data: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoGetDocumentParams {
+  uri: Uri,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoDocumentData {
+  text: DocumentText,
+  line_starts: Vec<i32>,
+  ascii_only: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
@@ -325,10 +340,12 @@ fn fill_workspace_config_file_names(
 }
 
 struct TsGoServerInner {
+  snapshot: Arc<Mutex<Arc<StateSnapshot>>>,
   pending_change: Mutex<Option<TsGoWorkspaceChange>>,
-  stdin: Mutex<std::process::ChildStdin>,
-  pending_requests:
+  stdin: Arc<Mutex<std::process::ChildStdin>>,
+  pending_requests: Arc<
     Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
+  >,
   next_request_id: AtomicI64,
   #[allow(dead_code)]
   child: Mutex<Child>,
@@ -386,22 +403,26 @@ fn read_lsp_message(
 }
 
 impl TsGoServerInner {
-  async fn init(tsgo_path: &Path) -> Result<Self, AnyError> {
+  async fn init(tsgo_path: &Path, snapshot: Arc<StateSnapshot>) -> Self {
     let mut child = Command::new(tsgo_path)
       .args(["--lsp", "--stdio"])
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::inherit())
-      .spawn()?;
+      .spawn()
+      .unwrap();
 
-    let mut stdin = child.stdin.take().unwrap();
+    let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
     let stdout = child.stdout.take().unwrap();
+    let snapshot = Arc::new(Mutex::new(snapshot));
 
     let pending_requests: Arc<
       Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
     > = Arc::new(Mutex::new(HashMap::new()));
 
     let pending_requests_clone = pending_requests.clone();
+    let stdin_clone = stdin.clone();
+    let snapshot_clone = snapshot.clone();
     std::thread::spawn(move || {
       let mut reader = std::io::BufReader::new(stdout);
       loop {
@@ -412,7 +433,76 @@ impl TsGoServerInner {
             break;
           }
         };
-        if let Some(id) = message.get("id") {
+        // Check if it's a request (has method) vs response (has id but no method)
+        if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
+          let id = message.get("id").cloned();
+          match method {
+            "deno/host/getDocument" => {
+              let params: TsGoGetDocumentParams = match message
+                .get("params")
+                .and_then(|p| serde_json::from_value(p.clone()).ok())
+              {
+                Some(p) => p,
+                None => {
+                  if let Some(id) = id {
+                    let response = json!({
+                      "jsonrpc": "2.0",
+                      "id": id,
+                      "error": {
+                        "code": -32602,
+                        "message": "Invalid params"
+                      }
+                    });
+                    let mut stdin = stdin_clone.lock();
+                    let _ = write_lsp_message(&mut stdin, &response);
+                  }
+                  continue;
+                }
+              };
+
+              let snapshot = snapshot_clone.lock();
+              let result =
+                snapshot.document_modules.documents.get(&params.uri).map(
+                  |doc| {
+                    let text = doc.text();
+                    TsGoDocumentData {
+                      ascii_only: text.is_ascii(),
+                      text,
+                      line_starts: doc
+                        .line_index()
+                        .line_starts()
+                        .iter()
+                        .map(|&s| u32::from(s) as i32)
+                        .collect(),
+                    }
+                  },
+                );
+
+              if let Some(id) = id {
+                let response = match result {
+                  Some(data) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": data
+                  }),
+                  None => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                      "code": -32001,
+                      "message": "Document not found"
+                    }
+                  }),
+                };
+                let mut stdin = stdin_clone.lock();
+                let _ = write_lsp_message(&mut stdin, &response);
+              }
+            }
+            _ => {
+              // Unknown method, ignore
+            }
+          }
+        } else if let Some(id) = message.get("id") {
           let id = id.as_i64().unwrap_or(-1);
           let mut pending = pending_requests_clone.lock();
           if let Some(sender) = pending.remove(&id) {
@@ -448,29 +538,34 @@ impl TsGoServerInner {
       },
     });
 
-    write_lsp_message(&mut stdin, &initialize_request)?;
+    {
+      let mut stdin = stdin.lock();
+      write_lsp_message(&mut stdin, &initialize_request).unwrap();
+    }
 
     let (tx, rx) = oneshot::channel();
     pending_requests.lock().insert(0, tx);
 
-    let _init_response = rx
-      .await
-      .map_err(|_| anyhow!("Channel closed"))?
-      .map_err(|e| anyhow!("{}", e))?;
+    let _init_response = rx.await.unwrap().unwrap();
 
-    let inner = Self {
+    let initialized_notification = json!({
+      "jsonrpc": "2.0",
+      "method": "initialized",
+      "params": {},
+    });
+    {
+      let mut stdin = stdin.lock();
+      write_lsp_message(&mut stdin, &initialized_notification).unwrap();
+    }
+
+    Self {
+      snapshot,
       pending_change: Mutex::new(None),
-      stdin: Mutex::new(stdin),
-      pending_requests: Mutex::new(
-        Arc::try_unwrap(pending_requests)
-          .map_err(|_| anyhow!("Failed to unwrap pending_requests"))?
-          .into_inner(),
-      ),
+      stdin,
+      pending_requests,
       next_request_id: AtomicI64::new(1),
       child: Mutex::new(child),
-    };
-
-    Ok(inner)
+    }
   }
 
   async fn request<R>(
@@ -532,7 +627,7 @@ impl TsGoServer {
     }
   }
 
-  async fn inner(&self) -> &TsGoServerInner {
+  async fn inner(&self, snapshot: Arc<StateSnapshot>) -> &TsGoServerInner {
     self
       .inner
       .get_or_init(async || {
@@ -542,7 +637,7 @@ impl TsGoServer {
         )
         .await
         .unwrap();
-        TsGoServerInner::init(&tsgo_path).await.unwrap()
+        TsGoServerInner::init(tsgo_path, snapshot).await
       })
       .await
   }
@@ -560,6 +655,7 @@ impl TsGoServer {
     let Some(inner) = self.inner.get() else {
       return;
     };
+    *inner.snapshot.lock() = snapshot.clone();
     let mut incoming = TsGoWorkspaceChange {
       file_changes: documents
         .iter()
@@ -645,13 +741,13 @@ impl TsGoServer {
   async fn request<R>(
     &self,
     request: TsGoRequest,
-    _snapshot: Arc<StateSnapshot>,
+    snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: DeserializeOwned,
   {
-    let inner = self.inner().await;
+    let inner = self.inner(snapshot).await;
     inner.request(request, token).await
   }
 
