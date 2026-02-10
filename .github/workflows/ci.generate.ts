@@ -1172,7 +1172,7 @@ const lintJob = job("lint", {
     },
   },
   steps: (() => {
-    const cloneRepo = steps({
+    const setupRepo = steps({
       name: "Configure git",
       run: [
         "git config --global core.symlinks true",
@@ -1236,13 +1236,13 @@ const lintJob = job("lint", {
           run:
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
-      ).dependsOn(cloneRepo, installDeno).if("matrix.os == 'linux'"),
+      ).dependsOn(setupRepo, installDeno).if("matrix.os == 'linux'"),
       step({
         name: "lint.js",
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run:
           "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-      }).dependsOn(cloneRepo, installRust),
+      }).dependsOn(setupRepo, installRust),
       {
         name: "Save cache build output (main)",
         uses: "actions/cache/save@v4",
