@@ -1171,22 +1171,25 @@ const lintJob = job("lint", {
       }],
     },
   },
-  steps: (() => {
-    const setupRepo = steps({
+  steps: steps(
+    {
       name: "Configure git",
       run: [
         "git config --global core.symlinks true",
         "git config --global fetch.parallel 32",
       ],
-    }, {
+    },
+    {
       name: "Clone repository",
       uses: "actions/checkout@v6",
       with: { "fetch-depth": 5, submodules: false },
-    }, {
+    },
+    {
       name: "Clone submodule ./tests/util/std",
       run:
         "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
-    }, {
+    },
+    {
       name: "Cache Cargo home",
       uses: "cirruslabs/cache@v4",
       with: {
@@ -1203,7 +1206,8 @@ const lintJob = job("lint", {
         "restore-keys":
           `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
       },
-    }, {
+    },
+    {
       name: "Restore cache build output (PR)",
       uses: "actions/cache/restore@v4",
       if:
@@ -1213,44 +1217,41 @@ const lintJob = job("lint", {
         key: "never_saved",
         "restore-keys": prCacheKeyPrefix,
       },
-    });
-    const installRust = step({
+    },
+    {
       uses: "dsherret/rust-toolchain-file@v1",
-    });
-    const installDeno = step({
+    },
+    {
       name: "Install Deno",
       uses: "denoland/setup-deno@v2",
       with: { "deno-version": "v2.x" },
-    });
-
-    return steps(
-      steps(
-        {
-          name: "test_format.js",
-          run:
-            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
-        },
-        {
-          name: "jsdoc_checker.js",
-          if: "matrix.os == 'linux'",
-          run:
-            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-        },
-      ).dependsOn(setupRepo, installDeno).if("matrix.os == 'linux'"),
-      step({
-        name: "lint.js",
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-        run:
-          "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-      }).dependsOn(setupRepo, installRust),
+    },
+    steps(
       {
-        name: "Save cache build output (main)",
-        uses: "actions/cache/save@v4",
-        if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
-        with: { path: prCachePath, key: prCacheKey },
+        name: "test_format.js",
+        run:
+          "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
       },
-    );
-  })(),
+      {
+        name: "jsdoc_checker.js",
+        if: "matrix.os == 'linux'",
+        run:
+          "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+      },
+    ).if("matrix.os == 'linux'"),
+    {
+      name: "lint.js",
+      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+      run:
+        "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
+    },
+    {
+      name: "Save cache build output (main)",
+      uses: "actions/cache/save@v4",
+      if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+      with: { path: prCachePath, key: prCacheKey },
+    },
+  ),
 });
 
 // === libs job ===

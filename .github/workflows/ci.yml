@@ -843,9 +843,9 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: matrix.os == 'linux'
         with:
           deno-version: v2.x
       - name: test_format.js
@@ -854,7 +854,6 @@ jobs:
       - name: jsdoc_checker.js
         if: (matrix.os == 'linux') && (matrix.os == 'linux')
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
-      - uses: dsherret/rust-toolchain-file@v1
       - name: lint.js
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
