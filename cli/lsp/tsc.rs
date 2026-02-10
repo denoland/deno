@@ -5276,7 +5276,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         .or_default();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
-      if let Some((types_specifier, types_media_type)) = &types_entry {
+      if let Some((types_specifier, types_media_type, _)) = &types_entry {
         script_names.insert(
           state
             .specifier_map

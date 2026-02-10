@@ -3,14 +3,19 @@
 // TODO(nayeemrmn): Move to `cli/lsp/tsc/go.rs`.
 
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_config::deno_json::CompilerOptions;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_graph::source::Resolver;
 use deno_resolver::deno_json::CompilerOptionsKey;
+use indexmap::IndexSet;
 use lsp_types::Uri;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -24,6 +29,9 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
+use crate::lsp::logging::lsp_log;
+use crate::lsp::logging::lsp_warn;
+use crate::lsp::resolver::SingleReferrerGraphResolver;
 use crate::lsp::urls::uri_to_url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,7 +70,7 @@ struct TsGoFileChange {
 #[serde(rename_all = "camelCase")]
 struct TsGoProjectConfig {
   compiler_options: Arc<CompilerOptions>,
-  files: Vec<Arc<Uri>>,
+  files: IndexSet<Arc<Uri>>,
   compiler_options_key: CompilerOptionsKey,
   notebook_uri: Option<Arc<Uri>>,
 }
@@ -123,7 +131,177 @@ fn fill_workspace_config_file_names(
   workspace_config: &mut TsGoWorkspaceConfig,
   snapshot: &StateSnapshot,
 ) {
-  todo!()
+  let scopes_with_node_specifier =
+    snapshot.document_modules.scopes_with_node_specifier();
+
+  // Insert global scripts.
+  for (compiler_options_key, compiler_options_data) in
+    snapshot.compiler_options_resolver.entries()
+  {
+    let files = &mut workspace_config
+      .by_compiler_options_key
+      .get_mut(compiler_options_key)
+      .expect("workspace_config was made from snapshot")
+      .files;
+    let scope = compiler_options_data
+      .workspace_dir_or_source_url
+      .as_ref()
+      .and_then(|s| snapshot.config.tree.scope_for_specifier(s))
+      .cloned();
+    let scoped_resolver =
+      snapshot.resolver.get_scoped_resolver(scope.as_deref());
+    if scopes_with_node_specifier.contains(&scope) {
+      files.insert(Arc::new(
+        Uri::from_str("deno:/asset/reference_types_node.d.ts").unwrap(),
+      ));
+    }
+    for (referrer, relative_specifiers) in compiler_options_data
+      .ts_config_files
+      .iter()
+      .map(|(r, f)| {
+        let relative_specifiers =
+          Box::new(f.iter().map(|f| &f.relative_specifier))
+            as Box<dyn Iterator<Item = &String>>;
+        (r.as_ref(), relative_specifiers)
+      })
+      .chain(
+        compiler_options_data
+          .compiler_options_types
+          .iter()
+          .map(|(r, t)| (r, Box::new(t.iter()) as _)),
+      )
+    {
+      let resolver = SingleReferrerGraphResolver {
+        valid_referrer: referrer,
+        module_resolution_mode: ResolutionMode::Import,
+        cli_resolver: scoped_resolver.as_cli_resolver(),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
+      };
+      for relative_specifier in relative_specifiers {
+        let Ok(mut specifier) = resolver
+          .resolve(
+            relative_specifier,
+            &deno_graph::Range {
+              specifier: referrer.clone(),
+              range: deno_graph::PositionRange::zeroed(),
+              resolution_mode: None,
+            },
+            deno_graph::source::ResolutionKind::Types,
+          )
+          .inspect_err(|err| {
+            lsp_warn!(
+              "Failed to resolve {relative_specifier} from `compilerOptions.types`: {err:#}"
+            );
+          })
+        else {
+          continue;
+        };
+        if let Ok(req_ref) =
+          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
+        {
+          let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
+            &req_ref,
+            referrer,
+            NodeResolutionKind::Types,
+            ResolutionMode::Import,
+          ) else {
+            lsp_log!("Failed to resolve {req_ref} to a file URL.");
+            continue;
+          };
+          specifier = resolved;
+        }
+        let Some(module) = snapshot.document_modules.module_for_specifier(
+          &specifier,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        ) else {
+          continue;
+        };
+        files.insert(module.uri.clone());
+      }
+    }
+  }
+
+  // roots for notebook scopes
+  for (notebook_uri, cell_uris) in
+    snapshot.document_modules.documents.cells_by_notebook_uri()
+  {
+    let mut files = IndexSet::default();
+    let scope = snapshot
+      .document_modules
+      .primary_scope(notebook_uri)
+      .flatten();
+    let compiler_options_key = snapshot
+      .compiler_options_resolver
+      .entry_for_specifier(&uri_to_url(notebook_uri))
+      .0;
+
+    // Copy over the globals from the containing regular scopes.
+    if let Some(project_config) = workspace_config
+      .by_compiler_options_key
+      .get(compiler_options_key)
+    {
+      files.extend(project_config.files.iter().cloned());
+    }
+
+    // Add the cells as roots.
+    files.extend(cell_uris.iter().filter_map(|u| {
+      let document = snapshot.document_modules.documents.get(u)?;
+      let module = snapshot
+        .document_modules
+        .module(&document, scope.map(|s| s.as_ref()))?;
+      Some(module.uri.clone())
+    }));
+
+    workspace_config
+      .by_notebook_uri
+      .get_mut(notebook_uri)
+      .expect("workspace_config was made from snapshot")
+      .files = files;
+  }
+
+  // finally include the documents
+  for modules in snapshot
+    .document_modules
+    .workspace_file_modules_by_scope()
+    .into_values()
+  {
+    for module in modules {
+      let is_open = module.open_data.is_some();
+      let types_uri = (|| {
+        let types_specifier = module
+          .types_dependency
+          .as_ref()?
+          .dependency
+          .maybe_specifier()?;
+        snapshot
+          .document_modules
+          .resolve_dependency(
+            types_specifier,
+            &module.specifier,
+            module.resolution_mode,
+            module.scope.as_deref(),
+            Some(&module.compiler_options_key),
+          )?
+          .2
+      })();
+      let files = &mut workspace_config
+        .by_compiler_options_key
+        .get_mut(&module.compiler_options_key)
+        .expect("workspace_config was made from snapshot")
+        .files;
+      // If there is a types dep, use that as the root instead. But if the doc
+      // is open, include both as roots.
+      if let Some(types_uri) = &types_uri {
+        files.insert(types_uri.clone());
+      }
+      if types_uri.is_none() || is_open {
+        files.insert(module.uri.clone());
+      }
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -195,7 +373,7 @@ impl TsGoServer {
               k.clone(),
               TsGoProjectConfig {
                 compiler_options: d.compiler_options.clone(),
-                files: Vec::new(),
+                files: Default::default(),
                 compiler_options_key: k.clone(),
                 notebook_uri: None,
               },
@@ -222,7 +400,7 @@ impl TsGoServer {
               u.clone(),
               TsGoProjectConfig {
                 compiler_options,
-                files: Vec::new(),
+                files: Default::default(),
                 compiler_options_key: compiler_options_key.clone(),
                 notebook_uri: Some(u.clone()),
               },

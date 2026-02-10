@@ -1632,21 +1632,25 @@ impl DocumentModules {
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else {
           None
         }
@@ -1658,13 +1662,15 @@ impl DocumentModules {
           resolution_mode,
           NodeResolutionKind::Types,
         ) {
-          Ok(specifier) => self.resolve_dependency(
-            &specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          ),
+          Ok(specifier) => self
+            .resolve_dependency(
+              &specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t)),
           _ => None,
         }
       };
@@ -1681,14 +1687,14 @@ impl DocumentModules {
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
     compiler_options_key: Option<&CompilerOptionsKey>,
-  ) -> Option<(Url, MediaType)> {
+  ) -> Option<(Url, MediaType, Option<Arc<Uri>>)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       && deno_node::is_builtin_node_module(module_name)
     {
       // return itself for node: specifiers because during type checking
       // we resolve to the ambient modules in the @types/node package
       // rather than deno_std/node
-      return Some((specifier.clone(), MediaType::Dts));
+      return Some((specifier.clone(), MediaType::Dts, None));
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1708,7 +1714,7 @@ impl DocumentModules {
     else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
-      return Some((specifier, media_type));
+      return Some((specifier, media_type, None));
     };
     if let Some(types) = module
       .types_dependency
@@ -1723,7 +1729,11 @@ impl DocumentModules {
         compiler_options_key,
       )
     } else {
-      Some((module.specifier.as_ref().clone(), module.media_type))
+      Some((
+        module.specifier.as_ref().clone(),
+        module.media_type,
+        Some(module.uri.clone()),
+      ))
     }
   }
 }
