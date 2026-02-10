@@ -9,7 +9,6 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use lsp_types::Uri;
 use serde::Deserialize;
@@ -63,7 +62,7 @@ struct TsGoFileChange {
 #[serde(rename_all = "camelCase")]
 struct TsGoProjectConfig {
   compiler_options: Arc<CompilerOptions>,
-  file_names: Vec<Url>,
+  files: Vec<Arc<Uri>>,
   compiler_options_key: CompilerOptionsKey,
   notebook_uri: Option<Arc<Uri>>,
 }
@@ -121,7 +120,7 @@ enum TsGoRequest {
 }
 
 fn fill_workspace_config_file_names(
-  workspace_change: &mut TsGoWorkspaceConfig,
+  workspace_config: &mut TsGoWorkspaceConfig,
   snapshot: &StateSnapshot,
 ) {
   todo!()
@@ -179,7 +178,7 @@ impl TsGoServer {
     let Some(inner) = self.inner.get() else {
       return;
     };
-    let incoming = TsGoWorkspaceChange {
+    let mut incoming = TsGoWorkspaceChange {
       file_changes: documents
         .iter()
         .map(|(d, k)| TsGoFileChange {
@@ -196,7 +195,7 @@ impl TsGoServer {
               k.clone(),
               TsGoProjectConfig {
                 compiler_options: d.compiler_options.clone(),
-                file_names: Vec::new(),
+                files: Vec::new(),
                 compiler_options_key: k.clone(),
                 notebook_uri: None,
               },
@@ -223,7 +222,7 @@ impl TsGoServer {
               u.clone(),
               TsGoProjectConfig {
                 compiler_options,
-                file_names: Vec::new(),
+                files: Vec::new(),
                 compiler_options_key: compiler_options_key.clone(),
                 notebook_uri: Some(u.clone()),
               },
@@ -233,7 +232,7 @@ impl TsGoServer {
       }),
     };
     if let Some(workspace_config) = &mut incoming.new_configuration {
-      fill_workspace_config_file_names(workspace_change, &snapshot);
+      fill_workspace_config_file_names(workspace_config, &snapshot);
     }
     let mut pending_change = inner.pending_change.lock();
     if let Some(existing) = pending_change.as_mut() {
