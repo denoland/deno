@@ -3,11 +3,20 @@
 // TODO(nayeemrmn): Move to `cli/lsp/tsc/go.rs`.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::io::BufRead;
+use std::io::Write;
 use std::path::Path;
+use std::process::Child;
+use std::process::Command;
+use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::Ordering;
 
 use deno_config::deno_json::CompilerOptions;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -21,6 +30,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
@@ -72,6 +82,8 @@ struct TsGoFileChange {
 struct TsGoProjectConfig {
   compiler_options: Arc<CompilerOptions>,
   files: IndexSet<Arc<Uri>>,
+  user_preferences: super::tsc::UserPreferences,
+  format_options: super::tsc::FormatCodeSettings,
   compiler_options_key: CompilerOptionsKey,
   notebook_uri: Option<Arc<Uri>>,
 }
@@ -312,20 +324,159 @@ fn fill_workspace_config_file_names(
   }
 }
 
-#[derive(Debug)]
 struct TsGoServerInner {
   pending_change: Mutex<Option<TsGoWorkspaceChange>>,
+  stdin: Mutex<std::process::ChildStdin>,
+  pending_requests:
+    Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
+  next_request_id: AtomicI64,
+  #[allow(dead_code)]
+  child: Mutex<Child>,
+}
+
+impl std::fmt::Debug for TsGoServerInner {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsGoServerInner")
+      .field("pending_change", &self.pending_change)
+      .finish_non_exhaustive()
+  }
+}
+
+fn write_lsp_message(
+  stdin: &mut std::process::ChildStdin,
+  message: &serde_json::Value,
+) -> std::io::Result<()> {
+  let content = serde_json::to_string(message)?;
+  write!(
+    stdin,
+    "Content-Length: {}\r\n\r\n{}",
+    content.len(),
+    content
+  )?;
+  stdin.flush()
+}
+
+fn read_lsp_message(
+  reader: &mut std::io::BufReader<std::process::ChildStdout>,
+) -> std::io::Result<serde_json::Value> {
+  let mut content_length: Option<usize> = None;
+  loop {
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let line = line.trim();
+    if line.is_empty() {
+      break;
+    }
+    if let Some(len_str) = line.strip_prefix("Content-Length: ") {
+      content_length = Some(len_str.parse().map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+      })?);
+    }
+  }
+  let content_length = content_length.ok_or_else(|| {
+    std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      "Missing Content-Length header",
+    )
+  })?;
+  let mut buf = vec![0u8; content_length];
+  std::io::Read::read_exact(reader, &mut buf)?;
+  serde_json::from_slice(&buf)
+    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 impl TsGoServerInner {
-  async fn init(tsgo_path: &Path) -> Self {
-    todo!()
+  async fn init(tsgo_path: &Path) -> Result<Self, AnyError> {
+    let mut child = Command::new(tsgo_path)
+      .args(["--lsp", "--stdio"])
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::inherit())
+      .spawn()?;
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+
+    let pending_requests: Arc<
+      Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
+    > = Arc::new(Mutex::new(HashMap::new()));
+
+    let pending_requests_clone = pending_requests.clone();
+    std::thread::spawn(move || {
+      let mut reader = std::io::BufReader::new(stdout);
+      loop {
+        let message = match read_lsp_message(&mut reader) {
+          Ok(msg) => msg,
+          Err(e) => {
+            lsp_warn!("Error reading from tsgo: {}", e);
+            break;
+          }
+        };
+        if let Some(id) = message.get("id") {
+          let id = id.as_i64().unwrap_or(-1);
+          let mut pending = pending_requests_clone.lock();
+          if let Some(sender) = pending.remove(&id) {
+            let result = if let Some(error) = message.get("error") {
+              let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+              Err(message.to_string())
+            } else {
+              Ok(
+                message
+                  .get("result")
+                  .cloned()
+                  .unwrap_or(serde_json::Value::Null),
+              )
+            };
+            let _ = sender.send(result);
+          }
+        }
+      }
+    });
+
+    let initialize_request = json!({
+      "jsonrpc": "2.0",
+      "id": 0,
+      "method": "initialize",
+      "params": {
+        "processId": std::process::id(),
+        "capabilities": {},
+        "rootUri": null,
+        "workspaceFolders": null,
+      },
+    });
+
+    write_lsp_message(&mut stdin, &initialize_request)?;
+
+    let (tx, rx) = oneshot::channel();
+    pending_requests.lock().insert(0, tx);
+
+    let _init_response = rx
+      .await
+      .map_err(|_| anyhow!("Channel closed"))?
+      .map_err(|e| anyhow!("{}", e))?;
+
+    let inner = Self {
+      pending_change: Mutex::new(None),
+      stdin: Mutex::new(stdin),
+      pending_requests: Mutex::new(
+        Arc::try_unwrap(pending_requests)
+          .map_err(|_| anyhow!("Failed to unwrap pending_requests"))?
+          .into_inner(),
+      ),
+      next_request_id: AtomicI64::new(1),
+      child: Mutex::new(child),
+    };
+
+    Ok(inner)
   }
 
   async fn request<R>(
     &self,
     request: TsGoRequest,
-    token: &CancellationToken,
+    _token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: DeserializeOwned,
@@ -335,7 +486,30 @@ impl TsGoServerInner {
       request,
       workspace_change,
     };
-    todo!("{:?}", &params);
+
+    let request_id = self.next_request_id.fetch_add(1, Ordering::SeqCst);
+
+    let message = json!({
+      "jsonrpc": "2.0",
+      "id": request_id,
+      "method": "deno/request",
+      "params": params,
+    });
+
+    let (tx, rx) = oneshot::channel();
+    self.pending_requests.lock().insert(request_id, tx);
+
+    {
+      let mut stdin = self.stdin.lock();
+      write_lsp_message(&mut stdin, &message)?;
+    }
+
+    let result = rx
+      .await
+      .map_err(|_| anyhow!("Channel closed"))?
+      .map_err(|e| anyhow!("{}", e))?;
+
+    Ok(serde_json::from_value(result)?)
   }
 }
 
@@ -368,7 +542,7 @@ impl TsGoServer {
         )
         .await
         .unwrap();
-        todo!("{}", tsgo_path.display())
+        TsGoServerInner::init(&tsgo_path).await.unwrap()
       })
       .await
   }
@@ -394,23 +568,39 @@ impl TsGoServer {
           kind: (*k).into(),
         })
         .collect(),
-      new_configuration: configuration_changed.then(|| TsGoWorkspaceConfig {
-        by_compiler_options_key: snapshot
+      new_configuration: configuration_changed.then(|| {
+        let by_compiler_options_key = snapshot
           .compiler_options_resolver
           .entries()
           .map(|(k, d)| {
+            let (user_preferences, format_options) = d
+              .workspace_dir_or_source_url
+              .as_ref()
+              .map(|s| {
+                (
+                  super::tsc::UserPreferences::from_config_for_specifier(
+                    &snapshot.config,
+                    s,
+                  ),
+                  (&snapshot.config.tree.fmt_config_for_specifier(s).options)
+                    .into(),
+                )
+              })
+              .unwrap_or_default();
             (
               k.clone(),
               TsGoProjectConfig {
                 compiler_options: d.compiler_options.clone(),
                 files: Default::default(),
+                user_preferences,
+                format_options,
                 compiler_options_key: k.clone(),
                 notebook_uri: None,
               },
             )
           })
-          .collect(),
-        by_notebook_uri: snapshot
+          .collect::<BTreeMap<_, _>>();
+        let by_notebook_uri = snapshot
           .document_modules
           .documents
           .cells_by_notebook_uri()
@@ -420,23 +610,25 @@ impl TsGoServer {
               .compiler_options_resolver
               .entry_for_specifier(&uri_to_url(u))
               .0;
-            let compiler_options = snapshot
-              .compiler_options_resolver
-              .for_key(&compiler_options_key)
-              .unwrap()
-              .compiler_options
-              .clone();
+            let project_config =
+              by_compiler_options_key.get(compiler_options_key).unwrap();
             (
               u.clone(),
               TsGoProjectConfig {
-                compiler_options,
+                compiler_options: project_config.compiler_options.clone(),
                 files: Default::default(),
+                user_preferences: project_config.user_preferences.clone(),
+                format_options: project_config.format_options.clone(),
                 compiler_options_key: compiler_options_key.clone(),
                 notebook_uri: Some(u.clone()),
               },
             )
           })
-          .collect(),
+          .collect::<BTreeMap<_, _>>();
+        TsGoWorkspaceConfig {
+          by_compiler_options_key,
+          by_notebook_uri,
+        }
       }),
     };
     if let Some(workspace_config) = &mut incoming.new_configuration {
@@ -453,7 +645,7 @@ impl TsGoServer {
   async fn request<R>(
     &self,
     request: TsGoRequest,
-    snapshot: Arc<StateSnapshot>,
+    _snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where

@@ -33,7 +33,8 @@ use crate::lsp::language_server;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::performance::Performance;
 use crate::lsp::refactor;
-use crate::lsp::tsc::{TsServer, file_text_changes_to_workspace_edit};
+use crate::lsp::tsc::TsServer;
+use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::tsc_go::TsGoServer;
 use crate::lsp::urls::uri_to_url;
 

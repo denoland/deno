@@ -146,36 +146,38 @@ pub enum IndentStyle {
 /// Relevant subset of https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6658.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FormatCodeSettings {
-  base_indent_size: Option<u8>,
-  indent_size: Option<u8>,
-  tab_size: Option<u8>,
-  new_line_character: Option<String>,
-  convert_tabs_to_spaces: Option<bool>,
-  indent_style: Option<IndentStyle>,
-  trim_trailing_whitespace: Option<bool>,
-  insert_space_after_comma_delimiter: Option<bool>,
-  insert_space_after_semicolon_in_for_statements: Option<bool>,
-  insert_space_before_and_after_binary_operators: Option<bool>,
-  insert_space_after_constructor: Option<bool>,
-  insert_space_after_keywords_in_control_flow_statements: Option<bool>,
-  insert_space_after_function_keyword_for_anonymous_functions: Option<bool>,
-  insert_space_after_opening_and_before_closing_nonempty_parenthesis:
+pub struct FormatCodeSettings {
+  pub base_indent_size: Option<u8>,
+  pub indent_size: Option<u8>,
+  pub tab_size: Option<u8>,
+  pub new_line_character: Option<String>,
+  pub convert_tabs_to_spaces: Option<bool>,
+  pub indent_style: Option<IndentStyle>,
+  pub trim_trailing_whitespace: Option<bool>,
+  pub insert_space_after_comma_delimiter: Option<bool>,
+  pub insert_space_after_semicolon_in_for_statements: Option<bool>,
+  pub insert_space_before_and_after_binary_operators: Option<bool>,
+  pub insert_space_after_constructor: Option<bool>,
+  pub insert_space_after_keywords_in_control_flow_statements: Option<bool>,
+  pub insert_space_after_function_keyword_for_anonymous_functions: Option<bool>,
+  pub insert_space_after_opening_and_before_closing_nonempty_parenthesis:
     Option<bool>,
-  insert_space_after_opening_and_before_closing_nonempty_brackets: Option<bool>,
-  insert_space_after_opening_and_before_closing_nonempty_braces: Option<bool>,
-  insert_space_after_opening_and_before_closing_template_string_braces:
+  pub insert_space_after_opening_and_before_closing_nonempty_brackets:
     Option<bool>,
-  insert_space_after_opening_and_before_closing_jsx_expression_braces:
+  pub insert_space_after_opening_and_before_closing_nonempty_braces:
     Option<bool>,
-  insert_space_after_type_assertion: Option<bool>,
-  insert_space_before_function_parenthesis: Option<bool>,
-  place_open_brace_on_new_line_for_functions: Option<bool>,
-  place_open_brace_on_new_line_for_control_blocks: Option<bool>,
-  insert_space_before_type_annotation: Option<bool>,
-  indent_multi_line_object_literal_beginning_on_blank_line: Option<bool>,
-  semicolons: Option<SemicolonPreference>,
-  indent_switch_case: Option<bool>,
+  pub insert_space_after_opening_and_before_closing_template_string_braces:
+    Option<bool>,
+  pub insert_space_after_opening_and_before_closing_jsx_expression_braces:
+    Option<bool>,
+  pub insert_space_after_type_assertion: Option<bool>,
+  pub insert_space_before_function_parenthesis: Option<bool>,
+  pub place_open_brace_on_new_line_for_functions: Option<bool>,
+  pub place_open_brace_on_new_line_for_control_blocks: Option<bool>,
+  pub insert_space_before_type_annotation: Option<bool>,
+  pub indent_multi_line_object_literal_beginning_on_blank_line: Option<bool>,
+  pub semicolons: Option<SemicolonPreference>,
+  pub indent_switch_case: Option<bool>,
 }
 
 impl From<&FmtOptionsConfig> for FormatCodeSettings {
@@ -5569,7 +5571,7 @@ struct GetCompletionsAtPositionOptions {
 
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct UserPreferences {
+pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub disable_suggestions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
