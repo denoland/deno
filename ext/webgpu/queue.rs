@@ -9,6 +9,7 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 use crate::Instance;
@@ -128,19 +129,62 @@ impl GPUQueue {
 
   #[required(3)]
   #[undefined]
-  fn write_buffer(
+  fn write_buffer<'a>(
     &self,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] buffer_offset: u64,
-    #[anybuffer] buf: &[u8],
+    data_arg: v8::Local<'a, v8::Value>,
     #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    // Per the WebGPU spec, dataOffset and size are in elements (not bytes)
+    // when data is a TypedArray, and in bytes otherwise.
+    let (buf, bytes_per_element) = if let Ok(typed_array) =
+      v8::Local::<v8::TypedArray>::try_from(data_arg)
+    {
+      let len = typed_array.length();
+      let bpe = if len > 0 {
+        typed_array.byte_length() / len
+      } else {
+        1
+      };
+      let byte_offset = typed_array.byte_offset();
+      let byte_len = typed_array.byte_length();
+      let ab = typed_array.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      let buf =
+          // SAFETY: the slice is within the bounds of the backing store
+          unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, bpe)
+    } else if let Ok(view) =
+      v8::Local::<v8::ArrayBufferView>::try_from(data_arg)
+    {
+      let byte_offset = view.byte_offset();
+      let byte_len = view.byte_length();
+      let ab = view.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      // SAFETY: the slice is within the bounds of the backing store
+      let buf =
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
+    } else {
+      return Err(JsErrorBox::type_error(
+        "data must be an ArrayBuffer or ArrayBufferView",
+      ));
+    };
+
+    let data_offset_bytes = data_offset as usize * bytes_per_element;
     let data = match size {
       Some(size) => {
-        &buf[(data_offset as usize)..((data_offset + size) as usize)]
+        let size_bytes = size as usize * bytes_per_element;
+        &buf[data_offset_bytes..(data_offset_bytes + size_bytes)]
       }
-      None => &buf[(data_offset as usize)..],
+      None => &buf[data_offset_bytes..],
     };
 
     let err = self
@@ -149,6 +193,8 @@ impl GPUQueue {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   #[required(4)]
