@@ -3,6 +3,7 @@
 // TODO(nayeemrmn): Move to `cli/lsp/tsc/go.rs`.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -125,6 +126,13 @@ enum TsGoRequest {
   WorkspaceSymbol {
     query: String,
   },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoRequestParams {
+  request: TsGoRequest,
+  workspace_change: Option<TsGoWorkspaceChange>,
 }
 
 fn fill_workspace_config_file_names(
@@ -309,6 +317,28 @@ struct TsGoServerInner {
   pending_change: Mutex<Option<TsGoWorkspaceChange>>,
 }
 
+impl TsGoServerInner {
+  async fn init(tsgo_path: &Path) -> Self {
+    todo!()
+  }
+
+  async fn request<R>(
+    &self,
+    request: TsGoRequest,
+    token: &CancellationToken,
+  ) -> Result<R, AnyError>
+  where
+    R: DeserializeOwned,
+  {
+    let workspace_change = self.pending_change.lock().take();
+    let params = TsGoRequestParams {
+      request,
+      workspace_change,
+    };
+    todo!("{:?}", &params);
+  }
+}
+
 #[derive(Debug)]
 pub struct TsGoServer {
   deno_dir: DenoDir,
@@ -430,7 +460,7 @@ impl TsGoServer {
     R: DeserializeOwned,
   {
     let inner = self.inner().await;
-    todo!("{:?}", &inner.pending_change)
+    inner.request(request, token).await
   }
 
   pub async fn get_ambient_modules(
