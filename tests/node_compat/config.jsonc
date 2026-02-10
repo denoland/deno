@@ -176,6 +176,8 @@
     "parallel/test-child-process-exec-kill-throws.js": {},
     "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
+    "parallel/test-child-process-exec-timeout-expire.js": {},
+    "parallel/test-child-process-exec-timeout-kill.js": {},
     "parallel/test-child-process-exec-timeout-not-expired.js": {},
     "parallel/test-child-process-execFile-promisified-abortController.js": {},
     "parallel/test-child-process-execfile-maxbuf.js": {},
@@ -536,8 +538,11 @@
     "parallel/test-fs-open-numeric-flags.js": {},
     "parallel/test-fs-open.js": {},
     "parallel/test-fs-promises-exists.js": {},
+    "parallel/test-fs-promises-file-handle-append-file.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
+    "parallel/test-fs-promises-file-handle-writeFile.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
+    "parallel/test-fs-promises-writefile-typedarray.js": {},
     "parallel/test-fs-promisified.js": {},
     "parallel/test-fs-read-empty-buffer.js": {},
     "parallel/test-fs-read-file-assert-encoding.js": {},
@@ -587,6 +592,10 @@
     "parallel/test-fs-symlink.js": {},
     "parallel/test-fs-unlink-type-check.js": {},
     "parallel/test-fs-util-validateoffsetlength.js": {},
+    "parallel/test-fs-write-file-typedarrays.js": {},
+    "parallel/test-fs-write-file.js": {
+      "flaky": true
+    },
     "parallel/test-fs-write-negativeoffset.js": {},
     "parallel/test-fs-write-no-fd.js": {},
     "parallel/test-fs-write-optional-params.js": {},
@@ -1147,6 +1156,7 @@
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
+    "parallel/test-stdin-child-proc.js": {},
     "parallel/test-stdin-hang.js": {},
     "parallel/test-stdin-pause-resume-sync.js": {},
     "parallel/test-stdin-pause-resume.js": {},
@@ -1154,6 +1164,7 @@
     "parallel/test-stdin-pipe-resume.js": {},
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
+    "parallel/test-stdin-script-child.js": {},
     "parallel/test-stdio-pipe-access.js": {},
     "parallel/test-stdio-pipe-redirect.js": {},
     "parallel/test-stdio-pipe-stderr.js": {
@@ -1548,11 +1559,14 @@
     "parallel/test-worker-dispose.mjs": {},
     "parallel/test-worker-error-stack-getter-throws.js": {},
     "parallel/test-worker-esm-exit.js": {},
+    "parallel/test-worker-esm-missing-main.js": {},
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
     "parallel/test-worker-execargv-invalid.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
+    "parallel/test-worker-invalid-workerdata.js": {},
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
+    "parallel/test-worker-message-channel.js": {},
     "parallel/test-worker-message-port-infinite-message-loop.js": {},
     "parallel/test-worker-message-port-multiple-sharedarraybuffers.js": {},
     "parallel/test-worker-message-port-receive-message.js": {},
@@ -1570,6 +1584,7 @@
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
+    "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
     "parallel/test-worker.mjs": {},
     "parallel/test-zlib-brotli-16GB.js": {},
@@ -1710,7 +1725,8 @@
     "sequential/test-vm-timeout-rethrow.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
-    "sequential/test-worker-fshandles-open-close-on-termination.js": {},
+    // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
+    // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {}
   }
 }

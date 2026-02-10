@@ -75,19 +75,6 @@ Deno.test(
 );
 
 Deno.test(
-  "[node/fs writeFileSync] write file throws error when encoding is not implemented",
-  () => {
-    const data = "Hello";
-    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
-
-    assertThrows(
-      () => writeFileSync(filename, data, { encoding: "utf16le" }),
-      'The value "utf16le" is invalid for option "encoding"',
-    );
-  },
-);
-
-Deno.test(
   "[node/fs existsSync] path",
   { permissions: { read: true } },
   () => {

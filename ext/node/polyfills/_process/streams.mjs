@@ -170,6 +170,7 @@ function _guessStdinType(fd) {
 }
 
 const _read = function (size) {
+  io.stdin?.[io.REF]();
   const p = Buffer.alloc(size || 16 * 1024);
   PromisePrototypeThen(io.stdin?.read(p), (length) => {
     // deno-lint-ignore prefer-primordials
@@ -264,6 +265,8 @@ export const initStdin = (warmup = false) => {
 
   function onpause() {
     if (!stdin._handle) {
+      // This allows the process to exit when stdin is paused.
+      io.stdin?.[io.UNREF]();
       return;
     }
 
