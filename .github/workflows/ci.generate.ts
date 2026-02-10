@@ -1222,33 +1222,27 @@ const lintJob = job("lint", {
       uses: "denoland/setup-deno@v2",
       with: { "deno-version": "v2.x" },
     });
-    const linuxOnlyLinting = steps(
-      {
-        name: "Restore cache build output (PR)",
-        uses: "actions/cache/restore@v4",
-        if:
-          "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-        with: {
-          path: prCachePath,
-          key: "never_saved",
-          "restore-keys": prCacheKeyPrefix,
-        },
-      },
-    );
 
     return steps(
-      {
+      steps(
+        {
+          name: "test_format.js",
+          run:
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+        },
+        {
+          name: "jsdoc_checker.js",
+          if: "matrix.os == 'linux'",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        },
+      ).dependsOn(cloneRepo, installDeno).if("matrix.os == 'linux'"),
+      step({
         name: "lint.js",
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run:
           "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-      },
-      {
-        name: "jsdoc_checker.js",
-        if: "matrix.os == 'linux'",
-        run:
-          "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-      },
+      }).dependsOn(cloneRepo, installRust),
       {
         name: "Save cache build output (main)",
         uses: "actions/cache/save@v4",
