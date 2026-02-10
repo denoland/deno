@@ -44,6 +44,7 @@ import {
 } from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
@@ -616,7 +617,7 @@ internals.__initWorkerThreads = (
           moduleSpecifier &&
           StringPrototypeStartsWith(moduleSpecifier, "file:")
         ) {
-          scriptPath = new URL(moduleSpecifier).pathname;
+          scriptPath = fileURLToPath(moduleSpecifier);
         } else {
           scriptPath = moduleSpecifier ?? "";
         }
