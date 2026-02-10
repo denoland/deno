@@ -79,6 +79,7 @@ const sourceSignals = Symbol("[[sourceSignals]]");
 const dependentSignals = Symbol("[[dependentSignals]]");
 const signal = Symbol("[[signal]]");
 const timerId = Symbol("[[timerId]]");
+const activeDependents = Symbol("[[activeDependents]]");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -188,6 +189,19 @@ class AbortSignal extends EventTarget {
       setIsTrusted(event, true);
       super.dispatchEvent(event);
     }
+
+    // release strong references from source signals now that abort
+    // has been delivered - the dependent signal no longer needs to
+    // be prevented from GC
+    if (this[sourceSignals] !== null) {
+      const sourceSignalArray = this[sourceSignals].toArray();
+      for (let i = 0; i < sourceSignalArray.length; ++i) {
+        const sourceSignal = sourceSignalArray[i];
+        if (sourceSignal[activeDependents]) {
+          SetPrototypeDelete(sourceSignal[activeDependents], this);
+        }
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -234,6 +248,11 @@ class AbortSignal extends EventTarget {
           const sourceSignal = sourceSignalArray[i];
           if (sourceSignal[timerId] !== null) {
             refTimer(sourceSignal[timerId]);
+            // prevent GC of this dependent signal while the timer is
+            // keeping the event loop alive, otherwise the weak ref in
+            // dependentSignals dies and the abort listener is lost
+            sourceSignal[activeDependents] ??= new SafeSet();
+            SetPrototypeAdd(sourceSignal[activeDependents], this);
           }
         }
       }
@@ -260,6 +279,10 @@ class AbortSignal extends EventTarget {
               )
             ) {
               unrefTimer(sourceSignal[timerId]);
+            }
+            // release the strong reference since no more listeners need it
+            if (sourceSignal[activeDependents]) {
+              SetPrototypeDelete(sourceSignal[activeDependents], this);
             }
           }
         }
