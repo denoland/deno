@@ -1,0 +1,46 @@
+# original
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@scope/package_a@1": "jsr:@scope/package_a@1.0.1",
+      "jsr:@scope/package_b@1": "jsr:@scope/package_b@1.0.1",
+      "jsr:@scope/package_c@^2.1": "jsr:@scope/package_c@2.1.2"
+    },
+    "jsr": {
+      "@scope/package_a@1.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@scope/package_b@1",
+          "jsr:@scope/package_c@^2.1"
+        ]
+      },
+      "@scope/package_b@1.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@scope/package_a@1"
+        ]
+      },
+      "@scope/package_c@2.1.2": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      }
+    }
+  },
+  "remote": {
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@scope/package_a@1"
+    ]
+  }
+}
+
+# change
+{
+  "dependencies": []
+}
+
+# output
+{
+  "version": "5"
+}

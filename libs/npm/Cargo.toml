@@ -1,0 +1,44 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_npm"
+version = "0.43.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "npm registry client and dependency resolver used in the Deno CLI"
+
+[lib]
+path = "./lib.rs"
+
+[features]
+tracing = []
+
+[dependencies]
+async-trait.workspace = true
+capacity_builder.workspace = true
+chrono = { workspace = true, default-features = false, features = ["serde"] }
+deno_error.workspace = true
+deno_lockfile.workspace = true
+deno_semver.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+log.workspace = true
+monch.workspace = true
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+divan = "0.1.17"
+hex = "0.4.3"
+pretty_assertions.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["full"] }
+
+[[bench]]
+name = "bench"
+harness = false

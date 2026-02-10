@@ -44,6 +44,7 @@ export async function checkCopyright() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
     ":!:libs/config/testdata/**",
+    ":!:libs/eszip/testdata/**",
     ":!:ext/node/polyfills/deps/**",
 
     // rust
