@@ -590,7 +590,7 @@ const buildJob = job("build", {
         // authentication must be done right before signing.
         name: "Authenticate with Azure (windows)",
         if: isWindows.and(isDenoland).and(isMainOrTag),
-        uses: "azure/login@v1",
+        uses: "azure/login@v2",
         with: {
           "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
           "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
@@ -953,6 +953,7 @@ const buildJob = job("build", {
     return step(
       cloneRepoStep,
       cloneStdSubmodule,
+      // ensure this happens right after cloning
       tarSourcePublishStep.if(shouldPublishCondition),
       {
         name: "Remove macOS cURL --ipv4 flag",

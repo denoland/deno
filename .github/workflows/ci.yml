@@ -361,7 +361,7 @@ jobs:
           zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
           shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
       - name: Authenticate with Azure (windows)
-        uses: azure/login@v1
+        uses: azure/login@v2
         if: '!(matrix.skip) && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && matrix.job == ''test'' && matrix.os == ''windows'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           client-id: '${{ secrets.AZURE_CLIENT_ID }}'
