@@ -11,6 +11,7 @@ import {
 import { op_fs_fchmod_async, op_fs_fchmod_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 const { PromisePrototypeThen } = primordials;
 
@@ -24,7 +25,7 @@ export function fchmod(
   callback = makeCallback(callback);
 
   PromisePrototypeThen(
-    op_fs_fchmod_async(fd, mode),
+    op_fs_fchmod_async(getRid(fd), mode),
     () => callback(null),
     callback,
   );
@@ -33,7 +34,7 @@ export function fchmod(
 export function fchmodSync(fd: number, mode: string | number) {
   validateInteger(fd, "fd", 0, 2147483647);
 
-  op_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
+  op_fs_fchmod_sync(getRid(fd), parseFileMode(mode, "mode"));
 }
 
 export const fchmodPromise = promisify(fchmod) as (

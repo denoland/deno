@@ -1,0 +1,10 @@
+{
+  "tests": {
+    "pass_fd_to_worker": {
+      // Cross-worker fd passing uses dup() which is unix-only for now
+      "if": "unix",
+      "args": "run --allow-read main.mjs",
+      "output": "main.out"
+    }
+  }
+}

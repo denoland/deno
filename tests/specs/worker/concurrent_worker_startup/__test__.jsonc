@@ -1,0 +1,7 @@
+{
+  "tempDir": true,
+  "args": "run --quiet -A main.ts",
+  "output": "worker.out",
+  "exitCode": 0,
+  "timeout": 120
+}
