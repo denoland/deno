@@ -37,8 +37,6 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
-pub use fs_util::HardLinkDirRecursiveError;
-pub use fs_util::HardLinkFileError;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
