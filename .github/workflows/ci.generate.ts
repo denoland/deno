@@ -8,8 +8,7 @@ import {
   expr,
   job,
   step,
-  steps,
-} from "jsr:@david/gagen@0.2.1";
+} from "jsr:@david/gagen@0.2.2";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -99,7 +98,7 @@ const prCachePath = [
 const llvmVersion = 21;
 const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
-const sysRootStepConfig = {
+const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
 export DEBIAN_FRONTEND=noninteractive
@@ -182,8 +181,6 @@ CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
-const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
-
 function removeSurroundingExpression(text: string) {
   if (text.startsWith("${{")) {
     return text.replace(/^\${{/, "").replace(/}}$/, "").trim();
@@ -244,7 +241,7 @@ const isMainOrTag = isMainBranch.or(isTag);
 const isPR = conditions.isEvent("pull_request");
 
 // shared steps
-const cloneRepoSteps = steps({
+const cloneRepoSteps = step({
   name: "Configure git",
   run: [
     "git config --global core.symlinks true",
@@ -261,20 +258,52 @@ const cloneRepoSteps = steps({
     submodules: false,
   },
 });
-const cloneStdSubmodule = step({
-  name: "Clone submodule ./tests/util/std",
-  run: "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
-});
+const cloneSubmodule = (path: string) =>
+  step({
+    name: `Clone submodule ${path}`,
+    run: `git submodule update --init --recursive --depth=1 -- ${path}`,
+  });
+const cloneStdSubmodule = cloneSubmodule("./tests/util/std");
 const installDenoStep = step({
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 });
+const installNodeStep = step({
+  name: "Install Node",
+  uses: "actions/setup-node@v6",
+  with: {
+    "node-version": 22,
+  },
+});
+const installPythonStep = step({
+  name: "Install Python",
+  uses: "actions/setup-python@v6",
+  with: {
+    "python-version": 3.11,
+  },
+}, {
+  name: "Remove unused versions of Python",
+  if: "runner.os == 'Windows'",
+  shell: "pwsh",
+  run: [
+    '$env:PATH -split ";" |',
+    '  Where-Object { Test-Path "$_\\python.exe" } |',
+    "  Select-Object -Skip 1 |",
+    '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
+  ],
+});
+const setupPrebuiltMacStep = step({
+  if: "runner.os == 'macOS'",
+  env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+  run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+});
 const installLldStep = step({
   name: "Install macOS aarch64 lld",
+  if: "runner.os == 'macOS' && runner.arch == 'ARM64'",
   env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
   run: "./tools/install_prebuilt.js ld64.lld",
-}).dependsOn(cloneStdSubmodule, installDenoStep);
+}).dependsOn(cloneStdSubmodule, installDenoStep, setupPrebuiltMacStep);
 const cacheCargoHomeStep = step({
   name: "Cache Cargo home",
   uses: "cirruslabs/cache@v4",
@@ -300,6 +329,27 @@ const installWasmStep = step({
   name: "Install wasm target",
   run: "rustup target add wasm32-unknown-unknown",
 });
+const setupGcloud = step({
+  name: "Authenticate with Google Cloud",
+  uses: "google-github-actions/auth@v3",
+  with: {
+    "project_id": "denoland",
+    "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+    "export_environment_variables": true,
+    "create_credentials_file": true,
+  },
+}, {
+  name: "Setup gcloud (unix)",
+  if: "runner.os != 'Windows'",
+  uses: "google-github-actions/setup-gcloud@v3",
+  with: { project_id: "denoland" },
+}, {
+  name: "Setup gcloud (windows)",
+  if: "runner.os == 'Windows'",
+  uses: "google-github-actions/setup-gcloud@v2",
+  env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+  with: { project_id: "denoland" },
+});
 
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
@@ -319,7 +369,7 @@ const preBuildCheckStep = step({
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: steps(
+  steps: step(
     cloneRepoSteps,
     preBuildCheckStep,
   ).if("github.event.pull_request.draft == true"),
@@ -400,8 +450,6 @@ const buildMatrix = defineMatrix({
 
 // common build matrix conditions
 const isTest = buildMatrix.job.equals("test");
-const isBench = buildMatrix.job.equals("bench");
-const isTestOrBench = isTest.or(isBench);
 const isRelease = buildMatrix.profile.equals("release");
 const isDebug = buildMatrix.profile.equals("debug");
 const isLinux = buildMatrix.os.equals("linux");
@@ -444,187 +492,9 @@ const buildJob = job("build", {
     // disable anyhow's library backtrace
     RUST_LIB_BACKTRACE: 0,
   },
-  steps: steps(
-    cloneRepoSteps,
-    {
-      name: "Clone submodule ./tests/util/std",
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
-    },
-    {
-      name: "Clone submodule ./tests/wpt/suite",
-      if: buildMatrix.wpt,
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite",
-    },
-    {
-      name: "Clone submodule ./tests/node_compat/runner/suite",
-      if: buildMatrix.job.equals("test"),
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite",
-    },
-    {
-      name: "Clone submodule ./cli/bench/testdata/lsp_benchdata",
-      if: buildMatrix.job.equals("bench"),
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata",
-    },
-    {
-      name: "Create source tarballs (release, linux)",
-      if: buildMatrix.os.equals("linux")
-        .and(buildMatrix.profile.equals("release"))
-        .and(buildMatrix.job.equals("test"))
-        .and(isDenoland)
-        .and(isTag),
-      run: [
-        "mkdir -p target/release",
-        'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
-        "    -czvf target/release/deno_src.tar.gz -C .. deno",
-      ],
-    },
-    cacheCargoHomeStep,
-    installRustStep,
-    {
-      if: buildMatrix.os.equals("linux").and(
-        buildMatrix.arch.equals("aarch64"),
-      ),
-      name: "Load 'vsock_loopback; kernel module",
-      run: "sudo modprobe vsock_loopback",
-    },
-    installDenoStep.if(
-      buildMatrix.job.equals("test").or(buildMatrix.job.equals("bench"))
-        .and(
-          buildMatrix.os.equals("windows").and(
-            buildMatrix.arch.equals("aarch64"),
-          ).not(),
-        ),
-    ),
-    {
-      name: "Install Python",
-      uses: "actions/setup-python@v6",
-      with: { "python-version": 3.11 },
-      if: buildMatrix.os.notEquals("linux").or(
-        buildMatrix.arch.notEquals("aarch64"),
-      ),
-    },
-    {
-      name: "Remove unused versions of Python",
-      if: buildMatrix.os.notEquals("linux").or(
-        buildMatrix.arch.notEquals("aarch64"),
-      )
-        .and(buildMatrix.os.equals("windows")),
-      shell: "pwsh",
-      run: [
-        '$env:PATH -split ";" |',
-        '  Where-Object { Test-Path "$_\\python.exe" } |',
-        "  Select-Object -Skip 1 |",
-        '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
-      ],
-    },
-    {
-      name: "Install Node",
-      uses: "actions/setup-node@v6",
-      with: { "node-version": 22 },
-      if: buildMatrix.job.equals("bench").or(buildMatrix.job.equals("test")),
-    },
-    {
-      name: "Authenticate with Google Cloud",
-      uses: "google-github-actions/auth@v3",
-      with: {
-        "project_id": "denoland",
-        "credentials_json": "${{ secrets.GCP_SA_KEY }}",
-        "export_environment_variables": true,
-        "create_credentials_file": true,
-      },
-      if: buildMatrix.profile.equals("release")
-        .and(buildMatrix.job.equals("test"))
-        .and(isDenoland)
-        .and(isMainOrTag),
-    },
-    {
-      name: "Setup gcloud (unix)",
-      if: buildMatrix.os.notEquals("windows")
-        .and(buildMatrix.profile.equals("release"))
-        .and(buildMatrix.job.equals("test"))
-        .and(isDenoland)
-        .and(isMainOrTag),
-      uses: "google-github-actions/setup-gcloud@v3",
-      with: { project_id: "denoland" },
-    },
-    {
-      name: "Setup gcloud (windows)",
-      if: buildMatrix.os.equals("windows")
-        .and(buildMatrix.profile.equals("release"))
-        .and(buildMatrix.job.equals("test"))
-        .and(isDenoland)
-        .and(isMainOrTag),
-      uses: "google-github-actions/setup-gcloud@v2",
-      env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
-      with: { project_id: "denoland" },
-    },
-    {
-      name: "Configure canary build",
-      if: buildMatrix.job.equals("test")
-        .and(buildMatrix.profile.equals("release"))
-        .and(isDenoland)
-        .and(isMainBranch),
-      run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
-    },
-    {
-      if: buildMatrix.use_sysroot,
-      ...sysRootStepConfig,
-    },
-    {
-      name: "Remove macOS cURL --ipv4 flag",
-      run: [
-        // cURL's --ipv4 flag is busted for now
-        "curl --version",
-        "which curl",
-        "cat /etc/hosts",
-        "rm ~/.curlrc || true",
-      ],
-      if: buildMatrix.os.equals("macos"),
-    },
-    installLldStep.if(
-      buildMatrix.os.equals("macos").and(
-        buildMatrix.arch.equals("aarch64"),
-      ),
-    ),
-    {
-      name: "Install rust-codesign",
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: "./tools/install_prebuilt.js rcodesign",
-      if: buildMatrix.os.equals("macos"),
-    },
-    {
-      if: buildMatrix.os.equals("macos"),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-    },
-    {
-      name: "Log versions",
-      run: [
-        "echo '*** Python'",
-        "command -v python && python --version || echo 'No python found or bad executable'",
-        "echo '*** Rust'",
-        "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
-        "echo '*** Cargo'",
-        "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
-        "echo '*** Deno'",
-        "command -v deno && deno --version || echo 'No deno found or bad executable'",
-        "echo '*** Node'",
-        "command -v node && node --version || echo 'No node found or bad executable'",
-        "echo '*** Installed packages'",
-        "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
-      ],
-    },
-    {
-      name: "Install benchmark tools",
-      if: buildMatrix.job.equals("bench"),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: installBenchTools,
-    },
-    {
+  steps: (() => {
+    const cloneWptSubmodule = cloneSubmodule("./tests/wpt/suite");
+    const cargoBuildCacheStep = step({
       // Restore cache from the latest 'main' branch build.
       name: "Restore cache build output (PR)",
       uses: "actions/cache/restore@v4",
@@ -634,265 +504,319 @@ const buildJob = job("build", {
         key: "never_saved",
         "restore-keys": prCacheKeyPrefix,
       },
-    },
-    {
+    }, {
       name: "Apply and update mtime cache",
       if: isNotTag,
       uses: "./.github/mtime_cache",
       with: { "cache-path": "./target" },
-    },
-    {
-      name: "Set up playwright cache",
-      uses: "actions/cache@v5",
-      with: {
-        path: "./.ms-playwright",
-        key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+    }).dependsOn(cacheCargoHomeStep, installRustStep);
+    const sysRootStep = step({
+      if: buildMatrix.use_sysroot,
+      ...sysRootConfig,
+    });
+
+    const preRelease = step(
+      {
+        name: "Upload PR artifact (linux)",
+        if: isTest.and(
+          buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isMainOrTag)),
+        ),
+        uses: "actions/upload-artifact@v6",
+        with: {
+          name:
+            "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+          path: "target/release/deno",
+        },
       },
-    },
-    {
-      name: "Build debug",
-      if: isTest.and(isDebug),
-      run: "cargo build --locked --all-targets --features=panic-trace",
-      env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-    },
-    {
+      {
+        name: "Pre-release (linux)",
+        if: isLinux.and(isDenoland),
+        run: [
+          "cd target/release",
+          "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
+          "strip ./deno",
+          "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
+          "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+          "strip ./denort",
+          "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
+          "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+          "./deno types > lib.deno.d.ts",
+        ],
+      },
+      step({
+        name: "Install rust-codesign",
+        if: buildMatrix.os.equals("macos").and(isDenoland),
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        run: "./tools/install_prebuilt.js rcodesign",
+      }).dependsOn(setupPrebuiltMacStep),
+      {
+        name: "Pre-release (mac)",
+        if: isMacos.and(isDenoland),
+        env: {
+          "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
+          "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
+        },
+        run: [
+          "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
+          "strip -x -S target/release/deno",
+          'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
+          "rcodesign sign target/release/deno " +
+          "--code-signature-flags=runtime " +
+          '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
+          "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
+          "--entitlements-xml-file=cli/entitlements.plist",
+          "cd target/release",
+          "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
+          "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
+          "strip -x -S ./denort",
+          "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
+          "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
+        ],
+      },
+      {
+        // Note: Azure OIDC credentials are only valid for 5 minutes, so
+        // authentication must be done right before signing.
+        name: "Authenticate with Azure (windows)",
+        if: isWindows.and(isDenoland).and(isMainOrTag),
+        uses: "azure/login@v1",
+        with: {
+          "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+          "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+          "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+          "enable-AzPSSession": true,
+        },
+      },
+      {
+        name: "Code sign deno.exe (windows)",
+        if: isWindows.and(isDenoland).and(isMainOrTag),
+        uses: "Azure/artifact-signing-action@v0",
+        with: {
+          "endpoint": "https://eus.codesigning.azure.net/",
+          "trusted-signing-account-name": "deno-cli-code-signing",
+          "certificate-profile-name": "deno-cli-code-signing-cert",
+          "files-folder": "target/release",
+          "files-folder-filter": "deno.exe",
+          "file-digest": "SHA256",
+          "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+          "timestamp-digest": "SHA256",
+          "exclude-environment-credential": true,
+          "exclude-workload-identity-credential": true,
+          "exclude-managed-identity-credential": true,
+          "exclude-shared-token-cache-credential": true,
+          "exclude-visual-studio-credential": true,
+          "exclude-visual-studio-code-credential": true,
+          "exclude-azure-cli-credential": false,
+        },
+      },
+      {
+        name: "Verify signature (windows)",
+        if: isWindows.and(isDenoland).and(
+          isMainOrTag,
+        ),
+        shell: "pwsh",
+        run: [
+          '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+          "$SignToolPath = $SignTool.FullName",
+          "& $SignToolPath verify /pa /v target\\release\\deno.exe",
+        ],
+      },
+      {
+        name: "Pre-release (windows)",
+        if: isWindows.and(isDenoland),
+        shell: "pwsh",
+        run: [
+          "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
+          "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
+          "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
+          "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
+          "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
+        ],
+      },
+      step({
+        name: "Upload canary to dl.deno.land",
+        if: isDenoland.and(isMainBranch),
+        run: [
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+          "echo ${{ github.sha }} > canary-latest.txt",
+          'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+          "rm canary-latest.txt gha-creds-*.json",
+        ],
+      }).dependsOn(setupGcloud),
+    ).if(isTest);
+    const cargoBuildReleaseStep = step({
+      name: "Configure canary build",
+      if: isDenoland.and(isMainBranch),
+      run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
+    }, {
       name: "Build release",
-      if: isTestOrBench.and(isRelease).and(
-        buildMatrix.use_sysroot.equals(true).or(isDenoland),
-      ),
+      if: buildMatrix.use_sysroot.equals(true).or(isDenoland),
       run: [
         // output fs space before and after building
         "df -h",
         "cargo build --release --locked --all-targets --features=panic-trace",
         "df -h",
       ],
-    },
-    {
-      // Run a minimal check to ensure that binary is not corrupted, regardless
-      // of our build mode
-      name: "Check deno binary",
-      if: isTest,
-      run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
-      env: { NO_COLOR: 1 },
-    },
-    {
-      // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
-      name: "Check deno binary (in sysroot)",
-      if: isTest.and(buildMatrix.use_sysroot.equals(true)),
-      run:
-        'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
-    },
-    {
+    }, {
       name: "Generate symcache",
-      if: isTestOrBench.and(isRelease).and(
-        buildMatrix.use_sysroot.equals(true).or(isDenoland),
-      ),
+      if: buildMatrix.use_sysroot.equals(true).or(isDenoland),
       run: [
         "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
         "du -h deno.symcache",
         "du -h target/release/deno",
       ],
       env: { NO_COLOR: 1 },
-    },
-    {
-      name: "Upload PR artifact (linux)",
-      if: isTest.and(isRelease).and(
-        buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isMainOrTag)),
-      ),
-      uses: "actions/upload-artifact@v6",
-      with: {
-        name:
-          "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-        path: "target/release/deno",
+    }, preRelease)
+      .dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
+      .if(isRelease);
+    const cargoBuildSteps = step(
+      {
+        name: "Build debug",
+        if: isDebug,
+        run: "cargo build --locked --all-targets --features=panic-trace",
+        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
       },
-    },
-    {
-      name: "Pre-release (linux)",
-      if: isLinux.and(isTestOrBench).and(isRelease).and(isDenoland),
-      run: [
-        "cd target/release",
-        "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
-        "strip ./deno",
-        "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
-        "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-        "strip ./denort",
-        "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
-        "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-        "./deno types > lib.deno.d.ts",
-      ],
-    },
-    {
-      name: "Pre-release (mac)",
-      if: isMacos.and(isTest).and(isRelease).and(isDenoland),
-      env: {
-        "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
-        "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
+      cargoBuildReleaseStep,
+      {
+        // Run a minimal check to ensure that binary is not corrupted, regardless
+        // of our build mode
+        name: "Check deno binary",
+        if: isTest,
+        run:
+          'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+        env: { NO_COLOR: 1 },
       },
-      run: [
-        "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
-        "strip -x -S target/release/deno",
-        'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
-        "rcodesign sign target/release/deno " +
-        "--code-signature-flags=runtime " +
-        '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
-        "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
-        "--entitlements-xml-file=cli/entitlements.plist",
-        "cd target/release",
-        "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
-        "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-        "strip -x -S ./denort",
-        "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
-        "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-      ],
-    },
-    {
-      // Note: Azure OIDC credentials are only valid for 5 minutes, so
-      // authentication must be done right before signing.
-      name: "Authenticate with Azure (windows)",
-      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
-      uses: "azure/login@v1",
-      with: {
-        "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
-        "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
-        "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
-        "enable-AzPSSession": true,
+      {
+        // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+        name: "Check deno binary (in sysroot)",
+        if: isTest.and(buildMatrix.use_sysroot.equals(true)),
+        run:
+          'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
       },
-    },
-    {
-      name: "Code sign deno.exe (windows)",
-      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
-      uses: "Azure/artifact-signing-action@v0",
-      with: {
-        "endpoint": "https://eus.codesigning.azure.net/",
-        "trusted-signing-account-name": "deno-cli-code-signing",
-        "certificate-profile-name": "deno-cli-code-signing-cert",
-        "files-folder": "target/release",
-        "files-folder-filter": "deno.exe",
-        "file-digest": "SHA256",
-        "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
-        "timestamp-digest": "SHA256",
-        "exclude-environment-credential": true,
-        "exclude-workload-identity-credential": true,
-        "exclude-managed-identity-credential": true,
-        "exclude-shared-token-cache-credential": true,
-        "exclude-visual-studio-credential": true,
-        "exclude-visual-studio-code-credential": true,
-        "exclude-azure-cli-credential": false,
+    ).dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep);
+
+    const benchSteps = step(
+      cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
+      step({
+        name: "Install benchmark tools",
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        run: "./tools/install_prebuilt.js wrk hyperfine",
+      }).dependsOn(installDenoStep, setupPrebuiltMacStep),
+      step({
+        name: "Run benchmarks",
+        run: "cargo bench --locked",
+      }).dependsOn(cargoBuildReleaseStep),
+      {
+        name: "Post benchmarks",
+        if: isDenoland.and(isMainBranch),
+        env: {
+          DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+        },
+        run: [
+          "git clone --depth 1 --branch gh-pages                             \\",
+          "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
+          "    gh-pages",
+          "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
+          "cd gh-pages",
+          'git config user.email "propelml@gmail.com"',
+          'git config user.name "denobot"',
+          "git add .",
+          'git commit --message "Update benchmarks"',
+          "git push origin gh-pages",
+        ],
       },
-    },
-    {
-      name: "Verify signature (windows)",
-      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
-      shell: "pwsh",
-      run: [
-        '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
-        "$SignToolPath = $SignTool.FullName",
-        "& $SignToolPath verify /pa /v target\\release\\deno.exe",
-      ],
-    },
-    {
-      name: "Pre-release (windows)",
-      if: isWindows.and(isTest).and(isRelease).and(isDenoland),
-      shell: "pwsh",
-      run: [
-        "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
-        "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-        "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
-        "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-        "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
-      ],
-    },
-    {
-      name: "Upload canary to dl.deno.land",
-      if: isTest.and(isRelease).and(isDenoland).and(isMainBranch),
-      run: [
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-        "echo ${{ github.sha }} > canary-latest.txt",
-        'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
-        "rm canary-latest.txt gha-creds-*.json",
-      ],
-    },
-    {
-      name: "Autobahn testsuite",
-      if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isTest).and(
-        isRelease,
-      ).and(isNotTag),
-      run:
-        "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
-    },
-    {
-      name: "Test (full, debug)",
-      // run full tests only on Linux
-      if: isTest.and(isDebug).and(isNotTag).and(isLinux),
-      run:
-        `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
-      env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-    },
-    {
-      name: "Test (fast, debug)",
-      if: isTest.and(isDebug).and(
-        isTag.or(buildMatrix.os.notEquals("linux")),
-      ),
-      run: [
-        // Run unit then integration tests. Skip doc tests here
-        // since they are sometimes very slow on Mac.
-        `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
-        `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
-      ],
-      env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-    },
-    {
-      name: "Test (release)",
-      if: isTest.and(isRelease).and(
-        buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isNotTag)),
-      ),
-      run:
-        `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
-    },
-    {
-      name: "Ensure no git changes",
-      if: isTest.and(isPR),
-      run: [
-        'if [[ -n "$(git status --porcelain)" ]]; then',
-        'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
-        'echo ""',
-        'echo "📋 Status:"',
-        "git status",
-        'echo ""',
-        "exit 1",
-        "fi",
-      ],
-    },
-    {
-      name: "Combine test results",
-      if: conditions.status.always().and(isTest).and(isNotTag).and(
-        isWindows.and(buildMatrix.arch.equals("aarch64")).not(),
-      ),
-      run: "deno run -RWN ./tools/combine_test_results.js",
-    },
-    {
-      name: "Upload test results",
-      uses: "actions/upload-artifact@v4",
-      if: conditions.status.always().and(isTest).and(isNotTag).and(
-        isWindows.and(buildMatrix.arch.equals("aarch64")).not(),
-      ),
-      with: {
-        name:
-          "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
-        path: "target/test_results.json",
+      {
+        name: "Worker info",
+        run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
       },
-    },
-    {
+    ).if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease));
+
+    const testSteps = step(
+      cloneSubmodule("./tests/node_compat/runner/suite"),
+      {
+        name: "Set up playwright cache",
+        uses: "actions/cache@v5",
+        with: {
+          path: "./.ms-playwright",
+          key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+        },
+      },
+      cargoBuildSteps,
+      {
+        name: "Autobahn testsuite",
+        if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isRelease)
+          .and(isNotTag),
+        run:
+          "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
+      },
+      {
+        name: "Test (full, debug)",
+        // run full tests only on Linux
+        if: isDebug.and(isNotTag).and(isLinux),
+        run:
+          `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
+        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+      },
+      {
+        name: "Test (fast, debug)",
+        if: isDebug.and(
+          isTag.or(buildMatrix.os.notEquals("linux")),
+        ),
+        run: [
+          // Run unit then integration tests. Skip doc tests here
+          // since they are sometimes very slow on Mac.
+          `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
+          `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
+        ],
+        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+      },
+      {
+        name: "Test (release)",
+        if: isRelease.and(
+          buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isNotTag)),
+        ),
+        run:
+          `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
+      },
+      {
+        name: "Ensure no git changes",
+        if: isPR,
+        run: [
+          'if [[ -n "$(git status --porcelain)" ]]; then',
+          'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+          'echo ""',
+          'echo "📋 Status:"',
+          "git status",
+          'echo ""',
+          "exit 1",
+          "fi",
+        ],
+      },
+      step({
+        name: "Combine test results",
+        if: conditions.status.always().and(isNotTag),
+        run: "deno run -RWN ./tools/combine_test_results.js",
+      }).dependsOn(installDenoStep),
+      {
+        name: "Upload test results",
+        uses: "actions/upload-artifact@v4",
+        if: conditions.status.always().and(isNotTag),
+        with: {
+          name:
+            "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+          path: "target/test_results.json",
+        },
+      },
+    ).dependsOn(installNodeStep).if(isTest);
+
+    const wptTests = step({
       name: "Configure hosts file for WPT",
-      if: buildMatrix.wpt,
       run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
       workingDirectory: "tests/wpt/suite/",
-    },
-    {
+    }, {
       name: "Run web platform tests (debug)",
-      if: buildMatrix.wpt.equals(true).and(isDebug),
+      if: isDebug,
       env: { DENO_BIN: "./target/debug/deno" },
       run: [
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
@@ -900,24 +824,24 @@ const buildJob = job("build", {
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
         '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
       ],
-    },
-    {
+    }, {
       name: "Run web platform tests (release)",
-      if: buildMatrix.wpt.equals(true).and(isRelease),
-      env: { DENO_BIN: "./target/release/deno" },
+      if: isRelease,
+      env: {
+        DENO_BIN: "./target/release/deno",
+      },
       run: [
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
         "    ./tests/wpt/wpt.ts setup",
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
         '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
       ],
-    },
-    {
+    }, {
       name: "Upload wpt results to dl.deno.land",
       continueOnError: true,
-      if: buildMatrix.wpt.equals(true).and(isLinux).and(isRelease).and(
-        isDenoland,
-      ).and(isMainBranch).and(isNotTag),
+      if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
+        isNotTag,
+      ),
       run: [
         "gzip ./wptreport.json",
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
@@ -925,13 +849,12 @@ const buildJob = job("build", {
         "echo $(git rev-parse HEAD) > wpt-latest.txt",
         'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
       ],
-    },
-    {
+    }, {
       name: "Upload wpt results to wpt.fyi",
       continueOnError: true,
-      if: buildMatrix.wpt.equals(true).and(isLinux).and(isRelease).and(
-        isDenoland,
-      ).and(isMainBranch).and(isNotTag),
+      if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
+        isNotTag,
+      ),
       env: {
         WPT_FYI_USER: "deno",
         WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
@@ -941,120 +864,145 @@ const buildJob = job("build", {
         "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\",
         "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
       ],
-    },
-    {
-      name: "Run benchmarks",
-      if: isBench.and(isNotTag),
-      run: "cargo bench --locked",
-    },
-    {
-      name: "Post benchmarks",
-      if: isBench.and(isDenoland).and(isMainBranch).and(isNotTag),
-      env: { DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}" },
-      run: [
-        "git clone --depth 1 --branch gh-pages                             \\",
-        "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
-        "    gh-pages",
-        "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
-        "cd gh-pages",
-        'git config user.email "propelml@gmail.com"',
-        'git config user.name "denobot"',
-        "git add .",
-        'git commit --message "Update benchmarks"',
-        "git push origin gh-pages",
-      ],
-    },
-    {
-      name: "Build product size info",
-      if: buildMatrix.profile.notEquals("debug").and(isDenoland).and(
-        isMainOrTag,
-      ),
-      run: [
-        'du -hd1 "./target/${{ matrix.profile }}"',
-        'du -ha  "./target/${{ matrix.profile }}/deno"',
-        'du -ha  "./target/${{ matrix.profile }}/denort"',
-      ],
-    },
-    {
-      name: "Worker info",
-      if: isBench,
-      run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
-    },
-    {
-      name: "Upload release to dl.deno.land (unix)",
-      if: buildMatrix.os.notEquals("windows").and(isTest).and(isRelease).and(
-        isDenoland,
-      ).and(isTag),
-      run: [
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-      ],
-    },
-    {
-      name: "Upload release to dl.deno.land (windows)",
-      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isTag),
-      env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
-      run: [
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-      ],
-    },
-    {
-      name: "Create release notes",
-      if: isTest.and(isRelease).and(isDenoland).and(isTag),
-      run: [
-        "export PATH=$PATH:$(pwd)/target/release",
-        "./tools/release/05_create_release_notes.ts",
-      ],
-    },
-    {
-      name: "Upload release to GitHub",
-      uses: "softprops/action-gh-release@v2",
-      if: isTest.and(isRelease).and(isDenoland).and(isTag),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      with: {
-        files: [
-          "target/release/deno-x86_64-pc-windows-msvc.zip",
-          "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
-          "target/release/denort-x86_64-pc-windows-msvc.zip",
-          "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
-          "target/release/deno-aarch64-pc-windows-msvc.zip",
-          "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
-          "target/release/denort-aarch64-pc-windows-msvc.zip",
-          "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
-          "target/release/deno-x86_64-unknown-linux-gnu.zip",
-          "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
-          "target/release/denort-x86_64-unknown-linux-gnu.zip",
-          "target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum",
-          "target/release/deno-x86_64-apple-darwin.zip",
-          "target/release/deno-x86_64-apple-darwin.zip.sha256sum",
-          "target/release/denort-x86_64-apple-darwin.zip",
-          "target/release/denort-x86_64-apple-darwin.zip.sha256sum",
-          "target/release/deno-aarch64-unknown-linux-gnu.zip",
-          "target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum",
-          "target/release/denort-aarch64-unknown-linux-gnu.zip",
-          "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
-          "target/release/deno-aarch64-apple-darwin.zip",
-          "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
-          "target/release/denort-aarch64-apple-darwin.zip",
-          "target/release/denort-aarch64-apple-darwin.zip.sha256sum",
-          "target/release/deno_src.tar.gz",
-          "target/release/lib.deno.d.ts",
-        ].join("\n"),
-        body_path: "target/release/release-notes.md",
-        draft: true,
+    }).dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)
+      .if(buildMatrix.wpt.equals(true));
+
+    const publishSteps = step(
+      {
+        // todo: ensure this comes early
+        name: "Create source tarballs (release, linux)",
+        if: buildMatrix.os.equals("linux").and(
+          buildMatrix.arch.equals("x86_64"),
+        ),
+        run: [
+          "mkdir -p target/release",
+          'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
+          "    -czvf target/release/deno_src.tar.gz -C .. deno",
+        ],
       },
-    },
-    {
-      // In main branch, always create a fresh cache
-      name: "Save cache build output (main)",
-      uses: "actions/cache/save@v4",
-      if: isTest.and(isMainBranch),
-      with: { path: prCachePath, key: prCacheKey },
-    },
-  ).if("!(matrix.skip)"),
+      step({
+        name: "Upload release to dl.deno.land (unix)",
+        if: isWindows.not(),
+        run: [
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+        ],
+      }, {
+        name: "Upload release to dl.deno.land (windows)",
+        if: isWindows,
+        env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+        run: [
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+        ],
+      }).dependsOn(setupGcloud),
+      {
+        name: "Create release notes",
+        run: [
+          "export PATH=$PATH:$(pwd)/target/release",
+          "./tools/release/05_create_release_notes.ts",
+        ],
+      },
+      {
+        name: "Upload release to GitHub",
+        uses: "softprops/action-gh-release@v2",
+        env: {
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        },
+        with: {
+          files: [
+            "target/release/deno-x86_64-pc-windows-msvc.zip",
+            "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
+            "target/release/denort-x86_64-pc-windows-msvc.zip",
+            "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
+            "target/release/deno-aarch64-pc-windows-msvc.zip",
+            "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
+            "target/release/denort-aarch64-pc-windows-msvc.zip",
+            "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
+            "target/release/deno-x86_64-unknown-linux-gnu.zip",
+            "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
+            "target/release/denort-x86_64-unknown-linux-gnu.zip",
+            "target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum",
+            "target/release/deno-x86_64-apple-darwin.zip",
+            "target/release/deno-x86_64-apple-darwin.zip.sha256sum",
+            "target/release/denort-x86_64-apple-darwin.zip",
+            "target/release/denort-x86_64-apple-darwin.zip.sha256sum",
+            "target/release/deno-aarch64-unknown-linux-gnu.zip",
+            "target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum",
+            "target/release/denort-aarch64-unknown-linux-gnu.zip",
+            "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
+            "target/release/deno-aarch64-apple-darwin.zip",
+            "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
+            "target/release/denort-aarch64-apple-darwin.zip",
+            "target/release/denort-aarch64-apple-darwin.zip.sha256sum",
+            "target/release/deno_src.tar.gz",
+            "target/release/lib.deno.d.ts",
+          ].join("\n"),
+          body_path: "target/release/release-notes.md",
+          draft: true,
+        },
+      },
+    ).if(isTest.and(isRelease).and(isDenoland).and(isTag));
+
+    return step(
+      cloneRepoSteps,
+      cloneStdSubmodule,
+      {
+        if: buildMatrix.os.equals("linux").and(
+          buildMatrix.arch.equals("aarch64"),
+        ),
+        name: "Load 'vsock_loopback; kernel module",
+        run: "sudo modprobe vsock_loopback",
+      },
+      {
+        name: "Remove macOS cURL --ipv4 flag",
+        run: [
+          // cURL's --ipv4 flag is busted for now
+          "curl --version",
+          "which curl",
+          "cat /etc/hosts",
+          "rm ~/.curlrc || true",
+        ],
+        if: buildMatrix.os.equals("macos"),
+      },
+      step({
+        name: "Log versions",
+        run: [
+          "echo '*** Python'",
+          "command -v python && python --version || echo 'No python found or bad executable'",
+          "echo '*** Rust'",
+          "command -v rustc && rustc --version || echo 'No rustc found or bad executable'",
+          "echo '*** Cargo'",
+          "command -v cargo && cargo --version || echo 'No cargo found or bad executable'",
+          "echo '*** Deno'",
+          "command -v deno && deno --version || echo 'No deno found or bad executable'",
+          "echo '*** Node'",
+          "command -v node && node --version || echo 'No node found or bad executable'",
+          "echo '*** Installed packages'",
+          "command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'",
+        ],
+      }).comesAfter(
+        installDenoStep,
+        installNodeStep,
+        installPythonStep,
+        installRustStep,
+      ),
+      cargoBuildSteps,
+      testSteps,
+      benchSteps,
+      wptTests,
+      publishSteps,
+      {
+        // In main branch, always create a fresh cache
+        name: "Save cache build output (main)",
+        uses: "actions/cache/save@v4",
+        if: isTest.and(isMainBranch),
+        with: { path: prCachePath, key: prCacheKey },
+      },
+    ).if("!(matrix.skip)");
+  })(),
 });
 
 // === lint job ===
@@ -1085,7 +1033,7 @@ const lintJob = job("lint", {
   strategy: {
     matrix: lintMatrix,
   },
-  steps: steps(
+  steps: step(
     cloneRepoSteps,
     cloneStdSubmodule,
     cacheCargoHomeStep,
@@ -1101,7 +1049,7 @@ const lintJob = job("lint", {
     },
     installRustStep,
     installDenoStep,
-    steps(
+    step(
       {
         name: "test_format.js",
         run:
@@ -1156,12 +1104,12 @@ const libsJob = job("libs", {
     matrix: libsMatrix,
   },
   steps: (() => {
-    const repoSetupSteps = steps(
+    const repoSetupSteps = step(
       cloneRepoSteps,
       cacheCargoHomeStep,
     );
 
-    const macSetup = steps(
+    const macSetup = step(
       installLldStep,
       {
         if: libsMatrix.os.equals("macos"),
@@ -1172,7 +1120,7 @@ const libsJob = job("libs", {
       libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
     );
 
-    const linuxCargoChecks = steps(
+    const linuxCargoChecks = step(
       // we want these crates to be Wasm compatible
       {
         name: "Cargo check (deno_resolver)",
@@ -1198,7 +1146,7 @@ const libsJob = job("libs", {
     ).dependsOn(installWasmStep, repoSetupSteps)
       .if(libsMatrix.os.equals("linux"));
 
-    return steps(
+    return step(
       linuxCargoChecks,
       step({
         name: "Test libs",
@@ -1216,22 +1164,8 @@ const publishCanaryJob = job("publish-canary", {
   runsOn: ubuntuX86Runner,
   needs: [buildJob],
   if: isDenoland.and(isMainBranch),
-  steps: steps(
-    {
-      name: "Authenticate with Google Cloud",
-      uses: "google-github-actions/auth@v3",
-      with: {
-        "project_id": "denoland",
-        "credentials_json": "${{ secrets.GCP_SA_KEY }}",
-        "export_environment_variables": true,
-        "create_credentials_file": true,
-      },
-    },
-    {
-      name: "Setup gcloud",
-      uses: "google-github-actions/setup-gcloud@v2",
-      with: { project_id: "denoland" },
-    },
+  steps: step(
+    setupGcloud,
     {
       name: "Upload canary version file to dl.deno.land",
       run: [
