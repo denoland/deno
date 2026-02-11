@@ -1,7 +1,13 @@
 #!/usr/bin/env -S deno run --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { parse as parseToml } from "jsr:@std/toml@1";
-import { createWorkflow, job, step, steps } from "jsr:@david/gagen@0.1.2";
+import {
+  createWorkflow,
+  defineMatrix,
+  job,
+  step,
+  steps,
+} from "jsr:@david/gagen@0.1.2";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -71,29 +77,9 @@ const Runners = {
 } as const;
 
 // discover all non-binary, non-test workspace members for the libs test job
-const rootCargoToml = parseToml(
-  Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
-) as { workspace: { members: string[] } };
-
-const libPackages: string[] = [];
-for (const member of rootCargoToml.workspace.members) {
-  // test crates depend on the deno binary at runtime
-  if (member.startsWith("tests")) continue;
-
-  const cargoToml = parseToml(
-    Deno.readTextFileSync(
-      new URL(`../../${member}/Cargo.toml`, import.meta.url),
-    ),
-  ) as { package: { name: string }; bin?: unknown[] };
-
-  // skip binary crates (they need their own build step)
-  if (cargoToml.bin) continue;
-
-  libPackages.push(cargoToml.package.name);
-}
-
-const libTestPackageArgs = libPackages.map((p) => `-p ${p}`).join(" ");
-const libExcludeArgs = libPackages.map((p) => `--exclude ${p}`).join(" ");
+const libCrates = resolveLibCrates();
+const libTestCrateArgs = libCrates.map((p) => `-p ${p}`).join(" ");
+const libExcludeArgs = libCrates.map((p) => `--exclude ${p}`).join(" ");
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
@@ -237,8 +223,7 @@ function handleMatrixItems(items: {
         removeSurroundingExpression(item.runner)
       } }}`;
 
-      // deno-lint-ignore no-explicit-any
-      (item as any).runner = runner;
+      item.runner = runner;
       item.skip =
         "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" +
         removeSurroundingExpression(item.skip.toString()) + ") }}";
@@ -292,12 +277,82 @@ const preBuildJob = job("pre_build", {
 
 // === build job ===
 
+const buildMatrix = defineMatrix({
+  include: handleMatrixItems([{
+    ...Runners.macosX86,
+    job: "test",
+    profile: "debug",
+  }, {
+    ...Runners.macosX86,
+    job: "test",
+    profile: "release",
+    skip_pr: true,
+  }, {
+    ...Runners.macosArm,
+    job: "test",
+    profile: "debug",
+  }, {
+    ...Runners.macosArmSelfHosted,
+    job: "test",
+    profile: "release",
+    skip_pr: true,
+  }, {
+    ...Runners.windowsX86,
+    job: "test",
+    profile: "debug",
+  }, {
+    ...Runners.windowsX86Xl,
+    job: "test",
+    profile: "release",
+    skip_pr: true,
+  }, {
+    ...Runners.windowsArm,
+    job: "test",
+    profile: "debug",
+  }, {
+    ...Runners.windowsArm,
+    job: "test",
+    profile: "release",
+    skip_pr: true,
+  }, {
+    ...Runners.linuxX86Xl,
+    job: "test",
+    profile: "release",
+    use_sysroot: true,
+    // TODO(ry): Because CI is so slow on for OSX and Windows, we
+    // currently run the Web Platform tests only on Linux.
+    wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+  }, {
+    ...Runners.linuxX86Xl,
+    job: "bench",
+    profile: "release",
+    use_sysroot: true,
+    skip_pr:
+      "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+  }, {
+    ...Runners.linuxX86,
+    job: "test",
+    profile: "debug",
+    use_sysroot: true,
+  }, {
+    ...Runners.linuxArm,
+    job: "test",
+    profile: "debug",
+  }, {
+    ...Runners.linuxArm,
+    job: "test",
+    profile: "release",
+    use_sysroot: true,
+    skip_pr: true,
+  }]),
+});
+
 const buildJob = job("build", {
   name:
-    "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
+    `${buildMatrix.job} ${buildMatrix.profile} ${buildMatrix.os}-${buildMatrix.arch}`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true"),
-  runsOn: "${{ matrix.runner }}",
+  runsOn: buildMatrix.runner,
   // This is required to successfully authenticate with Azure using OIDC for
   // code signing.
   environment: {
@@ -313,75 +368,7 @@ const buildJob = job("build", {
     },
   },
   strategy: {
-    matrix: {
-      include: handleMatrixItems([{
-        ...Runners.macosX86,
-        job: "test",
-        profile: "debug",
-      }, {
-        ...Runners.macosX86,
-        job: "test",
-        profile: "release",
-        skip_pr: true,
-      }, {
-        ...Runners.macosArm,
-        job: "test",
-        profile: "debug",
-      }, {
-        ...Runners.macosArmSelfHosted,
-        job: "test",
-        profile: "release",
-        skip_pr: true,
-      }, {
-        ...Runners.windowsX86,
-        job: "test",
-        profile: "debug",
-      }, {
-        ...Runners.windowsX86Xl,
-        job: "test",
-        profile: "release",
-        skip_pr: true,
-      }, {
-        ...Runners.windowsArm,
-        job: "test",
-        profile: "debug",
-      }, {
-        ...Runners.windowsArm,
-        job: "test",
-        profile: "release",
-        skip_pr: true,
-      }, {
-        ...Runners.linuxX86Xl,
-        job: "test",
-        profile: "release",
-        use_sysroot: true,
-        // TODO(ry): Because CI is so slow on for OSX and Windows, we
-        // currently run the Web Platform tests only on Linux.
-        wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-      }, {
-        ...Runners.linuxX86Xl,
-        job: "bench",
-        profile: "release",
-        use_sysroot: true,
-        skip_pr:
-          "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
-      }, {
-        ...Runners.linuxX86,
-        job: "test",
-        profile: "debug",
-        use_sysroot: true,
-      }, {
-        ...Runners.linuxArm,
-        job: "test",
-        profile: "debug",
-      }, {
-        ...Runners.linuxArm,
-        job: "test",
-        profile: "release",
-        use_sysroot: true,
-        skip_pr: true,
-      }]),
-    },
+    matrix: buildMatrix,
     // Always run main branch builds to completion. This allows the cache to
     // stay mostly up-to-date in situations where a single job fails due to
     // e.g. a flaky test.
@@ -1147,29 +1134,31 @@ const buildJob = job("build", {
 
 // === lint job ===
 
+const lintMatrix = defineMatrix({
+  include: [{
+    ...Runners.linuxX86,
+    profile: "debug",
+    job: "lint",
+  }, {
+    ...Runners.macosX86,
+    profile: "debug",
+    job: "lint",
+  }, {
+    ...Runners.windowsX86,
+    profile: "debug",
+    job: "lint",
+  }],
+});
+
 const lintJob = job("lint", {
-  name: "lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
+  name: `lint ${lintMatrix.profile} ${lintMatrix.os}-${lintMatrix.arch}`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true"),
-  runsOn: "${{ matrix.runner }}",
+  runsOn: lintMatrix.runner,
   timeoutMinutes: 30,
   defaults: { run: { shell: "bash" } },
   strategy: {
-    matrix: {
-      include: [{
-        ...Runners.linuxX86,
-        profile: "debug",
-        job: "lint",
-      }, {
-        ...Runners.macosX86,
-        profile: "debug",
-        job: "lint",
-      }, {
-        ...Runners.windowsX86,
-        profile: "debug",
-        job: "lint",
-      }],
-    },
+    matrix: lintMatrix,
   },
   steps: steps(
     {
@@ -1256,28 +1245,30 @@ const lintJob = job("lint", {
 
 // === libs job ===
 
+const libsMatrix = defineMatrix({
+  include: [{
+    ...Runners.linuxX86,
+    profile: "debug",
+    job: "libs",
+  }, {
+    ...Runners.macosArm,
+    profile: "debug",
+    job: "libs",
+  }, {
+    ...Runners.windowsX86,
+    profile: "debug",
+    job: "libs",
+  }],
+});
+
 const libsJob = job("libs", {
-  name: "libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
+  name: `libs ${libsMatrix.profile} ${libsMatrix.os}-${libsMatrix.arch}`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true"),
-  runsOn: "${{ matrix.runner }}",
+  runsOn: libsMatrix.runner,
   timeoutMinutes: 30,
   strategy: {
-    matrix: {
-      include: [{
-        ...Runners.linuxX86,
-        profile: "debug",
-        job: "libs",
-      }, {
-        ...Runners.macosArm,
-        profile: "debug",
-        job: "libs",
-      }, {
-        ...Runners.windowsX86,
-        profile: "debug",
-        job: "libs",
-      }],
-    },
+    matrix: libsMatrix,
   },
   steps: steps(
     {
@@ -1364,7 +1355,7 @@ const libsJob = job("libs", {
     },
     {
       name: "Test libs",
-      run: `cargo test --locked ${libTestPackageArgs}`,
+      run: `cargo test --locked ${libTestCrateArgs}`,
       env: { CARGO_PROFILE_DEV_DEBUG: 0 },
     },
   ).if("!(matrix.skip)"),
@@ -1448,4 +1439,29 @@ if (import.meta.main) {
     filePath: CI_YML_URL,
     header: "# GENERATED BY ./ci.generate.ts -- DO NOT DIRECTLY EDIT",
   });
+}
+
+function resolveLibCrates() {
+  // discover all non-binary, non-test workspace members for the libs test job
+  const rootCargoToml = parseToml(
+    Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+  ) as { workspace: { members: string[] } };
+
+  const libCrates: string[] = [];
+  for (const member of rootCargoToml.workspace.members) {
+    // test crates depend on the deno binary at runtime
+    if (member.startsWith("tests")) continue;
+
+    const cargoToml = parseToml(
+      Deno.readTextFileSync(
+        new URL(`../../${member}/Cargo.toml`, import.meta.url),
+      ),
+    ) as { package: { name: string }; bin?: unknown[] };
+
+    // skip binary crates (they need their own build step)
+    if (cargoToml.bin) continue;
+
+    libCrates.push(cargoToml.package.name);
+  }
+  return libCrates;
 }
