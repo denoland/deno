@@ -1211,8 +1211,7 @@ pub async fn run_web_worker(
     // Exit code 6 means _fatalException was not a function. In Node.js
     // this causes a clean exit without emitting 'error' on the parent Worker.
     if exit_code == 6 {
-      let _ =
-        internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+      let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
       internal_handle.terminate();
       return Ok(());
     }
@@ -1250,8 +1249,7 @@ pub async fn run_web_worker(
       .try_borrow::<deno_os::ExitCode>()
       .map(|e| e.get())
       .unwrap_or(0);
-    let _ =
-      internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+    let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
     internal_handle.terminate();
   }
 
