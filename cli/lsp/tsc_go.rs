@@ -873,9 +873,6 @@ impl TsGoServer {
         )
         .await
         .unwrap();
-        let tsgo_path = std::path::Path::new(
-          "/home/nayeem/projects/typescript-go/built/local/tsgo",
-        );
         TsGoServerInner::init(tsgo_path, snapshot).await
       })
       .await
