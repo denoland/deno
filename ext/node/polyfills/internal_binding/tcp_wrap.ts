@@ -368,15 +368,17 @@ export class TCP extends ConnectionWrap {
       return super.shutdown(req);
     }
 
-    // For native libuv, shutdown just signals write-side done.
-    // Don't close the handle - HandleWrap.close() does that.
+    // Call uv_shutdown to send FIN to the remote side.
+    const ret = this.#native!.shutdown();
+    // Signal completion to the JS layer regardless - the FIN is queued
+    // in libuv and will be sent asynchronously.
     try {
-      req.oncomplete(0);
+      req.oncomplete(ret);
     } catch {
       // swallow callback errors.
     }
 
-    return 0;
+    return ret;
   }
 
   override ref() {
@@ -638,13 +640,12 @@ export class TCP extends ConnectionWrap {
     this.#connections = 0;
     this.#acceptBackoffDelay = undefined;
 
-    // Close native libuv handle after pending writes flush.
-    // uv_run processes pending writes each event loop tick,
-    // setTimeout(0) ensures close runs after that.
+    // Close native libuv handle. uv_close is safe to call at any time -
+    // it cancels pending writes and defers the actual handle free to the
+    // close callback (which fires during the next uv_run).
     if (this.#native) {
-      const native = this.#native;
+      this.#native.close();
       this.#native = null;
-      setTimeout(() => native.close(), 0);
     }
 
     if (
