@@ -1538,6 +1538,31 @@ impl CompilerOptionsResolver {
   }
 
   #[cfg(feature = "graph")]
+  pub fn to_compiler_options_types_imports(
+    &self,
+  ) -> Vec<deno_graph::ReferrerImports> {
+    let mut imports_by_referrer =
+      IndexMap::<_, Vec<_>>::with_capacity(self.size());
+    for (_, compiler_options_data, _) in self.entries() {
+      for (referrer, types) in
+        compiler_options_data.compiler_options_types().as_ref()
+      {
+        imports_by_referrer
+          .entry(referrer)
+          .or_default()
+          .extend(types.iter().cloned());
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer: referrer.clone(),
+        imports,
+      })
+      .collect()
+  }
+
+  #[cfg(feature = "graph")]
   pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
     // Resolve all the imports from every config file. These can be separated
     // them later based on the folder we're type checking.
