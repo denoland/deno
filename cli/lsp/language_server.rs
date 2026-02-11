@@ -1093,6 +1093,7 @@ impl Inner {
             | MediaType::Css
             | MediaType::Html
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Unknown => {
               continue;

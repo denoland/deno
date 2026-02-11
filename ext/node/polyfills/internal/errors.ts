@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
@@ -2379,6 +2378,14 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
@@ -2773,6 +2780,40 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
     ...ctx,
   });
   return ex;
+}
+
+export function denoWriteFileErrorToNodeError(
+  e: Error,
+  ctx: UvExceptionContext,
+) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  let errno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof errno === "undefined") {
+    return e;
+  }
+
+  if (isWindows) {
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-#ERROR_ACCESS_DENIED
+    const ERROR_ACCESS_DENIED = 5;
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-#ERROR_INVALID_FLAGS
+    const ERROR_INVALID_FLAGS = 1004;
+
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/deps/uv/src/win/fs.c#L1090-L1092
+    if (errno === ERROR_ACCESS_DENIED) {
+      errno = ERROR_INVALID_FLAGS;
+    }
+  }
+
+  return uvException({
+    errno: mapSysErrnoToUvErrno(errno),
+    ...ctx,
+  });
 }
 
 export const denoErrorToNodeSystemError = hideStackFrames((
@@ -3204,6 +3245,7 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_UNSERIALIZABLE_ERROR,

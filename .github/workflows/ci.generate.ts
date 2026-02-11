@@ -1,11 +1,12 @@
-#!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
+#!/usr/bin/env -S deno run --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
+import { parse as parseToml } from "jsr:@std/toml";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 93;
+const cacheVersion = 94;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -68,6 +69,31 @@ const Runners = {
     runner: windowsArmRunner,
   },
 } as const;
+
+// discover all non-binary, non-test workspace members for the libs test job
+const rootCargoToml = parseToml(
+  Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+) as { workspace: { members: string[] } };
+
+const libPackages: string[] = [];
+for (const member of rootCargoToml.workspace.members) {
+  // test crates depend on the deno binary at runtime
+  if (member.startsWith("tests")) continue;
+
+  const cargoToml = parseToml(
+    Deno.readTextFileSync(
+      new URL(`../../${member}/Cargo.toml`, import.meta.url),
+    ),
+  ) as { package: { name: string }; bin?: unknown[] };
+
+  // skip binary crates (they need their own build step)
+  if (cargoToml.bin) continue;
+
+  libPackages.push(cargoToml.package.name);
+}
+
+const libTestPackageArgs = libPackages.map((p) => `-p ${p}`).join(" ");
+const libExcludeArgs = libPackages.map((p) => `--exclude ${p}`).join(" ");
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
@@ -195,6 +221,25 @@ const submoduleStep = (submodule: string) => ({
 
 const installRustStep = {
   uses: "dsherret/rust-toolchain-file@v1",
+};
+const installLldStep = {
+  name: "Install macOS aarch64 lld",
+  if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
+  run: [
+    "./tools/install_prebuilt.js ld64.lld",
+  ].join("\n"),
+};
+const updatePrebuiltGithubPath = {
+  if: `matrix.os == 'macos'`,
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
+  run: [
+    "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+  ].join("\n"),
 };
 const installPythonSteps = [{
   name: "Install Python",
@@ -560,31 +605,30 @@ const ci = {
           name: "Load 'vsock_loopback; kernel module",
           run: "sudo modprobe vsock_loopback",
         },
-        {
-          if:
-            "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
-          ...installDenoStep,
-        },
+        withCondition(
+          installDenoStep,
+          "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
+        ),
         ...installPythonSteps.map((s) =>
           withCondition(
             s,
             "matrix.os != 'linux' || matrix.arch != 'aarch64'",
           )
         ),
-        {
-          if: "matrix.job == 'bench' || matrix.job == 'test'",
-          ...installNodeStep,
-        },
-        {
-          if: [
+        withCondition(
+          installNodeStep,
+          "matrix.job == 'bench' || matrix.job == 'test'",
+        ),
+        withCondition(
+          authenticateWithGoogleCloud,
+          [
             "matrix.profile == 'release' &&",
             "matrix.job == 'test' &&",
             "github.repository == 'denoland/deno' &&",
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
-          ...authenticateWithGoogleCloud,
-        },
+        ),
         {
           name: "Setup gcloud (unix)",
           if: [
@@ -643,27 +687,16 @@ const ci = {
           ].join("\n"),
           if: `matrix.os == 'macos'`,
         },
-        {
-          name: "Install macOS aarch64 lld",
-          env: {
-            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-          },
-          run: [
-            "./tools/install_prebuilt.js ld64.lld",
-          ].join("\n"),
-          if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
-        },
+        installLldStep,
         {
           name: "Install rust-codesign",
           env: {
             GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
           },
-          run: [
-            "./tools/install_prebuilt.js rcodesign",
-            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-          ].join("\n"),
+          run: "./tools/install_prebuilt.js rcodesign",
           if: `matrix.os == 'macos'`,
         },
+        updatePrebuiltGithubPath,
         {
           name: "Log versions",
           run: [
@@ -955,7 +988,8 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace",
+          run:
+            `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -968,8 +1002,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace",
-            "cargo test --locked --tests --features=panic-trace",
+            `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
+            `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -982,7 +1016,8 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked --features=panic-trace",
+          run:
+            `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
         },
         {
           name: "Ensure no git changes",
@@ -1291,31 +1326,60 @@ const ci = {
       ],
     },
     libs: {
-      name: "build libs",
+      name: "libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
-      "runs-on": ubuntuX86Runner,
+      "runs-on": "${{ matrix.runner }}",
       "timeout-minutes": 30,
+      strategy: {
+        matrix: {
+          include: [{
+            ...Runners.linuxX86,
+            profile: "debug",
+            job: "libs",
+          }, {
+            ...Runners.macosArm,
+            profile: "debug",
+            job: "libs",
+          }, {
+            ...Runners.windowsX86,
+            profile: "debug",
+            job: "libs",
+          }],
+        },
+      },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoSteps,
+        submoduleStep("./tests/util/std"),
+        cacheCargoHomeStep,
         installRustStep,
         {
+          if: "matrix.os == 'macos'",
+          ...installDenoStep,
+        },
+        installLldStep,
+        updatePrebuiltGithubPath,
+        {
           name: "Install wasm target",
+          if: "matrix.os == 'linux'",
           run: "rustup target add wasm32-unknown-unknown",
         },
         // we want these crates to be Wasm compatible
         {
           name: "Cargo check (deno_resolver)",
+          if: "matrix.os == 'linux'",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
         },
         {
           name: "Cargo check (deno_npm_installer)",
+          if: "matrix.os == 'linux'",
           run:
             "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
         },
         {
           name: "Cargo check (deno_config)",
+          if: "matrix.os == 'linux'",
           run: [
             "cargo check --no-default-features -p deno_config",
             "cargo check --no-default-features --features workspace -p deno_config",
@@ -1324,6 +1388,11 @@ const ci = {
             "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
             "cargo check -p deno --features=lsp-tracing",
           ].join("\n"),
+        },
+        {
+          name: "Test libs",
+          run: `cargo test --locked ${libTestPackageArgs}`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
       ]),
     },

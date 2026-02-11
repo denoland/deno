@@ -283,17 +283,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/worker_threads] throws on non-existend file",
-  fn() {
-    assertThrows(
-      () => {
-        new workerThreads.Worker(new URL("file://very/unlikely"));
-      },
-    );
-  },
-});
-
-Deno.test({
   name: "[node/worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
