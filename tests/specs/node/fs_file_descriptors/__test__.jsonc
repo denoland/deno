@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "open_returns_real_fd": {
+      "args": "run --allow-read --allow-write main.ts",
+      "output": "main.out"
+    }
+  }
+}
