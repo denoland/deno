@@ -3,7 +3,7 @@
   "specifiers": {
     "jsr:@david/console-static-text@0.3": "0.3.0",
     "jsr:@david/dax@~0.43.2": "0.43.2",
-    "jsr:@david/gagen@0.2.4": "0.2.4",
+    "jsr:@david/gagen@0.2.5": "0.2.5",
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/rust-automation@0.22.2": "0.22.2",
@@ -39,8 +39,8 @@
         "jsr:@std/path@1"
       ]
     },
-    "@david/gagen@0.2.4": {
-      "integrity": "c9583302b8f6c718b3b30d8c12f4b414d6f6e3d378f218e99439c2195034be97",
+    "@david/gagen@0.2.5": {
+      "integrity": "46bcbbc2a592d1d24b5e40d2a33872822312101ca3525367a852290ced6d5b5f",
       "dependencies": [
         "jsr:@std/yaml@^1.0.11"
       ]

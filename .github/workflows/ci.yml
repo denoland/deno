@@ -154,6 +154,12 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(matrix.skip)'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: 'Create source tarballs (release, linux)'
+        if: '!(matrix.skip) && matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && matrix.os == ''linux'' && matrix.arch == ''x86_64'''
+        run: |-
+          mkdir -p target/release
+          tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
+              -czvf target/release/deno_src.tar.gz -C .. deno
       - name: Remove macOS cURL --ipv4 flag
         if: '!(matrix.skip) && matrix.os == ''macos'''
         run: |-
@@ -579,12 +585,6 @@ jobs:
         run: |-
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
-      - name: 'Create source tarballs (release, linux)'
-        if: '!(matrix.skip) && matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && matrix.os == ''linux'' && matrix.arch == ''x86_64'''
-        run: |-
-          mkdir -p target/release
-          tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
-              -czvf target/release/deno_src.tar.gz -C .. deno
       - name: Upload release to dl.deno.land (unix)
         if: '!(matrix.skip) && matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && matrix.os != ''windows'''
         run: |-

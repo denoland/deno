@@ -9,7 +9,7 @@ import {
   expr,
   job,
   step,
-} from "jsr:@david/gagen@0.2.4";
+} from "jsr:@david/gagen@0.2.5";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -492,7 +492,7 @@ const buildJob = job("build", {
     // e.g. a flaky test.
     // Don't fast-fail on tag build because publishing binaries shouldn't be
     // prevented if any of the stages fail (which can be a false negative).
-    failFast: isPR.or(isMainBranch.not().and(isTag.not())).toString(),
+    failFast: isPR.or(isMainBranch.not().and(isTag.not())),
   },
   env: {
     CARGO_TERM_COLOR: "always",
@@ -514,6 +514,17 @@ const buildJob = job("build", {
     const sysRootStep = step({
       if: buildMatrix.use_sysroot,
       ...sysRootConfig,
+    });
+    const tarSourcePublishStep = step({
+      name: "Create source tarballs (release, linux)",
+      if: buildMatrix.os.equals("linux").and(
+        buildMatrix.arch.equals("x86_64"),
+      ),
+      run: [
+        "mkdir -p target/release",
+        'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
+        "    -czvf target/release/deno_src.tar.gz -C .. deno",
+      ],
     });
 
     const preRelease = step(
@@ -691,7 +702,8 @@ const buildJob = job("build", {
         run:
           'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
       },
-    ).dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep);
+    ).dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
+      .comesAfter(tarSourcePublishStep);
 
     const benchStep = step(
       cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
@@ -869,19 +881,9 @@ const buildJob = job("build", {
     }).dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)
       .if(buildMatrix.wpt.equals(true));
 
+    const shouldPublishCondition = isTest.and(isRelease).and(isDenoland)
+      .and(isTag);
     const publishStep = step(
-      {
-        // todo: ensure this comes early
-        name: "Create source tarballs (release, linux)",
-        if: buildMatrix.os.equals("linux").and(
-          buildMatrix.arch.equals("x86_64"),
-        ),
-        run: [
-          "mkdir -p target/release",
-          'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
-          "    -czvf target/release/deno_src.tar.gz -C .. deno",
-        ],
-      },
       step({
         name: "Upload release to dl.deno.land (unix)",
         if: isWindows.not(),
@@ -946,11 +948,12 @@ const buildJob = job("build", {
           draft: true,
         },
       },
-    ).if(isTest.and(isRelease).and(isDenoland).and(isTag));
+    ).if(shouldPublishCondition);
 
     return step(
       cloneRepoStep,
       cloneStdSubmodule,
+      tarSourcePublishStep.if(shouldPublishCondition),
       {
         name: "Remove macOS cURL --ipv4 flag",
         run: [
