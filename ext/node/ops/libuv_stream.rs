@@ -15,6 +15,7 @@ use deno_core::v8;
 use libuvrust::backend::UvBuf;
 use libuvrust::backend::UvHandle;
 use libuvrust::backend::UvLoop;
+use libuvrust::backend::UvShutdown;
 use libuvrust::backend::UvStream;
 use libuvrust::backend::UvTcp;
 use libuvrust::backend::UvWrite;
@@ -206,6 +207,12 @@ unsafe extern "C" fn write_cb(req: *mut UvWrite, _status: i32) {
     // req is the first field of WriteReq (#[repr(C)]),
     // so the pointer is the same as the WriteReq pointer.
     let _ = Box::from_raw(req as *mut WriteReq);
+  }
+}
+
+unsafe extern "C" fn shutdown_cb(req: *mut UvShutdown, _status: i32) {
+  unsafe {
+    let _ = Box::from_raw(req);
   }
 }
 
@@ -414,6 +421,26 @@ impl TCP {
         self
           .bytes_written
           .set(self.bytes_written.get() + data_len as u64);
+      }
+      ret
+    }
+  }
+
+  #[fast]
+  fn shutdown(&self) -> i32 {
+    unsafe {
+      let stream = self.stream();
+      if stream.is_null() {
+        return -1;
+      }
+      let req = Box::into_raw(Box::new(libuvrust::backend::new_shutdown()));
+      let ret = libuvrust::backend::uv_shutdown(
+        req,
+        stream,
+        Some(shutdown_cb),
+      );
+      if ret != 0 {
+        let _ = Box::from_raw(req);
       }
       ret
     }
