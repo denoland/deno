@@ -117,7 +117,7 @@ curl https://apt.llvm.org/llvm-snapshot.gpg.key |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
-${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+${installPkgsCommand} || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand})
 # Fix alternatives
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
@@ -449,6 +449,26 @@ const buildMatrix = defineMatrix({
 });
 
 // common build matrix conditions
+const restoreCacheBuildOutputStep = step({
+  name: "Restore cache build output (PR)",
+  uses: "actions/cache/restore@v4",
+  if: isMainBranch.not().and(isNotTag),
+  with: {
+    path: prCachePath,
+    key: "never_saved",
+    "restore-keys": prCacheKeyPrefix,
+  },
+});
+const saveCacheBuildOutputStep = step({
+  // In main branch, always create a fresh cache
+  name: "Save cache build output (main)",
+  uses: "actions/cache/save@v4",
+  if: isMainBranch,
+  with: {
+    path: prCachePath,
+    key: prCacheKey,
+  },
+});
 const isTest = buildMatrix.job.equals("test");
 const isRelease = buildMatrix.profile.equals("release");
 const isDebug = buildMatrix.profile.equals("debug");
@@ -483,8 +503,7 @@ const buildJob = job("build", {
     // e.g. a flaky test.
     // Don't fast-fail on tag build because publishing binaries shouldn't be
     // prevented if any of the stages fail (which can be a false negative).
-    failFast:
-      "${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}",
+    failFast: isPR.or(isMainBranch.not().and(isTag.not())),
   },
   env: {
     CARGO_TERM_COLOR: "always",
@@ -494,22 +513,15 @@ const buildJob = job("build", {
   },
   steps: (() => {
     const cloneWptSubmodule = cloneSubmodule("./tests/wpt/suite");
-    const cargoBuildCacheStep = step({
-      // Restore cache from the latest 'main' branch build.
-      name: "Restore cache build output (PR)",
-      uses: "actions/cache/restore@v4",
-      if: isMainBranch.not().and(isNotTag),
-      with: {
-        path: prCachePath,
-        key: "never_saved",
-        "restore-keys": prCacheKeyPrefix,
+    const cargoBuildCacheStep = step(
+      restoreCacheBuildOutputStep,
+      {
+        name: "Apply and update mtime cache",
+        if: isNotTag,
+        uses: "./.github/mtime_cache",
+        with: { "cache-path": "./target" },
       },
-    }, {
-      name: "Apply and update mtime cache",
-      if: isNotTag,
-      uses: "./.github/mtime_cache",
-      with: { "cache-path": "./target" },
-    }).dependsOn(cacheCargoHomeStep, installRustStep);
+    ).dependsOn(cacheCargoHomeStep, installRustStep);
     const sysRootStep = step({
       if: buildMatrix.use_sysroot,
       ...sysRootConfig,
@@ -647,11 +659,10 @@ const buildJob = job("build", {
     ).if(isTest);
     const cargoBuildReleaseStep = step({
       name: "Configure canary build",
-      if: isDenoland.and(isMainBranch),
+      if: isMainBranch,
       run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
     }, {
       name: "Build release",
-      if: buildMatrix.use_sysroot.equals(true).or(isDenoland),
       run: [
         // output fs space before and after building
         "df -h",
@@ -660,7 +671,6 @@ const buildJob = job("build", {
       ],
     }, {
       name: "Generate symcache",
-      if: buildMatrix.use_sysroot.equals(true).or(isDenoland),
       run: [
         "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
         "du -h deno.symcache",
@@ -669,7 +679,7 @@ const buildJob = job("build", {
       env: { NO_COLOR: 1 },
     }, preRelease)
       .dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
-      .if(isRelease);
+      .if(isRelease.and(isDenoland));
     const cargoBuildStep = step(
       {
         name: "Build debug",
@@ -742,6 +752,13 @@ const buildJob = job("build", {
           key: "playwright-${{ runner.os }}-${{ runner.arch }}",
         },
       },
+      {
+        if: buildMatrix.os.equals("linux").and(
+          buildMatrix.arch.equals("aarch64"),
+        ),
+        name: "Load 'vsock_loopback; kernel module",
+        run: "sudo modprobe vsock_loopback",
+      },
       cargoBuildStep,
       {
         name: "Autobahn testsuite",
@@ -773,9 +790,7 @@ const buildJob = job("build", {
       },
       {
         name: "Test (release)",
-        if: isRelease.and(
-          buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isNotTag)),
-        ),
+        if: isRelease.and(isDenoland).and(isNotTag),
         run:
           `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
       },
@@ -950,13 +965,6 @@ const buildJob = job("build", {
       cloneRepoStep,
       cloneStdSubmodule,
       {
-        if: buildMatrix.os.equals("linux").and(
-          buildMatrix.arch.equals("aarch64"),
-        ),
-        name: "Load 'vsock_loopback; kernel module",
-        run: "sudo modprobe vsock_loopback",
-      },
-      {
         name: "Remove macOS cURL --ipv4 flag",
         run: [
           // cURL's --ipv4 flag is busted for now
@@ -994,13 +1002,7 @@ const buildJob = job("build", {
       benchStep,
       wptTests,
       publishStep,
-      {
-        // In main branch, always create a fresh cache
-        name: "Save cache build output (main)",
-        uses: "actions/cache/save@v4",
-        if: isTest.and(isMainBranch),
-        with: { path: prCachePath, key: prCacheKey },
-      },
+      saveCacheBuildOutputStep,
     ).if(buildMatrix.skip.not());
   })(),
 });
@@ -1029,7 +1031,11 @@ const lintJob = job("lint", {
   if: preBuildJob.outputs.skip_build.notEquals("true"),
   runsOn: lintMatrix.runner,
   timeoutMinutes: 30,
-  defaults: { run: { shell: "bash" } },
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
   strategy: {
     matrix: lintMatrix,
   },
@@ -1037,16 +1043,7 @@ const lintJob = job("lint", {
     cloneRepoStep,
     cloneStdSubmodule,
     cacheCargoHomeStep,
-    {
-      name: "Restore cache build output (PR)",
-      uses: "actions/cache/restore@v4",
-      if: isMainBranch.not().and(isNotTag),
-      with: {
-        path: prCachePath,
-        key: "never_saved",
-        "restore-keys": prCacheKeyPrefix,
-      },
-    },
+    restoreCacheBuildOutputStep,
     installRustStep,
     installDenoStep,
     step(
@@ -1067,12 +1064,7 @@ const lintJob = job("lint", {
       run:
         "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
     },
-    {
-      name: "Save cache build output (main)",
-      uses: "actions/cache/save@v4",
-      if: lintMatrix.job.equals("test").and(isMainBranch),
-      with: { path: prCachePath, key: prCacheKey },
-    },
+    saveCacheBuildOutputStep,
   ),
 });
 
@@ -1107,6 +1099,7 @@ const libsJob = job("libs", {
     const repoSetupSteps = step(
       cloneRepoStep,
       cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
     );
 
     const macSetup = step(
@@ -1116,7 +1109,7 @@ const libsJob = job("libs", {
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
       },
-    ).dependsOn(repoSetupSteps).if(
+    ).if(
       libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
     );
 
@@ -1143,16 +1136,18 @@ const libsJob = job("libs", {
           "cargo check -p deno --features=lsp-tracing",
         ],
       },
-    ).dependsOn(installWasmStep, repoSetupSteps)
+    ).dependsOn(installWasmStep)
       .if(libsMatrix.os.equals("linux"));
 
     return step(
+      repoSetupSteps,
       linuxCargoChecks,
       step({
         name: "Test libs",
         run: `cargo test --locked ${libTestCrateArgs}`,
         env: { CARGO_PROFILE_DEV_DEBUG: 0 },
       }).dependsOn(repoSetupSteps, macSetup),
+      saveCacheBuildOutputStep,
     );
   })(),
 });
