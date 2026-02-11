@@ -29,6 +29,7 @@ import { primordials } from "ext:core/mod.js";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import { URLPrototype } from "ext:deno_web/00_url.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { getRid as getFdRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 type WriteFileSyncData =
   | string
@@ -64,17 +65,18 @@ async function getRid(
   flag: string = "w",
 ): Promise<number> {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    return getFdRid(pathOrRid);
   }
   const fileHandle = await openPromise(pathOrRid, flag);
-  return fileHandle.fd;
+  return getFdRid(fileHandle.fd);
 }
 
 function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    return getFdRid(pathOrRid);
   }
-  return openSync(pathOrRid, flag);
+  const fd = openSync(pathOrRid, flag);
+  return getFdRid(fd);
 }
 
 export function writeFile(

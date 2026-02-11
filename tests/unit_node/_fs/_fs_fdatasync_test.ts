@@ -1,26 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, fail } from "@std/assert";
-import { fdatasync, fdatasyncSync } from "node:fs";
+import {
+  closeSync,
+  fdatasync,
+  fdatasyncSync,
+  openSync,
+  writeSync,
+} from "node:fs";
 
 Deno.test({
   name:
     "ASYNC: flush any pending data operations of the given file stream to disk",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const filePath = await Deno.makeTempFile();
-    using file = await Deno.open(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "rs+");
     const data = new Uint8Array(64);
-    await file.write(data);
+    writeSync(fd, data);
 
     await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      fdatasync(file.rid, (err: Error | null) => {
+      fdatasync(fd, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
@@ -34,6 +32,7 @@ Deno.test({
         },
       )
       .finally(async () => {
+        closeSync(fd);
         await Deno.remove(filePath);
       });
   },
@@ -42,24 +41,17 @@ Deno.test({
 Deno.test({
   name:
     "SYNC: flush any pending data operations of the given file stream to disk.",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
-    using file = Deno.openSync(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "rs+");
     const data = new Uint8Array(64);
-    file.writeSync(data);
+    writeSync(fd, data);
 
     try {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      fdatasyncSync(file.rid);
+      fdatasyncSync(fd);
       assertEquals(Deno.readFileSync(filePath), data);
     } finally {
+      closeSync(fd);
       Deno.removeSync(filePath);
     }
   },
