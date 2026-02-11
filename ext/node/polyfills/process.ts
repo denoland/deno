@@ -696,6 +696,17 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// deno-lint-ignore no-explicit-any
+process._fatalException = function (err: any, fromPromise?: boolean) {
+  const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
+  process.emit("uncaughtExceptionMonitor", err, origin);
+  if (process.listenerCount("uncaughtException") > 0) {
+    process.emit("uncaughtException", err, origin);
+    return true;
+  }
+  return false;
+};
+
 /** https://nodejs.org/api/process.html#processexitcode_1 */
 Object.defineProperty(process, "exitCode", {
   get() {
@@ -1001,11 +1012,15 @@ process.on("removeListener", (event: string) => {
 });
 
 function processOnError(event: ErrorEvent) {
-  if (process.listenerCount("uncaughtException") > 0) {
-    event.preventDefault();
+  if (typeof process._fatalException === "function") {
+    if (process._fatalException(event.error)) {
+      event.preventDefault();
+    }
+  } else {
+    // Exit code 6: _fatalException is not a function
+    // (kInvalidFatalExceptionMonkeyPatching in Node.js)
+    process.exitCode = 6;
   }
-
-  uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
 function dispatchProcessBeforeExitEvent() {

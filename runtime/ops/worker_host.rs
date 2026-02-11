@@ -351,7 +351,7 @@ async fn op_host_recv_ctrl(
     Ok(Some(event)) => {
       // Terminal error or close means that worker should be removed from worker table.
       match &event {
-        WorkerControlEvent::TerminalError(_) | WorkerControlEvent::Close(_) => {
+        WorkerControlEvent::TerminalError(..) | WorkerControlEvent::Close(_) => {
           close_channel(state, id, WorkerChannel::Ctrl);
         }
       }
