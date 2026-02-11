@@ -8,7 +8,7 @@ import {
   expr,
   job,
   step,
-} from "jsr:@david/gagen@0.2.2";
+} from "jsr:@david/gagen@0.2.3";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -241,7 +241,7 @@ const isMainOrTag = isMainBranch.or(isTag);
 const isPR = conditions.isEvent("pull_request");
 
 // shared steps
-const cloneRepoSteps = step({
+const cloneRepoStep = step({
   name: "Configure git",
   run: [
     "git config --global core.symlinks true",
@@ -370,7 +370,7 @@ const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
   steps: step(
-    cloneRepoSteps,
+    cloneRepoStep,
     preBuildCheckStep,
   ).if("github.event.pull_request.draft == true"),
   outputs: { skip_build: preBuildCheckStep.outputs.skip_build },
@@ -670,7 +670,7 @@ const buildJob = job("build", {
     }, preRelease)
       .dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
       .if(isRelease);
-    const cargoBuildSteps = step(
+    const cargoBuildStep = step(
       {
         name: "Build debug",
         if: isDebug,
@@ -696,7 +696,7 @@ const buildJob = job("build", {
       },
     ).dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep);
 
-    const benchSteps = step(
+    const benchStep = step(
       cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
       step({
         name: "Install benchmark tools",
@@ -732,7 +732,7 @@ const buildJob = job("build", {
       },
     ).if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease));
 
-    const testSteps = step(
+    const testStep = step(
       cloneSubmodule("./tests/node_compat/runner/suite"),
       {
         name: "Set up playwright cache",
@@ -742,7 +742,7 @@ const buildJob = job("build", {
           key: "playwright-${{ runner.os }}-${{ runner.arch }}",
         },
       },
-      cargoBuildSteps,
+      cargoBuildStep,
       {
         name: "Autobahn testsuite",
         if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isRelease)
@@ -867,7 +867,7 @@ const buildJob = job("build", {
     }).dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)
       .if(buildMatrix.wpt.equals(true));
 
-    const publishSteps = step(
+    const publishStep = step(
       {
         // todo: ensure this comes early
         name: "Create source tarballs (release, linux)",
@@ -947,7 +947,7 @@ const buildJob = job("build", {
     ).if(isTest.and(isRelease).and(isDenoland).and(isTag));
 
     return step(
-      cloneRepoSteps,
+      cloneRepoStep,
       cloneStdSubmodule,
       {
         if: buildMatrix.os.equals("linux").and(
@@ -989,11 +989,11 @@ const buildJob = job("build", {
         installPythonStep,
         installRustStep,
       ),
-      cargoBuildSteps,
-      testSteps,
-      benchSteps,
+      cargoBuildStep,
+      testStep,
+      benchStep,
       wptTests,
-      publishSteps,
+      publishStep,
       {
         // In main branch, always create a fresh cache
         name: "Save cache build output (main)",
@@ -1001,7 +1001,7 @@ const buildJob = job("build", {
         if: isTest.and(isMainBranch),
         with: { path: prCachePath, key: prCacheKey },
       },
-    ).if("!(matrix.skip)");
+    ).if(buildMatrix.skip.not());
   })(),
 });
 
@@ -1034,7 +1034,7 @@ const lintJob = job("lint", {
     matrix: lintMatrix,
   },
   steps: step(
-    cloneRepoSteps,
+    cloneRepoStep,
     cloneStdSubmodule,
     cacheCargoHomeStep,
     {
@@ -1105,7 +1105,7 @@ const libsJob = job("libs", {
   },
   steps: (() => {
     const repoSetupSteps = step(
-      cloneRepoSteps,
+      cloneRepoStep,
       cacheCargoHomeStep,
     );
 
@@ -1153,7 +1153,7 @@ const libsJob = job("libs", {
         run: `cargo test --locked ${libTestCrateArgs}`,
         env: { CARGO_PROFILE_DEV_DEBUG: 0 },
       }).dependsOn(repoSetupSteps, macSetup),
-    ).if("!(matrix.skip)");
+    );
   })(),
 });
 
