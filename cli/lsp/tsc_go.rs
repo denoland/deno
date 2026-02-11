@@ -53,6 +53,113 @@ pub struct TsGoCompletionItemData {
   pub data: serde_json::Value,
 }
 
+/// This is different from compiler options from user config, it stores enums as
+/// numbers.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoCompilerOptions(serde_json::Value);
+
+impl TsGoCompilerOptions {
+  fn from_compiler_options(compiler_options: CompilerOptions) -> Self {
+    let mut value = compiler_options.0;
+    let Some(object) = value.as_object_mut() else {
+      return Self(serde_json::Value::Object(Default::default()));
+    };
+    let jsx = object.remove("jsx");
+    if let Some(jsx) = jsx.as_ref().and_then(|v| v.as_str()) {
+      let tsgo_jsx = match jsx {
+        "preserve" => 1,
+        "react-native" => 2,
+        "react" => 3,
+        "react-jsx" | "precompile" => 4,
+        "react-jsxdev" => 5,
+        _ => 0,
+      };
+      object.insert("jsx".to_string(), json!(tsgo_jsx));
+    }
+    let module = object.remove("module");
+    if let Some(module) = module.as_ref().and_then(|v| v.as_str()) {
+      let tsgo_module = match module {
+        "commonjs" => 1,
+        "amd" => 2,
+        "umd" => 3,
+        "system" => 4,
+        "es6" | "es2015" => 5,
+        "es2020" => 6,
+        "es2022" => 7,
+        "esnext" => 99,
+        "node16" => 100,
+        "node18" => 101,
+        "node20" => 102,
+        "nodenext" => 199,
+        "preserve" => 200,
+        _ => 199,
+      };
+      object.insert("module".to_string(), json!(tsgo_module));
+    }
+    let module_detection = object.remove("moduleDetection");
+    if let Some(module_detection) =
+      module_detection.as_ref().and_then(|v| v.as_str())
+    {
+      let tsgo_module_detection = match module_detection {
+        "auto" => 1,
+        "legacy" => 2,
+        "force" => 3,
+        _ => 3,
+      };
+      object
+        .insert("moduleDetection".to_string(), json!(tsgo_module_detection));
+    }
+    let module_resolution = object.remove("moduleResolution");
+    if let Some(module_resolution) =
+      module_resolution.as_ref().and_then(|v| v.as_str())
+    {
+      let tsgo_module_resolution = match module_resolution {
+        "classic" => 1,
+        "node10" | "node" => 2,
+        "node16" => 3,
+        "nodenext" => 99,
+        "bundler" => 100,
+        _ => 99,
+      };
+      object.insert(
+        "moduleResolution".to_string(),
+        json!(tsgo_module_resolution),
+      );
+    }
+    let new_line = object.remove("newLine");
+    if let Some(new_line) = new_line.as_ref().and_then(|v| v.as_str()) {
+      let tsgo_new_line = match new_line {
+        "crlf" => 1,
+        "lf" => 2,
+        _ => 0,
+      };
+      object.insert("newLine".to_string(), json!(tsgo_new_line));
+    }
+    let target = object.remove("target");
+    if let Some(target) = target.as_ref().and_then(|v| v.as_str()) {
+      let tsgo_target = match target {
+        "es3" => 0,
+        "es5" => 1,
+        "es6" | "es2015" => 2,
+        "es2016" => 3,
+        "es2017" => 4,
+        "es2018" => 5,
+        "es2019" => 6,
+        "es2020" => 7,
+        "es2021" => 8,
+        "es2022" => 9,
+        "es2023" => 10,
+        "es2024" => 11,
+        "esnext" => 99,
+        _ => 99,
+      };
+      object.insert("target".to_string(), json!(tsgo_target));
+    }
+    Self(value)
+  }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoGetDocumentParams {
@@ -95,7 +202,7 @@ struct TsGoFileChange {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoProjectConfig {
-  compiler_options: Arc<CompilerOptions>,
+  compiler_options: Arc<TsGoCompilerOptions>,
   files: IndexSet<Arc<Uri>>,
   user_preferences: super::tsc::UserPreferences,
   format_options: super::tsc::FormatCodeSettings,
@@ -108,6 +215,77 @@ struct TsGoProjectConfig {
 struct TsGoWorkspaceConfig {
   by_compiler_options_key: BTreeMap<CompilerOptionsKey, TsGoProjectConfig>,
   by_notebook_uri: BTreeMap<Arc<Uri>, TsGoProjectConfig>,
+}
+
+impl TsGoWorkspaceConfig {
+  fn from_snapshot(snapshot: &StateSnapshot) -> Self {
+    let by_compiler_options_key = snapshot
+      .compiler_options_resolver
+      .entries()
+      .map(|(k, d)| {
+        let (user_preferences, format_options) = d
+          .workspace_dir_or_source_url
+          .as_ref()
+          .map(|s| {
+            (
+              super::tsc::UserPreferences::from_config_for_specifier(
+                &snapshot.config,
+                s,
+              ),
+              (&snapshot.config.tree.fmt_config_for_specifier(s).options)
+                .into(),
+            )
+          })
+          .unwrap_or_default();
+        (
+          k.clone(),
+          TsGoProjectConfig {
+            compiler_options: Arc::new(
+              TsGoCompilerOptions::from_compiler_options(
+                d.compiler_options.as_ref().clone(),
+              ),
+            ),
+            files: Default::default(),
+            user_preferences,
+            format_options,
+            compiler_options_key: k.clone(),
+            notebook_uri: None,
+          },
+        )
+      })
+      .collect::<BTreeMap<_, _>>();
+    let by_notebook_uri = snapshot
+      .document_modules
+      .documents
+      .cells_by_notebook_uri()
+      .keys()
+      .map(|u| {
+        let compiler_options_key = snapshot
+          .compiler_options_resolver
+          .entry_for_specifier(&uri_to_url(u))
+          .0;
+        let project_config =
+          by_compiler_options_key.get(compiler_options_key).unwrap();
+        (
+          u.clone(),
+          TsGoProjectConfig {
+            compiler_options: project_config.compiler_options.clone(),
+            files: Default::default(),
+            user_preferences: project_config.user_preferences.clone(),
+            format_options: project_config.format_options.clone(),
+            compiler_options_key: compiler_options_key.clone(),
+            notebook_uri: Some(u.clone()),
+          },
+        )
+      })
+      .collect::<BTreeMap<_, _>>();
+    let mut workspace_config = Self {
+      by_compiler_options_key,
+      by_notebook_uri,
+    };
+    fill_workspace_config_file_names(&mut workspace_config, snapshot);
+    workspace_config
+  }
 }
 
 #[derive(Debug, Serialize)]
@@ -140,19 +318,20 @@ impl TsGoWorkspaceChange {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TsGoRequest {
+  #[serde(rename_all = "camelCase")]
   LanguageServiceMethod {
     name: String,
     args: serde_json::Value,
     compiler_options_key: CompilerOptionsKey,
     notebook_uri: Option<Arc<Uri>>,
   },
+  #[serde(rename_all = "camelCase")]
   GetAmbientModules {
     compiler_options_key: CompilerOptionsKey,
     notebook_uri: Option<Arc<Uri>>,
   },
-  WorkspaceSymbol {
-    query: String,
-  },
+  #[serde(rename_all = "camelCase")]
+  WorkspaceSymbol { query: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -342,6 +521,7 @@ fn fill_workspace_config_file_names(
 struct TsGoServerInner {
   snapshot: Arc<Mutex<Arc<StateSnapshot>>>,
   pending_change: Mutex<Option<TsGoWorkspaceChange>>,
+  pending_change_lock: tokio::sync::RwLock<()>,
   stdin: Arc<Mutex<std::process::ChildStdin>>,
   pending_requests: Arc<
     Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
@@ -355,6 +535,7 @@ impl std::fmt::Debug for TsGoServerInner {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsGoServerInner")
       .field("pending_change", &self.pending_change)
+      .field("next_request_id", &self.next_request_id)
       .finish_non_exhaustive()
   }
 }
@@ -435,11 +616,11 @@ impl TsGoServerInner {
         };
         // Check if it's a request (has method) vs response (has id but no method)
         if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
-          let id = message.get("id").cloned();
+          let id = message.get("id");
+          let params = message.get("params");
           match method {
             "deno/host/getDocument" => {
-              let params: TsGoGetDocumentParams = match message
-                .get("params")
+              let params: TsGoGetDocumentParams = match params
                 .and_then(|p| serde_json::from_value(p.clone()).ok())
               {
                 Some(p) => p,
@@ -483,7 +664,7 @@ impl TsGoServerInner {
                   Some(data) => json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": data
+                    "result": data,
                   }),
                   None => json!({
                     "jsonrpc": "2.0",
@@ -491,15 +672,54 @@ impl TsGoServerInner {
                     "error": {
                       "code": -32001,
                       "message": "Document not found"
-                    }
+                    },
                   }),
                 };
                 let mut stdin = stdin_clone.lock();
                 let _ = write_lsp_message(&mut stdin, &response);
               }
             }
-            _ => {
-              // Unknown method, ignore
+            "client/registerCapability" => {
+              let response = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": null,
+              });
+              let mut stdin = stdin_clone.lock();
+              let _ = write_lsp_message(&mut stdin, &response);
+            }
+            "window/logMessage" => {
+              let Ok(params) = serde_json::from_value::<lsp::LogMessageParams>(json!(params)).inspect_err(|err| {
+                lsp_warn!("Couldn't parse params for \"window/logMessage\" from tsgo: {err:#}");
+              }) else {
+                continue;
+              };
+              if matches!(
+                params.typ,
+                lsp::MessageType::ERROR | lsp::MessageType::WARNING
+              ) || std::env::var("DENO_TSC_DEBUG").is_ok()
+              {
+                eprintln!("[tsgo - {:?}] {}", params.typ, params.message);
+              }
+            }
+            method => {
+              if let Some(id) = id {
+                let response = json!({
+                  "jsonrpc": "2.0",
+                  "id": id,
+                  "error": {
+                    "code": -32601,
+                    "message": format!("Method not found: \"{method}\""),
+                  },
+                });
+                let mut stdin = stdin_clone.lock();
+                let _ = write_lsp_message(&mut stdin, &response);
+              } else {
+                lsp_warn!(
+                  "Received unknown notification from tsgo: {:#}",
+                  &message
+                );
+              }
             }
           }
         } else if let Some(id) = message.get("id") {
@@ -531,6 +751,9 @@ impl TsGoServerInner {
       "id": 0,
       "method": "initialize",
       "params": {
+        "initializationOptions": {
+          "disablePushDiagnostics": true,
+        },
         "processId": std::process::id(),
         "capabilities": {},
         "rootUri": null,
@@ -558,9 +781,17 @@ impl TsGoServerInner {
       write_lsp_message(&mut stdin, &initialized_notification).unwrap();
     }
 
+    let pending_change = Mutex::new(Some(TsGoWorkspaceChange {
+      file_changes: Vec::new(),
+      new_configuration: Some(TsGoWorkspaceConfig::from_snapshot(
+        snapshot.lock().as_ref(),
+      )),
+    }));
+
     Self {
       snapshot,
-      pending_change: Mutex::new(None),
+      pending_change,
+      pending_change_lock: Default::default(),
       stdin,
       pending_requests,
       next_request_id: AtomicI64::new(1),
@@ -577,6 +808,11 @@ impl TsGoServerInner {
     R: DeserializeOwned,
   {
     let workspace_change = self.pending_change.lock().take();
+    let (_read, _write) = if workspace_change.is_some() {
+      (None, Some(self.pending_change_lock.write().await))
+    } else {
+      (Some(self.pending_change_lock.read().await), None)
+    };
     let params = TsGoRequestParams {
       request,
       workspace_change,
@@ -637,6 +873,9 @@ impl TsGoServer {
         )
         .await
         .unwrap();
+        let tsgo_path = std::path::Path::new(
+          "/home/nayeem/projects/typescript-go/built/local/tsgo",
+        );
         TsGoServerInner::init(tsgo_path, snapshot).await
       })
       .await
@@ -656,7 +895,7 @@ impl TsGoServer {
       return;
     };
     *inner.snapshot.lock() = snapshot.clone();
-    let mut incoming = TsGoWorkspaceChange {
+    let incoming = TsGoWorkspaceChange {
       file_changes: documents
         .iter()
         .map(|(d, k)| TsGoFileChange {
@@ -664,72 +903,9 @@ impl TsGoServer {
           kind: (*k).into(),
         })
         .collect(),
-      new_configuration: configuration_changed.then(|| {
-        let by_compiler_options_key = snapshot
-          .compiler_options_resolver
-          .entries()
-          .map(|(k, d)| {
-            let (user_preferences, format_options) = d
-              .workspace_dir_or_source_url
-              .as_ref()
-              .map(|s| {
-                (
-                  super::tsc::UserPreferences::from_config_for_specifier(
-                    &snapshot.config,
-                    s,
-                  ),
-                  (&snapshot.config.tree.fmt_config_for_specifier(s).options)
-                    .into(),
-                )
-              })
-              .unwrap_or_default();
-            (
-              k.clone(),
-              TsGoProjectConfig {
-                compiler_options: d.compiler_options.clone(),
-                files: Default::default(),
-                user_preferences,
-                format_options,
-                compiler_options_key: k.clone(),
-                notebook_uri: None,
-              },
-            )
-          })
-          .collect::<BTreeMap<_, _>>();
-        let by_notebook_uri = snapshot
-          .document_modules
-          .documents
-          .cells_by_notebook_uri()
-          .keys()
-          .map(|u| {
-            let compiler_options_key = snapshot
-              .compiler_options_resolver
-              .entry_for_specifier(&uri_to_url(u))
-              .0;
-            let project_config =
-              by_compiler_options_key.get(compiler_options_key).unwrap();
-            (
-              u.clone(),
-              TsGoProjectConfig {
-                compiler_options: project_config.compiler_options.clone(),
-                files: Default::default(),
-                user_preferences: project_config.user_preferences.clone(),
-                format_options: project_config.format_options.clone(),
-                compiler_options_key: compiler_options_key.clone(),
-                notebook_uri: Some(u.clone()),
-              },
-            )
-          })
-          .collect::<BTreeMap<_, _>>();
-        TsGoWorkspaceConfig {
-          by_compiler_options_key,
-          by_notebook_uri,
-        }
-      }),
+      new_configuration: configuration_changed
+        .then(|| TsGoWorkspaceConfig::from_snapshot(&snapshot)),
     };
-    if let Some(workspace_config) = &mut incoming.new_configuration {
-      fill_workspace_config_file_names(workspace_config, &snapshot);
-    }
     let mut pending_change = inner.pending_change.lock();
     if let Some(existing) = pending_change.as_mut() {
       existing.coalesce(incoming);
