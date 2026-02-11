@@ -852,7 +852,7 @@ jobs:
         if: matrix.os == 'linux'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
       - name: jsdoc_checker.js
-        if: matrix.os == 'linux' && matrix.os == 'linux'
+        if: matrix.os == 'linux'
         run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: lint.js
         env:

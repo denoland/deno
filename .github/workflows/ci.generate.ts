@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { parse as parseToml } from "jsr:@std/toml@1";
-import { createWorkflow, job, step, steps } from "jsr:@david/gagen@0.1.2";
+import { createWorkflow, job, step } from "jsr:@david/gagen@0.2.3";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -266,7 +266,7 @@ const preBuildCheckStep = step({
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: steps(
+  steps: step(
     {
       name: "Configure git",
       run: [
@@ -396,7 +396,7 @@ const buildJob = job("build", {
     // disable anyhow's library backtrace
     RUST_LIB_BACKTRACE: 0,
   },
-  steps: steps(
+  steps: step(
     // GitHub does not make skipping a specific matrix element easy
     // so just apply the !(matrix.skip) condition to all the steps.
     // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
@@ -1171,7 +1171,7 @@ const lintJob = job("lint", {
       }],
     },
   },
-  steps: steps(
+  steps: step(
     {
       name: "Configure git",
       run: [
@@ -1226,7 +1226,7 @@ const lintJob = job("lint", {
       uses: "denoland/setup-deno@v2",
       with: { "deno-version": "v2.x" },
     },
-    steps(
+    step(
       {
         name: "test_format.js",
         run:
@@ -1279,7 +1279,7 @@ const libsJob = job("libs", {
       }],
     },
   },
-  steps: steps(
+  steps: step(
     {
       name: "Configure git",
       run: [
@@ -1377,7 +1377,7 @@ const publishCanaryJob = job("publish-canary", {
   runsOn: ubuntuX86Runner,
   needs: [buildJob],
   if: "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
-  steps: steps(
+  steps: step(
     {
       name: "Authenticate with Google Cloud",
       uses: "google-github-actions/auth@v3",
