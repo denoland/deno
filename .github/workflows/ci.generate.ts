@@ -492,7 +492,7 @@ const buildJob = job("build", {
     // e.g. a flaky test.
     // Don't fast-fail on tag build because publishing binaries shouldn't be
     // prevented if any of the stages fail (which can be a false negative).
-    failFast: isPR.or(isMainBranch.not().and(isTag.not())),
+    failFast: isPR.or(isMainBranch.not().and(isTag.not())).toString(),
   },
   env: {
     CARGO_TERM_COLOR: "always",
