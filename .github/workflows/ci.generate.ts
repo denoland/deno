@@ -2,8 +2,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { parse as parseToml } from "jsr:@std/toml@1";
 import {
+  conditions,
   createWorkflow,
   defineMatrix,
+  expr,
   job,
   step,
   steps,
@@ -233,6 +235,14 @@ function handleMatrixItems(items: {
   });
 }
 
+// shared conditions
+const isDenoland = expr("github.repository").equals("denoland/deno");
+const isMainBranch = conditions.isBranch("main");
+const isTag = conditions.isTag();
+const isNotTag = isTag.not();
+const isMainOrTag = isMainBranch.or(isTag);
+const isPR = conditions.isEvent("pull_request");
+
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
 // start the build job. This can be overridden by adding [ci] to the commit title
@@ -347,6 +357,16 @@ const buildMatrix = defineMatrix({
   }]),
 });
 
+// common build matrix conditions
+const isTest = buildMatrix.job.equals("test");
+const isBench = buildMatrix.job.equals("bench");
+const isTestOrBench = isTest.or(isBench);
+const isRelease = buildMatrix.profile.equals("release");
+const isDebug = buildMatrix.profile.equals("debug");
+const isLinux = buildMatrix.os.equals("linux");
+const isMacos = buildMatrix.os.equals("macos");
+const isWindows = buildMatrix.os.equals("windows");
+
 const buildJob = job("build", {
   name:
     `${buildMatrix.job} ${buildMatrix.profile} ${buildMatrix.os}-${buildMatrix.arch}`,
@@ -406,31 +426,29 @@ const buildJob = job("build", {
     },
     {
       name: "Clone submodule ./tests/wpt/suite",
-      if: "matrix.wpt",
+      if: buildMatrix.wpt,
       run:
         "git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite",
     },
     {
       name: "Clone submodule ./tests/node_compat/runner/suite",
-      if: "matrix.job == 'test'",
+      if: buildMatrix.job.equals("test"),
       run:
         "git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite",
     },
     {
       name: "Clone submodule ./cli/bench/testdata/lsp_benchdata",
-      if: "matrix.job == 'bench'",
+      if: buildMatrix.job.equals("bench"),
       run:
         "git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata",
     },
     {
       name: "Create source tarballs (release, linux)",
-      if: [
-        "matrix.os == 'linux' &&",
-        "matrix.profile == 'release' &&",
-        "matrix.job == 'test' &&",
-        "github.repository == 'denoland/deno' &&",
-        "startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: buildMatrix.os.equals("linux")
+        .and(buildMatrix.profile.equals("release"))
+        .and(buildMatrix.job.equals("test"))
+        .and(isDenoland)
+        .and(isTag),
       run: [
         "mkdir -p target/release",
         'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
@@ -457,7 +475,7 @@ const buildJob = job("build", {
     },
     { uses: "dsherret/rust-toolchain-file@v1" },
     {
-      if: "matrix.os == 'linux' && matrix.arch == 'aarch64'",
+      if: buildMatrix.os.equals("linux").and(buildMatrix.arch.equals("aarch64")),
       name: "Load 'vsock_loopback; kernel module",
       run: "sudo modprobe vsock_loopback",
     },
@@ -465,19 +483,19 @@ const buildJob = job("build", {
       name: "Install Deno",
       uses: "denoland/setup-deno@v2",
       with: { "deno-version": "v2.x" },
-      if:
-        "(matrix.job == 'test' || matrix.job == 'bench') && !(matrix.os == 'windows' && matrix.arch == 'aarch64')",
+      if: buildMatrix.job.equals("test").or(buildMatrix.job.equals("bench"))
+        .and(buildMatrix.os.equals("windows").and(buildMatrix.arch.equals("aarch64")).not()),
     },
     {
       name: "Install Python",
       uses: "actions/setup-python@v6",
       with: { "python-version": 3.11 },
-      if: "matrix.os != 'linux' || matrix.arch != 'aarch64'",
+      if: buildMatrix.os.notEquals("linux").or(buildMatrix.arch.notEquals("aarch64")),
     },
     {
       name: "Remove unused versions of Python",
-      if:
-        "(matrix.os != 'linux' || matrix.arch != 'aarch64') && (matrix.os == 'windows')",
+      if: buildMatrix.os.notEquals("linux").or(buildMatrix.arch.notEquals("aarch64"))
+        .and(buildMatrix.os.equals("windows")),
       shell: "pwsh",
       run: [
         '$env:PATH -split ";" |',
@@ -490,7 +508,7 @@ const buildJob = job("build", {
       name: "Install Node",
       uses: "actions/setup-node@v6",
       with: { "node-version": 22 },
-      if: "matrix.job == 'bench' || matrix.job == 'test'",
+      if: buildMatrix.job.equals("bench").or(buildMatrix.job.equals("test")),
     },
     {
       name: "Authenticate with Google Cloud",
@@ -501,53 +519,42 @@ const buildJob = job("build", {
         "export_environment_variables": true,
         "create_credentials_file": true,
       },
-      if: [
-        "matrix.profile == 'release' &&",
-        "matrix.job == 'test' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' ||",
-        "startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: buildMatrix.profile.equals("release")
+        .and(buildMatrix.job.equals("test"))
+        .and(isDenoland)
+        .and(isMainOrTag),
     },
     {
       name: "Setup gcloud (unix)",
-      if: [
-        "matrix.os != 'windows' &&",
-        "matrix.profile == 'release' &&",
-        "matrix.job == 'test' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' ||",
-        "startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: buildMatrix.os.notEquals("windows")
+        .and(buildMatrix.profile.equals("release"))
+        .and(buildMatrix.job.equals("test"))
+        .and(isDenoland)
+        .and(isMainOrTag),
       uses: "google-github-actions/setup-gcloud@v3",
       with: { project_id: "denoland" },
     },
     {
       name: "Setup gcloud (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.profile == 'release' &&",
-        "matrix.job == 'test' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' ||",
-        "startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: buildMatrix.os.equals("windows")
+        .and(buildMatrix.profile.equals("release"))
+        .and(buildMatrix.job.equals("test"))
+        .and(isDenoland)
+        .and(isMainOrTag),
       uses: "google-github-actions/setup-gcloud@v2",
       env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
       with: { project_id: "denoland" },
     },
     {
       name: "Configure canary build",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "github.ref == 'refs/heads/main'",
-      ].join("\n"),
+      if: buildMatrix.job.equals("test")
+        .and(buildMatrix.profile.equals("release"))
+        .and(isDenoland)
+        .and(isMainBranch),
       run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
     },
     {
-      if: "matrix.use_sysroot",
+      if: buildMatrix.use_sysroot,
       ...sysRootStepConfig,
     },
     {
@@ -559,11 +566,11 @@ const buildJob = job("build", {
         "cat /etc/hosts",
         "rm ~/.curlrc || true",
       ],
-      if: "matrix.os == 'macos'",
+      if: buildMatrix.os.equals("macos"),
     },
     {
       name: "Install macOS aarch64 lld",
-      if: "matrix.os == 'macos' && matrix.arch == 'aarch64'",
+      if: buildMatrix.os.equals("macos").and(buildMatrix.arch.equals("aarch64")),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: "./tools/install_prebuilt.js ld64.lld",
     },
@@ -571,10 +578,10 @@ const buildJob = job("build", {
       name: "Install rust-codesign",
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: "./tools/install_prebuilt.js rcodesign",
-      if: "matrix.os == 'macos'",
+      if: buildMatrix.os.equals("macos"),
     },
     {
-      if: "matrix.os == 'macos'",
+      if: buildMatrix.os.equals("macos"),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
     },
@@ -597,7 +604,7 @@ const buildJob = job("build", {
     },
     {
       name: "Install benchmark tools",
-      if: "matrix.job == 'bench'",
+      if: buildMatrix.job.equals("bench"),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: installBenchTools,
     },
@@ -605,8 +612,7 @@ const buildJob = job("build", {
       // Restore cache from the latest 'main' branch build.
       name: "Restore cache build output (PR)",
       uses: "actions/cache/restore@v4",
-      if:
-        "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+      if: isMainBranch.not().and(isNotTag),
       with: {
         path: prCachePath,
         key: "never_saved",
@@ -615,7 +621,7 @@ const buildJob = job("build", {
     },
     {
       name: "Apply and update mtime cache",
-      if: "!startsWith(github.ref, 'refs/tags/')",
+      if: isNotTag,
       uses: "./.github/mtime_cache",
       with: { "cache-path": "./target" },
     },
@@ -629,17 +635,15 @@ const buildJob = job("build", {
     },
     {
       name: "Build debug",
-      if: "matrix.job == 'test' && matrix.profile == 'debug'",
+      if: isTest.and(isDebug),
       run: "cargo build --locked --all-targets --features=panic-trace",
       env: { CARGO_PROFILE_DEV_DEBUG: 0 },
     },
     {
       name: "Build release",
-      if: [
-        "(matrix.job == 'test' || matrix.job == 'bench') &&",
-        "matrix.profile == 'release' && (matrix.use_sysroot ||",
-        "github.repository == 'denoland/deno')",
-      ].join("\n"),
+      if: isTestOrBench.and(isRelease).and(
+        buildMatrix.use_sysroot.equals(true).or(isDenoland),
+      ),
       run: [
         // output fs space before and after building
         "df -h",
@@ -651,24 +655,22 @@ const buildJob = job("build", {
       // Run a minimal check to ensure that binary is not corrupted, regardless
       // of our build mode
       name: "Check deno binary",
-      if: "matrix.job == 'test'",
+      if: isTest,
       run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
       env: { NO_COLOR: 1 },
     },
     {
       // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
       name: "Check deno binary (in sysroot)",
-      if: "matrix.job == 'test' && matrix.use_sysroot",
+      if: isTest.and(buildMatrix.use_sysroot.equals(true)),
       run:
         'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
     },
     {
       name: "Generate symcache",
-      if: [
-        "(matrix.job == 'test' || matrix.job == 'bench') &&",
-        "matrix.profile == 'release' && (matrix.use_sysroot ||",
-        "github.repository == 'denoland/deno')",
-      ].join("\n"),
+      if: isTestOrBench.and(isRelease).and(
+        buildMatrix.use_sysroot.equals(true).or(isDenoland),
+      ),
       run: [
         "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
         "du -h deno.symcache",
@@ -678,13 +680,9 @@ const buildJob = job("build", {
     },
     {
       name: "Upload PR artifact (linux)",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' && (matrix.use_sysroot ||",
-        "(github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' ||",
-        "startsWith(github.ref, 'refs/tags/'))))",
-      ].join("\n"),
+      if: isTest.and(isRelease).and(
+        buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isMainOrTag)),
+      ),
       uses: "actions/upload-artifact@v6",
       with: {
         name:
@@ -694,12 +692,7 @@ const buildJob = job("build", {
     },
     {
       name: "Pre-release (linux)",
-      if: [
-        "matrix.os == 'linux' &&",
-        "(matrix.job == 'test' || matrix.job == 'bench') &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno'",
-      ].join("\n"),
+      if: isLinux.and(isTestOrBench).and(isRelease).and(isDenoland),
       run: [
         "cd target/release",
         "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
@@ -714,12 +707,7 @@ const buildJob = job("build", {
     },
     {
       name: "Pre-release (mac)",
-      if: [
-        "matrix.os == 'macos' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno'",
-      ].join("\n"),
+      if: isMacos.and(isTest).and(isRelease).and(isDenoland),
       env: {
         "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
         "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
@@ -745,13 +733,7 @@ const buildJob = job("build", {
       // Note: Azure OIDC credentials are only valid for 5 minutes, so
       // authentication must be done right before signing.
       name: "Authenticate with Azure (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
       uses: "azure/login@v1",
       with: {
         "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
@@ -762,13 +744,7 @@ const buildJob = job("build", {
     },
     {
       name: "Code sign deno.exe (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
       uses: "Azure/artifact-signing-action@v0",
       with: {
         "endpoint": "https://eus.codesigning.azure.net/",
@@ -790,13 +766,7 @@ const buildJob = job("build", {
     },
     {
       name: "Verify signature (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
-      ].join("\n"),
+      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isMainOrTag),
       shell: "pwsh",
       run: [
         '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
@@ -806,12 +776,7 @@ const buildJob = job("build", {
     },
     {
       name: "Pre-release (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno'",
-      ].join("\n"),
+      if: isWindows.and(isTest).and(isRelease).and(isDenoland),
       shell: "pwsh",
       run: [
         "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
@@ -823,12 +788,7 @@ const buildJob = job("build", {
     },
     {
       name: "Upload canary to dl.deno.land",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "github.ref == 'refs/heads/main'",
-      ].join("\n"),
+      if: isTest.and(isRelease).and(isDenoland).and(isMainBranch),
       run: [
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
@@ -840,35 +800,25 @@ const buildJob = job("build", {
     },
     {
       name: "Autobahn testsuite",
-      if: [
-        "(matrix.os == 'linux' && matrix.arch != 'aarch64') &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "!startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isTest).and(
+        isRelease,
+      ).and(isNotTag),
       run:
         "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
     },
     {
       name: "Test (full, debug)",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'debug' &&",
-        "!startsWith(github.ref, 'refs/tags/') &&",
-        // Run full tests only on Linux.
-        "matrix.os == 'linux'",
-      ].join("\n"),
+      // run full tests only on Linux
+      if: isTest.and(isDebug).and(isNotTag).and(isLinux),
       run:
         `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
       env: { CARGO_PROFILE_DEV_DEBUG: 0 },
     },
     {
       name: "Test (fast, debug)",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'debug' &&",
-        "(startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux')",
-      ].join("\n"),
+      if: isTest.and(isDebug).and(
+        isTag.or(buildMatrix.os.notEquals("linux")),
+      ),
       run: [
         // Run unit then integration tests. Skip doc tests here
         // since they are sometimes very slow on Mac.
@@ -879,19 +829,15 @@ const buildJob = job("build", {
     },
     {
       name: "Test (release)",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "(matrix.use_sysroot || (",
-        "github.repository == 'denoland/deno' &&",
-        "!startsWith(github.ref, 'refs/tags/')))",
-      ].join("\n"),
+      if: isTest.and(isRelease).and(
+        buildMatrix.use_sysroot.equals(true).or(isDenoland.and(isNotTag)),
+      ),
       run:
         `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
     },
     {
       name: "Ensure no git changes",
-      if: "matrix.job == 'test' && github.event_name == 'pull_request'",
+      if: isTest.and(isPR),
       run: [
         'if [[ -n "$(git status --porcelain)" ]]; then',
         'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
@@ -905,23 +851,17 @@ const buildJob = job("build", {
     },
     {
       name: "Combine test results",
-      if: [
-        "always() &&",
-        "matrix.job == 'test' &&",
-        "!startsWith(github.ref, 'refs/tags/') &&",
-        "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
-      ].join("\n"),
+      if: conditions.status.always().and(isTest).and(isNotTag).and(
+        isWindows.and(buildMatrix.arch.equals("aarch64")).not(),
+      ),
       run: "deno run -RWN ./tools/combine_test_results.js",
     },
     {
       name: "Upload test results",
       uses: "actions/upload-artifact@v4",
-      if: [
-        "always() &&",
-        "matrix.job == 'test' &&",
-        "!startsWith(github.ref, 'refs/tags/') &&",
-        "!(matrix.os == 'windows' && matrix.arch == 'aarch64')",
-      ].join("\n"),
+      if: conditions.status.always().and(isTest).and(isNotTag).and(
+        isWindows.and(buildMatrix.arch.equals("aarch64")).not(),
+      ),
       with: {
         name:
           "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
@@ -930,13 +870,13 @@ const buildJob = job("build", {
     },
     {
       name: "Configure hosts file for WPT",
-      if: "matrix.wpt",
+      if: buildMatrix.wpt,
       run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
       workingDirectory: "tests/wpt/suite/",
     },
     {
       name: "Run web platform tests (debug)",
-      if: "matrix.wpt && matrix.profile == 'debug'",
+      if: buildMatrix.wpt.equals(true).and(isDebug),
       env: { DENO_BIN: "./target/debug/deno" },
       run: [
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
@@ -947,7 +887,7 @@ const buildJob = job("build", {
     },
     {
       name: "Run web platform tests (release)",
-      if: "matrix.wpt && matrix.profile == 'release'",
+      if: buildMatrix.wpt.equals(true).and(isRelease),
       env: { DENO_BIN: "./target/release/deno" },
       run: [
         "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
@@ -959,13 +899,9 @@ const buildJob = job("build", {
     {
       name: "Upload wpt results to dl.deno.land",
       continueOnError: true,
-      if: [
-        "matrix.wpt &&",
-        "matrix.os == 'linux' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: buildMatrix.wpt.equals(true).and(isLinux).and(isRelease).and(
+        isDenoland,
+      ).and(isMainBranch).and(isNotTag),
       run: [
         "gzip ./wptreport.json",
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
@@ -977,13 +913,9 @@ const buildJob = job("build", {
     {
       name: "Upload wpt results to wpt.fyi",
       continueOnError: true,
-      if: [
-        "matrix.wpt &&",
-        "matrix.os == 'linux' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: buildMatrix.wpt.equals(true).and(isLinux).and(isRelease).and(
+        isDenoland,
+      ).and(isMainBranch).and(isNotTag),
       env: {
         WPT_FYI_USER: "deno",
         WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
@@ -996,16 +928,12 @@ const buildJob = job("build", {
     },
     {
       name: "Run benchmarks",
-      if: "matrix.job == 'bench' && !startsWith(github.ref, 'refs/tags/')",
+      if: isBench.and(isNotTag),
       run: "cargo bench --locked",
     },
     {
       name: "Post benchmarks",
-      if: [
-        "matrix.job == 'bench' &&",
-        "github.repository == 'denoland/deno' &&",
-        "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: isBench.and(isDenoland).and(isMainBranch).and(isNotTag),
       env: { DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}" },
       run: [
         "git clone --depth 1 --branch gh-pages                             \\",
@@ -1022,8 +950,9 @@ const buildJob = job("build", {
     },
     {
       name: "Build product size info",
-      if:
-        "matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+      if: buildMatrix.profile.notEquals("debug").and(isDenoland).and(
+        isMainOrTag,
+      ),
       run: [
         'du -hd1 "./target/${{ matrix.profile }}"',
         'du -ha  "./target/${{ matrix.profile }}/deno"',
@@ -1032,18 +961,14 @@ const buildJob = job("build", {
     },
     {
       name: "Worker info",
-      if: "matrix.job == 'bench'",
+      if: isBench,
       run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
     },
     {
       name: "Upload release to dl.deno.land (unix)",
-      if: [
-        "matrix.os != 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: buildMatrix.os.notEquals("windows").and(isTest).and(isRelease).and(
+        isDenoland,
+      ).and(isTag),
       run: [
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
@@ -1052,13 +977,7 @@ const buildJob = job("build", {
     },
     {
       name: "Upload release to dl.deno.land (windows)",
-      if: [
-        "matrix.os == 'windows' &&",
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: isWindows.and(isTest).and(isRelease).and(isDenoland).and(isTag),
       env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
       run: [
         'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
@@ -1068,12 +987,7 @@ const buildJob = job("build", {
     },
     {
       name: "Create release notes",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: isTest.and(isRelease).and(isDenoland).and(isTag),
       run: [
         "export PATH=$PATH:$(pwd)/target/release",
         "./tools/release/05_create_release_notes.ts",
@@ -1082,12 +996,7 @@ const buildJob = job("build", {
     {
       name: "Upload release to GitHub",
       uses: "softprops/action-gh-release@v2",
-      if: [
-        "matrix.job == 'test' &&",
-        "matrix.profile == 'release' &&",
-        "github.repository == 'denoland/deno' &&",
-        "startsWith(github.ref, 'refs/tags/')",
-      ].join("\n"),
+      if: isTest.and(isRelease).and(isDenoland).and(isTag),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       with: {
         files: [
@@ -1126,7 +1035,7 @@ const buildJob = job("build", {
       // In main branch, always create a fresh cache
       name: "Save cache build output (main)",
       uses: "actions/cache/save@v4",
-      if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+      if: isTest.and(isMainBranch),
       with: { path: prCachePath, key: prCacheKey },
     },
   ).if("!(matrix.skip)"),
@@ -1199,8 +1108,7 @@ const lintJob = job("lint", {
     {
       name: "Restore cache build output (PR)",
       uses: "actions/cache/restore@v4",
-      if:
-        "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+      if: isMainBranch.not().and(isNotTag),
       with: {
         path: prCachePath,
         key: "never_saved",
@@ -1223,11 +1131,11 @@ const lintJob = job("lint", {
       },
       {
         name: "jsdoc_checker.js",
-        if: "matrix.os == 'linux'",
+        if: lintMatrix.os.equals("linux"),
         run:
           "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
       },
-    ).if("matrix.os == 'linux'"),
+    ).if(lintMatrix.os.equals("linux")),
     {
       name: "lint.js",
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
@@ -1237,7 +1145,7 @@ const lintJob = job("lint", {
     {
       name: "Save cache build output (main)",
       uses: "actions/cache/save@v4",
-      if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+      if: lintMatrix.job.equals("test").and(isMainBranch),
       with: { path: prCachePath, key: prCacheKey },
     },
   ),
@@ -1308,42 +1216,42 @@ const libsJob = job("libs", {
     },
     { uses: "dsherret/rust-toolchain-file@v1" },
     {
-      if: "matrix.os == 'macos'",
+      if: libsMatrix.os.equals("macos"),
       name: "Install Deno",
       uses: "denoland/setup-deno@v2",
       with: { "deno-version": "v2.x" },
     },
     {
       name: "Install macOS aarch64 lld",
-      if: "matrix.os == 'macos' && matrix.arch == 'aarch64'",
+      if: libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: "./tools/install_prebuilt.js ld64.lld",
     },
     {
-      if: "matrix.os == 'macos'",
+      if: libsMatrix.os.equals("macos"),
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
     },
     {
       name: "Install wasm target",
-      if: "matrix.os == 'linux'",
+      if: libsMatrix.os.equals("linux"),
       run: "rustup target add wasm32-unknown-unknown",
     },
     // we want these crates to be Wasm compatible
     {
       name: "Cargo check (deno_resolver)",
-      if: "matrix.os == 'linux'",
+      if: libsMatrix.os.equals("linux"),
       run:
         "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
     },
     {
       name: "Cargo check (deno_npm_installer)",
-      if: "matrix.os == 'linux'",
+      if: libsMatrix.os.equals("linux"),
       run: "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
     },
     {
       name: "Cargo check (deno_config)",
-      if: "matrix.os == 'linux'",
+      if: libsMatrix.os.equals("linux"),
       run: [
         "cargo check --no-default-features -p deno_config",
         "cargo check --no-default-features --features workspace -p deno_config",
@@ -1367,7 +1275,7 @@ const publishCanaryJob = job("publish-canary", {
   name: "publish canary",
   runsOn: ubuntuX86Runner,
   needs: [buildJob],
-  if: "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
+  if: isDenoland.and(isMainBranch),
   steps: steps(
     {
       name: "Authenticate with Google Cloud",
