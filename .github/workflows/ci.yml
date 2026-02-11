@@ -134,7 +134,7 @@ jobs:
             profile: release
             use_sysroot: true
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-      fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
+      fail-fast: 'github.event_name == ''pull_request'' || (!(github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/''))'
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full

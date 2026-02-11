@@ -420,9 +420,9 @@ const buildMatrix = defineMatrix({
     job: "test",
     profile: "release",
     use_sysroot: true,
-    // TODO(ry): Because CI is so slow on for OSX and Windows, we
+    // Because CI is so slow on for OSX and Windows, we
     // currently run the Web Platform tests only on Linux.
-    wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+    wpt: isNotTag.toString(),
   }, {
     ...Runners.linuxX86Xl,
     job: "bench",
@@ -485,8 +485,7 @@ const buildJob = job("build", {
   // This is required to successfully authenticate with Azure using OIDC for
   // code signing.
   environment: {
-    name:
-      "${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'build' || '' }}",
+    name: isMainOrTag.then("build").else(""),
   },
   timeoutMinutes: 240,
   defaults: {
@@ -622,9 +621,7 @@ const buildJob = job("build", {
       },
       {
         name: "Verify signature (windows)",
-        if: isWindows.and(isDenoland).and(
-          isMainOrTag,
-        ),
+        if: isWindows.and(isDenoland).and(isMainOrTag),
         shell: "pwsh",
         run: [
           '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
