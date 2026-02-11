@@ -340,7 +340,7 @@ const setupGcloud = step({
   uses: "google-github-actions/setup-gcloud@v2",
   env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
   with: { project_id: "denoland" },
-});
+}).dependsOn(installPythonStep);
 
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
@@ -655,29 +655,49 @@ const buildJob = job("build", {
         ],
       }).dependsOn(setupGcloud),
     ).if(isTest);
-    const cargoBuildReleaseStep = step({
-      name: "Configure canary build",
-      if: isMainBranch,
-      run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
-    }, {
-      name: "Build release",
-      run: [
-        // output fs space before and after building
-        "df -h",
-        "cargo build --release --locked --all-targets --features=panic-trace",
-        "df -h",
-      ],
-    }, {
-      name: "Generate symcache",
-      run: [
-        "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
-        "du -h deno.symcache",
-        "du -h target/release/deno",
-      ],
-      env: { NO_COLOR: 1 },
-    }, preRelease)
-      .dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
-      .if(isRelease.and(isDenoland));
+    const cargoBuildReleaseStep = step(
+      {
+        name: "Configure canary build",
+        if: isTest.and(isMainBranch),
+        run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
+      },
+      {
+        name: "Build release",
+        run: [
+          // output fs space before and after building
+          "df -h",
+          "cargo build --release --locked --all-targets --features=panic-trace",
+          "df -h",
+        ],
+      },
+      {
+        name: "Generate symcache",
+        run: [
+          "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
+          "du -h deno.symcache",
+          "du -h target/release/deno",
+        ],
+        env: { NO_COLOR: 1 },
+      },
+      preRelease,
+      {
+        name: "Build product size info",
+        if: isMainOrTag,
+        run: [
+          'du -hd1 "./target/${{ matrix.profile }}"',
+          'du -ha  "./target/${{ matrix.profile }}/deno"',
+          'du -ha  "./target/${{ matrix.profile }}/denort"',
+        ],
+      },
+    )
+      .dependsOn(
+        installLldStep,
+        installRustStep,
+        cacheCargoHomeStep,
+        cargoBuildCacheStep,
+        sysRootStep,
+      )
+      .if(isRelease.and(isDenoland.or(buildMatrix.use_sysroot.equals(true))));
     const cargoBuildStep = step(
       {
         name: "Build debug",
@@ -702,7 +722,12 @@ const buildJob = job("build", {
         run:
           'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
       },
-    ).dependsOn(installLldStep, cargoBuildCacheStep, sysRootStep)
+    ).dependsOn(
+      installLldStep,
+      installRustStep,
+      cargoBuildCacheStep,
+      sysRootStep,
+    )
       .comesAfter(tarSourcePublishStep);
 
     const benchStep = step(
@@ -739,7 +764,8 @@ const buildJob = job("build", {
         name: "Worker info",
         run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
       },
-    ).if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease));
+    ).dependsOn(installNodeStep)
+      .if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease));
 
     const testStep = step(
       cloneSubmodule("./tests/node_compat/runner/suite"),
@@ -789,7 +815,9 @@ const buildJob = job("build", {
       },
       {
         name: "Test (release)",
-        if: isRelease.and(isDenoland).and(isNotTag),
+        if: isRelease.and(
+          isDenoland.or(buildMatrix.use_sysroot.equals(true)),
+        ).and(isNotTag),
         run:
           `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
       },
@@ -1091,6 +1119,7 @@ const libsJob = job("libs", {
       cloneRepoStep,
       cacheCargoHomeStep,
       restoreCacheBuildOutputStep,
+      installRustStep,
     );
 
     const macSetup = step(
@@ -1151,7 +1180,21 @@ const publishCanaryJob = job("publish-canary", {
   needs: [buildJob],
   if: isDenoland.and(isMainBranch),
   steps: step(
-    setupGcloud,
+    {
+      name: "Authenticate with Google Cloud",
+      uses: "google-github-actions/auth@v3",
+      with: {
+        "project_id": "denoland",
+        "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+        "export_environment_variables": true,
+        "create_credentials_file": true,
+      },
+    },
+    {
+      name: "Setup gcloud",
+      uses: "google-github-actions/setup-gcloud@v3",
+      with: { project_id: "denoland" },
+    },
     {
       name: "Upload canary version file to dl.deno.land",
       run: [
