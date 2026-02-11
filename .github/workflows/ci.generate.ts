@@ -9,7 +9,7 @@ import {
   job,
   step,
   steps,
-} from "jsr:@david/gagen@0.1.2";
+} from "jsr:@david/gagen@0.2.1";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -243,6 +243,64 @@ const isNotTag = isTag.not();
 const isMainOrTag = isMainBranch.or(isTag);
 const isPR = conditions.isEvent("pull_request");
 
+// shared steps
+const cloneRepoSteps = steps({
+  name: "Configure git",
+  run: [
+    "git config --global core.symlinks true",
+    "git config --global fetch.parallel 32",
+  ],
+}, {
+  name: "Clone repository",
+  uses: "actions/checkout@v6",
+  with: {
+    // Use depth > 1, because sometimes we need to rebuild main and if
+    // other commits have landed it will become impossible to rebuild if
+    // the checkout is too shallow.
+    "fetch-depth": 5,
+    submodules: false,
+  },
+});
+const cloneStdSubmodule = step({
+  name: "Clone submodule ./tests/util/std",
+  run: "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
+});
+const installDenoStep = step({
+  name: "Install Deno",
+  uses: "denoland/setup-deno@v2",
+  with: { "deno-version": "v2.x" },
+});
+const installLldStep = step({
+  name: "Install macOS aarch64 lld",
+  env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+  run: "./tools/install_prebuilt.js ld64.lld",
+}).dependsOn(cloneStdSubmodule, installDenoStep);
+const cacheCargoHomeStep = step({
+  name: "Cache Cargo home",
+  uses: "cirruslabs/cache@v4",
+  with: {
+    path: [
+      "~/.cargo/.crates.toml",
+      "~/.cargo/.crates2.json",
+      "~/.cargo/bin",
+      "~/.cargo/registry/index",
+      "~/.cargo/registry/cache",
+      "~/.cargo/git/db",
+    ].join("\n"),
+    key:
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+    "restore-keys":
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+  },
+});
+const installRustStep = step({
+  uses: "dsherret/rust-toolchain-file@v1",
+});
+const installWasmStep = step({
+  name: "Install wasm target",
+  run: "rustup target add wasm32-unknown-unknown",
+});
+
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
 // start the build job. This can be overridden by adding [ci] to the commit title
@@ -262,24 +320,7 @@ const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
   steps: steps(
-    {
-      name: "Configure git",
-      run: [
-        "git config --global core.symlinks true",
-        "git config --global fetch.parallel 32",
-      ],
-    },
-    {
-      name: "Clone repository",
-      uses: "actions/checkout@v6",
-      with: {
-        // Use depth > 1, because sometimes we need to rebuild main and if
-        // other commits have landed it will become impossible to rebuild if
-        // the checkout is too shallow.
-        "fetch-depth": 5,
-        submodules: false,
-      },
-    },
+    cloneRepoSteps,
     preBuildCheckStep,
   ).if("github.event.pull_request.draft == true"),
   outputs: { skip_build: preBuildCheckStep.outputs.skip_build },
@@ -404,21 +445,7 @@ const buildJob = job("build", {
     RUST_LIB_BACKTRACE: 0,
   },
   steps: steps(
-    // GitHub does not make skipping a specific matrix element easy
-    // so just apply the !(matrix.skip) condition to all the steps.
-    // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
-    {
-      name: "Configure git",
-      run: [
-        "git config --global core.symlinks true",
-        "git config --global fetch.parallel 32",
-      ],
-    },
-    {
-      name: "Clone repository",
-      uses: "actions/checkout@v6",
-      with: { "fetch-depth": 5, submodules: false },
-    },
+    cloneRepoSteps,
     {
       name: "Clone submodule ./tests/util/std",
       run:
@@ -455,46 +482,36 @@ const buildJob = job("build", {
         "    -czvf target/release/deno_src.tar.gz -C .. deno",
       ],
     },
+    cacheCargoHomeStep,
+    installRustStep,
     {
-      name: "Cache Cargo home",
-      uses: "cirruslabs/cache@v4",
-      with: {
-        path: [
-          "~/.cargo/.crates.toml",
-          "~/.cargo/.crates2.json",
-          "~/.cargo/bin",
-          "~/.cargo/registry/index",
-          "~/.cargo/registry/cache",
-          "~/.cargo/git/db",
-        ].join("\n"),
-        key:
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-        "restore-keys":
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-      },
-    },
-    { uses: "dsherret/rust-toolchain-file@v1" },
-    {
-      if: buildMatrix.os.equals("linux").and(buildMatrix.arch.equals("aarch64")),
+      if: buildMatrix.os.equals("linux").and(
+        buildMatrix.arch.equals("aarch64"),
+      ),
       name: "Load 'vsock_loopback; kernel module",
       run: "sudo modprobe vsock_loopback",
     },
-    {
-      name: "Install Deno",
-      uses: "denoland/setup-deno@v2",
-      with: { "deno-version": "v2.x" },
-      if: buildMatrix.job.equals("test").or(buildMatrix.job.equals("bench"))
-        .and(buildMatrix.os.equals("windows").and(buildMatrix.arch.equals("aarch64")).not()),
-    },
+    installDenoStep.if(
+      buildMatrix.job.equals("test").or(buildMatrix.job.equals("bench"))
+        .and(
+          buildMatrix.os.equals("windows").and(
+            buildMatrix.arch.equals("aarch64"),
+          ).not(),
+        ),
+    ),
     {
       name: "Install Python",
       uses: "actions/setup-python@v6",
       with: { "python-version": 3.11 },
-      if: buildMatrix.os.notEquals("linux").or(buildMatrix.arch.notEquals("aarch64")),
+      if: buildMatrix.os.notEquals("linux").or(
+        buildMatrix.arch.notEquals("aarch64"),
+      ),
     },
     {
       name: "Remove unused versions of Python",
-      if: buildMatrix.os.notEquals("linux").or(buildMatrix.arch.notEquals("aarch64"))
+      if: buildMatrix.os.notEquals("linux").or(
+        buildMatrix.arch.notEquals("aarch64"),
+      )
         .and(buildMatrix.os.equals("windows")),
       shell: "pwsh",
       run: [
@@ -568,12 +585,11 @@ const buildJob = job("build", {
       ],
       if: buildMatrix.os.equals("macos"),
     },
-    {
-      name: "Install macOS aarch64 lld",
-      if: buildMatrix.os.equals("macos").and(buildMatrix.arch.equals("aarch64")),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: "./tools/install_prebuilt.js ld64.lld",
-    },
+    installLldStep.if(
+      buildMatrix.os.equals("macos").and(
+        buildMatrix.arch.equals("aarch64"),
+      ),
+    ),
     {
       name: "Install rust-codesign",
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
@@ -1070,41 +1086,9 @@ const lintJob = job("lint", {
     matrix: lintMatrix,
   },
   steps: steps(
-    {
-      name: "Configure git",
-      run: [
-        "git config --global core.symlinks true",
-        "git config --global fetch.parallel 32",
-      ],
-    },
-    {
-      name: "Clone repository",
-      uses: "actions/checkout@v6",
-      with: { "fetch-depth": 5, submodules: false },
-    },
-    {
-      name: "Clone submodule ./tests/util/std",
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
-    },
-    {
-      name: "Cache Cargo home",
-      uses: "cirruslabs/cache@v4",
-      with: {
-        path: [
-          "~/.cargo/.crates.toml",
-          "~/.cargo/.crates2.json",
-          "~/.cargo/bin",
-          "~/.cargo/registry/index",
-          "~/.cargo/registry/cache",
-          "~/.cargo/git/db",
-        ].join("\n"),
-        key:
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-        "restore-keys":
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-      },
-    },
+    cloneRepoSteps,
+    cloneStdSubmodule,
+    cacheCargoHomeStep,
     {
       name: "Restore cache build output (PR)",
       uses: "actions/cache/restore@v4",
@@ -1115,14 +1099,8 @@ const lintJob = job("lint", {
         "restore-keys": prCacheKeyPrefix,
       },
     },
-    {
-      uses: "dsherret/rust-toolchain-file@v1",
-    },
-    {
-      name: "Install Deno",
-      uses: "denoland/setup-deno@v2",
-      with: { "deno-version": "v2.x" },
-    },
+    installRustStep,
+    installDenoStep,
     steps(
       {
         name: "test_format.js",
@@ -1131,7 +1109,6 @@ const lintJob = job("lint", {
       },
       {
         name: "jsdoc_checker.js",
-        if: lintMatrix.os.equals("linux"),
         run:
           "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
       },
@@ -1178,95 +1155,58 @@ const libsJob = job("libs", {
   strategy: {
     matrix: libsMatrix,
   },
-  steps: steps(
-    {
-      name: "Configure git",
-      run: [
-        "git config --global core.symlinks true",
-        "git config --global fetch.parallel 32",
-      ],
-    },
-    {
-      name: "Clone repository",
-      uses: "actions/checkout@v6",
-      with: { "fetch-depth": 5, submodules: false },
-    },
-    {
-      name: "Clone submodule ./tests/util/std",
-      run:
-        "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
-    },
-    {
-      name: "Cache Cargo home",
-      uses: "cirruslabs/cache@v4",
-      with: {
-        path: [
-          "~/.cargo/.crates.toml",
-          "~/.cargo/.crates2.json",
-          "~/.cargo/bin",
-          "~/.cargo/registry/index",
-          "~/.cargo/registry/cache",
-          "~/.cargo/git/db",
-        ].join("\n"),
-        key:
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-        "restore-keys":
-          `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+  steps: (() => {
+    const repoSetupSteps = steps(
+      cloneRepoSteps,
+      cacheCargoHomeStep,
+    );
+
+    const macSetup = steps(
+      installLldStep,
+      {
+        if: libsMatrix.os.equals("macos"),
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
       },
-    },
-    { uses: "dsherret/rust-toolchain-file@v1" },
-    {
-      if: libsMatrix.os.equals("macos"),
-      name: "Install Deno",
-      uses: "denoland/setup-deno@v2",
-      with: { "deno-version": "v2.x" },
-    },
-    {
-      name: "Install macOS aarch64 lld",
-      if: libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: "./tools/install_prebuilt.js ld64.lld",
-    },
-    {
-      if: libsMatrix.os.equals("macos"),
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-    },
-    {
-      name: "Install wasm target",
-      if: libsMatrix.os.equals("linux"),
-      run: "rustup target add wasm32-unknown-unknown",
-    },
-    // we want these crates to be Wasm compatible
-    {
-      name: "Cargo check (deno_resolver)",
-      if: libsMatrix.os.equals("linux"),
-      run:
-        "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-    },
-    {
-      name: "Cargo check (deno_npm_installer)",
-      if: libsMatrix.os.equals("linux"),
-      run: "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-    },
-    {
-      name: "Cargo check (deno_config)",
-      if: libsMatrix.os.equals("linux"),
-      run: [
-        "cargo check --no-default-features -p deno_config",
-        "cargo check --no-default-features --features workspace -p deno_config",
-        "cargo check --no-default-features --features package_json -p deno_config",
-        "cargo check --no-default-features --features workspace --features sync -p deno_config",
-        "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-        "cargo check -p deno --features=lsp-tracing",
-      ],
-    },
-    {
-      name: "Test libs",
-      run: `cargo test --locked ${libTestCrateArgs}`,
-      env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-    },
-  ).if("!(matrix.skip)"),
+    ).dependsOn(repoSetupSteps).if(
+      libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
+    );
+
+    const linuxCargoChecks = steps(
+      // we want these crates to be Wasm compatible
+      {
+        name: "Cargo check (deno_resolver)",
+        run:
+          "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+      },
+      {
+        name: "Cargo check (deno_npm_installer)",
+        run:
+          "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+      },
+      {
+        name: "Cargo check (deno_config)",
+        run: [
+          "cargo check --no-default-features -p deno_config",
+          "cargo check --no-default-features --features workspace -p deno_config",
+          "cargo check --no-default-features --features package_json -p deno_config",
+          "cargo check --no-default-features --features workspace --features sync -p deno_config",
+          "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          "cargo check -p deno --features=lsp-tracing",
+        ],
+      },
+    ).dependsOn(installWasmStep, repoSetupSteps)
+      .if(libsMatrix.os.equals("linux"));
+
+    return steps(
+      linuxCargoChecks,
+      step({
+        name: "Test libs",
+        run: `cargo test --locked ${libTestCrateArgs}`,
+        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+      }).dependsOn(repoSetupSteps, macSetup),
+    ).if("!(matrix.skip)");
+  })(),
 });
 
 // === publish-canary job ===
