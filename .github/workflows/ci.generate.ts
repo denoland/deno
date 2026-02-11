@@ -2,13 +2,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { parse as parseToml } from "jsr:@std/toml@1";
 import {
+  Condition,
   conditions,
   createWorkflow,
   defineMatrix,
   expr,
   job,
   step,
-} from "jsr:@david/gagen@0.2.3";
+} from "jsr:@david/gagen@0.2.4";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -25,6 +26,20 @@ const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
+// shared conditions
+const isDenoland = expr("github.repository").equals("denoland/deno");
+const isMainBranch = conditions.isBranch("main");
+const isTag = conditions.isTag();
+const isNotTag = isTag.not();
+const isMainOrTag = isMainBranch.or(isTag);
+const isPR = conditions.isEvent("pull_request");
+const hasCiFullLabel = expr(
+  "github.event.pull_request.labels.*.name",
+).contains("ci-full");
+const hasCiBenchLabel = expr(
+  "github.event.pull_request.labels.*.name",
+).contains("ci-bench");
+
 const Runners = {
   linuxX86: {
     os: "linux",
@@ -34,8 +49,8 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner:
-      `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
+    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner)
+      .toString(),
   },
   linuxArm: {
     os: "linux",
@@ -55,9 +70,9 @@ const Runners = {
   macosArmSelfHosted: {
     os: "macos",
     arch: "aarch64",
-    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
-    runner:
-      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+    // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
+    runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
+      .else(macosArmRunner).toString(),
   },
   windowsX86: {
     os: "windows",
@@ -67,8 +82,8 @@ const Runners = {
   windowsX86Xl: {
     os: "windows",
     arch: "x86_64",
-    runner:
-      `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+    runner: isDenoland.then(windowsX86XlRunner).else(windowsX86Runner)
+      .toString(),
   },
   windowsArm: {
     os: "windows",
@@ -181,16 +196,8 @@ CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
-function removeSurroundingExpression(text: string) {
-  if (text.startsWith("${{")) {
-    return text.replace(/^\${{/, "").replace(/}}$/, "").trim();
-  } else {
-    return `'${text}'`;
-  }
-}
-
 function handleMatrixItems(items: {
-  skip_pr?: string | true;
+  skip_pr?: Condition | true;
   skip?: string;
   os: "linux" | "macos" | "windows";
   arch: "x86_64" | "aarch64";
@@ -201,44 +208,28 @@ function handleMatrixItems(items: {
   wpt?: string;
 }[]) {
   return items.map((item) => {
+    // skip_pr is shorthand for skip on pull_request events.
     // use a free "ubuntu" runner on jobs that are skipped
-
-    // skip_pr is shorthand for skip = github.event_name == 'pull_request'.
     if (item.skip_pr != null) {
-      if (item.skip_pr === true) {
-        item.skip = "${{ github.event_name == 'pull_request' }}";
-      } else if (typeof item.skip_pr === "string") {
-        item.skip = "${{ github.event_name == 'pull_request' && " +
-          removeSurroundingExpression(item.skip_pr.toString()) + " }}";
-      }
-      delete item.skip_pr;
-    }
-
-    if (typeof item.skip === "string") {
-      let runner =
-        "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (";
-      runner += removeSurroundingExpression(item.skip.toString()) + ")) && ";
-      runner += `'${ubuntuX86Runner}' || ${
-        removeSurroundingExpression(item.runner)
-      } }}`;
-
-      item.runner = runner;
-      item.skip =
-        "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" +
-        removeSurroundingExpression(item.skip.toString()) + ") }}";
+      const skipCondition = item.skip_pr === true
+        ? isPR
+        : isPR.and(item.skip_pr);
+      const shouldSkip = hasCiFullLabel.not().and(skipCondition);
+      const originalRunner = item.runner.startsWith("${{")
+        ? expr(item.runner.slice(3, -2).trim())
+        : item.runner;
+      const { skip_pr: _, ...rest } = item;
+      return {
+        ...rest,
+        runner: shouldSkip.then(ubuntuX86Runner).else(originalRunner)
+          .toString(),
+        skip: shouldSkip.toString(),
+      };
     }
 
     return { ...item };
   });
 }
-
-// shared conditions
-const isDenoland = expr("github.repository").equals("denoland/deno");
-const isMainBranch = conditions.isBranch("main");
-const isTag = conditions.isTag();
-const isNotTag = isTag.not();
-const isMainOrTag = isMainBranch.or(isTag);
-const isPR = conditions.isEvent("pull_request");
 
 // shared steps
 const cloneRepoStep = step({
@@ -428,8 +419,7 @@ const buildMatrix = defineMatrix({
     job: "bench",
     profile: "release",
     use_sysroot: true,
-    skip_pr:
-      "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+    skip_pr: hasCiBenchLabel.not(),
   }, {
     ...Runners.linuxX86,
     job: "test",

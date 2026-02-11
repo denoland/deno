@@ -65,10 +65,10 @@ jobs:
             profile: debug
           - os: macos
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' }}'
           - os: macos
             arch: aarch64
             runner: macos-14
@@ -76,10 +76,10 @@ jobs:
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' }}'
           - os: windows
             arch: x86_64
             runner: windows-2022
@@ -87,10 +87,10 @@ jobs:
             profile: debug
           - os: windows
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' }}'
           - os: windows
             arch: aarch64
             runner: windows-11-arm
@@ -98,10 +98,10 @@ jobs:
             profile: debug
           - os: windows
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
             job: test
             profile: release
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' }}'
           - os: linux
             arch: x86_64
             runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -111,11 +111,11 @@ jobs:
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
           - os: linux
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) }}'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
           - os: linux
             arch: x86_64
             runner: ubuntu-24.04
@@ -129,12 +129,12 @@ jobs:
             profile: debug
           - os: linux
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+            runner: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
             job: test
             profile: release
             use_sysroot: true
-            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
-      fail-fast: 'github.event_name == ''pull_request'' || (!(github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/''))'
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' }}'
+      fail-fast: 'github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
@@ -192,7 +192,7 @@ jobs:
         if: '!(matrix.skip) && !startsWith(github.ref, ''refs/tags/'')'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: '!(matrix.skip) && !(github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(matrix.skip) && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -586,7 +586,7 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
       - name: Upload release to dl.deno.land (unix)
-        if: '!(matrix.skip) && matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && !(matrix.os == ''windows'')'
+        if: '!(matrix.skip) && matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && matrix.os != ''windows'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
@@ -704,7 +704,7 @@ jobs:
           restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: '!(github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -789,7 +789,7 @@ jobs:
           restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: '!(github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
