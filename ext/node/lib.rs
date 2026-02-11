@@ -284,6 +284,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_file_from_fd,
     ops::fs::op_node_get_fd,
     ops::fs::op_node_dup_fd,
+    ops::fs::op_node_unregister_fd,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -687,9 +688,11 @@ deno_core::extension!(deno_node,
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
+    node_fs_opened_fds: ops::fs::NodeFsOpenedFds,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(options.node_fs_opened_fds.clone());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());

@@ -216,6 +216,9 @@ pub struct WorkerServiceOptions<
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
 
   pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
+
+  /// Process-wide set of fds opened via node:fs, shared across workers.
+  pub node_fs_opened_fds: deno_node::ops::fs::NodeFsOpenedFds,
 }
 
 pub struct WorkerOptions {
@@ -596,7 +599,11 @@ impl MainWorker {
           TInNpmPackageChecker,
           TNpmPackageFolderResolver,
           TExtNodeSys,
-        >(services.node_services, services.fs.clone()),
+        >(
+          services.node_services,
+          services.fs.clone(),
+          services.node_fs_opened_fds,
+        ),
         ops::runtime::deno_runtime::args(main_module.clone()),
         ops::worker_host::deno_worker_host::args(
           options.create_web_worker_cb.clone(),

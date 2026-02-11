@@ -47,7 +47,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
-    >(None, fs.clone()),
+    >(None, fs.clone(), Default::default()),
     ops::runtime::deno_runtime::init("deno:runtime".parse().unwrap()),
     ops::worker_host::deno_worker_host::init(
       Arc::new(|_| unreachable!("not used in snapshot.")),

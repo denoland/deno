@@ -396,6 +396,9 @@ pub struct WebWorkerServiceOptions<
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
+
+  /// Process-wide set of fds opened via node:fs, shared across workers.
+  pub node_fs_opened_fds: deno_node::ops::fs::NodeFsOpenedFds,
 }
 
 pub struct WebWorkerOptions {
@@ -586,7 +589,11 @@ impl WebWorker {
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
-      >(services.node_services, services.fs),
+      >(
+        services.node_services,
+        services.fs,
+        services.node_fs_opened_fds,
+      ),
       // Runtime ops that are always initialized for WebWorkers
       ops::runtime::deno_runtime::init(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init(

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-import { op_node_dup_fd } from "ext:core/ops";
+import { op_node_dup_fd, op_node_unregister_fd } from "ext:core/ops";
 
 const { MapPrototypeGet, MapPrototypeSet, MapPrototypeDelete, SafeMap } =
   primordials;
@@ -41,4 +41,7 @@ export function getRid(fd: number): number {
 
 export function unregisterFd(fd: number): void {
   MapPrototypeDelete(fdMap, fd);
+  if (fd >= 3) {
+    op_node_unregister_fd(fd);
+  }
 }

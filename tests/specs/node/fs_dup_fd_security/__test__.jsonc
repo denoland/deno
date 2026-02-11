@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "non_node_fs_fd_rejected": {
+      "args": "run --allow-read --allow-write main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -527,6 +527,7 @@ mod tests {
         v8_code_cache: Default::default(),
         fs,
         bundle_provider: None,
+        node_fs_opened_fds: Default::default(),
       },
       options,
     )
