@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { parse as parseToml } from "jsr:@std/toml@1";
-import { createWorkflow, job, step, steps } from "jsr:@david/gagen@0.1.0";
+import { createWorkflow, job, step, steps } from "jsr:@david/gagen@0.1.2";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
