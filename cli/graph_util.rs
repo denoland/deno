@@ -1047,7 +1047,9 @@ impl ModuleGraphBuilder {
     graph_kind: GraphKind,
   ) -> Vec<deno_graph::ReferrerImports> {
     if graph_kind.include_types() {
-      self.compiler_options_resolver.to_compiler_options_types_imports()
+      self
+        .compiler_options_resolver
+        .to_compiler_options_types_imports()
     } else {
       Vec::new()
     }
