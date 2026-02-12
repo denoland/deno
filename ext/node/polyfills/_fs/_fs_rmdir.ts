@@ -3,6 +3,7 @@
 import {
   emitRecursiveRmdirWarning,
   getValidatedPathToString,
+  RmOptions,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
@@ -26,6 +27,26 @@ type rmdirOptions = {
 };
 
 type rmdirCallback = (err?: Error) => void;
+
+const rmdirRecursive =
+  (path: string, callback: rmdirCallback) =>
+  (err: Error | false | null, options?: RmOptions) => {
+    if (err === false) {
+      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
+    }
+    if (err) {
+      return callback(err);
+    }
+
+    PromisePrototypeThen(
+      Deno.remove(path, { recursive: options?.recursive }),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  };
 
 export function rmdir(
   path: string | Buffer | URL,
@@ -54,23 +75,7 @@ export function rmdir(
       path,
       { ...options, force: false },
       true,
-      (err, options) => {
-        if (err === false) {
-          return callback(new ERR_FS_RMDIR_ENOTDIR(path));
-        }
-        if (err) {
-          return callback(err);
-        }
-
-        PromisePrototypeThen(
-          Deno.remove(path, { recursive: options?.recursive }),
-          (_) => callback(),
-          (err: Error) =>
-            callback(
-              denoErrorToNodeError(err, { syscall: "rmdir", path }),
-            ),
-        );
-      },
+      rmdirRecursive(path, callback),
     );
   } else {
     validateRmdirOptions(options);
