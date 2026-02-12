@@ -656,6 +656,7 @@ impl CliFactory {
             | DenoSubcommand::Types
             | DenoSubcommand::Upgrade { .. }
             | DenoSubcommand::Vendor
+            | DenoSubcommand::Pack { .. }
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
             | DenoSubcommand::X { .. }
