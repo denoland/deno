@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::swc::ast as swc_ast;
@@ -44,7 +43,15 @@ pub async fn pack(
 
   // Check if git repository is clean (unless --allow-dirty)
   if !pack_flags.allow_dirty {
-    check_git_status(cli_options.initial_cwd())?;
+    if let Some(dirty) =
+      crate::tools::publish::check_if_git_repo_dirty(cli_options.initial_cwd())
+        .await
+    {
+      bail!(
+        "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
+        dirty
+      );
+    }
   }
 
   // Get package configs
@@ -783,42 +790,6 @@ fn extract_dts(
 
 fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
   files.iter().any(|f| f.uses_deno)
-}
-
-fn check_git_status(cwd: &Path) -> Result<(), AnyError> {
-  // Check if .git directory exists
-  let git_dir = cwd.join(".git");
-  if !git_dir.exists() {
-    // Not a git repository, skip check
-    return Ok(());
-  }
-
-  // Run git status --porcelain to check for uncommitted changes
-  let output = std::process::Command::new("git")
-    .arg("status")
-    .arg("--porcelain")
-    .current_dir(cwd)
-    .output();
-
-  match output {
-    Ok(output) => {
-      if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if !stdout.trim().is_empty() {
-          bail!(
-            "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
-            stdout.trim()
-          );
-        }
-      }
-      // If git command fails, just warn but don't block
-      Ok(())
-    }
-    Err(_) => {
-      // Git not available or command failed, skip check
-      Ok(())
-    }
-  }
 }
 
 #[cfg(test)]
