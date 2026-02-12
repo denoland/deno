@@ -48,7 +48,8 @@ pub mod x509;
 
 use self::digest::match_fixed_digest_with_eager_block_buffer;
 
-deno_core::extension!(deno_node_crypto,
+deno_core::extension!(
+  deno_node_crypto,
   ops = [
     op_node_check_prime_async,
     op_node_check_prime_bytes_async,
@@ -155,9 +156,7 @@ deno_core::extension!(deno_node_crypto,
     x509::op_node_x509_key_usage,
     x509::op_node_x509_public_key,
   ],
-  objects = [
-    digest::Hasher,
-  ],
+  objects = [digest::Hasher,],
 );
 
 #[op2(fast)]

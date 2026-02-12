@@ -14,16 +14,10 @@ pub use session::Session;
 pub use sql_tag_store::SQLTagStore;
 pub use statement::StatementSync;
 
-deno_core::extension!(deno_node_sqlite,
-  ops = [
-    op_node_database_backup,
-  ],
-  objects = [
-    DatabaseSync,
-    Session,
-    SQLTagStore,
-    StatementSync,
-  ],
+deno_core::extension!(
+  deno_node_sqlite,
+  ops = [op_node_database_backup,],
+  objects = [DatabaseSync, Session, SQLTagStore, StatementSync,],
 );
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
