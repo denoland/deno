@@ -43,8 +43,8 @@ use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
 use webpki_root_certs;
 
-use super::crypto::x509::Certificate;
-use super::crypto::x509::CertificateObject;
+use deno_node_crypto::x509::Certificate;
+use deno_node_crypto::x509::CertificateObject;
 
 #[derive(Clone)]
 struct NodeTlsState {

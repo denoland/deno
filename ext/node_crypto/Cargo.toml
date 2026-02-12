@@ -1,0 +1,65 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_node_crypto"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Node crypto compatibility for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+aead-gcm-stream.workspace = true
+aes.workspace = true
+aws-lc-rs.workspace = true
+base64.workspace = true
+blake2.workspace = true
+cbc.workspace = true
+const-oid.workspace = true
+ctr.workspace = true
+data-encoding.workspace = true
+deno_core.workspace = true
+deno_crypto_provider.workspace = true
+deno_error.workspace = true
+der = { workspace = true, features = ["derive"] }
+digest = { workspace = true, features = ["core-api", "std"] }
+dsa.workspace = true
+ecb.workspace = true
+ecdsa.workspace = true
+ed25519-dalek = { workspace = true, features = ["digest", "pkcs8", "rand_core", "signature"] }
+elliptic-curve.workspace = true
+faster-hex.workspace = true
+hkdf.workspace = true
+k256.workspace = true
+md-5 = { workspace = true, features = ["oid"] }
+md4.workspace = true
+num-bigint.workspace = true
+num-bigint-dig.workspace = true
+num-integer.workspace = true
+num-traits.workspace = true
+p224.workspace = true
+p256.workspace = true
+p384.workspace = true
+pbkdf2.workspace = true
+pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
+rand.workspace = true
+ripemd = { workspace = true, features = ["oid"] }
+rsa.workspace = true
+scrypt.workspace = true
+sec1.workspace = true
+serde.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+sha3 = { workspace = true, features = ["oid"] }
+signature.workspace = true
+sm3.workspace = true
+spki.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+x25519-dalek = { workspace = true, features = ["static_secrets"] }
+x509-parser.workspace = true
+yoke.workspace = true
