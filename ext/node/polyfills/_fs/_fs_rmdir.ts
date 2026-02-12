@@ -101,13 +101,12 @@ export function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
     if (optionsOrFalse === false) {
       throw new ERR_FS_RMDIR_ENOTDIR(path);
     }
-    Deno.removeSync(path, {
+    return Deno.removeSync(path, {
       recursive: true,
     });
-  } else {
-    validateRmdirOptions(options);
   }
 
+  validateRmdirOptions(options);
   try {
     op_node_rmdir_sync(path);
   } catch (err) {
