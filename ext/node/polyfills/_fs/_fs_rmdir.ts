@@ -5,7 +5,7 @@
 
 import {
   emitRecursiveRmdirWarning,
-  getValidatedPath,
+  getValidatedPathToString,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
@@ -16,6 +16,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { op_node_rmdir, op_node_rmdir_sync } from "ext:core/ops";
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -25,18 +26,21 @@ type rmdirOptions = {
 
 type rmdirCallback = (err?: Error) => void;
 
-export function rmdir(path: string | URL, callback: rmdirCallback): void;
 export function rmdir(
-  path: string | URL,
+  path: string | Buffer | URL,
+  callback: rmdirCallback,
+): void;
+export function rmdir(
+  path: string | Buffer | URL,
   options: rmdirOptions,
   callback: rmdirCallback,
 ): void;
 export function rmdir(
-  path: string | URL,
+  path: string | Buffer | URL,
   optionsOrCallback: rmdirOptions | rmdirCallback,
   maybeCallback?: rmdirCallback,
 ) {
-  path = getValidatedPath(path) as string;
+  path = getValidatedPathToString(path);
 
   const callback = typeof optionsOrCallback === "function"
     ? optionsOrCallback
@@ -53,9 +57,9 @@ export function rmdir(
       path,
       { ...options, force: false },
       true,
-      (err: Error | null | false, options: rmdirOptions) => {
+      (err, options) => {
         if (err === false) {
-          return callback(new ERR_FS_RMDIR_ENOTDIR(path.toString()));
+          return callback(new ERR_FS_RMDIR_ENOTDIR(path));
         }
         if (err) {
           return callback(err);
@@ -67,12 +71,10 @@ export function rmdir(
     );
   } else {
     validateRmdirOptions(options);
-    Deno.remove(path, { recursive: options?.recursive })
+    op_node_rmdir(path, { recursive: options?.recursive })
       .then((_) => callback(), (err: unknown) => {
         callback(
-          err instanceof Error
-            ? denoErrorToNodeError(err, { syscall: "rmdir" })
-            : err,
+          denoErrorToNodeError(err as Error, { syscall: "rmdir", path }),
         );
       });
   }
@@ -84,28 +86,26 @@ export const rmdirPromise = promisify(rmdir) as (
 ) => Promise<void>;
 
 export function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
-  path = getValidatedPath(path);
+  path = getValidatedPathToString(path);
   if (options?.recursive) {
     emitRecursiveRmdirWarning();
-    const optionsOrFalse: rmdirOptions | false = validateRmOptionsSync(path, {
+    const optionsOrFalse = validateRmOptionsSync(path, {
       ...options,
       force: false,
     }, true);
     if (optionsOrFalse === false) {
-      throw new ERR_FS_RMDIR_ENOTDIR(path.toString());
+      throw new ERR_FS_RMDIR_ENOTDIR(path);
     }
-    options = optionsOrFalse;
+    Deno.removeSync(path, {
+      recursive: true,
+    });
   } else {
     validateRmdirOptions(options);
   }
 
   try {
-    Deno.removeSync(path as string, {
-      recursive: options?.recursive,
-    });
-  } catch (err: unknown) {
-    throw (err instanceof Error
-      ? denoErrorToNodeError(err, { syscall: "rmdir" })
-      : err);
+    op_node_rmdir_sync(path);
+  } catch (err) {
+    throw (denoErrorToNodeError(err as Error, { syscall: "rmdir", path }));
   }
 }
