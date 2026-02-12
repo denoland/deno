@@ -3,6 +3,7 @@
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::Prefix;
 use std::str::FromStr;
 
 use deno_config::UrlToFilePathError;
@@ -28,29 +29,40 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
   let normalized_path = normalize_path(path);
   let mut encoded_path =
     fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
-  let mut components = normalized_path.components().skip(1);
-  if let Some(first_component) = components.next() {
-    encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
-    let s = first_component.as_os_str().to_string_lossy();
-    let mut chars = s.chars();
-    let is_drive_letter = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-      && chars.next().is_some_and(|c| c == ':')
-      && chars.next().is_none();
-    if is_drive_letter {
-      encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
-        &s.to_ascii_uppercase(),
-      );
-    } else {
-      encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(&s);
+  let mut path_only_has_prefix = false;
+  for component in normalized_path.components() {
+    match component {
+      Component::Prefix(prefix) => {
+        path_only_has_prefix = true;
+        match prefix.kind() {
+          Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+            let b = [(letter as char).to_ascii_uppercase() as u8];
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+              // SAFETY: Drive letter is ascii.
+              unsafe { str::from_utf8_unchecked(&b) },
+            );
+          }
+          Prefix::UNC(..) | Prefix::VerbatimUNC(..) => {
+            // These should be carried in `uri.authority()`.
+          }
+          Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
+            // Not a local path, abort.
+            return uri.normalize().into();
+          }
+        }
+      }
+      Component::RootDir => {}
+      component => {
+        path_only_has_prefix = false;
+        encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+        encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+          &component.as_os_str().to_string_lossy(),
+        );
+      }
     }
   }
-  for component in components {
-    encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
-    encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
-      &component.as_os_str().to_string_lossy(),
-    );
-  }
-  if encoded_path.is_empty() {
+  if encoded_path.is_empty() || path_only_has_prefix {
     encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
   }
   fluent_uri::Uri::builder()

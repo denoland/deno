@@ -12121,8 +12121,8 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      // Drive letters are not lowercase in our normalized URI representation.
-      "uri": "file:///c%3A/file.ts",
+      // Colons are not encoded in our normalized URI representation.
+      "uri": "file:///C%3A/file.ts",
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -12132,7 +12132,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
     },
   }));
   let list = client.get_completion_list(
-    "file:///c%3A/file.ts",
+    "file:///C%3A/file.ts",
     (2, 23),
     json!({ "triggerKind": 1 }),
   );
@@ -12146,7 +12146,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "sortText": "11",
       "data": {
         "tsc": {
-          // Accordingly, the drive letter returned here is uppercase.
+          // Accordingly, the colon returned here is decoded.
           // Spec-compliant language clients must deal with that. See:
           // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
           "uri": "file:///C:/file.ts",
