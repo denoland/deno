@@ -67,7 +67,7 @@ export function rmdir(
           (_) => callback(),
           (err: Error) =>
             callback(
-              denoErrorToNodeError(err as Error, { syscall: "rmdir", path }),
+              denoErrorToNodeError(err, { syscall: "rmdir", path }),
             ),
         );
       },
@@ -79,7 +79,7 @@ export function rmdir(
       (_) => callback(),
       (err: Error) =>
         callback(
-          denoErrorToNodeError(err as Error, { syscall: "rmdir", path }),
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
         ),
     );
   }
