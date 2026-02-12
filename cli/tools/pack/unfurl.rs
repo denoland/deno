@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_ast::TextChange;
 use deno_graph::analysis::DependencyDescriptor;
@@ -14,6 +13,8 @@ use deno_graph::analysis::TypeScriptReference;
 use deno_graph::ModuleGraph;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+
+use crate::tools::unfurl_utils::to_range;
 
 /// Result of unfurling a module's specifiers for npm compatibility.
 pub struct UnfurlResult {
@@ -123,40 +124,9 @@ pub fn unfurl_specifiers(
 
   // Process import.meta.resolve() calls
   {
-    use deno_ast::swc::ast::*;
-    use deno_ast::swc::ecma_visit::Visit;
     use deno_ast::swc::ecma_visit::VisitWith;
 
-    #[derive(Default)]
-    struct ImportMetaResolveCollector {
-      specifiers: Vec<(deno_ast::SourceRange<deno_ast::SourcePos>, String)>,
-    }
-
-    impl Visit for ImportMetaResolveCollector {
-      fn visit_call_expr(&mut self, node: &CallExpr) {
-        if node.args.len() == 1
-          && let Some(first_arg) = node.args.first()
-          && let Callee::Expr(callee) = &node.callee
-          && let Expr::Member(member) = &**callee
-          && let Expr::MetaProp(prop) = &*member.obj
-          && prop.kind == MetaPropKind::ImportMeta
-          && let MemberProp::Ident(ident) = &member.prop
-          && ident.sym == "resolve"
-          && first_arg.spread.is_none()
-        {
-          if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
-            let range = arg.range();
-            // Strip quotes from the range
-            self.specifiers.push((
-              deno_ast::SourceRange::new(range.start + 1, range.end - 1),
-              arg.value.to_string_lossy().to_string(),
-            ));
-          }
-        }
-
-        node.visit_children_with(self);
-      }
-    }
+    use crate::tools::unfurl_utils::ImportMetaResolveCollector;
 
     let mut collector = ImportMetaResolveCollector::default();
     parsed_source.program_ref().visit_with(&mut collector);
@@ -415,17 +385,21 @@ fn rewrite_specifier(specifier: &str) -> Option<String> {
 }
 
 /// Rewrite TypeScript file extensions to JavaScript equivalents.
+/// Delegates to `extensions::ts_to_js_extension` for the actual swap,
+/// preserving any directory prefix (e.g. `./`, `../`).
 fn rewrite_file_extension(path: &str) -> String {
-  if path.ends_with(".tsx") {
-    format!("{}.js", &path[..path.len() - 4])
-  } else if path.ends_with(".ts") && !path.ends_with(".d.ts") {
-    format!("{}.js", &path[..path.len() - 3])
-  } else if path.ends_with(".mts") {
-    format!("{}.mjs", &path[..path.len() - 4])
-  } else if path.ends_with(".cts") {
-    format!("{}.cjs", &path[..path.len() - 4])
+  // .d.ts files should not have extensions rewritten
+  if path.ends_with(".d.ts") {
+    return path.to_string();
+  }
+  // Preserve the directory prefix, delegate extension swap
+  if let Some(last_slash) = path.rfind('/') {
+    let prefix = &path[..=last_slash];
+    let filename = &path[last_slash + 1..];
+    let converted = super::extensions::ts_to_js_extension(filename);
+    format!("{}{}", prefix, converted)
   } else {
-    path.to_string()
+    super::extensions::ts_to_js_extension(path)
   }
 }
 
@@ -468,24 +442,6 @@ fn normalize_version(version: &str) -> String {
   } else {
     format!("^{}", version)
   }
-}
-
-/// Convert a deno_graph PositionRange to a byte range, stripping surrounding quotes.
-fn to_range(
-  text_info: &SourceTextInfo,
-  range: &deno_graph::PositionRange,
-) -> std::ops::Range<usize> {
-  let mut byte_range = range
-    .as_source_range(text_info)
-    .as_byte_range(text_info.range().start);
-  let text = &text_info.text_str()[byte_range.clone()];
-  if text.starts_with('"') || text.starts_with('\'') {
-    byte_range.start += 1;
-  }
-  if text.ends_with('"') || text.ends_with('\'') {
-    byte_range.end -= 1;
-  }
-  byte_range
 }
 
 #[cfg(test)]

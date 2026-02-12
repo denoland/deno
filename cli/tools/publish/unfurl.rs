@@ -20,12 +20,6 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlight;
 use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
-use deno_ast::swc::ast::Callee;
-use deno_ast::swc::ast::Expr;
-use deno_ast::swc::ast::Lit;
-use deno_ast::swc::ast::MemberProp;
-use deno_ast::swc::ast::MetaPropKind;
-use deno_ast::swc::atoms::Atom;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
@@ -48,6 +42,9 @@ use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
+
+use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::to_range;
 use node_resolver::NodeResolverSys;
 
 use crate::node::CliNodeResolver;
@@ -1077,23 +1074,6 @@ fn relative_url(
   }
 }
 
-fn to_range(
-  text_info: &SourceTextInfo,
-  range: &deno_graph::PositionRange,
-) -> std::ops::Range<usize> {
-  let mut range = range
-    .as_source_range(text_info)
-    .as_byte_range(text_info.range().start);
-  let text = &text_info.text_str()[range.clone()];
-  if text.starts_with('"') || text.starts_with('\'') {
-    range.start += 1;
-  }
-  if text.ends_with('"') || text.ends_with('\'') {
-    range.end -= 1;
-  }
-  range
-}
-
 /// Collects the start position of import/export declarations for each specifier.
 /// This is needed to correctly insert @ts-types comments before import statements
 /// when multiple imports appear on the same line.
@@ -1123,40 +1103,6 @@ impl Visit for SpecifierStartCollector {
       let decl_start = node.range().start;
       let src_range = src.range();
       self.specifier_to_decl_start.insert(src_range, decl_start);
-    }
-  }
-}
-
-#[derive(Default)]
-struct ImportMetaResolveCollector {
-  specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
-  diagnostic_ranges: Vec<SourceRange<SourcePos>>,
-}
-
-impl Visit for ImportMetaResolveCollector {
-  noop_visit_type!();
-
-  fn visit_call_expr(&mut self, node: &deno_ast::swc::ast::CallExpr) {
-    if node.args.len() == 1
-      && let Some(first_arg) = node.args.first()
-      && let Callee::Expr(callee) = &node.callee
-      && let Expr::Member(member) = &**callee
-      && let Expr::MetaProp(prop) = &*member.obj
-      && prop.kind == MetaPropKind::ImportMeta
-      && let MemberProp::Ident(ident) = &member.prop
-      && ident.sym == "resolve"
-      && first_arg.spread.is_none()
-    {
-      if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
-        let range = arg.range();
-        self.specifiers.push((
-          // remove quotes
-          SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.to_atom_lossy().into_owned(),
-        ));
-      } else {
-        self.diagnostic_ranges.push(first_arg.expr.range());
-      }
     }
   }
 }
