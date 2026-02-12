@@ -6,6 +6,7 @@
         "args": "pack",
         "output": "[WILDCARD]✓[WILDCARD]test-pkg-json-1.0.0.tgz[WILDCARD]"
       }, {
+        "if": "unix",
         "commandName": "bash",
         "args": [
           "-c",

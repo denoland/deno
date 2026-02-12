@@ -6,6 +6,7 @@
         "args": "pack --set-version 2.0.0",
         "output": "[WILDCARD]✓[WILDCARD]test-versioned-2.0.0.tgz[WILDCARD]"
       }, {
+        "if": "unix",
         "commandName": "bash",
         "args": [
           "-c",
