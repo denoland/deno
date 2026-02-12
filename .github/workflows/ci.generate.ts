@@ -217,6 +217,7 @@ function handleMatrixItems(items: {
         ...rest,
         runner: shouldSkip.then(ubuntuX86Runner).else(rest.runner),
         skip: shouldSkip,
+        // do not save the cache on main if it won't be used by prs most of the time
         save_cache: skip_pr !== true,
       };
     }
