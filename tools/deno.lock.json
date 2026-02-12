@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@david/console-static-text@0.3": "0.3.0",
     "jsr:@david/dax@~0.43.2": "0.43.2",
+    "jsr:@david/gagen@0.2.3": "0.2.3",
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/rust-automation@0.22.2": "0.22.2",
@@ -17,7 +18,9 @@
     "jsr:@std/path@^1.1.1": "1.1.2",
     "jsr:@std/semver@^1.0.5": "1.0.5",
     "jsr:@std/toml@*": "1.0.11",
+    "jsr:@std/toml@1": "1.0.11",
     "jsr:@std/yaml@0.221": "0.221.0",
+    "jsr:@std/yaml@^1.0.11": "1.0.11",
     "npm:octokit@^5.0.3": "5.0.3_@octokit+core@7.0.5"
   },
   "jsr": {
@@ -34,6 +37,12 @@
         "jsr:@std/fs",
         "jsr:@std/io",
         "jsr:@std/path@1"
+      ]
+    },
+    "@david/gagen@0.2.3": {
+      "integrity": "0ded4f93066cb74e86047a074970f6d9b98645e3463c312b91d251fb06bf4a6a",
+      "dependencies": [
+        "jsr:@std/yaml@^1.0.11"
       ]
     },
     "@david/path@0.2.0": {
@@ -96,6 +105,9 @@
     },
     "@std/yaml@0.221.0": {
       "integrity": "bac8913ee4f6fc600d4b92cc020f755070e22687ad242341f31d123ff690ae98"
+    },
+    "@std/yaml@1.0.11": {
+      "integrity": "bd139ce77f2d06cbed3713c8b26d301d2a2e12ecc7986130a268107e212143ee"
     }
   },
   "npm": {

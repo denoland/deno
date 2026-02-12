@@ -563,6 +563,8 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
 
+  handle._callbackPending = true;
+
   try {
     handle.write(
       flushFlag,
@@ -579,6 +581,14 @@ function processChunk(self, chunk, flushFlag, cb) {
       err.code = "ZSTD_error_srcSize_wrong";
     }
     self.destroy(err);
+    return;
+  }
+
+  // If the native binding did not call processCallback synchronously
+  // (Zlib defers it to match Node.js where compression runs on the libuv
+  // threadpool), schedule it asynchronously.
+  if (handle._callbackPending && !self[kError]) {
+    process.nextTick(processCallback.bind(handle));
   }
 }
 
@@ -587,6 +597,7 @@ function processCallback() {
   // important to null out the values once they are no longer needed since
   // `_handle` can stay in memory long after the buffer is needed.
   const handle = this;
+  handle._callbackPending = false;
   const self = this[owner_symbol];
   const state = self._writeState;
 
@@ -634,6 +645,12 @@ function processCallback() {
 
     if (!streamBufferIsFull) {
       process.nextTick(() => {
+        if (self.destroyed) {
+          this.buffer = null;
+          this.cb();
+          return;
+        }
+        handle._callbackPending = true;
         this.write(
           handle.flushFlag,
           this.buffer, // in
@@ -643,12 +660,21 @@ function processCallback() {
           self._outOffset, // out_off
           self._chunkSize,
         ); // out_len
+        if (handle._callbackPending && !self[kError]) {
+          processCallback.call(this);
+        }
       });
     } else {
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
         process.nextTick(() => {
+          if (self.destroyed) {
+            this.buffer = null;
+            this.cb();
+            return;
+          }
+          handle._callbackPending = true;
           this.write(
             handle.flushFlag,
             this.buffer, // in
@@ -658,6 +684,9 @@ function processCallback() {
             self._outOffset, // out_off
             self._chunkSize,
           ); // out_len
+          if (handle._callbackPending && !self[kError]) {
+            processCallback.call(this);
+          }
         });
         self._read(n);
       };
