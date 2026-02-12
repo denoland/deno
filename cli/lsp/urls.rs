@@ -39,10 +39,9 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
             encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
             letter.make_ascii_uppercase();
             let b = [letter];
-            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
-              // SAFETY: Drive letter is ascii.
-              unsafe { str::from_utf8_unchecked(&b) },
-            );
+            // SAFETY: Drive letter is ascii.
+            let s = unsafe { str::from_utf8_unchecked(&b) };
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(s);
             encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(":");
           }
           Prefix::UNC(..) | Prefix::VerbatimUNC(..) => {
