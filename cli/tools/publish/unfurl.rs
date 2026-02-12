@@ -42,15 +42,14 @@ use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
-
-use crate::tools::unfurl_utils::ImportMetaResolveCollector;
-use crate::tools::unfurl_utils::to_range;
 use node_resolver::NodeResolverSys;
 
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
+use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {

@@ -6,11 +6,11 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_ast::TextChange;
+use deno_graph::ModuleGraph;
 use deno_graph::analysis::DependencyDescriptor;
 use deno_graph::analysis::DynamicArgument;
 use deno_graph::analysis::DynamicTemplatePart;
 use deno_graph::analysis::TypeScriptReference;
-use deno_graph::ModuleGraph;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
@@ -138,8 +138,7 @@ pub fn unfurl_specifiers(
           dependencies.insert(name, version);
         }
 
-        let byte_range =
-          range.as_byte_range(text_info.range().start);
+        let byte_range = range.as_byte_range(text_info.range().start);
         text_changes.push(TextChange {
           range: byte_range,
           new_text: rewritten,
@@ -215,8 +214,7 @@ fn unfurl_dynamic_specifier(
     DynamicArgument::String(specifier) => {
       // Look up resolved specifier from graph for dependency extraction
       if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
-        && let Some(graph_dep) =
-          js_module.dependencies.get(specifier.as_str())
+        && let Some(graph_dep) = js_module.dependencies.get(specifier.as_str())
         && let Some(resolved) = graph_dep.maybe_code.ok()
         && let Some((name, version)) =
           extract_package_dependency(resolved.specifier.as_str())
@@ -228,9 +226,7 @@ fn unfurl_dynamic_specifier(
         let range = to_range(text_info, &dep.argument_range);
         // Find the specifier within the range (it may be surrounded by quotes)
         let text_in_range = &text_info.text_str()[range.clone()];
-        if let Some(relative_index) =
-          text_in_range.find(specifier.as_str())
-        {
+        if let Some(relative_index) = text_in_range.find(specifier.as_str()) {
           let start = range.start + relative_index;
           text_changes.push(TextChange {
             range: start..start + specifier.len(),
@@ -251,15 +247,13 @@ fn unfurl_dynamic_specifier(
           if parts.len() == 1
             && let Some(rewritten) = rewrite_specifier(specifier)
           {
-            if let Some((name, version)) =
-              extract_package_dependency(specifier)
+            if let Some((name, version)) = extract_package_dependency(specifier)
             {
               dependencies.insert(name, version);
             }
             let range = to_range(text_info, &dep.argument_range);
             let text_in_range = &text_info.text_str()[range.clone()];
-            if let Some(relative_index) =
-              text_in_range.find(specifier.as_str())
+            if let Some(relative_index) = text_in_range.find(specifier.as_str())
             {
               let start = range.start + relative_index;
               text_changes.push(TextChange {
@@ -272,16 +266,13 @@ fn unfurl_dynamic_specifier(
         }
 
         if specifier.ends_with('/') {
-          if let Some((name, version)) =
-            extract_package_dependency(specifier)
-          {
+          if let Some((name, version)) = extract_package_dependency(specifier) {
             dependencies.insert(name, version);
           }
           if let Some(rewritten) = rewrite_specifier(specifier) {
             let range = to_range(text_info, &dep.argument_range);
             let text_in_range = &text_info.text_str()[range.start..];
-            if let Some(relative_index) =
-              text_in_range.find(specifier.as_str())
+            if let Some(relative_index) = text_in_range.find(specifier.as_str())
             {
               let start = range.start + relative_index;
               text_changes.push(TextChange {
@@ -405,16 +396,14 @@ fn extract_package_dependency(specifier: &str) -> Option<(String, String)> {
   if specifier.starts_with("jsr:") {
     let jsr_ref = JsrPackageReqReference::from_str(specifier).ok()?;
     let name = jsr_ref.req().name.to_string();
-    let version =
-      normalize_version(jsr_ref.req().version_req.version_text());
+    let version = normalize_version(jsr_ref.req().version_req.version_text());
     return Some((name, version));
   }
 
   if specifier.starts_with("npm:") {
     let npm_ref = NpmPackageReqReference::from_str(specifier).ok()?;
     let name = npm_ref.req().name.to_string();
-    let version =
-      normalize_version(npm_ref.req().version_req.version_text());
+    let version = normalize_version(npm_ref.req().version_req.version_text());
     return Some((name, version));
   }
 
