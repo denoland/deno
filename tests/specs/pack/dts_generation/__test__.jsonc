@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_dts_generation": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-dts-gen-1.0.0.tgz[WILDCARD]"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-dts-gen-1.0.0.tgz && grep -q 'export interface Config' package/mod.d.ts && echo 'Has interface: true' || echo 'Has interface: false'"
+        ],
+        "output": "Has interface: true\n"
+      }, {
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q 'export declare function greet' package/mod.d.ts && echo 'Has function declaration: true' || echo 'Has function declaration: false'"
+        ],
+        "output": "Has function declaration: true\n"
+      }]
+    }
+  }
+}
