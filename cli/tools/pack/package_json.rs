@@ -165,23 +165,23 @@ fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String
   }
 
   // Handle object exports - look for "." entry
-  if let Some(map) = exports.as_object() {
-    if let Some(dot_export) = map.get(".") {
-      if let Some(path) = dot_export.as_str() {
-        let js_path = format!("./{}", ts_to_js_extension(path));
-        let dts_path = format!("./{}", ts_to_dts_extension(path));
-        return (Some(js_path), Some(dts_path));
-      } else if let Some(obj) = dot_export.as_object() {
-        // Conditional exports - extract from "import" or "default"
-        let main = obj.get("import")
-          .or_else(|| obj.get("default"))
-          .and_then(|v| v.as_str())
-          .map(|s| s.to_string());
-        let types = obj.get("types")
-          .and_then(|v| v.as_str())
-          .map(|s| s.to_string());
-        return (main, types);
-      }
+  if let Some(map) = exports.as_object()
+    && let Some(dot_export) = map.get(".")
+  {
+    if let Some(path) = dot_export.as_str() {
+      let js_path = format!("./{}", ts_to_js_extension(path));
+      let dts_path = format!("./{}", ts_to_dts_extension(path));
+      return (Some(js_path), Some(dts_path));
+    } else if let Some(obj) = dot_export.as_object() {
+      // Conditional exports - extract from "import" or "default"
+      let main = obj.get("import")
+        .or_else(|| obj.get("default"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+      let types = obj.get("types")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+      return (main, types);
     }
   }
 

@@ -185,16 +185,13 @@ fn unfurl_static_specifier(
   dependencies: &mut HashMap<String, String>,
 ) {
   // Look up the resolved specifier from the graph to extract dependency info
-  if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer) {
-    if let Some(dep) = js_module.dependencies.get(spec) {
-      if let Some(resolved) = dep.maybe_code.ok() {
-        if let Some((name, version)) =
-          extract_package_dependency(resolved.specifier.as_str())
-        {
-          dependencies.insert(name, version);
-        }
-      }
-    }
+  if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
+    && let Some(dep) = js_module.dependencies.get(spec)
+    && let Some(resolved) = dep.maybe_code.ok()
+    && let Some((name, version)) =
+      extract_package_dependency(resolved.specifier.as_str())
+  {
+    dependencies.insert(name, version);
   }
 
   if let Some(rewritten) = rewrite_specifier(spec) {
@@ -217,18 +214,14 @@ fn unfurl_dynamic_specifier(
   match &dep.argument {
     DynamicArgument::String(specifier) => {
       // Look up resolved specifier from graph for dependency extraction
-      if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer) {
-        if let Some(graph_dep) =
+      if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
+        && let Some(graph_dep) =
           js_module.dependencies.get(specifier.as_str())
-        {
-          if let Some(resolved) = graph_dep.maybe_code.ok() {
-            if let Some((name, version)) =
-              extract_package_dependency(resolved.specifier.as_str())
-            {
-              dependencies.insert(name, version);
-            }
-          }
-        }
+        && let Some(resolved) = graph_dep.maybe_code.ok()
+        && let Some((name, version)) =
+          extract_package_dependency(resolved.specifier.as_str())
+      {
+        dependencies.insert(name, version);
       }
 
       if let Some(rewritten) = rewrite_specifier(specifier) {
@@ -255,24 +248,24 @@ fn unfurl_dynamic_specifier(
         // for pack, but handle the simple string prefix case
         if !specifier.ends_with('/') && !specifier.is_empty() {
           // For complete string-like templates (no expressions), treat as string
-          if parts.len() == 1 {
-            if let Some(rewritten) = rewrite_specifier(specifier) {
-              if let Some((name, version)) =
-                extract_package_dependency(specifier)
-              {
-                dependencies.insert(name, version);
-              }
-              let range = to_range(text_info, &dep.argument_range);
-              let text_in_range = &text_info.text_str()[range.clone()];
-              if let Some(relative_index) =
-                text_in_range.find(specifier.as_str())
-              {
-                let start = range.start + relative_index;
-                text_changes.push(TextChange {
-                  range: start..start + specifier.len(),
-                  new_text: rewritten,
-                });
-              }
+          if parts.len() == 1
+            && let Some(rewritten) = rewrite_specifier(specifier)
+          {
+            if let Some((name, version)) =
+              extract_package_dependency(specifier)
+            {
+              dependencies.insert(name, version);
+            }
+            let range = to_range(text_info, &dep.argument_range);
+            let text_in_range = &text_info.text_str()[range.clone()];
+            if let Some(relative_index) =
+              text_in_range.find(specifier.as_str())
+            {
+              let start = range.start + relative_index;
+              text_changes.push(TextChange {
+                range: start..start + specifier.len(),
+                new_text: rewritten,
+              });
             }
           }
           return;
