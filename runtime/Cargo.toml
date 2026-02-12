@@ -10,6 +10,7 @@ repository.workspace = true
 description = "Provides the deno runtime library"
 
 [features]
+default = ["ffi"]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
@@ -29,6 +30,8 @@ hmr = ["include_js_files_for_snapshotting", "transpile"]
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
 snapshot = ["transpile"]
 transpile = ["deno_ast"]
+# enable the FFI API
+ffi = ["deno_ffi"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -47,7 +50,7 @@ deno_crypto.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
 deno_fetch.workspace = true
-deno_ffi.workspace = true
+deno_ffi = { workspace = true, optional = true }
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_image.workspace = true
