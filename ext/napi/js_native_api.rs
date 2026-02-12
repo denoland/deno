@@ -285,13 +285,6 @@ fn napi_define_class<'s>(
       let setter = p
         .setter
         .map(|s| create_function_template(scope, env_ptr, None, s, p.data));
-      if getter.is_some()
-        && setter.is_some()
-        && (p.attributes & napi_writable) == 0
-      {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::READ_ONLY;
-      }
       let proto = tpl.prototype_template(scope);
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {

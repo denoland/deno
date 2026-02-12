@@ -473,7 +473,7 @@ impl Zlib {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
-    let (err_info, callback) = {
+    let err_info = {
       let mut zlib = self.inner.borrow_mut();
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
@@ -487,21 +487,14 @@ impl Zlib {
       };
       result[0] = zlib.strm.avail_out;
       result[1] = zlib.strm.avail_in;
-      (
-        zlib.get_error_info(),
-        v8::Local::new(
-          scope,
-          zlib.callback.as_ref().expect("callback not set"),
-        ),
-      )
+      zlib.get_error_info()
     };
 
-    if !ZlibInner::check_error(err_info, scope, &this) {
-      return Ok(());
-    }
-
-    let this = v8::Local::new(scope, &this);
-    let _ = callback.call(scope, this.into(), &[]);
+    // Report errors via onerror callback (which defers destroy via
+    // process.nextTick). The processCallback is NOT called here — it is
+    // scheduled asynchronously from JavaScript to match Node.js behavior
+    // where compression runs on the libuv threadpool.
+    ZlibInner::check_error(err_info, scope, &this);
 
     Ok(())
   }

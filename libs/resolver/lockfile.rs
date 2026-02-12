@@ -454,6 +454,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           Some((key, value))
         }))
         .collect(),
+      npm_overrides: None,
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
