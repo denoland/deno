@@ -346,7 +346,7 @@ class NodeWorker extends EventEmitter {
           }
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 1);
+            this.emit("exit", data.exitCode ?? 1);
           }
           return;
         }

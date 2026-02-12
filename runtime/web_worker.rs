@@ -133,7 +133,7 @@ impl<'s> WorkerThreadType {
 /// worker.
 #[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
-  TerminalError(CoreError),
+  TerminalError(CoreError, i32),
   Close(i32),
 }
 
@@ -145,12 +145,12 @@ impl Serialize for WorkerControlEvent {
     S: Serializer,
   {
     let type_id = match &self {
-      WorkerControlEvent::TerminalError(_) => 1_i32,
+      WorkerControlEvent::TerminalError(..) => 1_i32,
       WorkerControlEvent::Close(_) => 3_i32,
     };
 
     match self {
-      WorkerControlEvent::TerminalError(error) => {
+      WorkerControlEvent::TerminalError(error, exit_code) => {
         let value = match error.as_kind() {
           CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
@@ -164,10 +164,12 @@ impl Serialize for WorkerControlEvent {
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
+              "exitCode": exit_code,
             })
           }
           _ => json!({
             "message": error.to_string(),
+            "exitCode": exit_code,
           }),
         };
 
@@ -1095,13 +1097,13 @@ pub async fn run_web_worker(
   let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
 
   let name = worker.name.to_string();
-  let internal_handle = worker.internal_handle.clone();
+  let mut internal_handle = worker.internal_handle.clone();
 
   // If the bootstrap failed, report it as a terminal error.
   if let Some(error) = worker.bootstrap_error.take() {
     print_worker_error(&error, &name, format_js_error_fn.as_deref());
     internal_handle
-      .post_event(WorkerControlEvent::TerminalError(error))
+      .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
     return Ok(());
   }
@@ -1149,6 +1151,41 @@ pub async fn run_web_worker(
 
   if let Err(e) = result {
     print_worker_error(&e, &name, format_js_error_fn.as_deref());
+
+    // For Node workers, dispatch process 'exit' event before sending
+    // TerminalError so that exit handlers can run and modify the exit code.
+    // If _fatalException was monkey-patched to not be a function, exit
+    // with code 6 (kInvalidFatalExceptionMonkeyPatching) matching Node.js.
+    let exit_code = if internal_handle.worker_type == WorkerThreadType::Node {
+      let _ = worker.execute_script(
+        located_script_name!(),
+        r#"
+        if (typeof globalThis.process !== 'undefined') {
+          if (typeof globalThis.process._fatalException !== 'function') {
+            globalThis.process.exitCode = 6;
+          } else {
+            globalThis.process.exitCode = 1;
+            if (!globalThis.process._exiting) {
+              globalThis.process._exiting = true;
+              globalThis.process.emit("exit", globalThis.process.exitCode);
+            }
+          }
+        }
+        "#
+        .to_string()
+        .into(),
+      );
+      worker
+        .js_runtime
+        .op_state()
+        .borrow()
+        .try_borrow::<deno_os::ExitCode>()
+        .map(|e| e.get())
+        .unwrap_or(1)
+    } else {
+      1
+    };
+
     // For Node workers, convert "Module not found" to Node-compatible
     // "Cannot find module" format so it matches Node.js error behavior.
     let e = if internal_handle.worker_type == WorkerThreadType::Node {
@@ -1170,14 +1207,52 @@ pub async fn run_web_worker(
     } else {
       e
     };
+
+    // Exit code 6 means _fatalException was not a function. In Node.js
+    // this causes a clean exit without emitting 'error' on the parent Worker.
+    if exit_code == 6 {
+      let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+      internal_handle.terminate();
+      return Ok(());
+    }
+
     internal_handle
-      .post_event(WorkerControlEvent::TerminalError(e))
+      .post_event(WorkerControlEvent::TerminalError(e, exit_code))
       .expect("Failed to post message to host");
 
     // Failure to execute script is a terminal error, bye, bye.
     return Ok(());
   }
 
+  // For Node workers that exit naturally (event loop idle), dispatch the
+  // process 'exit' event and send the final exit code to the parent.
+  // This matches Node.js behavior where SpinEventLoopInternal calls
+  // EmitProcessExitInternal before the worker thread ends.
+  if worker.worker_type == WorkerThreadType::Node
+    && !internal_handle.is_terminated()
+  {
+    let _ = worker.execute_script(
+      located_script_name!(),
+      r#"
+      if (typeof globalThis.process !== 'undefined' && !globalThis.process._exiting) {
+        globalThis.process._exiting = true;
+        globalThis.process.emit("exit", globalThis.process.exitCode ?? 0);
+      }
+      "#
+      .to_string()
+      .into(),
+    );
+    let exit_code = worker
+      .js_runtime
+      .op_state()
+      .borrow()
+      .try_borrow::<deno_os::ExitCode>()
+      .map(|e| e.get())
+      .unwrap_or(0);
+    let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+    internal_handle.terminate();
+  }
+
   debug!("Worker thread shuts down {}", &name);
-  result
+  Ok(())
 }
