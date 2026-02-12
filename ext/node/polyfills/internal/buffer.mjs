@@ -137,7 +137,7 @@ float32Array[0] = -1; // 0xBF800000
 // check this with `os.endianness()` because that is determined at compile time.
 export const bigEndian = uInt8Float32Array[3] === 0;
 
-export const kMaxLength = NumberMAX_SAFE_INTEGER;
+export let kMaxLength = NumberMAX_SAFE_INTEGER;
 export const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
@@ -3045,7 +3045,12 @@ const mod = {
     validateNumber(val, "INSPECT_MAX_BYTES", 0);
     INSPECT_MAX_BYTES_ = val;
   },
-  kMaxLength,
+  get kMaxLength() {
+    return kMaxLength;
+  },
+  set kMaxLength(val) {
+    kMaxLength = val;
+  },
   kStringMaxLength,
   SlowBuffer,
   transcode,

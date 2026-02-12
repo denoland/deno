@@ -161,7 +161,7 @@ import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
 import wasi from "node:wasi";
-import zlib from "node:zlib";
+import zlib, { __initializeForCjs as zlibInitForCjs } from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -1266,6 +1266,12 @@ function loadNativeModule(_id, request) {
   }
   const modExports = nativeModuleExports[request];
   if (modExports) {
+    // Match Node.js CJS semantics: when zlib is first require()'d, capture
+    // buffer.kMaxLength at that point (Node.js does this via
+    // `const { kMaxLength } = require('buffer')` at module evaluation time).
+    if (request === "zlib") {
+      zlibInitForCjs();
+    }
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
     nodeMod.loaded = true;

@@ -68,6 +68,20 @@ const { crc32: crc32Native } = binding;
 import assert from "ext:deno_node/internal/assert.mjs";
 import { Buffer, kMaxLength } from "node:buffer";
 import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
+
+// In Node.js, `const { kMaxLength } = require('buffer')` captures a snapshot
+// of kMaxLength when the zlib module is first evaluated via CJS require.
+// In Deno, polyfills are pre-loaded as ESM, so `import { kMaxLength }` is a
+// live binding that always reflects the current value. To match Node.js
+// semantics, we capture kMaxLength into a module-level variable that gets
+// re-snapshotted when `require('zlib')` is first called from user code.
+let _kMaxLength = kMaxLength;
+
+// Called from 01_require.js when require('zlib') is first invoked,
+// to capture the current buffer.kMaxLength at require-time.
+export function __initializeForCjs() {
+  _kMaxLength = kMaxLength;
+}
 import {
   checkRangesOrGetDefault,
   validateFiniteNumber,
@@ -252,7 +266,7 @@ const FLUSH_BOUND_IDX_ZSTD = 2;
 // The base class for all Zlib-style streams.
 function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
   let chunkSize = Z_DEFAULT_CHUNK;
-  let maxOutputLength = kMaxLength;
+  let maxOutputLength = _kMaxLength;
   // The ZlibBase class is not exported to user land, the mode should only be
   // passed in by us.
   assert(typeof mode === "number");
@@ -299,8 +313,8 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
       opts.maxOutputLength,
       "options.maxOutputLength",
       1,
-      kMaxLength,
-      kMaxLength,
+      _kMaxLength,
+      _kMaxLength,
     );
 
     if (opts.encoding || opts.objectMode || opts.writableObjectMode) {
