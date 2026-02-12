@@ -516,14 +516,15 @@ fn fill_workspace_config_file_names(
   }
 }
 
+type PendingRequests =
+  Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>;
+
 struct TsGoServerInner {
   snapshot: Arc<Mutex<Arc<StateSnapshot>>>,
   pending_change: Mutex<Option<TsGoWorkspaceChange>>,
   pending_change_lock: tokio::sync::RwLock<()>,
   stdin: Arc<Mutex<std::process::ChildStdin>>,
-  pending_requests: Arc<
-    Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
-  >,
+  pending_requests: Arc<PendingRequests>,
   next_request_id: AtomicI64,
   #[allow(dead_code)]
   child: Mutex<Child>,
@@ -595,9 +596,8 @@ impl TsGoServerInner {
     let stdout = child.stdout.take().unwrap();
     let snapshot = Arc::new(Mutex::new(snapshot));
 
-    let pending_requests: Arc<
-      Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>,
-    > = Arc::new(Mutex::new(HashMap::new()));
+    let pending_requests: Arc<PendingRequests> =
+      Arc::new(Mutex::new(HashMap::new()));
 
     let pending_requests_clone = pending_requests.clone();
     let stdin_clone = stdin.clone();
@@ -697,7 +697,7 @@ impl TsGoServerInner {
                 lsp::MessageType::ERROR | lsp::MessageType::WARNING
               ) || std::env::var("DENO_TSC_DEBUG").is_ok()
               {
-                eprintln!("[tsgo - {:?}] {}", params.typ, params.message);
+                lsp_log!("[tsgo - {:?}] {}", params.typ, params.message);
               }
             }
             method => {

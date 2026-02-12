@@ -95,7 +95,7 @@ impl TsServer {
         });
         ts_server.project_changed(
           snapshot,
-          &documents,
+          documents,
           new_compiler_options_by_key,
           new_notebook_keys,
         );
@@ -358,6 +358,7 @@ impl TsServer {
     }
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn provide_code_actions(
     &self,
     module: &DocumentModule,
@@ -609,7 +610,7 @@ impl TsServer {
         definition_info
           .map(|definition_info| {
             definition_info
-              .to_definition(&module, &snapshot, token)
+              .to_definition(module, &snapshot, token)
               .map_err(|err| {
                 anyhow!("Unable to convert definition info: {:#}", err)
               })
@@ -637,7 +638,7 @@ impl TsServer {
         let definition_info = ts_server
           .get_type_definition(
             snapshot.clone(),
-            &module,
+            module,
             module.line_index.offset_tsc(position)?,
             token,
           )
@@ -649,7 +650,7 @@ impl TsServer {
               if token.is_cancelled() {
                 return Err(anyhow!("request cancelled"));
               }
-              if let Some(link) = info.document_span.to_link(&module, &snapshot)
+              if let Some(link) = info.document_span.to_link(module, &snapshot)
               {
                 location_links.push(link);
               }
@@ -803,7 +804,7 @@ impl TsServer {
         let mut implementations_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
-          .get_or_temp_modules_by_compiler_options_key(&document)
+          .get_or_temp_modules_by_compiler_options_key(document)
           .into_values()
         {
           if token.is_cancelled() {
@@ -868,7 +869,7 @@ impl TsServer {
     match self {
       Self::Js(ts_server) => {
         let outlining_spans = ts_server
-          .get_outlining_spans(snapshot.clone(), &module, token)
+          .get_outlining_spans(snapshot.clone(), module, token)
           .await?;
         if !outlining_spans.is_empty() {
           let folding_ranges = outlining_spans
@@ -910,7 +911,7 @@ impl TsServer {
         let mut incoming_calls_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
-          .get_or_temp_modules_by_compiler_options_key(&document)
+          .get_or_temp_modules_by_compiler_options_key(document)
           .into_values()
         {
           if token.is_cancelled() {
@@ -974,7 +975,7 @@ impl TsServer {
         let outgoing_calls = ts_server
           .provide_call_hierarchy_outgoing_calls(
             snapshot.clone(),
-            &module,
+            module,
             module.line_index.offset_tsc(item.selection_range.start)?,
             token,
           )
@@ -990,7 +991,7 @@ impl TsServer {
               return Some(Err(anyhow!("request cancelled")));
             }
             Some(Ok(c.try_resolve_call_hierarchy_outgoing_call(
-              &module,
+              module,
               &snapshot,
               root_path.as_deref(),
             )?))
@@ -1056,6 +1057,7 @@ impl TsServer {
     }
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn provide_rename(
     &self,
     document: &Document,
@@ -1071,7 +1073,7 @@ impl TsServer {
         let mut locations_with_modules = IndexMap::new();
         for module in snapshot
           .document_modules
-          .get_or_temp_modules_by_compiler_options_key(&document)
+          .get_or_temp_modules_by_compiler_options_key(document)
           .into_values()
         {
           if token.is_cancelled() {
@@ -1143,7 +1145,7 @@ impl TsServer {
           let selection_range = ts_server
             .get_smart_selection_range(
               snapshot.clone(),
-              &module,
+              module,
               module.line_index.offset_tsc(position)?,
               token,
             )
@@ -1266,7 +1268,7 @@ impl TsServer {
           .await?;
         signature_help
           .map(|signature_help| {
-            signature_help.into_signature_help(&module, &snapshot, token)
+            signature_help.into_signature_help(module, &snapshot, token)
           })
           .transpose()
           .map_err(|err| {
@@ -1368,7 +1370,7 @@ impl TsServer {
             },
           )?;
         let mut inlay_hints = ts_server
-          .provide_inlay_hints(snapshot.clone(), &module, text_span, token)
+          .provide_inlay_hints(snapshot.clone(), module, text_span, token)
           .await;
         // Silence tsc debug failures.
         // See https://github.com/denoland/deno/issues/30455.
@@ -1387,7 +1389,7 @@ impl TsServer {
                 if token.is_cancelled() {
                   return Err(anyhow!("request cancelled"));
                 }
-                Ok(inlay_hint.to_lsp(&module, &snapshot))
+                Ok(inlay_hint.to_lsp(module, &snapshot))
               })
               .collect()
           })
