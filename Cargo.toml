@@ -437,9 +437,6 @@ inherits = "release"
 codegen-units = 128
 lto = "thin"
 
-[profile.dev]
-debug = "line-tables-only"
-
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
