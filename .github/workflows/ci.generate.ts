@@ -206,7 +206,10 @@ function handleMatrixItems(items: {
 }[]) {
   return items.map(({ skip_pr, ...rest }) => {
     if (skip_pr == null) {
-      return rest;
+      return {
+        ...rest,
+        save_cache: true,
+      };
     } else {
       // on PRs without the ci-full label, use a free runner and skip the job
       const shouldSkip = hasCiFullLabel.not().and(isPr).and(skip_pr);
@@ -214,6 +217,7 @@ function handleMatrixItems(items: {
         ...rest,
         runner: shouldSkip.then(ubuntuX86Runner).else(rest.runner),
         skip: shouldSkip,
+        save_cache: skip_pr !== true,
       };
     }
   });
@@ -1026,7 +1030,7 @@ const buildJob = job("build", {
       benchStep,
       wptTests,
       publishStep,
-      saveCacheBuildOutputStep,
+      saveCacheBuildOutputStep.if(buildMatrix.save_cache),
     );
   })(),
 });
