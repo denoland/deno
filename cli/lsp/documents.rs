@@ -288,7 +288,7 @@ pub struct ServerDocument {
 
 impl ServerDocument {
   fn load(uri: &Uri) -> Option<Self> {
-    if uri.scheme().as_str().to_ascii_lowercase() == "file" {
+    if uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(uri);
       let path = url_to_file_path(&url).ok()?;
       let bytes = fs::read(&path).ok()?;
@@ -528,7 +528,7 @@ impl Documents {
       notebook_uri,
     ));
     self.open.insert(uri, doc.clone());
-    if doc.uri.scheme().as_str().to_ascii_lowercase() != "file" {
+    if !doc.uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
@@ -1142,7 +1142,7 @@ impl DocumentModules {
     let document = self.documents.close(uri)?;
     // If applicable, try to load the closed document as a server document so
     // it's still included as a ts root etc..
-    if uri.scheme().as_str().to_ascii_lowercase() == "file"
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && self.config.uri_enabled(uri)
     {
       self.documents.get(uri);
@@ -1205,7 +1205,7 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().as_str().to_ascii_lowercase() == "file"
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
     {
       return Some(Arc::new(remote_specifier));

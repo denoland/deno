@@ -19,7 +19,7 @@ pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
 }
 
 pub fn normalize_uri(uri: &Uri) -> Uri {
-  if uri.scheme().as_str().to_ascii_lowercase() != "file" {
+  if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
     return uri.normalize().into();
   }
   let Some(path) = uri.to_file_path() else {
@@ -110,12 +110,13 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
 
 pub fn uri_to_url(uri: &Uri) -> Url {
   (|| {
-    match uri.scheme().as_str().to_ascii_lowercase().as_str() {
-      "untitled"
-      | "vscode-notebook-cell"
-      | "deno-notebook-cell"
-      | "vscode-userdata" => {}
-      _ => return None,
+    let scheme = uri.scheme();
+    if !scheme.as_str().eq_ignore_ascii_case("untitled")
+      && !scheme.as_str().eq_ignore_ascii_case("vscode-notebook-cell")
+      && !scheme.as_str().eq_ignore_ascii_case("deno-notebook-cell")
+      && !scheme.as_str().eq_ignore_ascii_case("vscode-userdata")
+    {
+      return None;
     }
     let mut s = String::with_capacity(uri.as_str().len());
     s.push_str("file:///");
@@ -138,14 +139,12 @@ pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
 }
 
 pub fn uri_is_file_like(uri: &Uri) -> bool {
-  match uri.scheme().as_str().to_ascii_lowercase().as_str() {
-    "file"
-    | "untitled"
-    | "vscode-notebook-cell"
-    | "deno-notebook-cell"
-    | "vscode-userdata" => true,
-    _ => false,
-  }
+  let scheme = uri.scheme();
+  scheme.as_str().eq_ignore_ascii_case("file")
+    || scheme.as_str().eq_ignore_ascii_case("untitled")
+    || scheme.as_str().eq_ignore_ascii_case("vscode-notebook-cell")
+    || scheme.as_str().eq_ignore_ascii_case("deno-notebook-cell")
+    || scheme.as_str().eq_ignore_ascii_case("vscode-userdata")
 }
 
 fn normalize_url(url: Url) -> Url {

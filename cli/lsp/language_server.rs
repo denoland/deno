@@ -637,7 +637,7 @@ impl Inner {
     let Some(document) = self.document_modules.documents.get(uri) else {
       match exists {
         Exists::Enforce
-          if uri.scheme().as_str().to_ascii_lowercase() != "deno" =>
+          if !uri.scheme().as_str().eq_ignore_ascii_case("deno") =>
         {
           return Err(LspError::invalid_params(format!(
             "Unable to find document for: {}",
@@ -1318,8 +1318,7 @@ impl Inner {
       .uri
       .scheme()
       .as_str()
-      .to_ascii_lowercase()
-      == "deno"
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1366,7 +1365,12 @@ impl Inner {
       .mark_with_args("lsp.did_change_batched", &batch_queue.uri);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if batch_queue.uri.scheme().as_str().to_ascii_lowercase() == "deno" {
+    if batch_queue
+      .uri
+      .scheme()
+      .as_str()
+      .eq_ignore_ascii_case("deno")
+    {
       batch_queue.clear();
       return;
     }
@@ -1495,8 +1499,7 @@ impl Inner {
       .uri
       .scheme()
       .as_str()
-      .to_ascii_lowercase()
-      == "deno"
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1845,8 +1848,7 @@ impl Inner {
       .uri
       .scheme()
       .as_str()
-      .to_ascii_lowercase()
-      == "untitled";
+      .eq_ignore_ascii_case("untitled");
     if !is_untitled && !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }
@@ -5078,8 +5080,7 @@ impl Inner {
       .uri
       .scheme()
       .as_str()
-      .to_ascii_lowercase()
-      == "deno"
+      .eq_ignore_ascii_case("deno")
       && params.text_document.uri.path().as_str() == "/status.md"
     {
       let mut contents = String::new();
