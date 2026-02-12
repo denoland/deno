@@ -201,23 +201,18 @@ function handleMatrixItems(items: {
   use_sysroot?: boolean;
   wpt?: string;
 }[]) {
-  return items.map((item) => {
-    // skip_pr is shorthand for skip on pull_request events.
-    // use a free "ubuntu" runner on jobs that are skipped
-    if (item.skip_pr != null) {
-      const skipCondition = item.skip_pr === true
-        ? isPr
-        : isPr.and(item.skip_pr);
-      const shouldSkip = hasCiFullLabel.not().and(skipCondition);
-      const { skip_pr: _, ...rest } = item;
+  return items.map(({ skip_pr, ...rest }) => {
+    if (skip_pr == null) {
+      return rest;
+    } else {
+      // on PRs without the ci-full label, use a free runner and skip the job
+      const shouldSkip = hasCiFullLabel.not().and(isPr).and(skip_pr);
       return {
         ...rest,
-        runner: shouldSkip.then(ubuntuX86Runner).else(item.runner),
+        runner: shouldSkip.then(ubuntuX86Runner).else(rest.runner),
         skip: shouldSkip.toString(),
       };
     }
-
-    return { ...item };
   });
 }
 
