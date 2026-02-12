@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import {
   emitRecursiveRmdirWarning,
   getValidatedPathToString,
@@ -17,6 +14,10 @@ import {
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { op_node_rmdir, op_node_rmdir_sync } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+
+const { PromisePrototypeThen } = primordials;
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -37,19 +38,15 @@ export function rmdir(
 ): void;
 export function rmdir(
   path: string | Buffer | URL,
-  optionsOrCallback: rmdirOptions | rmdirCallback,
-  maybeCallback?: rmdirCallback,
+  options: rmdirOptions | rmdirCallback | undefined,
+  callback?: rmdirCallback,
 ) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  callback = validateFunction(callback, "cb") as unknown as rmdirCallback;
   path = getValidatedPathToString(path);
-
-  const callback = typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : undefined;
-
-  if (!callback) throw new Error("No callback function supplied");
 
   if (options?.recursive) {
     emitRecursiveRmdirWarning();
@@ -65,18 +62,26 @@ export function rmdir(
           return callback(err);
         }
 
-        Deno.remove(path, { recursive: options?.recursive })
-          .then((_) => callback(), callback);
+        PromisePrototypeThen(
+          Deno.remove(path, { recursive: options?.recursive }),
+          (_) => callback(),
+          (err: Error) =>
+            callback(
+              denoErrorToNodeError(err as Error, { syscall: "rmdir", path }),
+            ),
+        );
       },
     );
   } else {
     validateRmdirOptions(options);
-    op_node_rmdir(path, { recursive: options?.recursive })
-      .then((_) => callback(), (err: unknown) => {
+    PromisePrototypeThen(
+      op_node_rmdir(path),
+      (_) => callback(),
+      (err: Error) =>
         callback(
           denoErrorToNodeError(err as Error, { syscall: "rmdir", path }),
-        );
-      });
+        ),
+    );
   }
 }
 
