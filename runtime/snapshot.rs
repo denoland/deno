@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::Extension;
+use deno_core::ExtensionFileSourceCode;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -13,6 +16,49 @@ use deno_resolver::npm::NpmResolver;
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::runtime;
+
+/// Collect all filesystem source file paths from extensions.
+/// These are the JS/TS files loaded via `LoadedFromFsDuringSnapshot`.
+fn collect_input_file_paths(extensions: &[Extension]) -> Vec<&'static str> {
+  let mut paths = Vec::new();
+  for ext in extensions {
+    for source in ext
+      .get_js_sources()
+      .iter()
+      .chain(ext.get_esm_sources())
+      .chain(ext.get_lazy_loaded_esm_sources())
+    {
+      if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+        &source.code
+      {
+        paths.push(*path);
+      }
+    }
+  }
+  paths.sort();
+  paths
+}
+
+/// Compute a hash of all snapshot inputs: file paths, file contents,
+/// and version strings from SnapshotOptions.
+fn compute_input_hash(
+  files: &[&str],
+  options: &SnapshotOptions,
+) -> String {
+  let mut hasher = std::collections::hash_map::DefaultHasher::new();
+  files.len().hash(&mut hasher);
+  for path in files {
+    path.hash(&mut hasher);
+    match std::fs::read(path) {
+      Ok(content) => content.hash(&mut hasher),
+      Err(_) => 0u8.hash(&mut hasher),
+    }
+  }
+  options.ts_version.hash(&mut hasher);
+  options.v8_version.hash(&mut hasher);
+  options.target.hash(&mut hasher);
+  format!("{:x}", hasher.finish())
+}
 
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
@@ -59,11 +105,27 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::lazy_init(),
     ops::http::deno_http_runtime::lazy_init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
-    ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
+    ops::bootstrap::deno_bootstrap::init(Some(snapshot_options.clone()), false),
     runtime::lazy_init(),
     ops::web_worker::deno_web_worker::lazy_init(),
   ];
   extensions.extend(custom_extensions);
+
+  // Check if snapshot inputs have changed since last generation.
+  // If not, skip the expensive create_snapshot() call entirely.
+  let input_file_paths = collect_input_file_paths(&extensions);
+  let current_hash = compute_input_hash(&input_file_paths, &snapshot_options);
+  let hash_path = snapshot_path.with_extension("hash");
+
+  if let Ok(stored_hash) = std::fs::read_to_string(&hash_path) {
+    if stored_hash == current_hash && snapshot_path.exists() {
+      #[allow(clippy::print_stdout)]
+      for path in &input_file_paths {
+        println!("cargo:rerun-if-changed={}", path);
+      }
+      return;
+    }
+  }
 
   let output = create_snapshot(
     CreateSnapshotOptions {
@@ -94,8 +156,14 @@ pub fn create_runtime_snapshot(
     None,
   )
   .unwrap();
-  let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
-  snapshot.write_all(&output.output).unwrap();
+  let existing = std::fs::read(&snapshot_path).ok();
+  if existing.as_deref() != Some(&*output.output) {
+    let mut snapshot = std::fs::File::create(&snapshot_path).unwrap();
+    snapshot.write_all(&output.output).unwrap();
+  }
+
+  // Save hash for next build
+  std::fs::write(&hash_path, current_hash).unwrap();
 
   #[allow(clippy::print_stdout)]
   for path in output.files_loaded_during_snapshot {

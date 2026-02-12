@@ -35,7 +35,7 @@ deno_core::extension!(
   },
 );
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub ts_version: String,
