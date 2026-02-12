@@ -8,9 +8,9 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use serde::Serialize;
 
+use super::ProcessedFile;
 use super::extensions::ts_to_dts_extension;
 use super::extensions::ts_to_js_extension;
-use super::ProcessedFile;
 
 const DENO_SHIM_VERSION: &str = "~0.19.0";
 
@@ -56,7 +56,8 @@ pub fn generate_package_json(
   let mut dependencies = HashMap::new();
 
   if include_deno_shim {
-    dependencies.insert("@deno/shim-deno".to_string(), DENO_SHIM_VERSION.to_string());
+    dependencies
+      .insert("@deno/shim-deno".to_string(), DENO_SHIM_VERSION.to_string());
   }
 
   // Merge dependencies from all processed files
@@ -66,9 +67,11 @@ pub fn generate_package_json(
     }
   }
 
-  let license = config_file.json.license.as_ref().and_then(|l| {
-    l.as_str().map(|s| s.to_string())
-  });
+  let license = config_file
+    .json
+    .license
+    .as_ref()
+    .and_then(|l| l.as_str().map(|s| s.to_string()));
 
   let pkg = PackageJson {
     name: name.clone(),
@@ -133,8 +136,10 @@ fn convert_exports(
             } else {
               format!("./{}", ts_to_js_extension(path))
             };
-            rewritten
-              .insert(condition.clone(), serde_json::Value::String(rewritten_path));
+            rewritten.insert(
+              condition.clone(),
+              serde_json::Value::String(rewritten_path),
+            );
           } else {
             // Pass through non-string values as-is
             rewritten.insert(condition.clone(), cond_value.clone());
@@ -151,8 +156,9 @@ fn convert_exports(
   Ok(json!("./mod.js"))
 }
 
-
-fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String>, Option<String>) {
+fn extract_main_and_types(
+  exports: &Option<serde_json::Value>,
+) -> (Option<String>, Option<String>) {
   let Some(exports) = exports else {
     return (Some("./mod.js".to_string()), Some("./mod.d.ts".to_string()));
   };
@@ -174,11 +180,13 @@ fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String
       return (Some(js_path), Some(dts_path));
     } else if let Some(obj) = dot_export.as_object() {
       // Conditional exports - extract from "import" or "default"
-      let main = obj.get("import")
+      let main = obj
+        .get("import")
         .or_else(|| obj.get("default"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-      let types = obj.get("types")
+      let types = obj
+        .get("types")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
       return (main, types);

@@ -4,12 +4,12 @@ use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
 use deno_core::error::AnyError;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 
-use super::extensions::js_to_dts_extension;
 use super::ProcessedFile;
 use super::ReadmeOrLicense;
+use super::extensions::js_to_dts_extension;
 
 pub fn create_npm_tarball(
   config_file: &ConfigFile,

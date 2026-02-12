@@ -4534,70 +4534,74 @@ fn publish_subcommand() -> Command {
 }
 
 fn pack_subcommand() -> Command {
-  command("pack", "Create an npm-compatible tarball from a Deno project", UnstableArgsConfig::ResolutionOnly)
-    .defer(|cmd| {
-      cmd
-        .arg(
-          Arg::new("output")
-            .short('o')
-            .long("output")
-            .help("Output file path (defaults to <name>-<version>.tgz)")
-            .value_name("FILE")
-        )
-        .arg(config_arg())
-        .arg(no_config_arg())
-        .arg(
-          Arg::new("dry-run")
-            .long("dry-run")
-            .help("Show what would be packed without creating the tarball")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("allow-slow-types")
-            .long("allow-slow-types")
-            .help("Skip .d.ts generation (types will not be included)")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("allow-dirty")
-            .long("allow-dirty")
-            .help("Allow packing if the repository has uncommitted changes")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("set-version")
-            .long("set-version")
-            .help("Override the version in the tarball")
-            .value_name("VERSION")
-        )
-        .arg(
-          Arg::new("no-deno-shim")
-            .long("no-deno-shim")
-            .help("Don't automatically add @deno/shim-deno dependency")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("no-source-maps")
-            .long("no-source-maps")
-            .help("Don't include source maps in the output")
-            .action(ArgAction::SetTrue),
-        )
-        .arg(
-          Arg::new("files")
-            .help("List of file patterns to include")
-            .num_args(..)
-            .action(ArgAction::Append),
-        )
-        .arg(
-          Arg::new("ignore")
-            .long("ignore")
-            .num_args(1..)
-            .action(ArgAction::Append)
-            .require_equals(true)
-            .help("Ignore files matching these patterns")
-            .value_hint(ValueHint::AnyPath),
-        )
-    })
+  command(
+    "pack",
+    "Create an npm-compatible tarball from a Deno project",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("output")
+          .short('o')
+          .long("output")
+          .help("Output file path (defaults to <name>-<version>.tgz)")
+          .value_name("FILE"),
+      )
+      .arg(config_arg())
+      .arg(no_config_arg())
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Show what would be packed without creating the tarball")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-slow-types")
+          .long("allow-slow-types")
+          .help("Skip .d.ts generation (types will not be included)")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("allow-dirty")
+          .long("allow-dirty")
+          .help("Allow packing if the repository has uncommitted changes")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("set-version")
+          .long("set-version")
+          .help("Override the version in the tarball")
+          .value_name("VERSION"),
+      )
+      .arg(
+        Arg::new("no-deno-shim")
+          .long("no-deno-shim")
+          .help("Don't automatically add @deno/shim-deno dependency")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-source-maps")
+          .long("no-source-maps")
+          .help("Don't include source maps in the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("files")
+          .help("List of file patterns to include")
+          .num_args(..)
+          .action(ArgAction::Append),
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .require_equals(true)
+          .help("Ignore files matching these patterns")
+          .value_hint(ValueHint::AnyPath),
+      )
+  })
 }
 
 fn compile_args(app: Command) -> Command {

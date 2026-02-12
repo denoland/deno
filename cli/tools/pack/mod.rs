@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
-use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -82,9 +82,11 @@ pub async fn pack(
           name,
           member_dir: cli_options.start_dir.workspace.root_dir().clone(),
           config_file: deno_json.clone(),
-          license: deno_json.json.license.as_ref().and_then(|l| {
-            l.as_str().map(|s| s.to_string())
-          }),
+          license: deno_json
+            .json
+            .license
+            .as_ref()
+            .and_then(|l| l.as_str().map(|s| s.to_string())),
           should_publish: true,
         });
       }
@@ -130,15 +132,14 @@ pub async fn pack(
     };
 
     // Build module graph
-    let graph = create_graph(
-      module_graph_creator,
-      &package,
-      &pack_flags,
-    )
-    .await
-    .with_context(|| {
-      format!("Failed to build module graph for package '{}'", package.name)
-    })?;
+    let graph = create_graph(module_graph_creator, &package, &pack_flags)
+      .await
+      .with_context(|| {
+        format!(
+          "Failed to build module graph for package '{}'",
+          package.name
+        )
+      })?;
 
     // Collect files from the graph
     let collected_paths = collect_graph_modules(&graph, &package, &pack_flags)?;
@@ -203,9 +204,10 @@ async fn create_graph(
   package: &JsrPackageConfig,
   pack_flags: &PackFlags,
 ) -> Result<ModuleGraph, AnyError> {
+  use deno_graph::WorkspaceFastCheckOption;
+
   use crate::args::config_to_deno_graph_workspace_member;
   use crate::graph_util::BuildFastCheckGraphOptions;
-  use deno_graph::WorkspaceFastCheckOption;
 
   // Build initial graph without fast check DTS
   let mut graph = module_graph_creator
@@ -221,13 +223,17 @@ async fn create_graph(
     let fast_check_workspace_member =
       config_to_deno_graph_workspace_member(&package.config_file)?;
 
-    module_graph_creator.module_graph_builder().build_fast_check_graph(
-      &mut graph,
-      BuildFastCheckGraphOptions {
-        workspace_fast_check: WorkspaceFastCheckOption::Enabled(&[fast_check_workspace_member]),
-        fast_check_dts: true,
-      },
-    )?;
+    module_graph_creator
+      .module_graph_builder()
+      .build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: WorkspaceFastCheckOption::Enabled(&[
+            fast_check_workspace_member,
+          ]),
+          fast_check_dts: true,
+        },
+      )?;
   }
 
   Ok(graph)
@@ -296,7 +302,14 @@ fn collect_readme_license_files(
   }
 
   // Look for LICENSE files (case-insensitive)
-  for name in &["LICENSE", "LICENSE.md", "LICENCE", "LICENCE.md", "license", "license.md"] {
+  for name in &[
+    "LICENSE",
+    "LICENSE.md",
+    "LICENCE",
+    "LICENCE.md",
+    "license",
+    "license.md",
+  ] {
     let path = package_dir.join(name);
     if path.exists() {
       let content = std::fs::read(&path)?;
@@ -354,7 +367,9 @@ impl DenoUsageVisitor {
   }
 
   fn is_local_deno(&self, ident: &swc_ast::Ident) -> bool {
-    self.local_deno_bindings.contains(&ident.to_id().0.to_string())
+    self
+      .local_deno_bindings
+      .contains(&ident.to_id().0.to_string())
   }
 }
 
@@ -375,8 +390,13 @@ impl Visit for DenoUsageVisitor {
         }
         swc_ast::MemberProp::Computed(computed) => {
           // Handle Deno["readFile"] style access
-          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = computed.expr.as_ref() {
-            self.info.apis_used.insert(str_lit.value.to_string_lossy().to_string());
+          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) =
+            computed.expr.as_ref()
+          {
+            self
+              .info
+              .apis_used
+              .insert(str_lit.value.to_string_lossy().to_string());
           }
         }
         _ => {}
@@ -407,7 +427,9 @@ impl Visit for DenoUsageVisitor {
     if let swc_ast::Pat::Ident(ident) = &node.name
       && ident.id.sym.as_ref() == "Deno"
     {
-      self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
+      self
+        .local_deno_bindings
+        .insert(ident.id.to_id().0.to_string());
     }
     node.visit_children_with(self);
   }
@@ -417,7 +439,9 @@ impl Visit for DenoUsageVisitor {
     if let swc_ast::Pat::Ident(ident) = &node.pat
       && ident.id.sym.as_ref() == "Deno"
     {
-      self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
+      self
+        .local_deno_bindings
+        .insert(ident.id.to_id().0.to_string());
     }
     node.visit_children_with(self);
   }
@@ -434,15 +458,24 @@ fn detect_deno_usage(parsed: &deno_ast::ParsedSource) -> DenoUsageInfo {
 /// APIs that are known to be unsupported or have limited support in @deno/shim-deno
 const UNSUPPORTED_DENO_APIS: &[(&str, &str)] = &[
   ("dlopen", "FFI is not supported on Node.js"),
-  ("bench", "benchmarking is Deno-specific; use a cross-runtime framework instead"),
-  ("test", "testing is Deno-specific; use a cross-runtime testing framework instead"),
+  (
+    "bench",
+    "benchmarking is Deno-specific; use a cross-runtime framework instead",
+  ),
+  (
+    "test",
+    "testing is Deno-specific; use a cross-runtime testing framework instead",
+  ),
 ];
 
 /// APIs that have partial support in @deno/shim-deno
 const PARTIAL_SUPPORT_DENO_APIS: &[(&str, &str)] = &[
   ("serve", "has limited support; some features may not work"),
   ("listen", "has limited support; some features may not work"),
-  ("listenTls", "has limited support; some features may not work"),
+  (
+    "listenTls",
+    "has limited support; some features may not work",
+  ),
 ];
 
 /// Create transpile options from deno.json compiler options
@@ -464,12 +497,14 @@ fn create_transpile_options(
   let jsx_fragment_factory = get_str("jsxFragmentFactory");
 
   let jsx_runtime = match jsx.as_deref() {
-    Some("react") => Some(deno_ast::JsxRuntime::Classic(
-      deno_ast::JsxClassicOptions {
-        factory: jsx_factory.unwrap_or_else(|| "React.createElement".to_string()),
-        fragment_factory: jsx_fragment_factory.unwrap_or_else(|| "React.Fragment".to_string()),
-      },
-    )),
+    Some("react") => {
+      Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+        factory: jsx_factory
+          .unwrap_or_else(|| "React.createElement".to_string()),
+        fragment_factory: jsx_fragment_factory
+          .unwrap_or_else(|| "React.Fragment".to_string()),
+      }))
+    }
     Some("react-jsx") => Some(deno_ast::JsxRuntime::Automatic(
       deno_ast::JsxAutomaticOptions {
         development: false,
@@ -528,23 +563,13 @@ fn warn_about_deno_apis(
 ) {
   for (api, reason) in UNSUPPORTED_DENO_APIS {
     if apis_used.contains(*api) {
-      log::warn!(
-        "Deno.{} is used in {} but {}",
-        api,
-        file_path,
-        reason
-      );
+      log::warn!("Deno.{} is used in {} but {}", api, file_path, reason);
     }
   }
 
   for (api, reason) in PARTIAL_SUPPORT_DENO_APIS {
     if apis_used.contains(*api) {
-      log::warn!(
-        "Deno.{} is used in {} and {}",
-        api,
-        file_path,
-        reason
-      );
+      log::warn!("Deno.{} is used in {} and {}", api, file_path, reason);
     }
   }
 
@@ -622,16 +647,14 @@ fn process_single_module(
   // This happens BEFORE transpilation so source maps stay accurate.
   let (source_to_transpile, dependencies) =
     if media_type.is_emittable() || media_type == MediaType::JavaScript {
-      let unfurl_result =
-        unfurl_specifiers(&parsed, &path.specifier, graph);
+      let unfurl_result = unfurl_specifiers(&parsed, &path.specifier, graph);
       let mut text_changes = unfurl_result.text_changes;
 
       // Inject Deno shim import at the top of the file (as a text change)
       if deno_usage.uses_deno && !pack_flags.no_shim {
         text_changes.push(deno_ast::TextChange {
           range: 0..0,
-          new_text: "import { Deno } from \"@deno/shim-deno\";\n"
-            .to_string(),
+          new_text: "import { Deno } from \"@deno/shim-deno\";\n".to_string(),
         });
       }
 
@@ -675,7 +698,11 @@ fn process_single_module(
       },
     )?;
     let text = transpiled.into_source().text;
-    let ext = if media_type == MediaType::Mts { ".mjs" } else { ".js" };
+    let ext = if media_type == MediaType::Mts {
+      ".mjs"
+    } else {
+      ".js"
+    };
     (text, ext)
   } else {
     // Non-emittable files: use the (possibly rewritten) source directly
@@ -719,8 +746,7 @@ fn unfurl_dts_content(
   });
   match dts_parsed {
     Ok(dts_parsed) => {
-      let dts_unfurl =
-        unfurl_specifiers(&dts_parsed, specifier, graph);
+      let dts_unfurl = unfurl_specifiers(&dts_parsed, specifier, graph);
       if dts_unfurl.text_changes.is_empty() {
         dts_text
       } else {
@@ -761,7 +787,12 @@ fn extract_dts(
       let program_ref = (&dts_module.program).into();
       let comments = dts_module.comments.as_single_threaded();
 
-      match deno_ast::emit(program_ref, &comments, &Default::default(), &emit_options) {
+      match deno_ast::emit(
+        program_ref,
+        &comments,
+        &Default::default(),
+        &emit_options,
+      ) {
         Ok(emitted) => return Some(emitted.text),
         Err(e) => {
           log::warn!("Failed to emit DTS: {}", e);
@@ -781,7 +812,6 @@ fn extract_dts(
   );
   Some("export {};".to_string())
 }
-
 
 fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
   files.iter().any(|f| f.uses_deno)
