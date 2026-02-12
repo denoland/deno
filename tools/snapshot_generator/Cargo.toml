@@ -1,0 +1,19 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "snapshot_generator"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "snapshot_generator"
+path = "main.rs"
+
+[dependencies]
+deno_runtime = { workspace = true, features = [
+  "include_js_files_for_snapshotting",
+  "only_snapshotted_js_sources",
+  "snapshot",
+] }
+deno_snapshots = { workspace = true, default-features = false }

@@ -58,6 +58,7 @@ members = [
   "tests/sqlite_extension_test",
   "tests/util/server",
   "tests/util/test_macro",
+  "tools/snapshot_generator",
 ]
 # tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
 # feature, which is incompatible with the "session" feature used by the rest of the workspace.
@@ -137,7 +138,7 @@ deno_package_json = { version = "0.33.0", default-features = false, path = "./li
 deno_permissions = { version = "0.90.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.62.0", path = "./libs/resolver" }
 deno_runtime = { version = "0.239.0", path = "./runtime" }
-deno_snapshots = { version = "0.46.0", path = "./cli/snapshot" }
+deno_snapshots = { version = "0.46.0", path = "./cli/snapshot", default-features = false }
 deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.26.0" }
 deno_typescript_go_client_rust = { version = "0.13.0", path = "./libs/typescript_go_client" }
 eszip = { version = "=0.109.0", path = "./libs/eszip" }

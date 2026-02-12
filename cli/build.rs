@@ -4,8 +4,6 @@ use std::env;
 use std::io::Write;
 use std::path::Path;
 
-use deno_runtime::*;
-
 fn compress_decls(out_dir: &Path) {
   let decls = [
     "lib.deno_webgpu.d.ts",

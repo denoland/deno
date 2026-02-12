@@ -60,6 +60,24 @@ fn compute_input_hash(
   format!("{:x}", hasher.finish())
 }
 
+/// Write a manifest of snapshot input file paths and metadata.
+/// This allows downstream build scripts to recompute the snapshot hash
+/// without depending on deno_runtime.
+fn write_manifest(
+  manifest_path: &std::path::Path,
+  files: &[&str],
+  v8_version: &str,
+) {
+  let mut content = String::new();
+  content.push_str(&format!("v8_version={}\n", v8_version));
+  content.push_str("---\n");
+  for path in files {
+    content.push_str(path);
+    content.push('\n');
+  }
+  std::fs::write(manifest_path, content).unwrap();
+}
+
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
@@ -116,6 +134,15 @@ pub fn create_runtime_snapshot(
   let input_file_paths = collect_input_file_paths(&extensions);
   let current_hash = compute_input_hash(&input_file_paths, &snapshot_options);
   let hash_path = snapshot_path.with_extension("hash");
+  let manifest_path = snapshot_path.with_extension("manifest");
+
+  // Always write the manifest so downstream build scripts can use it
+  // for hash checks without depending on deno_runtime.
+  write_manifest(
+    &manifest_path,
+    &input_file_paths,
+    snapshot_options.v8_version,
+  );
 
   if let Ok(stored_hash) = std::fs::read_to_string(&hash_path) {
     if stored_hash == current_hash && snapshot_path.exists() {
