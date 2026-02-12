@@ -27,18 +27,14 @@ const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 // shared conditions
-const isDenoland = expr("github.repository").equals("denoland/deno");
+const isDenoland = conditions.isRepository("denoland/deno");
 const isMainBranch = conditions.isBranch("main");
 const isTag = conditions.isTag();
 const isNotTag = isTag.not();
 const isMainOrTag = isMainBranch.or(isTag);
-const isPR = conditions.isEvent("pull_request");
-const hasCiFullLabel = expr(
-  "github.event.pull_request.labels.*.name",
-).contains("ci-full");
-const hasCiBenchLabel = expr(
-  "github.event.pull_request.labels.*.name",
-).contains("ci-bench");
+const isPr = conditions.isPr();
+const hasCiFullLabel = conditions.hasPrLabel("ci-full");
+const hasCiBenchLabel = conditions.hasPrLabel("ci-bench");
 
 const Runners = {
   linuxX86: {
@@ -212,8 +208,8 @@ function handleMatrixItems(items: {
     // use a free "ubuntu" runner on jobs that are skipped
     if (item.skip_pr != null) {
       const skipCondition = item.skip_pr === true
-        ? isPR
-        : isPR.and(item.skip_pr);
+        ? isPr
+        : isPr.and(item.skip_pr);
       const shouldSkip = hasCiFullLabel.not().and(skipCondition);
       const originalRunner = item.runner.startsWith("${{")
         ? expr(item.runner.slice(3, -2).trim())
@@ -286,13 +282,17 @@ const installPythonStep = step({
 });
 const setupPrebuiltMacStep = step({
   if: "runner.os == 'macOS'",
-  env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
   run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
 });
 const installLldStep = step({
   name: "Install macOS aarch64 lld",
   if: "runner.os == 'macOS' && runner.arch == 'ARM64'",
-  env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+  env: {
+    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+  },
   run: "./tools/install_prebuilt.js ld64.lld",
 }).dependsOn(cloneStdSubmodule, installDenoStep, setupPrebuiltMacStep);
 const cacheCargoHomeStep = step({
@@ -360,10 +360,10 @@ const preBuildCheckStep = step({
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step(
+  steps: step.if(conditions.isDraftPr())(
     cloneRepoStep,
     preBuildCheckStep,
-  ).if("github.event.pull_request.draft == true"),
+  ),
   outputs: { skip_build: preBuildCheckStep.outputs.skip_build },
 });
 
@@ -492,7 +492,7 @@ const buildJob = job("build", {
     // e.g. a flaky test.
     // Don't fast-fail on tag build because publishing binaries shouldn't be
     // prevented if any of the stages fail (which can be a false negative).
-    failFast: isPR.or(isMainBranch.not().and(isTag.not())),
+    failFast: isPr.or(isMainBranch.not().and(isTag.not())),
   },
   env: {
     CARGO_TERM_COLOR: "always",
@@ -527,7 +527,7 @@ const buildJob = job("build", {
       ],
     });
 
-    const preRelease = step(
+    const preRelease = step.if(isTest)(
       {
         name: "Upload PR artifact (linux)",
         if: isTest.and(
@@ -654,50 +654,50 @@ const buildJob = job("build", {
           "rm canary-latest.txt gha-creds-*.json",
         ],
       }).dependsOn(setupGcloud),
-    ).if(isTest);
-    const cargoBuildReleaseStep = step(
-      {
-        name: "Configure canary build",
-        if: isTest.and(isMainBranch),
-        run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
-      },
-      {
-        name: "Build release",
-        run: [
-          // output fs space before and after building
-          "df -h",
-          "cargo build --release --locked --all-targets --features=panic-trace",
-          "df -h",
-        ],
-      },
-      {
-        name: "Generate symcache",
-        run: [
-          "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
-          "du -h deno.symcache",
-          "du -h target/release/deno",
-        ],
-        env: { NO_COLOR: 1 },
-      },
-      preRelease,
-      {
-        name: "Build product size info",
-        if: isMainOrTag,
-        run: [
-          'du -hd1 "./target/${{ matrix.profile }}"',
-          'du -ha  "./target/${{ matrix.profile }}/deno"',
-          'du -ha  "./target/${{ matrix.profile }}/denort"',
-        ],
-      },
-    )
+    );
+    const cargoBuildReleaseStep = step
+      .if(isRelease.and(isDenoland.or(buildMatrix.use_sysroot.equals(true))))
       .dependsOn(
         installLldStep,
         installRustStep,
         cacheCargoHomeStep,
         cargoBuildCacheStep,
         sysRootStep,
-      )
-      .if(isRelease.and(isDenoland.or(buildMatrix.use_sysroot.equals(true))));
+      )(
+        {
+          name: "Configure canary build",
+          if: isTest.and(isMainBranch),
+          run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
+        },
+        {
+          name: "Build release",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets --features=panic-trace",
+            "df -h",
+          ],
+        },
+        {
+          name: "Generate symcache",
+          run: [
+            "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
+            "du -h deno.symcache",
+            "du -h target/release/deno",
+          ],
+          env: { NO_COLOR: 1 },
+        },
+        preRelease,
+        {
+          name: "Build product size info",
+          if: isMainOrTag,
+          run: [
+            'du -hd1 "./target/${{ matrix.profile }}"',
+            'du -ha  "./target/${{ matrix.profile }}/deno"',
+            'du -ha  "./target/${{ matrix.profile }}/denort"',
+          ],
+        },
+      );
     const cargoBuildStep = step(
       {
         name: "Build debug",
@@ -730,188 +730,192 @@ const buildJob = job("build", {
     )
       .comesAfter(tarSourcePublishStep);
 
-    const benchStep = step(
-      cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
-      step({
-        name: "Install benchmark tools",
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-        run: "./tools/install_prebuilt.js wrk hyperfine",
-      }).dependsOn(installDenoStep, setupPrebuiltMacStep),
-      step({
-        name: "Run benchmarks",
-        run: "cargo bench --locked",
-      }).dependsOn(cargoBuildReleaseStep),
-      {
-        name: "Post benchmarks",
-        if: isDenoland.and(isMainBranch),
+    const benchStep = step
+      .if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease))
+      .dependsOn(installNodeStep)(
+        cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
+        step({
+          name: "Install benchmark tools",
+          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          run: "./tools/install_prebuilt.js wrk hyperfine",
+        }).dependsOn(installDenoStep, setupPrebuiltMacStep),
+        step({
+          name: "Run benchmarks",
+          run: "cargo bench --locked",
+        }).dependsOn(cargoBuildReleaseStep),
+        {
+          name: "Post benchmarks",
+          if: isDenoland.and(isMainBranch),
+          env: {
+            DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+          },
+          run: [
+            "git clone --depth 1 --branch gh-pages                             \\",
+            "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
+            "    gh-pages",
+            "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
+            "cd gh-pages",
+            'git config user.email "propelml@gmail.com"',
+            'git config user.name "denobot"',
+            "git add .",
+            'git commit --message "Update benchmarks"',
+            "git push origin gh-pages",
+          ],
+        },
+        {
+          name: "Worker info",
+          run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
+        },
+      );
+
+    const testStep = step
+      .if(isTest)
+      .dependsOn(installNodeStep)(
+        cloneSubmodule("./tests/node_compat/runner/suite"),
+        {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v5",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+          },
+        },
+        {
+          if: buildMatrix.os.equals("linux").and(
+            buildMatrix.arch.equals("aarch64"),
+          ),
+          name: "Load 'vsock_loopback; kernel module",
+          run: "sudo modprobe vsock_loopback",
+        },
+        cargoBuildStep,
+        {
+          name: "Autobahn testsuite",
+          if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isRelease)
+            .and(isNotTag),
+          run:
+            "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
+        },
+        {
+          name: "Test (full, debug)",
+          // run full tests only on Linux
+          if: isDebug.and(isNotTag).and(isLinux),
+          run:
+            `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test (fast, debug)",
+          if: isDebug.and(
+            isTag.or(buildMatrix.os.notEquals("linux")),
+          ),
+          run: [
+            // Run unit then integration tests. Skip doc tests here
+            // since they are sometimes very slow on Mac.
+            `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
+            `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
+          ],
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test (release)",
+          if: isRelease.and(
+            isDenoland.or(buildMatrix.use_sysroot.equals(true)),
+          ).and(isNotTag),
+          run:
+            `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
+        },
+        {
+          name: "Ensure no git changes",
+          if: isPr,
+          run: [
+            'if [[ -n "$(git status --porcelain)" ]]; then',
+            'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+            'echo ""',
+            'echo "📋 Status:"',
+            "git status",
+            'echo ""',
+            "exit 1",
+            "fi",
+          ],
+        },
+        step({
+          name: "Combine test results",
+          if: conditions.status.always().and(isNotTag),
+          run: "deno run -RWN ./tools/combine_test_results.js",
+        }).dependsOn(installDenoStep),
+        {
+          name: "Upload test results",
+          uses: "actions/upload-artifact@v4",
+          if: conditions.status.always().and(isNotTag),
+          with: {
+            name:
+              "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+            path: "target/test_results.json",
+          },
+        },
+      );
+
+    const wptTests = step
+      .if(buildMatrix.wpt.equals(true))
+      .dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)({
+        name: "Configure hosts file for WPT",
+        run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
+        workingDirectory: "tests/wpt/suite/",
+      }, {
+        name: "Run web platform tests (debug)",
+        if: isDebug,
+        env: { DENO_BIN: "./target/debug/deno" },
+        run: [
+          "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+          "    ./tests/wpt/wpt.ts setup",
+          "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+          '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+        ],
+      }, {
+        name: "Run web platform tests (release)",
+        if: isRelease,
         env: {
-          DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+          DENO_BIN: "./target/release/deno",
         },
         run: [
-          "git clone --depth 1 --branch gh-pages                             \\",
-          "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
-          "    gh-pages",
-          "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
-          "cd gh-pages",
-          'git config user.email "propelml@gmail.com"',
-          'git config user.name "denobot"',
-          "git add .",
-          'git commit --message "Update benchmarks"',
-          "git push origin gh-pages",
+          "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+          "    ./tests/wpt/wpt.ts setup",
+          "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+          '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
         ],
-      },
-      {
-        name: "Worker info",
-        run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
-      },
-    ).dependsOn(installNodeStep)
-      .if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease));
-
-    const testStep = step(
-      cloneSubmodule("./tests/node_compat/runner/suite"),
-      {
-        name: "Set up playwright cache",
-        uses: "actions/cache@v5",
-        with: {
-          path: "./.ms-playwright",
-          key: "playwright-${{ runner.os }}-${{ runner.arch }}",
-        },
-      },
-      {
-        if: buildMatrix.os.equals("linux").and(
-          buildMatrix.arch.equals("aarch64"),
-        ),
-        name: "Load 'vsock_loopback; kernel module",
-        run: "sudo modprobe vsock_loopback",
-      },
-      cargoBuildStep,
-      {
-        name: "Autobahn testsuite",
-        if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(isRelease)
-          .and(isNotTag),
-        run:
-          "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
-      },
-      {
-        name: "Test (full, debug)",
-        // run full tests only on Linux
-        if: isDebug.and(isNotTag).and(isLinux),
-        run:
-          `cargo test --workspace --locked ${libExcludeArgs} --features=panic-trace`,
-        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      },
-      {
-        name: "Test (fast, debug)",
-        if: isDebug.and(
-          isTag.or(buildMatrix.os.notEquals("linux")),
+      }, {
+        name: "Upload wpt results to dl.deno.land",
+        continueOnError: true,
+        if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
+          isNotTag,
         ),
         run: [
-          // Run unit then integration tests. Skip doc tests here
-          // since they are sometimes very slow on Mac.
-          `cargo test --workspace --locked ${libExcludeArgs} --lib --features=panic-trace`,
-          `cargo test --workspace --locked ${libExcludeArgs} --tests --features=panic-trace`,
+          "gzip ./wptreport.json",
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
+          'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+          "echo $(git rev-parse HEAD) > wpt-latest.txt",
+          'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
         ],
-        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      },
-      {
-        name: "Test (release)",
-        if: isRelease.and(
-          isDenoland.or(buildMatrix.use_sysroot.equals(true)),
-        ).and(isNotTag),
-        run:
-          `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
-      },
-      {
-        name: "Ensure no git changes",
-        if: isPR,
-        run: [
-          'if [[ -n "$(git status --porcelain)" ]]; then',
-          'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
-          'echo ""',
-          'echo "📋 Status:"',
-          "git status",
-          'echo ""',
-          "exit 1",
-          "fi",
-        ],
-      },
-      step({
-        name: "Combine test results",
-        if: conditions.status.always().and(isNotTag),
-        run: "deno run -RWN ./tools/combine_test_results.js",
-      }).dependsOn(installDenoStep),
-      {
-        name: "Upload test results",
-        uses: "actions/upload-artifact@v4",
-        if: conditions.status.always().and(isNotTag),
-        with: {
-          name:
-            "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
-          path: "target/test_results.json",
+      }, {
+        name: "Upload wpt results to wpt.fyi",
+        continueOnError: true,
+        if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
+          isNotTag,
+        ),
+        env: {
+          WPT_FYI_USER: "deno",
+          WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
+          GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
         },
-      },
-    ).dependsOn(installNodeStep).if(isTest);
-
-    const wptTests = step({
-      name: "Configure hosts file for WPT",
-      run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
-      workingDirectory: "tests/wpt/suite/",
-    }, {
-      name: "Run web platform tests (debug)",
-      if: isDebug,
-      env: { DENO_BIN: "./target/debug/deno" },
-      run: [
-        "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
-        "    ./tests/wpt/wpt.ts setup",
-        "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-        '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
-      ],
-    }, {
-      name: "Run web platform tests (release)",
-      if: isRelease,
-      env: {
-        DENO_BIN: "./target/release/deno",
-      },
-      run: [
-        "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
-        "    ./tests/wpt/wpt.ts setup",
-        "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-        '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
-      ],
-    }, {
-      name: "Upload wpt results to dl.deno.land",
-      continueOnError: true,
-      if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
-        isNotTag,
-      ),
-      run: [
-        "gzip ./wptreport.json",
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
-        'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
-        "echo $(git rev-parse HEAD) > wpt-latest.txt",
-        'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
-      ],
-    }, {
-      name: "Upload wpt results to wpt.fyi",
-      continueOnError: true,
-      if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
-        isNotTag,
-      ),
-      env: {
-        WPT_FYI_USER: "deno",
-        WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
-        GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
-      },
-      run: [
-        "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\",
-        "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
-      ],
-    }).dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)
-      .if(buildMatrix.wpt.equals(true));
+        run: [
+          "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\",
+          "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
+        ],
+      });
 
     const shouldPublishCondition = isTest.and(isRelease).and(isDenoland)
       .and(isTag);
-    const publishStep = step(
+    const publishStep = step.if(shouldPublishCondition)(
       step({
         name: "Upload release to dl.deno.land (unix)",
         if: isWindows.not(),
@@ -976,9 +980,9 @@ const buildJob = job("build", {
           draft: true,
         },
       },
-    ).if(shouldPublishCondition);
+    );
 
-    return step(
+    return step.if(buildMatrix.skip.not())(
       cloneRepoStep,
       cloneStdSubmodule,
       // ensure this happens right after cloning
@@ -1022,7 +1026,7 @@ const buildJob = job("build", {
       wptTests,
       publishStep,
       saveCacheBuildOutputStep,
-    ).if(buildMatrix.skip.not());
+    );
   })(),
 });
 
@@ -1065,7 +1069,7 @@ const lintJob = job("lint", {
     restoreCacheBuildOutputStep,
     installRustStep,
     installDenoStep,
-    step(
+    step.if(lintMatrix.os.equals("linux"))(
       {
         name: "test_format.js",
         run:
@@ -1076,7 +1080,7 @@ const lintJob = job("lint", {
         run:
           "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
       },
-    ).if(lintMatrix.os.equals("linux")),
+    ),
     {
       name: "lint.js",
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
@@ -1122,42 +1126,43 @@ const libsJob = job("libs", {
       installRustStep,
     );
 
-    const macSetup = step(
+    const macSetup = step.if(
+      libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
+    )(
       installLldStep,
       {
         if: libsMatrix.os.equals("macos"),
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
       },
-    ).if(
-      libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
     );
 
-    const linuxCargoChecks = step(
-      // we want these crates to be Wasm compatible
-      {
-        name: "Cargo check (deno_resolver)",
-        run:
-          "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-      },
-      {
-        name: "Cargo check (deno_npm_installer)",
-        run:
-          "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-      },
-      {
-        name: "Cargo check (deno_config)",
-        run: [
-          "cargo check --no-default-features -p deno_config",
-          "cargo check --no-default-features --features workspace -p deno_config",
-          "cargo check --no-default-features --features package_json -p deno_config",
-          "cargo check --no-default-features --features workspace --features sync -p deno_config",
-          "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-          "cargo check -p deno --features=lsp-tracing",
-        ],
-      },
-    ).dependsOn(installWasmStep)
-      .if(libsMatrix.os.equals("linux"));
+    const linuxCargoChecks = step
+      .if(libsMatrix.os.equals("linux"))
+      .dependsOn(installWasmStep)(
+        // we want these crates to be Wasm compatible
+        {
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+            "cargo check -p deno --features=lsp-tracing",
+          ],
+        },
+      );
 
     return step(
       repoSetupSteps,
