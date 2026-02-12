@@ -30,3 +30,11 @@ Deno.test(function hasStackAccessor() {
   assert(typeof desc.get === "function");
   assert(typeof desc.set === "function");
 });
+
+Deno.test(function quotaExceededErrorCodeIsZero() {
+  // Per https://github.com/whatwg/webidl/pull/1465, QuotaExceededError is no
+  // longer in the DOMException error names table, so its code should be 0.
+  const e = new DOMException("test", "QuotaExceededError");
+  assertEquals(e.code, 0);
+  assertEquals(e.name, "QuotaExceededError");
+});
