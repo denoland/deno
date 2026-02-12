@@ -16,6 +16,15 @@ use rustls::KeyLogFile;
 
 static SSL_KEY_LOG: OnceLock<Arc<dyn KeyLog + Send + Sync>> = OnceLock::new();
 
+/// Eagerly initializes the global TLS key logger.
+///
+/// `KeyLogFile::new()` reads `SSLKEYLOGFILE` from the process environment.
+/// Callers can use this to snapshot that value early, instead of on first TLS
+/// config construction.
+pub(super) fn init_ssl_key_log() {
+  let _ = get_ssl_key_log();
+}
+
 pub fn get_ssl_key_log() -> Arc<dyn KeyLog> {
   SSL_KEY_LOG
     .get_or_init(|| {

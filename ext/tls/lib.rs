@@ -64,7 +64,13 @@ pub trait RootCertStoreProvider: Send + Sync {
 }
 
 // This extension has no runtime apis, it only exports some shared native functions.
-deno_core::extension!(deno_tls);
+deno_core::extension!(
+  deno_tls,
+  state = |_state| {
+    // Resolve `SSLKEYLOGFILE` before user JavaScript can mutate env vars.
+    keylog::init_ssl_key_log();
+  },
+);
 
 #[derive(Debug)]
 pub struct NoCertificateVerification {
