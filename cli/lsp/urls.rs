@@ -35,9 +35,10 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
       Component::Prefix(prefix) => {
         path_only_has_prefix = true;
         match prefix.kind() {
-          Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+          Prefix::Disk(mut letter) | Prefix::VerbatimDisk(mut letter) => {
             encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
-            let b = [(letter as char).to_ascii_uppercase() as u8];
+            letter.make_ascii_uppercase();
+            let b = [letter];
             encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
               // SAFETY: Drive letter is ascii.
               unsafe { str::from_utf8_unchecked(&b) },
