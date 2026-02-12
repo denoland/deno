@@ -382,7 +382,7 @@ async function ensureNoNewTopLevelEntries() {
     throw new Error(
       `New top-level entries detected: ${newEntries.join(", ")}. ` +
         `Only the following top-level entries are allowed: ${
-          allowed.join(", ")
+          Array.from(allowed).join(", ")
         }`,
     );
   }
