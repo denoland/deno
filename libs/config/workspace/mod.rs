@@ -501,7 +501,9 @@ impl Workspace {
   }
 
   /// Returns the npm overrides from the root package.json, if any.
-  pub fn npm_overrides(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+  pub fn npm_overrides(
+    &self,
+  ) -> Option<&serde_json::Map<String, serde_json::Value>> {
     self.root_pkg_json()?.overrides.as_ref()
   }
 
@@ -511,14 +513,19 @@ impl Workspace {
   /// and peerDependencies of the root package.json.
   pub fn root_deps_for_npm_overrides(
     &self,
-  ) -> std::collections::HashMap<deno_semver::package::PackageName, deno_semver::StackString>
-  {
+  ) -> std::collections::HashMap<
+    deno_semver::package::PackageName,
+    deno_semver::StackString,
+  > {
     let Some(pkg_json) = self.root_pkg_json() else {
       return std::collections::HashMap::new();
     };
     let capacity = pkg_json.dependencies.as_ref().map_or(0, |d| d.len())
       + pkg_json.dev_dependencies.as_ref().map_or(0, |d| d.len())
-      + pkg_json.optional_dependencies.as_ref().map_or(0, |d| d.len())
+      + pkg_json
+        .optional_dependencies
+        .as_ref()
+        .map_or(0, |d| d.len())
       + pkg_json.peer_dependencies.as_ref().map_or(0, |d| d.len());
     let mut deps = std::collections::HashMap::with_capacity(capacity);
     // collect from dependencies
