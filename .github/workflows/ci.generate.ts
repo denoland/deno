@@ -287,14 +287,19 @@ const setupPrebuiltMacStep = step({
   },
   run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
 });
-const installLldStep = step({
-  name: "Install macOS aarch64 lld",
-  if: "runner.os == 'macOS' && runner.arch == 'ARM64'",
-  env: {
-    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-  },
-  run: "./tools/install_prebuilt.js ld64.lld",
-}).dependsOn(cloneStdSubmodule, installDenoStep, setupPrebuiltMacStep);
+const installLldStep = step
+  .dependsOn(
+    cloneStdSubmodule,
+    installDenoStep,
+    setupPrebuiltMacStep,
+  )({
+    name: "Install macOS aarch64 lld",
+    if: "runner.os == 'macOS' && runner.arch == 'ARM64'",
+    env: {
+      GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+    },
+    run: "./tools/install_prebuilt.js ld64.lld",
+  });
 const cacheCargoHomeStep = step({
   name: "Cache Cargo home",
   uses: "cirruslabs/cache@v4",
@@ -320,7 +325,7 @@ const installWasmStep = step({
   name: "Install wasm target",
   run: "rustup target add wasm32-unknown-unknown",
 });
-const setupGcloud = step({
+const setupGcloud = step.dependsOn(installPythonStep)({
   name: "Authenticate with Google Cloud",
   uses: "google-github-actions/auth@v3",
   with: {
@@ -340,7 +345,7 @@ const setupGcloud = step({
   uses: "google-github-actions/setup-gcloud@v2",
   env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
   with: { project_id: "denoland" },
-}).dependsOn(installPythonStep);
+});
 
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
@@ -364,7 +369,9 @@ const preBuildJob = job("pre_build", {
     cloneRepoStep,
     preBuildCheckStep,
   ),
-  outputs: { skip_build: preBuildCheckStep.outputs.skip_build },
+  outputs: {
+    skip_build: preBuildCheckStep.outputs.skip_build,
+  },
 });
 
 // === build job ===
@@ -502,24 +509,26 @@ const buildJob = job("build", {
   },
   steps: (() => {
     const cloneWptSubmodule = cloneSubmodule("./tests/wpt/suite");
-    const cargoBuildCacheStep = step(
-      restoreCacheBuildOutputStep,
-      {
-        name: "Apply and update mtime cache",
-        if: isNotTag,
-        uses: "./.github/mtime_cache",
-        with: { "cache-path": "./target" },
-      },
-    ).dependsOn(cacheCargoHomeStep, installRustStep);
+    const cargoBuildCacheStep = step
+      .dependsOn(cacheCargoHomeStep, installRustStep)(
+        restoreCacheBuildOutputStep,
+        {
+          name: "Apply and update mtime cache",
+          if: isNotTag,
+          uses: "./.github/mtime_cache",
+          with: {
+            "cache-path": "./target",
+          },
+        },
+      );
     const sysRootStep = step({
       if: buildMatrix.use_sysroot,
       ...sysRootConfig,
     });
     const tarSourcePublishStep = step({
       name: "Create source tarballs (release, linux)",
-      if: buildMatrix.os.equals("linux").and(
-        buildMatrix.arch.equals("x86_64"),
-      ),
+      if: buildMatrix.os.equals("linux")
+        .and(buildMatrix.arch.equals("x86_64")),
       run: [
         "mkdir -p target/release",
         'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
@@ -555,12 +564,14 @@ const buildJob = job("build", {
           "./deno types > lib.deno.d.ts",
         ],
       },
-      step({
+      step.dependsOn(setupPrebuiltMacStep)({
         name: "Install rust-codesign",
         if: buildMatrix.os.equals("macos").and(isDenoland),
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        env: {
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        },
         run: "./tools/install_prebuilt.js rcodesign",
-      }).dependsOn(setupPrebuiltMacStep),
+      }),
       {
         name: "Pre-release (mac)",
         if: isMacos.and(isDenoland),
@@ -642,7 +653,7 @@ const buildJob = job("build", {
           "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
         ],
       },
-      step({
+      step.dependsOn(setupGcloud)({
         name: "Upload canary to dl.deno.land",
         if: isDenoland.and(isMainBranch),
         run: [
@@ -653,7 +664,7 @@ const buildJob = job("build", {
           'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
           "rm canary-latest.txt gha-creds-*.json",
         ],
-      }).dependsOn(setupGcloud),
+      }),
     );
     const cargoBuildReleaseStep = step
       .if(isRelease.and(isDenoland.or(buildMatrix.use_sysroot.equals(true))))
@@ -698,51 +709,52 @@ const buildJob = job("build", {
           ],
         },
       );
-    const cargoBuildStep = step(
-      {
-        name: "Build debug",
-        if: isDebug,
-        run: "cargo build --locked --all-targets --features=panic-trace",
-        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      },
-      cargoBuildReleaseStep,
-      {
-        // Run a minimal check to ensure that binary is not corrupted, regardless
-        // of our build mode
-        name: "Check deno binary",
-        if: isTest,
-        run:
-          'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
-        env: { NO_COLOR: 1 },
-      },
-      {
-        // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
-        name: "Check deno binary (in sysroot)",
-        if: isTest.and(buildMatrix.use_sysroot.equals(true)),
-        run:
-          'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
-      },
-    ).dependsOn(
-      installLldStep,
-      installRustStep,
-      cargoBuildCacheStep,
-      sysRootStep,
-    )
-      .comesAfter(tarSourcePublishStep);
+    const cargoBuildStep = step
+      .dependsOn(
+        installLldStep,
+        installRustStep,
+        cargoBuildCacheStep,
+        sysRootStep,
+      )
+      .comesAfter(tarSourcePublishStep)(
+        {
+          name: "Build debug",
+          if: isDebug,
+          run: "cargo build --locked --all-targets --features=panic-trace",
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        cargoBuildReleaseStep,
+        {
+          // Run a minimal check to ensure that binary is not corrupted, regardless
+          // of our build mode
+          name: "Check deno binary",
+          if: isTest,
+          run:
+            'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+          env: { NO_COLOR: 1 },
+        },
+        {
+          // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+          name: "Check deno binary (in sysroot)",
+          if: isTest.and(buildMatrix.use_sysroot.equals(true)),
+          run:
+            'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
+        },
+      );
 
     const benchStep = step
       .if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease))
       .dependsOn(installNodeStep)(
         cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
-        step({
+        step.dependsOn(installDenoStep, setupPrebuiltMacStep)({
           name: "Install benchmark tools",
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
           run: "./tools/install_prebuilt.js wrk hyperfine",
-        }).dependsOn(installDenoStep, setupPrebuiltMacStep),
-        step({
+        }),
+        step.dependsOn(cargoBuildReleaseStep)({
           name: "Run benchmarks",
           run: "cargo bench --locked",
-        }).dependsOn(cargoBuildReleaseStep),
+        }),
         {
           name: "Post benchmarks",
           if: isDenoland.and(isMainBranch),
@@ -838,11 +850,11 @@ const buildJob = job("build", {
             "fi",
           ],
         },
-        step({
+        step.dependsOn(installDenoStep)({
           name: "Combine test results",
           if: conditions.status.always().and(isNotTag),
           run: "deno run -RWN ./tools/combine_test_results.js",
-        }).dependsOn(installDenoStep),
+        }),
         {
           name: "Upload test results",
           uses: "actions/upload-artifact@v4",
@@ -916,7 +928,7 @@ const buildJob = job("build", {
     const shouldPublishCondition = isTest.and(isRelease).and(isDenoland)
       .and(isTag);
     const publishStep = step.if(shouldPublishCondition)(
-      step({
+      step.dependsOn(setupGcloud)({
         name: "Upload release to dl.deno.land (unix)",
         if: isWindows.not(),
         run: [
@@ -933,7 +945,7 @@ const buildJob = job("build", {
           'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
         ],
-      }).dependsOn(setupGcloud),
+      }),
       {
         name: "Create release notes",
         run: [
@@ -1167,11 +1179,11 @@ const libsJob = job("libs", {
     return step(
       repoSetupSteps,
       linuxCargoChecks,
-      step({
+      step.dependsOn(repoSetupSteps, macSetup)({
         name: "Test libs",
         run: `cargo test --locked ${libTestCrateArgs}`,
         env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      }).dependsOn(repoSetupSteps, macSetup),
+      }),
       saveCacheBuildOutputStep,
     );
   })(),
