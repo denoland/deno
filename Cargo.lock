@@ -686,6 +686,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "borrow-or-share"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
+
+[[package]]
 name = "boxed_error"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1711,6 +1717,7 @@ dependencies = [
  "fancy-regex 0.14.0",
  "faster-hex",
  "flate2",
+ "fluent-uri",
  "fs3",
  "http 1.1.0",
  "http-body 1.0.0",
@@ -1727,7 +1734,7 @@ dependencies = [
  "locked-tripwire",
  "log",
  "lol_html",
- "lsp-types",
+ "ls-types",
  "malva",
  "markup_fmt",
  "memchr",
@@ -1792,9 +1799,9 @@ dependencies = [
 
 [[package]]
 name = "deno-tower-lsp-macros"
-version = "0.11.3"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9221b99f1cc7c395686b9f2d5652c5855666a9282c8d5a68fabd4b1d4994fa9"
+checksum = "f9faf94704f67b21ae4e9e9bdd6cb3a876fdaeecd047cc2ecf2b3bd4d4978a7e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3096,9 +3103,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67da3258ce785368c691b206d00d4109f8eead24da0603abc70e04b04871a3df"
+checksum = "fea954c97c042563492c93dedaeddaf59a0c7a241d4a35a575cfaf4b42db0d14"
 dependencies = [
  "async-trait",
  "auto_impl",
@@ -3107,7 +3114,7 @@ dependencies = [
  "deno-tower-lsp-macros",
  "futures",
  "httparse",
- "lsp-types",
+ "ls-types",
  "memchr",
  "serde",
  "serde_json",
@@ -4305,11 +4312,13 @@ dependencies = [
 
 [[package]]
 name = "fluent-uri"
-version = "0.1.4"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d"
+checksum = "bc74ac4d8359ae70623506d512209619e5cf8f347124910440dbc221714b328e"
 dependencies = [
- "bitflags 1.3.2",
+ "borrow-or-share",
+ "ref-cast",
+ "serde",
 ]
 
 [[package]]
@@ -6180,16 +6189,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lsp-types"
-version = "0.97.0"
+name = "ls-types"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53353550a17c04ac46c585feb189c2db82154fc84b79c7a66c96c2c644f66071"
+checksum = "c029d4b509074b7d59dac432d87d4c24badaaf6c6c9c8b7ac030ae8022dc118d"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.9.3",
  "fluent-uri",
+ "percent-encoding",
  "serde",
  "serde_json",
- "serde_repr",
 ]
 
 [[package]]
@@ -9692,6 +9701,7 @@ dependencies = [
  "fastwebsockets",
  "file_test_runner",
  "flate2",
+ "fluent-uri",
  "futures",
  "glob",
  "h2 0.4.7",
@@ -9704,7 +9714,7 @@ dependencies = [
  "jsonc-parser 0.28.0",
  "lazy-regex",
  "libc",
- "lsp-types",
+ "ls-types",
  "monch",
  "nix 0.27.1",
  "once_cell",
