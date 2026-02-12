@@ -42,6 +42,7 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
               // SAFETY: Drive letter is ascii.
               unsafe { str::from_utf8_unchecked(&b) },
             );
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(":");
           }
           Prefix::UNC(..) | Prefix::VerbatimUNC(..) => {
             // These should be carried in `uri.authority()`.
