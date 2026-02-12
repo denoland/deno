@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(nayeemrmn): Move to `cli/lsp/tsc/go.rs`.
-
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::BufRead;

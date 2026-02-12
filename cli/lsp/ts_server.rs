@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(nayeemrmn): Move to `cli/lsp/tsc/mod.rs`.
-
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -33,18 +31,18 @@ use crate::lsp::language_server;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::performance::Performance;
 use crate::lsp::refactor;
-use crate::lsp::tsc::TsServer;
+use crate::lsp::tsc::TsJsServer;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
-use crate::lsp::tsc_go::TsGoServer;
+use crate::lsp::tsgo::TsGoServer;
 use crate::lsp::urls::uri_to_url;
 
 #[derive(Debug)]
-pub enum TsModServer {
-  Js(TsServer),
+pub enum TsServer {
+  Js(TsJsServer),
   Go(TsGoServer),
 }
 
-impl TsModServer {
+impl TsServer {
   pub fn new(
     performance: Arc<Performance>,
     deno_dir: &DenoDir,
@@ -53,7 +51,7 @@ impl TsModServer {
     if std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
       Self::Go(TsGoServer::new(deno_dir, http_client_provider))
     } else {
-      Self::Js(TsServer::new(performance))
+      Self::Js(TsJsServer::new(performance))
     }
   }
 

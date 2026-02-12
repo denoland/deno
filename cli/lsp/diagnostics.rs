@@ -49,7 +49,7 @@ use super::documents::DocumentModules;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
-use super::tsc_mod::TsModServer;
+use super::ts_server::TsServer;
 use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
@@ -172,7 +172,7 @@ pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<DiagnosticsUpdateMessage>>,
   client: Client,
   performance: Arc<Performance>,
-  ts_server: Arc<TsModServer>,
+  ts_server: Arc<TsServer>,
   pub state: Arc<DiagnosticsState>,
 }
 
@@ -192,7 +192,7 @@ impl DiagnosticsServer {
   pub fn new(
     client: Client,
     performance: Arc<Performance>,
-    ts_server: Arc<TsModServer>,
+    ts_server: Arc<TsServer>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -1214,7 +1214,7 @@ async fn publish_document_diagnostics(
 async fn generate_document_diagnostics(
   document: &Arc<OpenDocument>,
   snapshot: &Arc<StateSnapshot>,
-  ts_server: &TsModServer,
+  ts_server: &TsServer,
   ambient_modules_regex_cache: &OnceCellMap<
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
@@ -1262,7 +1262,7 @@ async fn generate_document_diagnostics(
 pub async fn generate_module_diagnostics(
   module: &Arc<DocumentModule>,
   snapshot: &Arc<StateSnapshot>,
-  ts_server: &TsModServer,
+  ts_server: &TsServer,
   ambient_modules_regex_cache: &OnceCellMap<
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,

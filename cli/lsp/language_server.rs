@@ -92,8 +92,8 @@ use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
 use super::testing;
 use super::text;
+use super::ts_server::TsServer;
 use super::tsc::ChangeKind;
-use super::tsc_mod::TsModServer;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -312,7 +312,7 @@ pub struct Inner {
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
-  pub ts_server: Arc<TsModServer>,
+  pub ts_server: Arc<TsServer>,
   workspace_files: Arc<IndexSet<PathBuf>>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
@@ -577,7 +577,7 @@ impl Inner {
       }),
     );
     let config = Config::default();
-    let ts_server = Arc::new(TsModServer::new(
+    let ts_server = Arc::new(TsServer::new(
       performance.clone(),
       cache.deno_dir(),
       &http_client_provider,
@@ -709,7 +709,7 @@ impl Inner {
             .into()
           })
         });
-    if let TsModServer::Js(ts_server) = self.ts_server.as_ref() {
+    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -950,7 +950,7 @@ impl Inner {
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
     }
-    if let TsModServer::Js(ts_server) = self.ts_server.as_ref() {
+    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -1691,10 +1691,10 @@ impl Inner {
       );
 
       match self.ts_server.as_ref() {
-        TsModServer::Js(ts_server) => {
+        TsServer::Js(ts_server) => {
           ts_server.cleanup_semantic_cache(self.snapshot()).await;
         }
-        TsModServer::Go(_) => {
+        TsServer::Go(_) => {
           // TODO(nayeemrmn): Determine if anything needs to be done here.
         }
       }
@@ -2231,7 +2231,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsModServer::Js(ts_server) = self.ts_server.as_ref() else {
+    let TsServer::Js(ts_server) = self.ts_server.as_ref() else {
       lsp_warn!(
         "Assertion failure: Received a codeAction/resolve request without the JS-based TS server: {:#?}",
         params
@@ -2415,8 +2415,8 @@ impl Inner {
       module.scope.clone(),
       &self.resolver,
       match self.ts_server.as_ref() {
-        TsModServer::Js(ts_server) => ts_server.specifier_map.clone(),
-        TsModServer::Go(_) => Default::default(),
+        TsServer::Js(ts_server) => ts_server.specifier_map.clone(),
+        TsServer::Go(_) => Default::default(),
       },
     )
   }
@@ -4177,10 +4177,10 @@ impl Inner {
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
     match self.ts_server.as_ref() {
-      TsModServer::Js(ts_server) => {
+      TsServer::Js(ts_server) => {
         ts_server.cleanup_semantic_cache(self.snapshot()).await;
       }
-      TsModServer::Go(_) => {
+      TsServer::Go(_) => {
         // TODO(nayeemrmn): Determine if anything needs to be done here.
       }
     }

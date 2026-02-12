@@ -36,7 +36,7 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
-use crate::lsp::tsc_go;
+use crate::lsp::tsgo;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -56,7 +56,7 @@ pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub tsc: Option<tsc::CompletionItemData>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsgo: Option<tsc_go::TsGoCompletionItemData>,
+  pub tsgo: Option<tsgo::TsGoCompletionItemData>,
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send

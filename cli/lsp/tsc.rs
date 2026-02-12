@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(nayeemrmn): Move to `cli/lsp/tsc/js.rs`.
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
@@ -245,7 +243,7 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-pub struct TsServer {
+pub struct TsJsServer {
   performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
@@ -258,7 +256,7 @@ pub struct TsServer {
   supported_code_fixes: tokio::sync::OnceCell<Vec<String>>,
 }
 
-impl std::fmt::Debug for TsServer {
+impl std::fmt::Debug for TsJsServer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsServer")
       .field("performance", &self.performance)
@@ -426,7 +424,7 @@ impl PendingChange {
   }
 }
 
-impl TsServer {
+impl TsJsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     Self {
@@ -6135,7 +6133,7 @@ mod tests {
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TempDir, TsServer, Arc<StateSnapshot>) {
+  ) -> (TempDir, TsJsServer, Arc<StateSnapshot>) {
     let temp_dir = TempDir::new();
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut config = Config::default();
@@ -6187,7 +6185,7 @@ mod tests {
       cache: Arc::new(cache),
     });
     let performance = Arc::new(Performance::default());
-    let ts_server = TsServer::new(performance);
+    let ts_server = TsJsServer::new(performance);
     ts_server.project_changed(
       snapshot.clone(),
       &[],

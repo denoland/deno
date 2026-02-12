@@ -36,9 +36,9 @@ mod semantic_tokens;
 mod testing;
 mod text;
 mod trace;
+mod ts_server;
 mod tsc;
-mod tsc_go;
-mod tsc_mod;
+mod tsgo;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
