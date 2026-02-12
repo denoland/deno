@@ -1563,6 +1563,7 @@
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
     "parallel/test-worker-exit-code.js": {},
+    "parallel/test-worker-execargv.js": {},
     "parallel/test-worker-execargv-invalid.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
     "parallel/test-worker-invalid-workerdata.js": {},
