@@ -52,7 +52,6 @@ Deno.test({
         if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
       });
   },
-  ignore: Deno.build.os === "windows",
 });
 
 Deno.test({
@@ -66,7 +65,6 @@ Deno.test({
     rmdirSync(dir, { recursive: true });
     assertEquals(existsSync(dir), false);
   },
-  ignore: Deno.build.os === "windows",
 });
 
 Deno.test("[std/node/fs] rmdir callback isn't called twice if error is thrown", async () => {
