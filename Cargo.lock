@@ -2632,6 +2632,7 @@ dependencies = [
  "chrono",
  "deno_error",
  "deno_lockfile",
+ "deno_package_json",
  "deno_semver",
  "divan",
  "futures",

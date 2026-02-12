@@ -149,6 +149,10 @@ pub enum WorkspaceDiagnosticKind {
   )]
   RootOnlyOption(&'static str),
   #[error(
+    "\"{0}\" field can only be specified in the workspace root package.json file."
+  )]
+  PkgJsonRootOnlyOption(&'static str),
+  #[error(
     "\"{0}\" field can only be specified in a workspace member deno.json file and not the workspace root file."
   )]
   MemberOnlyOption(&'static str),
@@ -1209,8 +1213,8 @@ impl Workspace {
 
     let mut diagnostics = Vec::new();
     for (url, folder) in &self.config_folders {
+      let is_root = url == &self.root_dir_url;
       if let Some(config) = &folder.deno_json {
-        let is_root = url == &self.root_dir_url;
         if !is_root {
           check_member_diagnostics(
             config,
@@ -1220,6 +1224,15 @@ impl Workspace {
         }
 
         check_all_configs(config, &mut diagnostics);
+      }
+      if !is_root
+        && let Some(pkg_json) = &folder.pkg_json
+        && pkg_json.overrides.is_some()
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: pkg_json.specifier(),
+          kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
+        });
       }
     }
 
@@ -3979,6 +3992,44 @@ pub mod test {
             .unwrap(),
         },
       ]
+    );
+  }
+
+  #[test]
+  fn test_member_pkg_json_overrides_diagnostic() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "overrides": {
+          "example-pkg": "1.0.0"
+        }
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
+    sys.fs_insert_json(
+      root_dir().join("member/package.json"),
+      json!({
+        "overrides": {
+          "example-pkg": "2.0.0"
+        }
+      }),
+    );
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("member"));
+    assert_eq!(
+      workspace_dir.workspace.diagnostics(),
+      vec![WorkspaceDiagnostic {
+        kind: WorkspaceDiagnosticKind::PkgJsonRootOnlyOption("overrides"),
+        config_url: url_from_file_path(&root_dir().join("member/package.json"))
+          .unwrap(),
+      }]
     );
   }
 

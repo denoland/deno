@@ -29,8 +29,6 @@ pub use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_semver::StackString;
-use deno_semver::package::PackageName;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -1118,6 +1116,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           .workspace_npm_link_packages()?
           .0
           .clone(),
+        #[allow(clippy::disallowed_types)] // allow Arc
         overrides: std::sync::Arc::new(overrides),
       }))
     })

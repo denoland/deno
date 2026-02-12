@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_package_json::parse_jsr_dep_value;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -392,49 +393,28 @@ fn parse_jsr_override(
   key: &str,
   jsr_value: &str,
 ) -> Result<NpmOverrideValue, NpmOverridesError> {
-  let (jsr_name, version_str) = if jsr_value.starts_with('@') {
-    // explicit package: jsr:@scope/name@version or jsr:@scope/name
-    if let Some((name, version)) = jsr_value.rsplit_once('@') {
-      if name.is_empty() {
-        // only one @ — scoped package without version
-        (jsr_value, "*")
-      } else {
-        (name, version)
-      }
-    } else {
-      (jsr_value, "*")
+  // When the value is a bare version (doesn't start with '@'), derive
+  // the package name from the key. The key may include a version selector
+  // (e.g. "@std/path@^1.0.0"), so strip that first.
+  let fallback_name = if let Some(rest) = key.strip_prefix('@') {
+    match rest.find('@') {
+      Some(idx) => &key[..idx + 1],
+      None => key,
     }
   } else {
-    // version only: jsr:^1, jsr:1 — derive package name from the key.
-    // key may include a version selector (e.g. "@std/path@^1.0.0"),
-    // so strip that to get just the package name.
-    let key_name = if let Some(rest) = key.strip_prefix('@') {
-      // scoped key — find the second '@' for the version selector
-      match rest.find('@') {
-        Some(idx) => &key[..idx + 1],
-        None => key,
-      }
-    } else {
-      match key.find('@') {
-        Some(idx) => &key[..idx],
-        None => key,
-      }
-    };
-    (key_name, jsr_value)
+    match key.find('@') {
+      Some(idx) => &key[..idx],
+      None => key,
+    }
   };
 
-  // validate and split @scope/name
-  let Some((scope, pkg_name)) = jsr_name
-    .strip_prefix('@')
-    .and_then(|rest| rest.split_once('/'))
-  else {
-    return Err(NpmOverridesError::JsrRequiresScope {
+  let (npm_name, version_str) = parse_jsr_dep_value(fallback_name, jsr_value)
+    .map_err(|_| {
+    NpmOverridesError::JsrRequiresScope {
       key: key.to_string(),
       value: format!("jsr:{jsr_value}"),
-    });
-  };
-
-  let npm_name = format!("@jsr/{scope}__{pkg_name}");
+    }
+  })?;
 
   let version_req =
     VersionReq::parse_from_npm(version_str).map_err(|source| {
