@@ -8,14 +8,14 @@ use deno_ast::MediaType;
 /// `.ts` → `.js`, `.tsx` → `.js`, `.mts` → `.mjs`, `.cts` → `.cjs`
 pub fn ts_to_js_extension(path: &str) -> String {
   let path = path.trim_start_matches("./");
-  if path.ends_with(".tsx") {
-    format!("{}.js", &path[..path.len() - 4])
-  } else if path.ends_with(".ts") {
-    format!("{}.js", &path[..path.len() - 3])
-  } else if path.ends_with(".mts") {
-    format!("{}.mjs", &path[..path.len() - 4])
-  } else if path.ends_with(".cts") {
-    format!("{}.cjs", &path[..path.len() - 4])
+  if let Some(stem) = path.strip_suffix(".tsx") {
+    format!("{stem}.js")
+  } else if let Some(stem) = path.strip_suffix(".ts") {
+    format!("{stem}.js")
+  } else if let Some(stem) = path.strip_suffix(".mts") {
+    format!("{stem}.mjs")
+  } else if let Some(stem) = path.strip_suffix(".cts") {
+    format!("{stem}.cjs")
   } else {
     path.to_string()
   }
@@ -25,34 +25,34 @@ pub fn ts_to_js_extension(path: &str) -> String {
 /// `.ts` → `.d.ts`, `.tsx` → `.d.ts`, `.mts` → `.d.mts`, `.cts` → `.d.cts`
 pub fn ts_to_dts_extension(path: &str) -> String {
   let path = path.trim_start_matches("./");
-  if path.ends_with(".tsx") {
-    format!("{}.d.ts", &path[..path.len() - 4])
-  } else if path.ends_with(".ts") {
-    format!("{}.d.ts", &path[..path.len() - 3])
-  } else if path.ends_with(".mts") {
-    format!("{}.d.mts", &path[..path.len() - 4])
-  } else if path.ends_with(".cts") {
-    format!("{}.d.cts", &path[..path.len() - 4])
-  } else if path.ends_with(".js") {
-    format!("{}.d.ts", &path[..path.len() - 3])
-  } else if path.ends_with(".mjs") {
-    format!("{}.d.mts", &path[..path.len() - 4])
+  if let Some(stem) = path.strip_suffix(".tsx") {
+    format!("{stem}.d.ts")
+  } else if let Some(stem) = path.strip_suffix(".ts") {
+    format!("{stem}.d.ts")
+  } else if let Some(stem) = path.strip_suffix(".mts") {
+    format!("{stem}.d.mts")
+  } else if let Some(stem) = path.strip_suffix(".cts") {
+    format!("{stem}.d.cts")
+  } else if let Some(stem) = path.strip_suffix(".js") {
+    format!("{stem}.d.ts")
+  } else if let Some(stem) = path.strip_suffix(".mjs") {
+    format!("{stem}.d.mts")
   } else {
-    format!("{}.d.ts", path)
+    format!("{path}.d.ts")
   }
 }
 
 /// Convert a JavaScript path to its declaration file equivalent.
 /// `.js` → `.d.ts`, `.mjs` → `.d.mts`, `.cjs` → `.d.cts`
 pub fn js_to_dts_extension(path: &str) -> String {
-  if path.ends_with(".mjs") {
-    format!("{}.d.mts", &path[..path.len() - 4])
-  } else if path.ends_with(".cjs") {
-    format!("{}.d.cts", &path[..path.len() - 4])
-  } else if path.ends_with(".js") {
-    format!("{}.d.ts", &path[..path.len() - 3])
+  if let Some(stem) = path.strip_suffix(".mjs") {
+    format!("{stem}.d.mts")
+  } else if let Some(stem) = path.strip_suffix(".cjs") {
+    format!("{stem}.d.cts")
+  } else if let Some(stem) = path.strip_suffix(".js") {
+    format!("{stem}.d.ts")
   } else {
-    format!("{}.d.ts", path)
+    format!("{path}.d.ts")
   }
 }
 

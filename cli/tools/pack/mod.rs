@@ -42,16 +42,15 @@ pub async fn pack(
   let cli_options = cli_factory.cli_options()?;
 
   // Check if git repository is clean (unless --allow-dirty)
-  if !pack_flags.allow_dirty {
-    if let Some(dirty) =
+  if !pack_flags.allow_dirty
+    && let Some(dirty) =
       crate::tools::publish::check_if_git_repo_dirty(cli_options.initial_cwd())
         .await
-    {
-      bail!(
-        "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
-        dirty
-      );
-    }
+  {
+    bail!(
+      "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
+      dirty
+    );
   }
 
   // Get package configs
@@ -132,7 +131,7 @@ pub async fn pack(
 
     // Build module graph
     let graph = create_graph(
-      &module_graph_creator,
+      module_graph_creator,
       &package,
       &pack_flags,
     )
@@ -211,7 +210,7 @@ async fn create_graph(
   // Build initial graph without fast check DTS
   let mut graph = module_graph_creator
     .create_publish_graph(CreatePublishGraphOptions {
-      packages: &[package.clone()],
+      packages: std::slice::from_ref(package),
       build_fast_check_graph: !pack_flags.allow_slow_types,
       validate_graph: true,
     })
@@ -255,19 +254,16 @@ fn collect_graph_modules(
       let specifier = &js_module.specifier;
 
       // Only include file: URLs in the package directory
-      if specifier.scheme() == "file" {
-        if let Ok(path) = specifier.to_file_path() {
-          if path.starts_with(package_dir) {
-            // Check if the path matches the file patterns
-            if file_patterns.matches_path(&path, deno_config::glob::PathKind::File) {
-              let relative = path.strip_prefix(package_dir).unwrap();
-              paths.push(CollectedPath {
-                specifier: specifier.clone(),
-                relative_path: relative.to_string_lossy().to_string(),
-              });
-            }
-          }
-        }
+      if specifier.scheme() == "file"
+        && let Ok(path) = specifier.to_file_path()
+        && path.starts_with(package_dir)
+        && file_patterns.matches_path(&path, deno_config::glob::PathKind::File)
+      {
+        let relative = path.strip_prefix(package_dir).unwrap();
+        paths.push(CollectedPath {
+          specifier: specifier.clone(),
+          relative_path: relative.to_string_lossy().to_string(),
+        });
       }
     }
   }
@@ -366,35 +362,34 @@ impl Visit for DenoUsageVisitor {
   // Detect Deno.* member expressions
   fn visit_member_expr(&mut self, node: &swc_ast::MemberExpr) {
     // Check if this is accessing a property of Deno
-    if let swc_ast::Expr::Ident(ident) = node.obj.as_ref() {
-      if ident.sym.as_ref() == "Deno" && !self.is_local_deno(ident) {
-        self.info.uses_deno = true;
+    if let swc_ast::Expr::Ident(ident) = node.obj.as_ref()
+      && ident.sym.as_ref() == "Deno"
+      && !self.is_local_deno(ident)
+    {
+      self.info.uses_deno = true;
 
-        // Try to extract the specific API being accessed
-        match &node.prop {
-          swc_ast::MemberProp::Ident(prop_ident) => {
-            self.info.apis_used.insert(prop_ident.sym.to_string());
-          }
-          swc_ast::MemberProp::Computed(computed) => {
-            // Handle Deno["readFile"] style access
-            if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = computed.expr.as_ref() {
-              self.info.apis_used.insert(str_lit.value.to_string_lossy().to_string());
-            }
-          }
-          _ => {}
+      // Try to extract the specific API being accessed
+      match &node.prop {
+        swc_ast::MemberProp::Ident(prop_ident) => {
+          self.info.apis_used.insert(prop_ident.sym.to_string());
         }
+        swc_ast::MemberProp::Computed(computed) => {
+          // Handle Deno["readFile"] style access
+          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = computed.expr.as_ref() {
+            self.info.apis_used.insert(str_lit.value.to_string_lossy().to_string());
+          }
+        }
+        _ => {}
       }
     }
 
     // Check for import.meta.main
-    if let swc_ast::Expr::MetaProp(meta) = node.obj.as_ref() {
-      if meta.kind == swc_ast::MetaPropKind::ImportMeta {
-        if let swc_ast::MemberProp::Ident(prop) = &node.prop {
-          if prop.sym.as_ref() == "main" {
-            self.info.uses_import_meta_main = true;
-          }
-        }
-      }
+    if let swc_ast::Expr::MetaProp(meta) = node.obj.as_ref()
+      && meta.kind == swc_ast::MetaPropKind::ImportMeta
+      && let swc_ast::MemberProp::Ident(prop) = &node.prop
+      && prop.sym.as_ref() == "main"
+    {
+      self.info.uses_import_meta_main = true;
     }
 
     node.visit_children_with(self);
@@ -409,20 +404,20 @@ impl Visit for DenoUsageVisitor {
 
   // Track local Deno declarations to avoid false positives
   fn visit_var_declarator(&mut self, node: &swc_ast::VarDeclarator) {
-    if let swc_ast::Pat::Ident(ident) = &node.name {
-      if ident.id.sym.as_ref() == "Deno" {
-        self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
-      }
+    if let swc_ast::Pat::Ident(ident) = &node.name
+      && ident.id.sym.as_ref() == "Deno"
+    {
+      self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
     }
     node.visit_children_with(self);
   }
 
   // Track function parameters named Deno
   fn visit_param(&mut self, node: &swc_ast::Param) {
-    if let swc_ast::Pat::Ident(ident) = &node.pat {
-      if ident.id.sym.as_ref() == "Deno" {
-        self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
-      }
+    if let swc_ast::Pat::Ident(ident) = &node.pat
+      && ident.id.sym.as_ref() == "Deno"
+    {
+      self.local_deno_bindings.insert(ident.id.to_id().0.to_string());
     }
     node.visit_children_with(self);
   }
