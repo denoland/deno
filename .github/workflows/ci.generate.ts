@@ -9,7 +9,7 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.5";
+} from "jsr:@david/gagen@0.2.7";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -1134,7 +1134,9 @@ const libsJob = job("libs", {
       {
         name: "Setup prebuilt (mac)",
         if: libsMatrix.os.equals("macos"),
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        env: {
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        },
         run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
       },
     );
