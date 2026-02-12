@@ -6,7 +6,7 @@ import {
   conditions,
   createWorkflow,
   defineMatrix,
-  expr,
+  type ExpressionValue,
   job,
   step,
 } from "jsr:@david/gagen@0.2.5";
@@ -45,8 +45,7 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner)
-      .toString(),
+    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner),
   },
   linuxArm: {
     os: "linux",
@@ -68,7 +67,7 @@ const Runners = {
     arch: "aarch64",
     // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
     runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
-      .else(macosArmRunner).toString(),
+      .else(macosArmRunner),
   },
   windowsX86: {
     os: "windows",
@@ -78,8 +77,7 @@ const Runners = {
   windowsX86Xl: {
     os: "windows",
     arch: "x86_64",
-    runner: isDenoland.then(windowsX86XlRunner).else(windowsX86Runner)
-      .toString(),
+    runner: isDenoland.then(windowsX86XlRunner).else(windowsX86Runner),
   },
   windowsArm: {
     os: "windows",
@@ -197,7 +195,7 @@ function handleMatrixItems(items: {
   skip?: string;
   os: "linux" | "macos" | "windows";
   arch: "x86_64" | "aarch64";
-  runner: string;
+  runner: string | ExpressionValue;
   profile?: string;
   job?: string;
   use_sysroot?: boolean;
@@ -211,14 +209,10 @@ function handleMatrixItems(items: {
         ? isPr
         : isPr.and(item.skip_pr);
       const shouldSkip = hasCiFullLabel.not().and(skipCondition);
-      const originalRunner = item.runner.startsWith("${{")
-        ? expr(item.runner.slice(3, -2).trim())
-        : item.runner;
       const { skip_pr: _, ...rest } = item;
       return {
         ...rest,
-        runner: shouldSkip.then(ubuntuX86Runner).else(originalRunner)
-          .toString(),
+        runner: shouldSkip.then(ubuntuX86Runner).else(item.runner),
         skip: shouldSkip.toString(),
       };
     }
