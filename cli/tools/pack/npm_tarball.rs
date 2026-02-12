@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
+use super::extensions::js_to_dts_extension;
 use super::ProcessedFile;
 use super::ReadmeOrLicense;
 
@@ -35,17 +36,17 @@ pub fn create_npm_tarball(
   };
 
   if dry_run {
-    println!("Dry run - would create: {}", filename.display());
-    println!("\nPackage contents:");
-    println!("  package.json");
+    log::info!("Dry run - would create: {}", filename.display());
+    log::info!("\nPackage contents:");
+    log::info!("  package.json");
     for file in readme_license_files {
-      println!("  {}", file.relative_path);
+      log::info!("  {}", file.relative_path);
     }
     for file in files {
-      println!("  {}", file.output_path);
+      log::info!("  {}", file.output_path);
       if file.dts_content.is_some() {
-        let dts_path = convert_js_to_dts_path(&file.output_path);
-        println!("  {}", dts_path);
+        let dts_path = js_to_dts_extension(&file.output_path);
+        log::info!("  {}", dts_path);
       }
     }
     return Ok(filename);
@@ -89,7 +90,7 @@ pub fn create_npm_tarball(
     // Add .d.ts file if present
     if let Some(ref dts) = file.dts_content {
       let dts_bytes = dts.as_bytes();
-      let dts_path = convert_js_to_dts_path(&file.output_path);
+      let dts_path = js_to_dts_extension(&file.output_path);
       let mut header = tar::Header::new_gnu();
       header.set_path(format!("package/{}", dts_path))?;
       header.set_size(dts_bytes.len() as u64);
@@ -102,14 +103,4 @@ pub fn create_npm_tarball(
   tar.finish()?;
 
   Ok(filename)
-}
-
-fn convert_js_to_dts_path(path: &str) -> String {
-  if path.ends_with(".mjs") {
-    format!("{}.d.mts", &path[..path.len() - 4])
-  } else if path.ends_with(".js") {
-    format!("{}.d.ts", &path[..path.len() - 3])
-  } else {
-    format!("{}.d.ts", path)
-  }
 }

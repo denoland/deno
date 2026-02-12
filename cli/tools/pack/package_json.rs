@@ -8,7 +8,11 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use serde::Serialize;
 
+use super::extensions::ts_to_dts_extension;
+use super::extensions::ts_to_js_extension;
 use super::ProcessedFile;
+
+const DENO_SHIM_VERSION: &str = "~0.19.0";
 
 #[derive(Serialize)]
 struct PackageJson {
@@ -52,7 +56,7 @@ pub fn generate_package_json(
   let mut dependencies = HashMap::new();
 
   if include_deno_shim {
-    dependencies.insert("@deno/shim-deno".to_string(), "~0.19.0".to_string());
+    dependencies.insert("@deno/shim-deno".to_string(), DENO_SHIM_VERSION.to_string());
   }
 
   // Merge dependencies from all processed files
@@ -71,7 +75,7 @@ pub fn generate_package_json(
     version: version.to_string(),
     module_type: "module".to_string(),
     license,
-    description: None, // TODO: extract from config if available
+    description: None,
     main,
     types,
     exports: Some(exports),
@@ -95,9 +99,9 @@ fn convert_exports(
 
   // Handle string export
   if let Some(s) = exports.as_str() {
-    let js_path = convert_ts_to_js_path(s);
+    let js_path = ts_to_js_extension(s);
     return Ok(json!({
-      "types": format!("./{}", convert_ts_to_dts_path(s)),
+      "types": format!("./{}", ts_to_dts_extension(s)),
       "import": format!("./{}", js_path),
       "default": format!("./{}", js_path)
     }));
@@ -109,15 +113,34 @@ fn convert_exports(
 
     for (key, value) in map.iter() {
       if let Some(path) = value.as_str() {
-        let js_path = convert_ts_to_js_path(path);
+        let js_path = ts_to_js_extension(path);
         result.insert(
           key.clone(),
           json!({
-            "types": format!("./{}", convert_ts_to_dts_path(path)),
+            "types": format!("./{}", ts_to_dts_extension(path)),
             "import": format!("./{}", js_path),
             "default": format!("./{}", js_path)
           }),
         );
+      } else if let Some(obj) = value.as_object() {
+        // Conditional exports (e.g., {"types": "...", "import": "..."})
+        // Rewrite .ts → .js paths within nested object values
+        let mut rewritten = serde_json::Map::new();
+        for (condition, cond_value) in obj.iter() {
+          if let Some(path) = cond_value.as_str() {
+            let rewritten_path = if condition == "types" {
+              format!("./{}", ts_to_dts_extension(path))
+            } else {
+              format!("./{}", ts_to_js_extension(path))
+            };
+            rewritten
+              .insert(condition.clone(), serde_json::Value::String(rewritten_path));
+          } else {
+            // Pass through non-string values as-is
+            rewritten.insert(condition.clone(), cond_value.clone());
+          }
+        }
+        result.insert(key.clone(), serde_json::Value::Object(rewritten));
       }
     }
 
@@ -128,34 +151,6 @@ fn convert_exports(
   Ok(json!("./mod.js"))
 }
 
-fn convert_ts_to_js_path(path: &str) -> String {
-  let path = path.trim_start_matches("./");
-  if path.ends_with(".tsx") {
-    format!("{}.js", &path[..path.len() - 4])
-  } else if path.ends_with(".ts") {
-    format!("{}.js", &path[..path.len() - 3])
-  } else if path.ends_with(".mts") {
-    format!("{}.mjs", &path[..path.len() - 4])
-  } else {
-    path.to_string()
-  }
-}
-
-fn convert_ts_to_dts_path(path: &str) -> String {
-  let path = path.trim_start_matches("./");
-  // Handle .tsx before .ts to avoid substring issues
-  if path.ends_with(".tsx") {
-    format!("{}.d.ts", &path[..path.len() - 4])
-  } else if path.ends_with(".ts") {
-    format!("{}.d.ts", &path[..path.len() - 3])
-  } else if path.ends_with(".mts") {
-    format!("{}.d.mts", &path[..path.len() - 4])
-  } else if path.ends_with(".js") {
-    format!("{}.d.ts", &path[..path.len() - 3])
-  } else {
-    format!("{}.d.ts", path)
-  }
-}
 
 fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String>, Option<String>) {
   let Some(exports) = exports else {
@@ -164,8 +159,8 @@ fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String
 
   // Handle string export
   if let Some(s) = exports.as_str() {
-    let js_path = format!("./{}", convert_ts_to_js_path(s));
-    let dts_path = format!("./{}", convert_ts_to_dts_path(s));
+    let js_path = format!("./{}", ts_to_js_extension(s));
+    let dts_path = format!("./{}", ts_to_dts_extension(s));
     return (Some(js_path), Some(dts_path));
   }
 
@@ -173,8 +168,8 @@ fn extract_main_and_types(exports: &Option<serde_json::Value>) -> (Option<String
   if let Some(map) = exports.as_object() {
     if let Some(dot_export) = map.get(".") {
       if let Some(path) = dot_export.as_str() {
-        let js_path = format!("./{}", convert_ts_to_js_path(path));
-        let dts_path = format!("./{}", convert_ts_to_dts_path(path));
+        let js_path = format!("./{}", ts_to_js_extension(path));
+        let dts_path = format!("./{}", ts_to_dts_extension(path));
         return (Some(js_path), Some(dts_path));
       } else if let Some(obj) = dot_export.as_object() {
         // Conditional exports - extract from "import" or "default"
