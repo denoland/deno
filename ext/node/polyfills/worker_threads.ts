@@ -20,6 +20,7 @@ import {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
@@ -43,9 +44,11 @@ import {
 } from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
+  ArrayIsArray,
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
@@ -67,6 +70,7 @@ const {
   SymbolIterator,
   TypeError,
   Float64Array,
+  FunctionPrototypeBind,
 } = primordials;
 
 const workerCpuUsageBuffer = new Float64Array(2);
@@ -167,27 +171,10 @@ class NodeWorker extends EventEmitter {
         "node:worker_threads support only 'file:' and 'data:' URLs",
       );
     }
-    if (options?.eval) {
-      const code = typeof specifier === "string"
-        ? encodeURIComponent(specifier)
-        // deno-lint-ignore prefer-primordials
-        : specifier.toString();
-      specifier = `data:text/javascript,${code}`;
-    } else if (
-      !(typeof specifier === "object" && specifier.protocol === "data:")
-    ) {
-      // deno-lint-ignore prefer-primordials
-      specifier = specifier.toString();
-      specifier = op_worker_threads_filename(specifier) ?? specifier;
-    }
 
-    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
-    // `[worker {threadId}] {name}` or empty string.
-    let name = StringPrototypeTrim(options?.name ?? "");
-    if (options?.eval) {
-      name = "[worker eval]";
-    }
-    this.#name = name;
+    // Serialize workerData before resolving the filename so that
+    // DataCloneError is thrown before file-not-found errors,
+    // matching Node.js behavior.
 
     // Handle the `env` option following Node.js semantics:
     // - undefined/null: snapshot current process.env (isolated copy)
@@ -233,13 +220,56 @@ class NodeWorker extends EventEmitter {
     }
     // When envOpt === SHARE_ENV, env_ stays undefined and the worker
     // will use the default process.env backed by Deno.env (shared OS env).
+
+    // Handle the `argv` option: must be an array or undefined.
+    // Values are coerced to strings like Node.js does.
+    let argv_: string[] | undefined = undefined;
+    if (options?.argv != null) {
+      if (!ArrayIsArray(options.argv)) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.argv",
+          "Array",
+          options.argv,
+        );
+      }
+      argv_ = [];
+      for (let i = 0; i < options.argv.length; i++) {
+        argv_[i] = String(options.argv[i]);
+      }
+    }
+
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
       env: env_,
+      argv: argv_,
+      name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
     }, options?.transferList ?? []);
+
+    if (options?.eval) {
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
+    } else if (
+      !(typeof specifier === "object" && specifier.protocol === "data:")
+    ) {
+      // deno-lint-ignore prefer-primordials
+      specifier = specifier.toString();
+      specifier = op_worker_threads_filename(specifier) ?? specifier;
+    }
+
+    // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
+    // `[worker {threadId}] {name}` or empty string.
+    let name = StringPrototypeTrim(options?.name ?? "");
+    if (options?.eval) {
+      name = "[worker eval]";
+    }
+    this.#name = name;
+
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -481,6 +511,14 @@ class NodeWorker extends EventEmitter {
     return PromiseResolve({ user, system });
   }
 
+  // https://nodejs.org/api/worker_threads.html#workerthreadname
+  get threadName(): string | null {
+    if (this.#exited) {
+      return null;
+    }
+    return this.#name;
+  }
+
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
   // fake performance
@@ -489,6 +527,7 @@ class NodeWorker extends EventEmitter {
 
 export let isMainThread;
 export let resourceLimits;
+export let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -562,6 +601,7 @@ internals.__initWorkerThreads = (
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
+      threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
         process.env = env;
@@ -577,7 +617,7 @@ internals.__initWorkerThreads = (
           moduleSpecifier &&
           StringPrototypeStartsWith(moduleSpecifier, "file:")
         ) {
-          scriptPath = new URL(moduleSpecifier).pathname;
+          scriptPath = fileURLToPath(moduleSpecifier);
         } else {
           scriptPath = moduleSpecifier ?? "";
         }
@@ -592,6 +632,7 @@ internals.__initWorkerThreads = (
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+    defaultExport.threadName = threadName;
 
     patchMessagePortIfFound(workerData);
 
@@ -712,6 +753,26 @@ class NodeMessageChannel {
     const { port1, port2 } = new MessageChannel();
     this.port1 = webMessagePortToNodeMessagePort(port1);
     this.port2 = webMessagePortToNodeMessagePort(port2);
+
+    // When one port is closed, the paired port should also receive
+    // a 'close' event (matching Node.js behavior).
+    const origClose1 = FunctionPrototypeBind(port1.close, port1);
+    const origClose2 = FunctionPrototypeBind(port2.close, port2);
+
+    port1.close = () => {
+      origClose1();
+      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
+        port2[nodeWorkerThreadCloseCbInvoked] = true;
+        port2.dispatchEvent(new Event("close"));
+      }
+    };
+    port2.close = () => {
+      origClose2();
+      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
+        port1[nodeWorkerThreadCloseCbInvoked] = true;
+        port1.dispatchEvent(new Event("close"));
+      }
+    };
   }
 }
 
@@ -856,6 +917,7 @@ const defaultExport = {
   setEnvironmentData,
   SHARE_ENV,
   threadId,
+  threadName,
   workerData,
   resourceLimits,
   parentPort,

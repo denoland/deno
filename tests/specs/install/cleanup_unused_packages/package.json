@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "chalk": "5.0.1",
+    "cowsay": "1.5.0"
+  }
+}

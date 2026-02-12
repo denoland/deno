@@ -41,6 +41,16 @@ Deno.test("napi external arraybuffer", function () {
   buf = null;
 });
 
+Deno.test("napi class accessor property is writable", function () {
+  // Accessor properties (getter/setter) defined via napi_define_class
+  // should be writable via the setter even when napi_writable is not
+  // set in the attributes. napi_writable only applies to data properties.
+  const obj = new objectWrap.NapiAccessorObject();
+  assertEquals(obj.value, 0);
+  obj.value = 42;
+  assertEquals(obj.value, 42);
+});
+
 Deno.test("napi object wrap userland owned", function () {
   let obj = new objectWrap.NapiObjectOwned(1);
   assertEquals(obj.get_value(), 1);
