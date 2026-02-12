@@ -129,6 +129,7 @@ fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
+fluent-uri.workspace = true
 fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
@@ -196,7 +197,6 @@ walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
-fluent-uri.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
