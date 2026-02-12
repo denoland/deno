@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, fail } from "@std/assert";
 import { rmdir, rmdirSync } from "node:fs";
+import { rmdir as rmdirPromise } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "@std/path";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
+import nodeAssert from "node:assert";
 
 Deno.test({
   name: "ASYNC: removing empty folder",
@@ -78,4 +80,38 @@ Deno.test("[std/node/fs] rmdir callback isn't called twice if error is thrown", 
     prelude: `import { rmdir } from ${JSON.stringify(importUrl)}`,
     invocation: `rmdir(${JSON.stringify(tempDir)}, `,
   });
+});
+
+Deno.test("SYNC: prevent removing a file", () => {
+  const dir = Deno.makeTempDirSync();
+  const fileName = "foo.txt";
+  const path = join(dir, fileName);
+  Deno.writeTextFile(path, "Hello, world!");
+  nodeAssert.throws(
+    () => {
+      rmdirSync(path);
+    },
+    {
+      code: "ENOTDIR",
+      syscall: "rmdir",
+      path,
+    },
+  );
+  Deno.removeSync(dir, { recursive: true });
+});
+
+Deno.test("ASYNC: prevent removing a file", async () => {
+  const dir = await Deno.makeTempDir();
+  const fileName = "foo.txt";
+  const path = join(dir, fileName);
+  Deno.writeTextFile(path, "Hello, world!");
+  await nodeAssert.rejects(
+    async () => await rmdirPromise(path),
+    {
+      code: "ENOTDIR",
+      syscall: "rmdir",
+      path,
+    },
+  );
+  await Deno.remove(dir, { recursive: true });
 });
