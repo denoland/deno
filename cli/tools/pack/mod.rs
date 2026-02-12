@@ -24,13 +24,16 @@ use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
 use crate::util::display::human_size;
 
+mod extensions;
 mod npm_tarball;
 mod package_json;
-mod specifier_rewriter;
+mod unfurl;
 
+use extensions::compute_output_path;
+use extensions::media_type_extension;
 use npm_tarball::create_npm_tarball;
 use package_json::generate_package_json;
-use specifier_rewriter::rewrite_specifiers;
+use unfurl::unfurl_specifiers;
 
 pub async fn pack(
   flags: Arc<Flags>,
@@ -68,15 +71,6 @@ pub async fn pack(
           );
         }
         let name = deno_json.json.name.clone().unwrap();
-
-        // Validate package name format
-        if !name.starts_with('@') || !name.contains('/') {
-          bail!(
-            "Invalid package name '{}' in '{}'. Package name must be in the format '@scope/name'",
-            name,
-            deno_json.specifier
-          );
-        }
 
         packages.push(JsrPackageConfig {
           name,
@@ -326,8 +320,6 @@ pub struct ProcessedFile {
   pub dts_content: Option<String>,
   /// Whether this file uses Deno APIs
   pub uses_deno: bool,
-  /// Specific Deno APIs used in this file
-  pub deno_apis_used: HashSet<String>,
   /// Extracted dependencies (package name -> version)
   pub dependencies: HashMap<String, String>,
 }
@@ -458,22 +450,18 @@ fn create_transpile_options(
   // Get compiler options from deno.json
   let compiler_options = config_file.json.compiler_options.as_ref();
 
-  // Extract JSX settings
-  let jsx = compiler_options.and_then(|opts| opts.get("jsx")).and_then(|v| v.as_str());
-  let jsx_import_source = compiler_options
-    .and_then(|opts| opts.get("jsxImportSource"))
-    .and_then(|v| v.as_str())
-    .map(|s| s.to_string());
-  let jsx_factory = compiler_options
-    .and_then(|opts| opts.get("jsxFactory"))
-    .and_then(|v| v.as_str())
-    .map(|s| s.to_string());
-  let jsx_fragment_factory = compiler_options
-    .and_then(|opts| opts.get("jsxFragmentFactory"))
-    .and_then(|v| v.as_str())
-    .map(|s| s.to_string());
+  // Helper to extract a string value from compiler options
+  let get_str = |key: &str| -> Option<String> {
+    compiler_options?.get(key)?.as_str().map(|s| s.to_string())
+  };
 
-  let jsx_runtime = match jsx {
+  // Extract JSX settings
+  let jsx = get_str("jsx");
+  let jsx_import_source = get_str("jsxImportSource");
+  let jsx_factory = get_str("jsxFactory");
+  let jsx_fragment_factory = get_str("jsxFragmentFactory");
+
+  let jsx_runtime = match jsx.as_deref() {
     Some("react") => Some(deno_ast::JsxRuntime::Classic(
       deno_ast::JsxClassicOptions {
         factory: jsx_factory.unwrap_or_else(|| "React.createElement".to_string()),
@@ -506,14 +494,14 @@ fn create_transpile_options(
   };
 
   // Extract decorator settings
-  let experimental_decorators = compiler_options
-    .and_then(|opts| opts.get("experimentalDecorators"))
-    .and_then(|v| v.as_bool())
-    .unwrap_or(false);
-  let emit_decorator_metadata = compiler_options
-    .and_then(|opts| opts.get("emitDecoratorMetadata"))
-    .and_then(|v| v.as_bool())
-    .unwrap_or(false);
+  let get_bool = |key: &str| -> bool {
+    compiler_options
+      .and_then(|opts| opts.get(key))
+      .and_then(|v| v.as_bool())
+      .unwrap_or(false)
+  };
+  let experimental_decorators = get_bool("experimentalDecorators");
+  let emit_decorator_metadata = get_bool("emitDecoratorMetadata");
 
   Ok(deno_ast::TranspileOptions {
     jsx: jsx_runtime,
@@ -584,104 +572,168 @@ fn process_modules(
       continue;
     };
 
-    let media_type = js_module.media_type;
-    let source_text = js_module.source.text.as_ref();
-
-    // Parse and transpile
-    let parsed = parsed_source_cache.remove_or_parse_module(
-      &path.specifier,
-      media_type,
-      source_text.into(),
+    let file = process_single_module(
+      graph,
+      js_module,
+      path,
+      parsed_source_cache,
+      pack_flags,
+      &transpile_options,
     )?;
-
-    // Detect Deno API usage using AST-based analysis (before transpiling consumes parsed)
-    let deno_usage = detect_deno_usage(&parsed);
-
-    // Warn about unsupported APIs
-    if !pack_flags.no_shim {
-      warn_about_deno_apis(
-        &path.relative_path,
-        &deno_usage.apis_used,
-        deno_usage.uses_import_meta_main,
-      );
-    }
-
-    // Transpile if needed
-    let (mut js_content, output_ext) = if media_type.is_emittable() {
-      let source_map_option = if pack_flags.no_source_maps {
-        deno_ast::SourceMapOption::None
-      } else {
-        deno_ast::SourceMapOption::Inline
-      };
-
-      let transpiled = parsed.transpile(
-        &transpile_options,
-        &deno_ast::TranspileModuleOptions::default(),
-        &deno_ast::EmitOptions {
-          source_map: source_map_option,
-          inline_sources: true,
-          ..Default::default()
-        },
-      )?;
-      let text = transpiled.into_source().text;
-      let ext = if media_type == MediaType::Mts { ".mjs" } else { ".js" };
-      (text, ext)
-    } else {
-      // Pass through non-emittable files
-      (source_text.to_string(), get_extension(media_type))
-    };
-
-    // Rewrite specifiers in the JS content
-    let dependencies = if media_type.is_emittable() || media_type == MediaType::JavaScript {
-      let (rewritten_content, deps) = rewrite_specifiers(
-        &js_content,
-        &path.specifier,
-        graph,
-      )?;
-
-      js_content = rewritten_content;
-      deps
-    } else {
-      HashMap::new()
-    };
-
-    // Inject Deno shim import if needed
-    if deno_usage.uses_deno && !pack_flags.no_shim {
-      js_content = format!("import {{ Deno }} from \"@deno/shim-deno\";\n{}", js_content);
-    }
-
-    // Extract .d.ts if available and not skipped
-    let mut dts_content = if !pack_flags.allow_slow_types {
-      extract_dts(js_module, media_type)
-    } else {
-      None
-    };
-
-    // Rewrite specifiers in .d.ts content too
-    if let Some(ref dts) = dts_content {
-      let (rewritten_dts, _) = rewrite_specifiers(
-        dts,
-        &path.specifier,
-        graph,
-      )?;
-      dts_content = Some(rewritten_dts);
-    }
-
-    // Compute output path
-    let output_path = compute_output_path(&path.relative_path, output_ext);
-
-    processed.push(ProcessedFile {
-      specifier: path.specifier.clone(),
-      output_path,
-      js_content,
-      dts_content,
-      uses_deno: deno_usage.uses_deno,
-      deno_apis_used: deno_usage.apis_used,
-      dependencies,
-    });
+    processed.push(file);
   }
 
   Ok(processed)
+}
+
+fn process_single_module(
+  graph: &ModuleGraph,
+  js_module: &deno_graph::JsModule,
+  path: &CollectedPath,
+  parsed_source_cache: &deno_resolver::cache::ParsedSourceCache,
+  pack_flags: &PackFlags,
+  transpile_options: &deno_ast::TranspileOptions,
+) -> Result<ProcessedFile, AnyError> {
+  let media_type = js_module.media_type;
+  let source_text = js_module.source.text.as_ref();
+
+  // Parse the source
+  let parsed = parsed_source_cache.remove_or_parse_module(
+    &path.specifier,
+    media_type,
+    source_text.into(),
+  )?;
+
+  // Detect Deno API usage using AST-based analysis
+  let deno_usage = detect_deno_usage(&parsed);
+
+  // Warn about unsupported APIs
+  if !pack_flags.no_shim {
+    warn_about_deno_apis(
+      &path.relative_path,
+      &deno_usage.apis_used,
+      deno_usage.uses_import_meta_main,
+    );
+  }
+
+  // Phase 1: Collect AST-based text changes (specifier rewriting + shim injection)
+  // This happens BEFORE transpilation so source maps stay accurate.
+  let (source_to_transpile, dependencies) =
+    if media_type.is_emittable() || media_type == MediaType::JavaScript {
+      let unfurl_result =
+        unfurl_specifiers(&parsed, &path.specifier, graph);
+      let mut text_changes = unfurl_result.text_changes;
+
+      // Inject Deno shim import at the top of the file (as a text change)
+      if deno_usage.uses_deno && !pack_flags.no_shim {
+        text_changes.push(deno_ast::TextChange {
+          range: 0..0,
+          new_text: "import { Deno } from \"@deno/shim-deno\";\n"
+            .to_string(),
+        });
+      }
+
+      if text_changes.is_empty() {
+        (source_text.to_string(), unfurl_result.dependencies)
+      } else {
+        let text_info = parsed.text_info_lazy();
+        let modified =
+          deno_ast::apply_text_changes(text_info.text_str(), text_changes);
+        (modified, unfurl_result.dependencies)
+      }
+    } else {
+      (source_text.to_string(), HashMap::new())
+    };
+
+  // Phase 2: Transpile the modified source (with rewritten specifiers)
+  let (js_content, output_ext) = if media_type.is_emittable() {
+    let source_map_option = if pack_flags.no_source_maps {
+      deno_ast::SourceMapOption::None
+    } else {
+      deno_ast::SourceMapOption::Inline
+    };
+
+    // Re-parse the modified source for transpilation
+    let modified_parsed = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: path.specifier.clone(),
+      text: source_to_transpile.into(),
+      media_type,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })?;
+
+    let transpiled = modified_parsed.transpile(
+      transpile_options,
+      &deno_ast::TranspileModuleOptions::default(),
+      &deno_ast::EmitOptions {
+        source_map: source_map_option,
+        inline_sources: true,
+        ..Default::default()
+      },
+    )?;
+    let text = transpiled.into_source().text;
+    let ext = if media_type == MediaType::Mts { ".mjs" } else { ".js" };
+    (text, ext)
+  } else {
+    // Non-emittable files: use the (possibly rewritten) source directly
+    (source_to_transpile, media_type_extension(media_type))
+  };
+
+  // Extract .d.ts if available and not skipped, then unfurl its specifiers
+  let dts_content = if !pack_flags.allow_slow_types {
+    let dts = extract_dts(js_module, media_type);
+    dts.map(|dts_text| unfurl_dts_content(dts_text, &path.specifier, graph))
+  } else {
+    None
+  };
+
+  // Compute output path
+  let output_path = compute_output_path(&path.relative_path, output_ext);
+
+  Ok(ProcessedFile {
+    specifier: path.specifier.clone(),
+    output_path,
+    js_content,
+    dts_content,
+    uses_deno: deno_usage.uses_deno,
+    dependencies,
+  })
+}
+
+/// Parse and unfurl specifiers in generated .d.ts content.
+fn unfurl_dts_content(
+  dts_text: String,
+  specifier: &ModuleSpecifier,
+  graph: &ModuleGraph,
+) -> String {
+  let dts_parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.clone(),
+    text: dts_text.clone().into(),
+    media_type: MediaType::Dts,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  });
+  match dts_parsed {
+    Ok(dts_parsed) => {
+      let dts_unfurl =
+        unfurl_specifiers(&dts_parsed, specifier, graph);
+      if dts_unfurl.text_changes.is_empty() {
+        dts_text
+      } else {
+        let text_info = dts_parsed.text_info_lazy();
+        deno_ast::apply_text_changes(
+          text_info.text_str(),
+          dts_unfurl.text_changes,
+        )
+      }
+    }
+    Err(e) => {
+      log::warn!("Failed to parse .d.ts for specifier rewriting: {}", e);
+      dts_text
+    }
+  }
 }
 
 fn extract_dts(
@@ -720,32 +772,14 @@ fn extract_dts(
     return Some(fast_check.source.as_ref().to_string());
   }
 
-  // Fallback: generate a stub
+  // Fallback: generate a stub — warn the user
+  log::warn!(
+    "Could not generate types for '{}'. Emitting empty declaration stub.",
+    js_module.specifier
+  );
   Some("export {};".to_string())
 }
 
-fn compute_output_path(relative_path: &str, new_ext: &str) -> String {
-  let path = Path::new(relative_path);
-  let stem = path.file_stem().unwrap().to_str().unwrap();
-  let parent = path.parent().unwrap_or(Path::new(""));
-
-  if parent == Path::new("") {
-    format!("{}{}", stem, new_ext)
-  } else {
-    format!("{}/{}{}", parent.display(), stem, new_ext)
-  }
-}
-
-fn get_extension(media_type: MediaType) -> &'static str {
-  match media_type {
-    MediaType::JavaScript => ".js",
-    MediaType::Jsx => ".jsx",
-    MediaType::Mjs => ".mjs",
-    MediaType::Cjs => ".cjs",
-    MediaType::Json => ".json",
-    _ => ".js",
-  }
-}
 
 fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
   files.iter().any(|f| f.uses_deno)
