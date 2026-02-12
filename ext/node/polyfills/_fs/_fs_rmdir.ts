@@ -45,7 +45,7 @@ export function rmdir(
     callback = options;
     options = undefined;
   }
-  callback = validateFunction(callback, "cb") as unknown as rmdirCallback;
+  validateFunction(callback, "cb");
   path = getValidatedPathToString(path);
 
   if (options?.recursive) {
