@@ -106,6 +106,7 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::lsp::completions::CompletionItemData;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::DenoDiagnostic;
 use crate::lsp::diagnostics::generate_module_diagnostics;
@@ -2781,19 +2782,19 @@ impl Inner {
         error!("Could not decode data field of completion item: {:#}", err);
         LspError::internal_error()
       })?;
-    if let Some(url) = data.documentation {
-      return Ok(CompletionItem {
-        documentation: self.module_registry.get_documentation(&url).await,
-        data: None,
-        ..params
-      });
-    }
-    let uri = if let Some(data) = &data.tsc {
-      &data.uri
-    } else if let Some(data) = &data.tsgo {
-      &data.uri
-    } else {
-      return Ok(params);
+    let uri = match &data {
+      CompletionItemData::Documentation(data) => {
+        return Ok(CompletionItem {
+          documentation: self
+            .module_registry
+            .get_documentation(&data.url)
+            .await,
+          data: None,
+          ..params
+        });
+      }
+      CompletionItemData::TsJs(data) => &data.uri,
+      CompletionItemData::TsGo(data) => &data.uri,
     };
     let Some(document) = self.get_document(
       uri,

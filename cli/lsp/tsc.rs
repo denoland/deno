@@ -93,6 +93,7 @@ use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::FmtOptionsConfig;
 use crate::args::jsr_url;
+use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
@@ -3587,7 +3588,7 @@ impl CallHierarchyOutgoingCall {
 /// edits to pass in the completion item.
 fn parse_code_actions(
   maybe_code_actions: Option<&Vec<CodeAction>>,
-  data: &CompletionItemData,
+  data: &TsJsCompletionItemData,
   module: &DocumentModule,
 ) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
   if let Some(code_actions) = maybe_code_actions {
@@ -3747,7 +3748,7 @@ impl CompletionEntryDetails {
   pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
-    data: &CompletionItemData,
+    data: &TsJsCompletionItemData,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> Result<lsp::CompletionItem, AnyError> {
@@ -3962,7 +3963,7 @@ pub struct CompletionSpecifierRewrite {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
+pub struct TsJsCompletionItemData {
   pub uri: Uri,
   pub position: u32,
   pub name: String,
@@ -4330,7 +4331,7 @@ impl CompletionEntry {
         None
       };
 
-    let tsc = CompletionItemData {
+    let data = TsJsCompletionItemData {
       uri: module.uri.as_ref().clone(),
       position,
       name: self.name.clone(),
@@ -4353,7 +4354,7 @@ impl CompletionEntry {
       detail,
       tags,
       commit_characters,
-      data: Some(json!({ "tsc": tsc })),
+      data: Some(json!(CompletionItemData::TsJs(data))),
       ..Default::default()
     })
   }

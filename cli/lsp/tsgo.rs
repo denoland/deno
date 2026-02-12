@@ -1165,14 +1165,12 @@ impl TsGoServer {
       for item in items {
         if let Some(data) = &mut item.data {
           let raw_data = std::mem::replace(data, serde_json::Value::Null);
-          *data = serde_json::json!(CompletionItemData {
-            documentation: None,
-            tsc: None,
-            tsgo: Some(TsGoCompletionItemData {
+          *data = serde_json::json!(CompletionItemData::TsGo(
+            TsGoCompletionItemData {
               uri: module.uri.as_ref().clone(),
               data: raw_data,
-            })
-          });
+            }
+          ));
         }
       }
     }

@@ -36,6 +36,7 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::lsp::registries::DocumentationCompletionItemData;
 use crate::lsp::tsgo;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
@@ -50,13 +51,10 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub documentation: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsc: Option<tsc::CompletionItemData>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsgo: Option<tsgo::TsGoCompletionItemData>,
+pub enum CompletionItemData {
+  Documentation(DocumentationCompletionItemData),
+  TsJs(tsc::TsJsCompletionItemData),
+  TsGo(tsgo::TsGoCompletionItemData),
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send

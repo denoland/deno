@@ -23,6 +23,7 @@ use crate::http_util::HttpClientProvider;
 use crate::lsp::analysis::TsFixActionCollector;
 use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
 use crate::lsp::completions;
+use crate::lsp::completions::CompletionItemData;
 use crate::lsp::config::CodeLensSettings;
 use crate::lsp::config::UpdateImportsOnFileMoveEnabled;
 use crate::lsp::diagnostics::ts_json_to_diagnostics;
@@ -738,7 +739,7 @@ impl TsServer {
   ) -> Result<lsp::CompletionItem, AnyError> {
     match self {
       Self::Js(ts_server) => {
-        let Some(data) = data.tsc else {
+        let CompletionItemData::TsJs(data) = data else {
           return Ok(item);
         };
         match ts_server
@@ -779,7 +780,7 @@ impl TsServer {
         }
       }
       Self::Go(ts_server) => {
-        let Some(data) = data.tsgo else {
+        let CompletionItemData::TsGo(data) = data else {
           return Ok(item);
         };
         ts_server
