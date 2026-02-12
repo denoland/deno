@@ -86,9 +86,7 @@ Deno.test("SYNC: prevent removing a file", () => {
   const path = join(dir, fileName);
   Deno.writeTextFile(path, "Hello, world!");
   nodeAssert.throws(
-    () => {
-      rmdirSync(path);
-    },
+    () => rmdirSync(path),
     {
       code: "ENOTDIR",
       syscall: "rmdir",
@@ -109,6 +107,36 @@ Deno.test("ASYNC: prevent removing a file", async () => {
       code: "ENOTDIR",
       syscall: "rmdir",
       path,
+    },
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("SYNC: prevent removing non-empty dir without recursive option", () => {
+  const dir = Deno.makeTempDirSync();
+  const subDir = join(dir, "subdir");
+  Deno.mkdirSync(subDir);
+  nodeAssert.throws(
+    () => rmdirSync(dir),
+    {
+      code: "ENOTEMPTY",
+      syscall: "rmdir",
+      path: dir,
+    },
+  );
+  Deno.removeSync(dir, { recursive: true });
+});
+
+Deno.test("ASYNC: prevent removing non-empty dir without recursive option", async () => {
+  const dir = await Deno.makeTempDir();
+  const subDir = join(dir, "subdir");
+  Deno.mkdirSync(subDir);
+  await nodeAssert.rejects(
+    async () => await rmdirPromise(dir),
+    {
+      code: "ENOTEMPTY",
+      syscall: "rmdir",
+      path: dir,
     },
   );
   await Deno.remove(dir, { recursive: true });
