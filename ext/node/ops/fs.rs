@@ -87,7 +87,7 @@ fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
 
 fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   let read = open_options.read;
-  let write = open_options.write || open_options.append;
+  let write = open_options.write || open_options.append || open_options.create;
   match (read, write) {
     (true, true) => OpenAccessKind::ReadWrite,
     (false, true) => OpenAccessKind::Write,
