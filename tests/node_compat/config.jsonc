@@ -89,7 +89,7 @@
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
     "parallel/test-buffer-ascii.js": {},
-    "parallel/test-buffer-backing-arraybuffer.js.js": {
+    "parallel/test-buffer-backing-arraybuffer.js": {
       "darwin": false,
       "linux": false,
       "windows": false,
