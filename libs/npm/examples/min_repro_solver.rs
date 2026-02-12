@@ -65,7 +65,10 @@ async fn main() {
   eprintln!("Test code");
   eprintln!("===========================");
   let test_code = solver.get_test_code();
-  println!("{}", test_code);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("{}", test_code);
+  }
   solver.output_bench_registry_folder();
 }
 
