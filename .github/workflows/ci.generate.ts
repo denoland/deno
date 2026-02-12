@@ -1143,6 +1143,7 @@ const libsJob = job("libs", {
     )(
       installLldStep,
       {
+        name: "Setup prebuilt (mac)",
         if: libsMatrix.os.equals("macos"),
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
