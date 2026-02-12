@@ -196,6 +196,7 @@ walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
+fluent-uri.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }

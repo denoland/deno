@@ -1080,7 +1080,7 @@ impl Config {
   }
 
   pub fn uri_enabled(&self, uri: &Uri) -> bool {
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+    if uri.scheme().as_str().to_ascii_lowercase() == "deno" {
       return true;
     }
     self.specifier_enabled(&uri_to_url(uri))
@@ -1180,7 +1180,7 @@ impl Config {
   pub fn diagnostic_refresh_capable(&self) -> bool {
     (|| {
       let workspace = self.client_capabilities.workspace.as_ref()?;
-      workspace.diagnostic.as_ref()?.refresh_support
+      workspace.diagnostics.as_ref()?.refresh_support
     })()
     .unwrap_or(false)
   }

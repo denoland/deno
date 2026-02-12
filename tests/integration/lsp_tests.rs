@@ -6607,7 +6607,7 @@ fn lsp_cache_then_definition() {
   }));
   // Prior to the fix, this would cause a faulty memoization that maps the
   // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
-  // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
+  // being reverse-mapped to "deno:/http/localhost:4545/run/002_hello.ts" on
   // "textDocument/definition" request.
   client.cache(
     ["http://localhost:4545/run/002_hello.ts"],
@@ -6624,7 +6624,7 @@ fn lsp_cache_then_definition() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/run/002_hello.ts",
+      "targetUri": "deno:/http/localhost:4545/run/002_hello.ts",
       "targetRange": {
         "start": {
           "line": 0,
@@ -8347,7 +8347,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": Url::parse("file:///a/🦕.ts").unwrap(),
+      "uri": url_to_uri(&Url::parse("file:///a/🦕.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
@@ -11434,7 +11434,7 @@ fn lsp_lockfile_redirect_resolution() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/subdir/mod2.ts",
+      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
       "targetRange": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 1, "character": 0 },
@@ -12121,8 +12121,8 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      // Drive letters are not uppercase in our normalized URI representation.
-      "uri": "file:///C:/file.ts",
+      // Drive letters are not lowercase in our normalized URI representation.
+      "uri": "file:///c%3A/file.ts",
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -12132,7 +12132,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
     },
   }));
   let list = client.get_completion_list(
-    "file:///C:/file.ts",
+    "file:///c%3A/file.ts",
     (2, 23),
     json!({ "triggerKind": 1 }),
   );
@@ -12146,10 +12146,10 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "sortText": "11",
       "data": {
         "tsc": {
-          // Accordingly, the drive letter returned here is lowercase.
+          // Accordingly, the drive letter returned here is uppercase.
           // Spec-compliant language clients must deal with that. See:
           // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
-          "uri": "file:///c%3A/file.ts",
+          "uri": "file:///C:/file.ts",
           "position": 55,
           "name": "foo",
           "useCodeSnippet": false,
@@ -16136,7 +16136,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -17144,7 +17144,7 @@ fn lsp_workspace_lockfile() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/subdir/mod2.ts",
+      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
       "targetRange": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 1, "character": 0 },
@@ -17269,7 +17269,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -19721,7 +19721,7 @@ fn lsp_push_diagnostics() {
   client.initialize(|builder| {
     builder.with_capabilities(|capabilities| {
       capabilities.text_document.as_mut().unwrap().diagnostic = None;
-      capabilities.workspace.as_mut().unwrap().diagnostic = None;
+      capabilities.workspace.as_mut().unwrap().diagnostics = None;
     });
   });
   client.did_open(json!({
