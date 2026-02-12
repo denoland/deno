@@ -35,6 +35,9 @@ const isMainOrTag = isMainBranch.or(isTag);
 const isPr = conditions.isPr();
 const hasCiFullLabel = conditions.hasPrLabel("ci-full");
 const hasCiBenchLabel = conditions.hasPrLabel("ci-bench");
+const isLinux = conditions.isRunnerOs("Linux");
+const isMacos = conditions.isRunnerOs("macOS");
+const isWindows = conditions.isRunnerOs("Windows");
 
 const Runners = {
   linuxX86: {
@@ -192,14 +195,14 @@ CFLAGS=$CFLAGS
 
 function handleMatrixItems(items: {
   skip_pr?: Condition | true;
-  skip?: string;
+  skip?: Condition | boolean;
   os: "linux" | "macos" | "windows";
   arch: "x86_64" | "aarch64";
   runner: string | ExpressionValue;
   profile?: string;
   job?: string;
   use_sysroot?: boolean;
-  wpt?: string;
+  wpt?: Condition | boolean;
 }[]) {
   return items.map(({ skip_pr, ...rest }) => {
     if (skip_pr == null) {
@@ -210,7 +213,7 @@ function handleMatrixItems(items: {
       return {
         ...rest,
         runner: shouldSkip.then(ubuntuX86Runner).else(rest.runner),
-        skip: shouldSkip.toString(),
+        skip: shouldSkip,
       };
     }
   });
@@ -260,7 +263,7 @@ const installPythonStep = step({
   },
 }, {
   name: "Remove unused versions of Python",
-  if: "runner.os == 'Windows'",
+  if: isWindows,
   shell: "pwsh",
   run: [
     '$env:PATH -split ";" |',
@@ -270,7 +273,7 @@ const installPythonStep = step({
   ],
 });
 const setupPrebuiltMacStep = step({
-  if: "runner.os == 'macOS'",
+  if: isMacos,
   env: {
     GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
   },
@@ -283,7 +286,7 @@ const installLldStep = step
     setupPrebuiltMacStep,
   )({
     name: "Install macOS aarch64 lld",
-    if: "runner.os == 'macOS' && runner.arch == 'ARM64'",
+    if: isMacos.and(conditions.isRunnerArch("ARM64")),
     env: {
       GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
     },
@@ -325,12 +328,12 @@ const setupGcloud = step.dependsOn(installPythonStep)({
   },
 }, {
   name: "Setup gcloud (unix)",
-  if: "runner.os != 'Windows'",
+  if: isWindows.not(),
   uses: "google-github-actions/setup-gcloud@v3",
   with: { project_id: "denoland" },
 }, {
   name: "Setup gcloud (windows)",
-  if: "runner.os == 'Windows'",
+  if: isWindows,
   uses: "google-github-actions/setup-gcloud@v2",
   env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
   with: { project_id: "denoland" },
@@ -342,7 +345,7 @@ const setupGcloud = step.dependsOn(installPythonStep)({
 
 const preBuildCheckStep = step({
   id: "check",
-  if: "!contains(github.event.pull_request.labels.*.name, 'ci-draft')",
+  if: conditions.hasPrLabel("ci-draft").not(),
   run: [
     "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
     "echo Commit message: $GIT_MESSAGE",
@@ -409,7 +412,7 @@ const buildMatrix = defineMatrix({
     use_sysroot: true,
     // Because CI is so slow on for OSX and Windows, we
     // currently run the Web Platform tests only on Linux.
-    wpt: isNotTag.toString(),
+    wpt: isNotTag,
   }, {
     ...Runners.linuxX86Xl,
     job: "bench",
@@ -458,9 +461,6 @@ const saveCacheBuildOutputStep = step({
 const isTest = buildMatrix.job.equals("test");
 const isRelease = buildMatrix.profile.equals("release");
 const isDebug = buildMatrix.profile.equals("debug");
-const isLinux = buildMatrix.os.equals("linux");
-const isMacos = buildMatrix.os.equals("macos");
-const isWindows = buildMatrix.os.equals("windows");
 
 const buildJob = job("build", {
   name:
