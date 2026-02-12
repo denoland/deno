@@ -49,7 +49,9 @@ impl TsServer {
     deno_dir: &DenoDir,
     http_client_provider: &Arc<HttpClientProvider>,
   ) -> Self {
-    if std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
+    // TODO(nayeemrmn): Expose typescript-go backend when ready.
+    #[allow(clippy::overly_complex_bool_expr)]
+    if false && std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
       Self::Go(TsGoServer::new(deno_dir, http_client_provider))
     } else {
       Self::Js(TsJsServer::new(performance))
