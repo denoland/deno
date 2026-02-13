@@ -953,7 +953,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p cli_tests --test ${testCrate.name}`,
+            run: [
+              "cargo build -p test_server --bin test_server",
+              `cargo test -p cli_tests --test ${testCrate.name}`,
+            ],
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -961,7 +964,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(
               isDenoland.or(buildItem.use_sysroot),
             ),
-            run: `cargo test -p cli_tests --test ${testCrate.name}`,
+            run: [
+              "cargo build -p test_server --bin test_server --release",
+              `cargo test -p cli_tests --test ${testCrate.name} --release`,
+            ],
           },
           {
             name: "Ensure no git changes",

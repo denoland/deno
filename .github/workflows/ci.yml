@@ -233,7 +233,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -316,7 +318,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -399,7 +403,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -482,7 +488,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -565,7 +573,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -880,7 +890,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -961,7 +973,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1042,7 +1056,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1123,7 +1139,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1204,7 +1222,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1409,7 +1429,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1492,7 +1514,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1575,7 +1599,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1658,7 +1684,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1741,7 +1769,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2056,7 +2086,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2137,7 +2169,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2218,7 +2252,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2299,7 +2335,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2380,7 +2418,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2565,7 +2605,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2648,7 +2690,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2731,7 +2775,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2814,7 +2860,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2897,7 +2945,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3230,7 +3280,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3311,7 +3363,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3392,7 +3446,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3473,7 +3529,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3554,7 +3612,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3739,7 +3799,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3822,7 +3884,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3905,7 +3969,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3988,7 +4054,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4071,7 +4139,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4404,7 +4474,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4485,7 +4557,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4566,7 +4640,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4647,7 +4723,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4728,7 +4806,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5100,7 +5180,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5181,7 +5263,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5262,7 +5346,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5343,7 +5429,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5424,7 +5512,9 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5782,7 +5872,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5865,7 +5957,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5948,7 +6042,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6031,7 +6127,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6114,7 +6212,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6302,7 +6402,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6388,7 +6490,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6474,7 +6578,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6560,7 +6666,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6646,7 +6754,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server
+          cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -7018,7 +7128,9 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p cli_tests --test integration
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test integration --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -7102,7 +7214,9 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p cli_tests --test specs
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test specs --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -7186,7 +7300,9 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p cli_tests --test unit
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -7270,7 +7386,9 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p cli_tests --test unit_node
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test unit_node --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -7354,7 +7472,9 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p cli_tests --test node_compat
+        run: |-
+          cargo build -p test_server --bin test_server --release
+          cargo test -p cli_tests --test node_compat --release
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
