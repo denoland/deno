@@ -754,54 +754,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test integration
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-x86_64-release-integration.json
           path: target/test_results_integration.json
@@ -820,54 +820,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test specs
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-x86_64-release-specs.json
           path: target/test_results_specs.json
@@ -886,54 +886,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-x86_64-release-unit.json
           path: target/test_results_unit.json
@@ -952,54 +952,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit_node
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-x86_64-release-unit_node.json
           path: target/test_results_unit_node.json
@@ -1018,54 +1018,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test node_compat
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-x86_64-release-node_compat.json
           path: target/test_results_node_compat.json
@@ -1780,54 +1780,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test integration
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-aarch64-release-integration.json
           path: target/test_results_integration.json
@@ -1846,54 +1846,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test specs
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-aarch64-release-specs.json
           path: target/test_results_specs.json
@@ -1912,54 +1912,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-aarch64-release-unit.json
           path: target/test_results_unit.json
@@ -1978,54 +1978,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit_node
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-aarch64-release-unit_node.json
           path: target/test_results_unit_node.json
@@ -2044,54 +2044,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test node_compat
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-macos-aarch64-release-node_compat.json
           path: target/test_results_node_compat.json
@@ -2804,54 +2804,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test integration
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-x86_64-release-integration.json
           path: target/test_results_integration.json
@@ -2870,54 +2870,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test specs
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-x86_64-release-specs.json
           path: target/test_results_specs.json
@@ -2936,54 +2936,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-x86_64-release-unit.json
           path: target/test_results_unit.json
@@ -3002,54 +3002,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit_node
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-x86_64-release-unit_node.json
           path: target/test_results_unit_node.json
@@ -3068,54 +3068,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test node_compat
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-x86_64-release-node_compat.json
           path: target/test_results_node_compat.json
@@ -3828,54 +3828,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test integration
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-aarch64-release-integration.json
           path: target/test_results_integration.json
@@ -3894,54 +3894,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test specs
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-aarch64-release-specs.json
           path: target/test_results_specs.json
@@ -3960,54 +3960,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-aarch64-release-unit.json
           path: target/test_results_unit.json
@@ -4026,54 +4026,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test unit_node
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-aarch64-release-unit_node.json
           path: target/test_results_unit_node.json
@@ -4092,54 +4092,54 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p integration --test node_compat
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-windows-aarch64-release-node_compat.json
           path: target/test_results_node_compat.json
@@ -6139,57 +6139,57 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p integration --test integration
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-linux-aarch64-release-integration.json
           path: target/test_results_integration.json
@@ -6208,57 +6208,57 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p integration --test specs
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-linux-aarch64-release-specs.json
           path: target/test_results_specs.json
@@ -6277,57 +6277,57 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p integration --test unit
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-linux-aarch64-release-unit.json
           path: target/test_results_unit.json
@@ -6346,57 +6346,57 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p integration --test unit_node
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-linux-aarch64-release-unit_node.json
           path: target/test_results_unit_node.json
@@ -6415,57 +6415,57 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p integration --test node_compat
       - name: Ensure no git changes
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           name: test-results-linux-aarch64-release-node_compat.json
           path: target/test_results_node_compat.json

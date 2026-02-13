@@ -908,7 +908,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         timeoutMinutes: 240,
         defaults,
         env,
-        steps: step.if(isNotTag)(
+        steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
           installNodeStep,
           cloneSubmodule("./tests/node_compat/runner/suite"),
@@ -982,7 +982,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         timeoutMinutes: 240,
         defaults,
         env,
-        steps: step.if(isNotTag)(
+        steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
           cloneSubmodule("./tests/wpt/suite"),
           installDenoStep,
@@ -1069,7 +1069,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         defaults,
         env,
         steps: step
-          .if(hasCiBenchLabel.not().and(isNotTag))(
+          .if(hasCiBenchLabel.not().and(isNotTag).and(buildItem.skip.not()))(
             cloneRepoStep,
             installNodeStep,
             cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
