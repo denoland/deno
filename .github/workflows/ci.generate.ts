@@ -1000,7 +1000,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           {
             name: "Build ffi (release)",
-            if: isDebug.and(testCrateNameExpr.equals("specs")),
+            if: isRelease.and(testCrateNameExpr.equals("specs")),
             run: "cargo build --release -p test_ffi",
           },
           {
