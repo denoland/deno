@@ -188,7 +188,7 @@ jobs:
     name: test release macos-x86_64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -202,40 +202,45 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Remove macOS cURL --ipv4 flag
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           curl --version
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: github.repository == 'denoland/deno' || runner.arch == 'ARM64'
+      - if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: 'runner.arch == ''ARM64'' || (always() && !startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/''))'
         with:
           deno-version: v2.x
       - name: Install macOS aarch64 lld
-        if: runner.arch == 'ARM64'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: 'github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/'')'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -248,7 +253,7 @@ jobs:
           restore-keys: 94-cargo-home-macos-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -260,24 +265,25 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           NO_COLOR: 1
         run: |-
@@ -286,17 +292,17 @@ jobs:
           du -h target/release/deno
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           name: 'deno-macos-x86_64-${{ github.event.number }}'
           path: target/release/deno
       - name: Install rust-codesign
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js rcodesign
       - name: Pre-release (mac)
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
@@ -313,7 +319,7 @@ jobs:
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -321,10 +327,11 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -339,7 +346,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
@@ -348,51 +355,54 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Check deno binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
         uses: actions/cache@v5
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude eszip --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
-        if: github.event_name == 'pull_request'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Combine test results
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-x86_64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v2
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:
@@ -570,7 +580,7 @@ jobs:
     name: test release macos-aarch64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -584,40 +594,45 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Remove macOS cURL --ipv4 flag
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           curl --version
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: github.repository == 'denoland/deno' || runner.arch == 'ARM64'
+      - if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: 'runner.arch == ''ARM64'' || (always() && !startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/''))'
         with:
           deno-version: v2.x
       - name: Install macOS aarch64 lld
-        if: runner.arch == 'ARM64'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: 'github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/'')'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -630,7 +645,7 @@ jobs:
           restore-keys: 94-cargo-home-macos-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -642,24 +657,25 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           NO_COLOR: 1
         run: |-
@@ -668,17 +684,17 @@ jobs:
           du -h target/release/deno
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           name: 'deno-macos-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Install rust-codesign
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js rcodesign
       - name: Pre-release (mac)
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
@@ -695,7 +711,7 @@ jobs:
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -703,10 +719,11 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -721,7 +738,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
@@ -730,51 +747,54 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Check deno binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
         uses: actions/cache@v5
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude eszip --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
-        if: github.event_name == 'pull_request'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Combine test results
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v2
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:
@@ -937,7 +957,7 @@ jobs:
     name: test release windows-x86_64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -951,25 +971,29 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: 'github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/'')'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -982,7 +1006,7 @@ jobs:
           restore-keys: 94-cargo-home-windows-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -994,24 +1018,25 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           NO_COLOR: 1
         run: |-
@@ -1020,13 +1045,13 @@ jobs:
           du -h target/release/deno
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           name: 'deno-windows-x86_64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           client-id: '${{ secrets.AZURE_CLIENT_ID }}'
           tenant-id: '${{ secrets.AZURE_TENANT_ID }}'
@@ -1034,7 +1059,7 @@ jobs:
           enable-AzPSSession: true
       - name: Code sign deno.exe (windows)
         uses: Azure/artifact-signing-action@v0
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           endpoint: 'https://eus.codesigning.azure.net/'
           trusted-signing-account-name: deno-cli-code-signing
@@ -1052,14 +1077,14 @@ jobs:
           exclude-visual-studio-code-credential: true
           exclude-azure-cli-credential: false
       - name: Verify signature (windows)
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         shell: pwsh
         run: |-
           $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           $SignToolPath = $SignTool.FullName
           & $SignToolPath verify /pa /v target\release\deno.exe
       - name: Pre-release (windows)
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         shell: pwsh
         run: |-
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
@@ -1069,7 +1094,7 @@ jobs:
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -1077,11 +1102,11 @@ jobs:
           create_credentials_file: true
       - name: Install Python
         uses: actions/setup-python@v6
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           python-version: 3.11
       - name: Remove unused versions of Python
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -1089,6 +1114,7 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -1104,13 +1130,13 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Setup gcloud (windows)
         uses: google-github-actions/setup-gcloud@v2
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
           project_id: denoland
       - name: Upload canary to dl.deno.land
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
@@ -1119,39 +1145,42 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Check deno binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
         uses: actions/cache@v5
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude eszip --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
-        if: github.event_name == 'pull_request'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Combine test results
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-x86_64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (windows)
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
@@ -1159,13 +1188,13 @@ jobs:
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v2
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:
@@ -1328,7 +1357,7 @@ jobs:
     name: test release windows-aarch64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1342,25 +1371,29 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: 'github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/'')'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1373,7 +1406,7 @@ jobs:
           restore-keys: 94-cargo-home-windows-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -1385,24 +1418,25 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           NO_COLOR: 1
         run: |-
@@ -1411,13 +1445,13 @@ jobs:
           du -h target/release/deno
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           name: 'deno-windows-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           client-id: '${{ secrets.AZURE_CLIENT_ID }}'
           tenant-id: '${{ secrets.AZURE_TENANT_ID }}'
@@ -1425,7 +1459,7 @@ jobs:
           enable-AzPSSession: true
       - name: Code sign deno.exe (windows)
         uses: Azure/artifact-signing-action@v0
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           endpoint: 'https://eus.codesigning.azure.net/'
           trusted-signing-account-name: deno-cli-code-signing
@@ -1443,14 +1477,14 @@ jobs:
           exclude-visual-studio-code-credential: true
           exclude-azure-cli-credential: false
       - name: Verify signature (windows)
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         shell: pwsh
         run: |-
           $SignTool = Get-ChildItem -Path "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           $SignToolPath = $SignTool.FullName
           & $SignToolPath verify /pa /v target\release\deno.exe
       - name: Pre-release (windows)
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         shell: pwsh
         run: |-
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-aarch64-pc-windows-msvc.zip
@@ -1460,7 +1494,7 @@ jobs:
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -1468,11 +1502,11 @@ jobs:
           create_credentials_file: true
       - name: Install Python
         uses: actions/setup-python@v6
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           python-version: 3.11
       - name: Remove unused versions of Python
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -1480,6 +1514,7 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -1495,13 +1530,13 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Setup gcloud (windows)
         uses: google-github-actions/setup-gcloud@v2
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
           project_id: denoland
       - name: Upload canary to dl.deno.land
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
@@ -1510,39 +1545,42 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Check deno binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
         uses: actions/cache@v5
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
-        if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude eszip --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
-        if: github.event_name == 'pull_request'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Combine test results
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (windows)
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
@@ -1550,13 +1588,13 @@ jobs:
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v2
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:
@@ -1948,7 +1986,7 @@ jobs:
     name: bench release linux-x86_64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1962,24 +2000,29 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1992,7 +2035,7 @@ jobs:
           restore-keys: 94-cargo-home-linux-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -2004,10 +2047,11 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-release-bench-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Set up incremental LTO and sysroot build
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -2089,15 +2133,17 @@ jobs:
           " > $GITHUB_ENV
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
       - name: Build release
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -2105,6 +2151,7 @@ jobs:
           du -h deno.symcache
           du -h target/release/deno
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -2119,24 +2166,24 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Build product size info
-        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
       - name: Install benchmark tools
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Run benchmarks
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo bench --locked
       - name: Post benchmarks
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
           DENOBOT_PAT: '${{ secrets.DENOBOT_PAT }}'
         run: |-
@@ -2151,13 +2198,13 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Worker info
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         run: |-
           cat /proc/cpuinfo
           cat /proc/meminfo
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2518,7 +2565,7 @@ jobs:
     name: test release linux-aarch64
     needs:
       - pre_build
-    if: 'needs.pre_build.outputs.skip_build != ''true'' && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+    if: needs.pre_build.outputs.skip_build != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2532,24 +2579,29 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/util/std
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
       - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2562,7 +2614,7 @@ jobs:
           restore-keys: 94-cargo-home-linux-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -2574,10 +2626,11 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Set up incremental LTO and sysroot build
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -2659,17 +2712,20 @@ jobs:
           " > $GITHUB_ENV
       - name: Install Node
         uses: actions/setup-node@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - name: Configure canary build
-        if: github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           df -h
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Generate symcache
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: |-
@@ -2678,11 +2734,12 @@ jobs:
           du -h target/release/deno
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: 'deno-linux-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Pre-release (linux)
-        if: github.repository == 'denoland/deno'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           cd target/release
           ./deno -A ../../tools/release/create_symcache.ts deno-aarch64-unknown-linux-gnu.symcache
@@ -2695,7 +2752,7 @@ jobs:
           ./deno types > lib.deno.d.ts
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -2703,10 +2760,11 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           echo '*** Python'
           command -v python && python --version || echo 'No python found or bad executable'
@@ -2721,7 +2779,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
@@ -2730,55 +2788,60 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
-        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/release"
           du -ha  "./target/release/deno"
           du -ha  "./target/release/denort"
       - name: Check deno binary
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
         uses: actions/cache@v5
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo test --workspace --release --locked --exclude deno_lib --exclude deno_snapshots --exclude deno_bundle_runtime --exclude deno_cache --exclude deno_cron --exclude deno_crypto --exclude deno_fetch --exclude deno_ffi --exclude deno_fs --exclude deno_http --exclude deno_image --exclude deno_io --exclude deno_kv --exclude deno_napi --exclude napi_sym --exclude deno_net --exclude deno_node --exclude denort_helper --exclude deno_signals --exclude deno_telemetry --exclude deno_url --exclude deno_web --exclude deno_webgpu --exclude deno_webidl --exclude deno_websocket --exclude deno_webstorage --exclude deno_config --exclude deno_crypto_provider --exclude eszip --exclude deno_inspector_server --exclude deno_lockfile --exclude deno_maybe_sync --exclude node_resolver --exclude deno_npm --exclude deno_npm_cache --exclude deno_npm_installer --exclude deno_package_json --exclude deno_resolver --exclude deno_typescript_go_client_rust --exclude deno_runtime --exclude deno_features --exclude deno_permissions --exclude deno_subprocess_windows --features=panic-trace
       - name: Ensure no git changes
-        if: github.event_name == 'pull_request'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Combine test results
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-linux-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v2
-        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:

@@ -503,9 +503,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       name:
         `${buildItem.job} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true").and(
-        buildItem.skip.not(),
-      ),
+      if: preBuildJob.outputs.skip_build.notEquals("true"),
       runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
@@ -1041,7 +1039,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
         );
 
-        return step(
+        return step.if(buildItem.skip.not())(
           cloneRepoStep,
           cloneStdSubmodule,
           // ensure this happens right after cloning
