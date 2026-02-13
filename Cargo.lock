@@ -2969,6 +2969,7 @@ dependencies = [
  "deno_process",
  "deno_resolver",
  "deno_signals",
+ "deno_snapshot_hash",
  "deno_telemetry",
  "deno_terminal",
  "deno_tls",
@@ -3036,8 +3037,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_snapshot_hash"
+version = "0.1.0"
+
+[[package]]
 name = "deno_snapshots"
 version = "0.46.0"
+dependencies = [
+ "deno_snapshot_hash",
+]
 
 [[package]]
 name = "deno_subprocess_windows"

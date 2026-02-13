@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -37,45 +35,6 @@ fn collect_input_file_paths(extensions: &[Extension]) -> Vec<&'static str> {
   }
   paths.sort();
   paths
-}
-
-/// Compute a hash of all snapshot inputs: file paths, file contents,
-/// and version strings from SnapshotOptions.
-fn compute_input_hash(
-  files: &[&str],
-  options: &SnapshotOptions,
-) -> String {
-  let mut hasher = std::collections::hash_map::DefaultHasher::new();
-  files.len().hash(&mut hasher);
-  for path in files {
-    path.hash(&mut hasher);
-    match std::fs::read(path) {
-      Ok(content) => content.hash(&mut hasher),
-      Err(_) => 0u8.hash(&mut hasher),
-    }
-  }
-  options.ts_version.hash(&mut hasher);
-  options.v8_version.hash(&mut hasher);
-  options.target.hash(&mut hasher);
-  format!("{:x}", hasher.finish())
-}
-
-/// Write a manifest of snapshot input file paths and metadata.
-/// This allows downstream build scripts to recompute the snapshot hash
-/// without depending on deno_runtime.
-fn write_manifest(
-  manifest_path: &std::path::Path,
-  files: &[&str],
-  v8_version: &str,
-) {
-  let mut content = String::new();
-  content.push_str(&format!("v8_version={}\n", v8_version));
-  content.push_str("---\n");
-  for path in files {
-    content.push_str(path);
-    content.push('\n');
-  }
-  std::fs::write(manifest_path, content).unwrap();
 }
 
 pub fn create_runtime_snapshot(
@@ -132,13 +91,18 @@ pub fn create_runtime_snapshot(
   // Check if snapshot inputs have changed since last generation.
   // If not, skip the expensive create_snapshot() call entirely.
   let input_file_paths = collect_input_file_paths(&extensions);
-  let current_hash = compute_input_hash(&input_file_paths, &snapshot_options);
+  let current_hash = deno_snapshot_hash::compute_hash(
+    &input_file_paths,
+    &snapshot_options.ts_version,
+    snapshot_options.v8_version,
+    &snapshot_options.target,
+  );
   let hash_path = snapshot_path.with_extension("hash");
   let manifest_path = snapshot_path.with_extension("manifest");
 
   // Always write the manifest so downstream build scripts can use it
   // for hash checks without depending on deno_runtime.
-  write_manifest(
+  deno_snapshot_hash::write_manifest(
     &manifest_path,
     &input_file_paths,
     snapshot_options.v8_version,

@@ -13,5 +13,8 @@ description = "v8 snapshot used by the Deno CLI"
 [lib]
 path = "lib.rs"
 
+[build-dependencies]
+deno_snapshot_hash.workspace = true
+
 [features]
 disable = []
