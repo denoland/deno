@@ -105,8 +105,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -118,7 +118,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-macos-x86_64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -149,7 +149,7 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -173,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-macos-x86_64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -185,7 +185,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-macos-x86_64-debug-test-${{ github.sha }}'
   test-release-macos-x86_64:
     name: test release macos-x86_64
     needs:
@@ -253,8 +253,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -266,7 +266,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-macos-x86_64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -298,7 +298,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-macos-x86_64-${{ github.event.number }}'
           path: target/release/deno
       - name: Install rust-codesign
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -311,16 +311,16 @@ jobs:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
         run: |-
-          target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache
+          target/release/deno -A tools/release/create_symcache.ts target/release/deno-x86_64-apple-darwin.symcache
           strip -x -S target/release/deno
           echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
           cd target/release
-          zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
-          shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum
+          zip -r deno-x86_64-apple-darwin.zip deno
+          shasum -a 256 deno-x86_64-apple-darwin.zip > deno-x86_64-apple-darwin.zip.sha256sum
           strip -x -S ./denort
-          zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
-          shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
+          zip -r denort-x86_64-apple-darwin.zip denort
+          shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
         if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
@@ -361,14 +361,14 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -391,7 +391,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-macos-x86_64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -501,8 +501,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -514,7 +514,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-macos-aarch64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -545,7 +545,7 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -569,7 +569,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-macos-aarch64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -581,7 +581,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-macos-aarch64-debug-test-${{ github.sha }}'
   test-release-macos-aarch64:
     name: test release macos-aarch64
     needs:
@@ -649,8 +649,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -662,7 +662,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-macos-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -694,7 +694,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-macos-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Install rust-codesign
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -707,16 +707,16 @@ jobs:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
         run: |-
-          target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache
+          target/release/deno -A tools/release/create_symcache.ts target/release/deno-aarch64-apple-darwin.symcache
           strip -x -S target/release/deno
           echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"
           rcodesign sign target/release/deno --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist
           cd target/release
-          zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno
-          shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum
+          zip -r deno-aarch64-apple-darwin.zip deno
+          shasum -a 256 deno-aarch64-apple-darwin.zip > deno-aarch64-apple-darwin.zip.sha256sum
           strip -x -S ./denort
-          zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort
-          shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
+          zip -r denort-aarch64-apple-darwin.zip denort
+          shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
         if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
@@ -757,14 +757,14 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -787,7 +787,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-macos-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -882,8 +882,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -895,7 +895,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-windows-x86_64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -926,7 +926,7 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -950,7 +950,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-windows-x86_64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -962,7 +962,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-windows-x86_64-debug-test-${{ github.sha }}'
   test-release-windows-x86_64:
     name: test release windows-x86_64
     needs:
@@ -1014,8 +1014,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1027,7 +1027,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-windows-x86_64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -1059,7 +1059,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-windows-x86_64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
@@ -1099,11 +1099,11 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         shell: pwsh
         run: |-
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip
-          Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
-          Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
-          target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Get-FileHash target/release/deno-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
+          Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
+          target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
         if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
@@ -1159,14 +1159,14 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -1189,7 +1189,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-windows-x86_64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (windows)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -1286,8 +1286,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1299,7 +1299,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-windows-aarch64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1330,7 +1330,7 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -1354,7 +1354,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-windows-aarch64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -1366,7 +1366,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-windows-aarch64-debug-test-${{ github.sha }}'
   test-release-windows-aarch64:
     name: test release windows-aarch64
     needs:
@@ -1418,8 +1418,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1431,7 +1431,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-windows-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -1463,7 +1463,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-windows-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
@@ -1503,11 +1503,11 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         shell: pwsh
         run: |-
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip
-          Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
-          Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
-          target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-aarch64-pc-windows-msvc.zip
+          Get-FileHash target/release/deno-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-aarch64-pc-windows-msvc.zip
+          Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
+          target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
         if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
@@ -1563,14 +1563,14 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -1593,7 +1593,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-windows-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (windows)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -1695,8 +1695,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1708,7 +1708,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-linux-x86_64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1816,7 +1816,7 @@ jobs:
       - name: Upload PR artifact (linux)
         uses: actions/upload-artifact@v6
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-linux-x86_64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
@@ -1862,15 +1862,15 @@ jobs:
       - name: Build product size info
         if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
-        run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
+        run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -1891,7 +1891,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-linux-x86_64-release.json
           path: target/test_results.json
       - name: Clone submodule ./tests/wpt/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1965,7 +1965,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-release-test-${{ github.sha }}'
   bench-release-linux-x86_64:
     name: bench release linux-x86_64
     needs:
@@ -2017,8 +2017,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2030,7 +2030,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-linux-x86_64-release-bench-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
@@ -2154,9 +2154,9 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
@@ -2198,7 +2198,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-release-bench-${{ github.sha }}'
   test-debug-linux-x86_64:
     name: test debug linux-x86_64
     needs:
@@ -2246,8 +2246,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2259,7 +2259,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-linux-x86_64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2370,9 +2370,9 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
-        run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
+        run: sudo chroot /sysroot "$(pwd)/target/debug/deno" --version
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -2397,7 +2397,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-linux-x86_64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -2409,7 +2409,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-debug-test-${{ github.sha }}'
   test-debug-linux-aarch64:
     name: test debug linux-aarch64
     needs:
@@ -2457,8 +2457,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2470,7 +2470,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-linux-aarch64-debug-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2501,7 +2501,7 @@ jobs:
       - name: Check deno binary
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -2528,7 +2528,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-linux-aarch64-debug.json
           path: target/test_results.json
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
@@ -2540,7 +2540,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '94-cargo-target-linux-aarch64-debug-test-${{ github.sha }}'
   test-release-linux-aarch64:
     name: test release linux-aarch64
     needs:
@@ -2592,8 +2592,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2605,7 +2605,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: 94-cargo-target-linux-aarch64-release-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -2718,7 +2718,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
+          name: 'deno-linux-aarch64-${{ github.event.number }}'
           path: target/release/deno
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
@@ -2760,17 +2760,17 @@ jobs:
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          du -hd1 "./target/${{ matrix.profile }}"
-          du -ha  "./target/${{ matrix.profile }}/deno"
-          du -ha  "./target/${{ matrix.profile }}/denort"
+          du -hd1 "./target/release"
+          du -ha  "./target/release/deno"
+          du -ha  "./target/release/denort"
       - name: Check deno binary
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           NO_COLOR: 1
-        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
+        run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -2796,7 +2796,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: 'test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json'
+          name: test-results-linux-aarch64-release.json
           path: target/test_results.json
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'

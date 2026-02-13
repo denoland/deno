@@ -91,9 +91,6 @@ const Runners = {
 const libCrates = resolveLibCrates();
 const libExcludeArgs = libCrates.map((p) => `--exclude ${p}`).join(" ");
 
-const prCacheKeyPrefix =
-  `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
-const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
 const prCachePath = [
   // this must match for save and restore (https://github.com/actions/cache/issues/1444)
   "./target",
@@ -264,24 +261,59 @@ const installNodeStep = step({
     "node-version": 22,
   },
 });
-const cacheCargoHomeStep = step({
-  name: "Cache Cargo home",
-  uses: "cirruslabs/cache@v4",
-  with: {
-    path: [
-      "~/.cargo/.crates.toml",
-      "~/.cargo/.crates2.json",
-      "~/.cargo/bin",
-      "~/.cargo/registry/index",
-      "~/.cargo/registry/cache",
-      "~/.cargo/git/db",
-    ].join("\n"),
-    key:
-      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-    "restore-keys":
-      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-  },
-});
+// factory for cache steps parameterized by os/arch/profile/job
+// works with both defineExprObj (inline values) and defineMatrix (matrix expressions)
+function createCacheSteps(m: {
+  os: ExpressionValue;
+  arch: ExpressionValue;
+  profile: ExpressionValue;
+  job: ExpressionValue;
+}) {
+  const cacheCargoHomeStep = step({
+    name: "Cache Cargo home",
+    uses: "cirruslabs/cache@v4",
+    with: {
+      path: [
+        "~/.cargo/.crates.toml",
+        "~/.cargo/.crates2.json",
+        "~/.cargo/bin",
+        "~/.cargo/registry/index",
+        "~/.cargo/registry/cache",
+        "~/.cargo/git/db",
+      ].join("\n"),
+      key:
+        `${cacheVersion}-cargo-home-${m.os}-${m.arch}-\${{ hashFiles('Cargo.lock') }}`,
+      "restore-keys": `${cacheVersion}-cargo-home-${m.os}-${m.arch}-`,
+    },
+  });
+  const cacheKeyPrefix =
+    `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
+  const restoreCacheBuildOutputStep = step({
+    name: "Restore cache build output (PR)",
+    uses: "actions/cache/restore@v4",
+    if: isMainBranch.not().and(isNotTag),
+    with: {
+      path: prCachePath,
+      key: "never_saved",
+      "restore-keys": cacheKeyPrefix,
+    },
+  });
+  const saveCacheBuildOutputStep = step({
+    // in main branch, always create a fresh cache
+    name: "Save cache build output (main)",
+    uses: "actions/cache/save@v4",
+    if: isMainBranch,
+    with: {
+      path: prCachePath,
+      key: `${cacheKeyPrefix}\${{ github.sha }}`,
+    },
+  });
+  return {
+    cacheCargoHomeStep,
+    restoreCacheBuildOutputStep,
+    saveCacheBuildOutputStep,
+  };
+}
 const installRustStep = step({
   uses: "dsherret/rust-toolchain-file@v1",
 });
@@ -463,28 +495,6 @@ const buildItems = handleBuildItems([{
   skip_pr: true,
 }]);
 
-// common build matrix conditions
-const restoreCacheBuildOutputStep = step({
-  name: "Restore cache build output (PR)",
-  uses: "actions/cache/restore@v4",
-  if: isMainBranch.not().and(isNotTag),
-  with: {
-    path: prCachePath,
-    key: "never_saved",
-    "restore-keys": prCacheKeyPrefix,
-  },
-});
-const saveCacheBuildOutputStep = step({
-  // In main branch, always create a fresh cache
-  name: "Save cache build output (main)",
-  uses: "actions/cache/save@v4",
-  if: isMainBranch,
-  with: {
-    path: prCachePath,
-    key: prCacheKey,
-  },
-});
-
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
   return job(
@@ -523,6 +533,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         RUST_LIB_BACKTRACE: 0,
       },
       steps: (() => {
+        const {
+          cacheCargoHomeStep,
+          restoreCacheBuildOutputStep,
+          saveCacheBuildOutputStep,
+        } = createCacheSteps(buildItem);
+
         const isLinux = buildItem.os.equals("isLinux");
         const isWindows = buildItem.os.equals("windows");
         const isMacos = buildItem.os.equals("macos");
@@ -577,7 +593,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             uses: "actions/upload-artifact@v6",
             with: {
               name:
-                "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+                `deno-${buildItem.os}-${buildItem.arch}-\${{ github.event.number }}`,
               path: "target/release/deno",
             },
           },
@@ -586,13 +602,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isLinux.and(isDenoland),
             run: [
               "cd target/release",
-              "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
+              `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
               "strip ./deno",
-              "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
-              "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+              `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
+              `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "strip ./denort",
-              "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
-              "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+              `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
+              `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -613,7 +629,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
             },
             run: [
-              "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
+              `target/release/deno -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-apple-darwin.symcache`,
               "strip -x -S target/release/deno",
               'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
               "rcodesign sign target/release/deno " +
@@ -622,11 +638,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
               "--entitlements-xml-file=cli/entitlements.plist",
               "cd target/release",
-              "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
-              "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
+              `zip -r deno-${buildItem.arch}-apple-darwin.zip deno`,
+              `shasum -a 256 deno-${buildItem.arch}-apple-darwin.zip > deno-${buildItem.arch}-apple-darwin.zip.sha256sum`,
               "strip -x -S ./denort",
-              "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
-              "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
+              `zip -r denort-${buildItem.arch}-apple-darwin.zip denort`,
+              `shasum -a 256 denort-${buildItem.arch}-apple-darwin.zip > denort-${buildItem.arch}-apple-darwin.zip.sha256sum`,
             ],
           },
           {
@@ -679,11 +695,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isWindows.and(isDenoland),
             shell: "pwsh",
             run: [
-              "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
-              "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-              "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
-              "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-              "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
+              `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${buildItem.arch}-pc-windows-msvc.zip`,
+              `Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
+              `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },
           step.dependsOn(setupGcloudStep)({
@@ -738,9 +754,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Build product size info",
               if: isMainOrTag,
               run: [
-                'du -hd1 "./target/${{ matrix.profile }}"',
-                'du -ha  "./target/${{ matrix.profile }}/deno"',
-                'du -ha  "./target/${{ matrix.profile }}/denort"',
+                `du -hd1 "./target/${buildItem.profile}"`,
+                `du -ha  "./target/${buildItem.profile}/deno"`,
+                `du -ha  "./target/${buildItem.profile}/denort"`,
               ],
             },
           );
@@ -765,7 +781,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Check deno binary",
               if: isTest,
               run:
-                'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+                `target/${buildItem.profile}/deno eval "console.log(1+2)" | grep 3`,
               env: { NO_COLOR: 1 },
             },
             {
@@ -773,7 +789,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Check deno binary (in sysroot)",
               if: isTest.and(buildItem.use_sysroot),
               run:
-                'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
+                `sudo chroot /sysroot "$(pwd)/target/${buildItem.profile}/deno" --version`,
             },
           );
 
@@ -898,7 +914,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               if: conditions.status.always().and(isNotTag),
               with: {
                 name:
-                  "test-results-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}.json",
+                  `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}.json`,
                 path: "target/test_results.json",
               },
             },
@@ -1113,33 +1129,40 @@ const lintJob = job("lint", {
   strategy: {
     matrix: lintMatrix,
   },
-  steps: step(
-    cloneRepoStep,
-    cloneStdSubmodule,
-    cacheCargoHomeStep,
-    restoreCacheBuildOutputStep,
-    installRustStep,
-    installDenoStep,
-    step.if(lintMatrix.os.equals("linux"))(
+  steps: (() => {
+    const {
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      saveCacheBuildOutputStep,
+    } = createCacheSteps(lintMatrix);
+    return step(
+      cloneRepoStep,
+      cloneStdSubmodule,
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      installRustStep,
+      installDenoStep,
+      step.if(lintMatrix.os.equals("linux"))(
+        {
+          name: "test_format.js",
+          run:
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+        },
+        {
+          name: "jsdoc_checker.js",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        },
+      ),
       {
-        name: "test_format.js",
+        name: "lint.js",
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         run:
-          "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+          "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
       },
-      {
-        name: "jsdoc_checker.js",
-        run:
-          "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-      },
-    ),
-    {
-      name: "lint.js",
-      env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-      run:
-        "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-    },
-    saveCacheBuildOutputStep,
-  ),
+      saveCacheBuildOutputStep,
+    );
+  })(),
 });
 
 // === libs job ===
@@ -1170,6 +1193,11 @@ const libsJob = job("libs", {
     matrix: libsMatrix,
   },
   steps: (() => {
+    const {
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      saveCacheBuildOutputStep,
+    } = createCacheSteps(libsMatrix);
     const repoSetupSteps = step(
       cloneRepoStep,
       cacheCargoHomeStep,
