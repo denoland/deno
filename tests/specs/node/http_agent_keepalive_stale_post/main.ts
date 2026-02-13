@@ -4,6 +4,10 @@
 import http from "node:http";
 import net from "node:net";
 
+let idleSocketClosed: Promise<void>;
+let resolveIdleSocketClosed: () => void;
+idleSocketClosed = new Promise((r) => (resolveIdleSocketClosed = r));
+
 const server = net.createServer((socket) => {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -42,6 +46,7 @@ const server = net.createServer((socket) => {
 
   socket.on("close", () => {
     if (idleTimer) clearTimeout(idleTimer);
+    resolveIdleSocketClosed();
   });
 });
 
@@ -86,8 +91,9 @@ server.listen(0, async () => {
     const first = await postRequest(port);
     console.log("Request 1: OK", first);
 
-    // Wait for server to close the idle connection
-    await new Promise((r) => setTimeout(r, 150));
+    // Wait until the server actually closes the idle socket
+    await idleSocketClosed;
+    await new Promise((r) => setTimeout(r, 50));
 
     // Second POST request on stale socket - should retry with body
     const second = await postRequest(port);
