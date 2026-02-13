@@ -13,4 +13,5 @@ publish = false
 [lib]
 path = "lib.rs"
 
-# No dependencies - std only
+[dependencies]
+twox-hash.workspace = true

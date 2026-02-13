@@ -105,6 +105,7 @@ pub fn create_runtime_snapshot(
   deno_snapshot_hash::write_manifest(
     &manifest_path,
     &input_file_paths,
+    &snapshot_options.ts_version,
     snapshot_options.v8_version,
   );
 

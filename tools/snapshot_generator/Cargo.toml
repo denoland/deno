@@ -16,4 +16,4 @@ deno_runtime = { workspace = true, features = [
   "only_snapshotted_js_sources",
   "snapshot",
 ] }
-deno_snapshots = { workspace = true, default-features = false, features = ["disable"] }
+deno_snapshots = { workspace = true, features = ["disable"] }

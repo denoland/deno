@@ -18,6 +18,7 @@ import {
 import { assertEquals } from "@std/assert";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
+import { parse as parseTOML } from "@std/toml/parse";
 
 const promises = [];
 
@@ -39,6 +40,7 @@ if (js) {
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
   promises.push(ensureNoNewTopLevelEntries());
+  promises.push(ensureDefaultMembersInSync());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -384,6 +386,65 @@ async function ensureNoNewTopLevelEntries() {
         `Only the following top-level entries are allowed: ${
           Array.from(allowed).join(", ")
         }`,
+    );
+  }
+}
+
+/**
+ * Ensures that `default-members` in the workspace Cargo.toml stays in sync
+ * with `members`. The snapshot_generator must be excluded from default-members
+ * to prevent its special deno_runtime feature flags from being unified into
+ * the normal build. This check catches drift when new crates are added to
+ * `members` but not to `default-members`.
+ */
+async function ensureDefaultMembersInSync() {
+  // Members that are intentionally excluded from default-members.
+  // The snapshot_generator depends on deno_runtime with features like
+  // "only_snapshotted_js_sources" and "snapshot" that would change runtime
+  // behavior if Cargo unified them into the default build.
+  const EXCLUDED_FROM_DEFAULT = new Set([
+    "tools/snapshot_generator",
+  ]);
+
+  const cargoTomlPath = join(ROOT_PATH, "Cargo.toml");
+  const text = await Deno.readTextFile(cargoTomlPath);
+  const toml = parseTOML(text);
+
+  const members = toml.workspace?.members;
+  const defaultMembers = toml.workspace?.["default-members"];
+
+  if (!members || !defaultMembers) {
+    throw new Error(
+      "Cargo.toml is missing workspace.members or workspace.default-members",
+    );
+  }
+
+  const expectedDefault = members
+    .filter((m) => !EXCLUDED_FROM_DEFAULT.has(m))
+    .sort();
+  const actualDefault = [...defaultMembers].sort();
+
+  const missing = expectedDefault.filter((m) => !actualDefault.includes(m));
+  const extra = actualDefault.filter((m) => !expectedDefault.includes(m));
+
+  const errors = [];
+  if (missing.length > 0) {
+    errors.push(
+      `Members missing from default-members: ${missing.join(", ")}`,
+    );
+  }
+  if (extra.length > 0) {
+    errors.push(
+      `Unexpected entries in default-members (should they be in EXCLUDED_FROM_DEFAULT?): ${
+        extra.join(", ")
+      }`,
+    );
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `default-members is out of sync with members in Cargo.toml:\n${
+        errors.join("\n")
+      }`,
     );
   }
 }

@@ -43,6 +43,7 @@ fn main() {
         "Snapshot is stale — auto-running snapshot_generator..."
       );
       let status = std::process::Command::new(&generator_bin)
+        .env("SNAPSHOT_CACHE_DIR", &cache_dir)
         .status()
         .unwrap_or_else(|e| {
           panic!(
@@ -117,6 +118,25 @@ fn main() {
        This is a bug — please report it."
     );
 
+    // Copy the generator binary from the separate target dir to the main
+    // target dir so Stage 2 can find it on subsequent builds.
+    let profile = if cfg!(debug_assertions) {
+      "debug"
+    } else {
+      "release"
+    };
+    let built_generator =
+      snapshot_target_dir.join(profile).join(generator_name);
+    if built_generator.exists() {
+      std::fs::copy(&built_generator, &generator_bin).unwrap_or_else(|e| {
+        panic!(
+          "Failed to copy generator from {} to {}: {e}",
+          built_generator.display(),
+          generator_bin.display()
+        )
+      });
+    }
+
     /// Check if a valid cached snapshot exists whose hash matches the
     /// current inputs. If so, copy it to the output path and emit
     /// rerun-if-changed directives. Returns true if the cache was valid.
@@ -141,7 +161,7 @@ fn main() {
         return false;
       }
 
-      let Some((v8_version, paths)) =
+      let Some((_, v8_version, paths)) =
         deno_snapshot_hash::parse_manifest(&manifest_content)
       else {
         return false;
