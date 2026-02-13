@@ -16,9 +16,6 @@ name = "deno"
 path = "main.rs"
 doc = false
 
-[lib]
-path = "lib.rs"
-
 [[test]]
 name = "integration"
 path = "integration_tests_runner.rs"

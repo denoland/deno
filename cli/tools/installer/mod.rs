@@ -1284,6 +1284,7 @@ fn is_in_path(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+  use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
   use deno_npm::resolution::NpmVersionResolver;
@@ -1921,11 +1922,17 @@ mod tests {
       file_path = file_path.with_extension("cmd");
     }
 
-    assert!(file_path.exists());
-    let content = fs::read_to_string(file_path).unwrap();
-    let module_url = Url::from_file_path(&local_module).unwrap().to_string();
-    // ensure the unicode path is preserved in the shim
-    assert!(content.contains(&module_url));
+    // We need to actually run it to make sure the URL is interpreted correctly
+    let status = Command::new(file_path)
+      .env_clear()
+      // use the deno binary in the target directory
+      .env("PATH", test_util::target_dir())
+      .env("RUST_BACKTRACE", "1")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 
   #[tokio::test]

@@ -55,19 +55,15 @@ fn is_process_active(process_id: u32) -> bool {
 #[cfg(test)]
 mod test {
   use std::process::Command;
-  use std::process::Stdio;
+
+  use test_util::deno_exe_path;
 
   use super::is_process_active;
 
   #[test]
   fn process_active() {
-    // launch a long running process that blocks on stdin
-    let mut child = Command::new(if cfg!(windows) { "cmd.exe" } else { "cat" })
-      .stdin(Stdio::piped())
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
-      .spawn()
-      .unwrap();
+    // launch a long running process
+    let mut child = Command::new(deno_exe_path()).arg("lsp").spawn().unwrap();
 
     let pid = child.id();
     assert!(is_process_active(pid));

@@ -7,9 +7,6 @@ edition = "2024"
 license = "MIT"
 description = "A crate that maps Node.js CLI arguments into Deno arguments."
 
-[lib]
-path = "lib.rs"
-
 [[bin]]
 name = "node_shim"
 path = "main.rs"

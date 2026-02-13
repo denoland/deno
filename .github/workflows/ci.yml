@@ -2966,10 +2966,6 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Test Bin Libs
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim
       - name: Test libs
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
