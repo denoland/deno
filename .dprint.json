@@ -45,7 +45,7 @@
     "tests/bench/testdata/express-router.js",
     "tests/bench/testdata/lsp_benchdata/",
     "tests/bench/testdata/npm/",
-    "tests/ffi/tests/test.js",
+    "tests/ffi/testdata/test.js",
     "tests/node_compat/runner/suite",
     "tests/node_compat/runner/TODO.md",
     "tests/node_compat/test",

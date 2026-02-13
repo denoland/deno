@@ -75,7 +75,7 @@ async function dlint() {
     ":!:tests/bench/testdata/npm/*",
     ":!:tests/bench/testdata/express-router.js",
     ":!:tests/bench/testdata/react-dom.js",
-    ":!:tests/ffi/tests/test.js",
+    ":!:tests/ffi/testdata/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",

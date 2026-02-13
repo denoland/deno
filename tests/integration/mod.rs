@@ -29,10 +29,10 @@ mod compile;
 mod coverage;
 #[path = "eval_tests.rs"]
 mod eval;
-#[path = "flags_tests.rs"]
-mod flags;
 #[path = "ffi_tests.rs"]
 mod ffi;
+#[path = "flags_tests.rs"]
+mod flags;
 #[path = "fmt_tests.rs"]
 mod fmt;
 #[path = "init_tests.rs"]

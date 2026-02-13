@@ -4,6 +4,7 @@ use std::process::Command;
 
 use test_util::deno_cmd;
 use test_util::deno_config_path;
+use test_util::println;
 use test_util::tests_path;
 
 #[cfg(debug_assertions)]
@@ -57,8 +58,9 @@ fn build_sqlite_extension() {
 fn sqlite_extension() {
   build_sqlite_extension();
 
-  let extension_test_file =
-    tests_path().join("sqlite_extension_test").join("sqlite_extension_test.ts");
+  let extension_test_file = tests_path()
+    .join("sqlite_extension_test")
+    .join("sqlite_extension_test.ts");
 
   let output = deno_cmd()
     .arg("test")
