@@ -1211,7 +1211,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         defaults,
         env,
         steps: step
-          .if(hasCiBenchLabel.not().and(isNotTag).and(buildItem.skip.not()))(
+          .if(
+            (hasCiBenchLabel.or(isMainBranch)).and(isNotTag).and(
+              buildItem.skip.not(),
+            ),
+          )(
             cloneRepoStep,
             installNodeStep,
             installRustStep,
