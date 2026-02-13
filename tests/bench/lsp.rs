@@ -5,14 +5,14 @@ use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
-use deno_core::serde::Deserialize;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
-use deno_core::serde_json::json;
-use lsp_types::Uri;
+use serde::Deserialize;
+use serde_json;
+use serde_json::Value;
+use serde_json::json;
 use test_util::PathRef;
 use test_util::lsp::LspClientBuilder;
 use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::Uri;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");
@@ -91,7 +91,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize(|c| {
-    c.set_workspace_folders(vec![lsp_types::WorkspaceFolder {
+    c.set_workspace_folders(vec![tower_lsp::lsp_types::WorkspaceFolder {
       uri: apps.uri_dir(),
       name: "apps".to_string(),
     }]);

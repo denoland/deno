@@ -5,6 +5,7 @@ import {
   Condition,
   conditions,
   createWorkflow,
+  defineArtifact,
   defineExprObj,
   defineMatrix,
   type ExpressionValue,
@@ -474,12 +475,6 @@ const buildItems = handleBuildItems([{
   // currently run the Web Platform tests only on Linux.
   wpt: isNotTag,
 }, {
-  ...Runners.linuxX86Xl,
-  job: "bench",
-  profile: "release",
-  use_sysroot: true,
-  skip_pr: hasCiBenchLabel.not(),
-}, {
   ...Runners.linuxX86,
   job: "test",
   profile: "debug",
@@ -498,11 +493,56 @@ const buildItems = handleBuildItems([{
 
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
-  return job(
-    `${buildItem.job}-${buildItem.profile}-${buildItem.os}-${buildItem.arch}`,
+  const profileName = `${buildItem.profile}-${buildItem.os}-${buildItem.arch}`;
+  const jobIdForJob = (name: string) => `${name}-${profileName}`;
+  const jobNameForJob = (name: string) =>
+    `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`;
+  const denoArtifact = defineArtifact(`${profileName}-deno.zip`, {
+    path: `target/${buildItem.profile}/deno`,
+    retentionDays: 3,
+  });
+  const denortArtifact = defineArtifact(`${profileName}-denort.zip`, {
+    path: `target/${buildItem.profile}/denort`,
+    retentionDays: 3,
+  });
+  const env = {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    // disable anyhow's library backtrace
+    RUST_LIB_BACKTRACE: 0,
+  };
+  const defaults = {
+    run: {
+      // GH actions does not fail fast by default on
+      // Windows, so we set bash as the default shell
+      shell: "bash",
+    },
+  };
+  const {
+    cacheCargoHomeStep,
+    restoreCacheBuildOutputStep,
+    saveCacheBuildOutputStep,
+  } = createCacheSteps(buildItem);
+
+  const isLinux = buildItem.os.equals("linux");
+  const isWindows = buildItem.os.equals("windows");
+  const isMacos = buildItem.os.equals("macos");
+  const {
+    installPythonStep,
+    setupPrebuiltMacStep,
+    installLldStep,
+    setupGcloudStep,
+  } = getOsSpecificSteps({
+    isWindows,
+    isMacos,
+  });
+  const isTest = buildItem.job.equals("test");
+  const isRelease = buildItem.profile.equals("release");
+  const isDebug = buildItem.profile.equals("debug");
+  const buildJob = job(
+    jobIdForJob("build"),
     {
-      name:
-        `${buildItem.job} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+      name: jobNameForJob("build"),
       needs: [preBuildJob],
       if: preBuildJob.outputs.skip_build.notEquals("true"),
       runsOn: buildItem.runner,
@@ -512,41 +552,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         name: isMainOrTag.then("build").else(""),
       },
       timeoutMinutes: 240,
-      defaults: {
-        run: {
-          // GH actions does not fail fast by default on
-          // Windows, so we set bash as the default shell
-          shell: "bash",
-        },
-      },
-      env: {
-        CARGO_TERM_COLOR: "always",
-        RUST_BACKTRACE: "full",
-        // disable anyhow's library backtrace
-        RUST_LIB_BACKTRACE: 0,
-      },
+      defaults,
+      env,
       steps: (() => {
-        const {
-          cacheCargoHomeStep,
-          restoreCacheBuildOutputStep,
-          saveCacheBuildOutputStep,
-        } = createCacheSteps(buildItem);
-
-        const isLinux = buildItem.os.equals("linux");
-        const isWindows = buildItem.os.equals("windows");
-        const isMacos = buildItem.os.equals("macos");
-        const {
-          installPythonStep,
-          setupPrebuiltMacStep,
-          installLldStep,
-          setupGcloudStep,
-        } = getOsSpecificSteps({
-          isWindows,
-          isMacos,
-        });
-        const isTest = buildItem.job.equals("test");
-        const isRelease = buildItem.profile.equals("release");
-        const isDebug = buildItem.profile.equals("debug");
         const cloneWptSubmodule = cloneSubmodule("./tests/wpt/suite");
         const cargoBuildCacheStep = step
           .dependsOn(cacheCargoHomeStep, installRustStep)(
@@ -784,44 +792,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run:
                 `sudo chroot /sysroot "$(pwd)/target/${buildItem.profile}/deno" --version`,
             },
-          );
-
-        const benchStep = step
-          .if(buildItem.job.equals("bench").and(isNotTag).and(isRelease))
-          .dependsOn(installNodeStep)(
-            cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
-            step.dependsOn(installDenoStep, setupPrebuiltMacStep)({
-              name: "Install benchmark tools",
-              env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-              run: "./tools/install_prebuilt.js wrk hyperfine",
-            }),
-            step.dependsOn(cargoBuildReleaseStep)({
-              name: "Run benchmarks",
-              run: "cargo bench --locked",
-            }),
-            {
-              name: "Post benchmarks",
-              if: isDenoland.and(isMainBranch),
-              env: {
-                DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
-              },
-              run: [
-                "git clone --depth 1 --branch gh-pages                             \\",
-                "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
-                "    gh-pages",
-                "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
-                "cd gh-pages",
-                'git config user.email "propelml@gmail.com"',
-                'git config user.name "denobot"',
-                "git add .",
-                'git commit --message "Update benchmarks"',
-                "git push origin gh-pages",
-              ],
-            },
-            {
-              name: "Worker info",
-              run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
-            },
+            denoArtifact.upload(),
+            denortArtifact.upload(),
           );
 
         const testStep = step
@@ -903,7 +875,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             }),
             {
               name: "Upload test results",
-              uses: "actions/upload-artifact@v4",
+              uses: "actions/upload-artifact@v6",
               if: conditions.status.always().and(isNotTag),
               with: {
                 name:
@@ -1088,6 +1060,68 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       })(),
     },
   );
+
+  const benchCondition = isLinux.and(isRelease).and(
+    buildItem.arch.equals("X86_64"),
+  );
+  const additionalJobs = [];
+  if (!benchCondition.isAlwaysFalse()) {
+    additionalJobs.push(job(
+      jobIdForJob("bench"),
+      {
+        name: jobNameForJob("bench"),
+        needs: [buildJob],
+        runsOn: buildItem.runner,
+        timeoutMinutes: 240,
+        defaults,
+        env,
+        steps: step
+          .if(hasCiBenchLabel.not().and(isNotTag))(
+            cloneRepoStep,
+            installNodeStep,
+            cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
+            installDenoStep,
+            denoArtifact.download(),
+            {
+              name: "Install benchmark tools",
+              env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+              run: "./tools/install_prebuilt.js wrk hyperfine",
+            },
+            {
+              name: "Run benchmarks",
+              run: "cargo bench -p cli_tests --bench deno_bench --locked",
+            },
+            {
+              name: "Post benchmarks",
+              if: isDenoland.and(isMainBranch),
+              env: {
+                DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+              },
+              run: [
+                "git clone --depth 1 --branch gh-pages                             \\",
+                "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
+                "    gh-pages",
+                "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
+                "cd gh-pages",
+                'git config user.email "propelml@gmail.com"',
+                'git config user.name "denobot"',
+                "git add .",
+                'git commit --message "Update benchmarks"',
+                "git push origin gh-pages",
+              ],
+            },
+            {
+              name: "Worker info",
+              run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
+            },
+          ),
+      },
+    ));
+  }
+
+  return {
+    buildJob,
+  };
 });
 
 // === lint job ===
@@ -1272,7 +1306,7 @@ const libsJob = job("libs", {
 const publishCanaryJob = job("publish-canary", {
   name: "publish canary",
   runsOn: ubuntuX86Runner,
-  needs: [...buildJobs],
+  needs: [...buildJobs.map((b) => b.buildJob)],
   if: isDenoland.and(isMainBranch),
   steps: (() => {
     const {

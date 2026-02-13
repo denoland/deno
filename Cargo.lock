@@ -987,6 +987,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bencher",
  "bytes",
  "chrono",
  "deno_cache_dir",
@@ -1675,7 +1676,6 @@ dependencies = [
  "crossterm",
  "dashmap",
  "deno_ast",
- "deno_bench_util",
  "deno_bundle_runtime",
  "deno_cache_dir",
  "deno_config",
