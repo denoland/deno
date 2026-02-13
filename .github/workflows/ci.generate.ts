@@ -539,7 +539,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           saveCacheBuildOutputStep,
         } = createCacheSteps(buildItem);
 
-        const isLinux = buildItem.os.equals("isLinux");
+        const isLinux = buildItem.os.equals("linux");
         const isWindows = buildItem.os.equals("windows");
         const isMacos = buildItem.os.equals("macos");
         const {
