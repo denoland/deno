@@ -501,23 +501,48 @@ const buildItems = handleBuildItems([{
 
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
+  const isLinux = buildItem.os.equals("linux");
+  const isWindows = buildItem.os.equals("windows");
+  const isMacos = buildItem.os.equals("macos");
   const profileName = `${buildItem.profile}-${buildItem.os}-${buildItem.arch}`;
   const jobIdForJob = (name: string) => `${name}-${profileName}`;
   const jobNameForJob = (name: string) =>
     `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`;
+  const createBinaryArtifact = (name: string, path: string) => {
+    const artifact = defineArtifact(`${profileName}-${name}`, {
+      path: path,
+      retentionDays: 3,
+    });
+    return {
+      download() {
+        return step(
+          artifact.download(),
+          step({
+            name: `Set ${path} permissions`,
+            if: isWindows.not(),
+            run: `chmod +x ${path}`,
+          }),
+        );
+      },
+      upload() {
+        return artifact.upload();
+      },
+    };
+  };
+
   const exeExt = rawBuildItem.os === "windows" ? ".exe" : "";
-  const denoArtifact = defineArtifact(`${profileName}-deno`, {
-    path: `target/${buildItem.profile}/deno${exeExt}`,
-    retentionDays: 3,
-  });
-  const denortArtifact = defineArtifact(`${profileName}-denort`, {
-    path: `target/${buildItem.profile}/denort${exeExt}`,
-    retentionDays: 3,
-  });
-  const testServerArtifact = defineArtifact(`${profileName}-test-server`, {
-    path: `target/${buildItem.profile}/test_server${exeExt}`,
-    retentionDays: 3,
-  });
+  const denoArtifact = createBinaryArtifact(
+    "deno",
+    `target/${buildItem.profile}/deno${exeExt}`,
+  );
+  const denortArtifact = createBinaryArtifact(
+    "denort",
+    `target/${buildItem.profile}/denort${exeExt}`,
+  );
+  const testServerArtifact = createBinaryArtifact(
+    "test-server",
+    `target/${buildItem.profile}/test_server${exeExt}`,
+  );
   const env = {
     CARGO_TERM_COLOR: "always",
     RUST_BACKTRACE: "full",
@@ -537,9 +562,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     saveCacheBuildOutputStep,
   } = createCacheSteps(buildItem);
 
-  const isLinux = buildItem.os.equals("linux");
-  const isWindows = buildItem.os.equals("windows");
-  const isMacos = buildItem.os.equals("macos");
   const {
     installPythonStep,
     setupPrebuiltMacStep,

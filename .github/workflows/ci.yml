@@ -211,16 +211,25 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -296,16 +305,25 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -381,6 +399,9 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -456,6 +477,9 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -534,6 +558,9 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -839,16 +866,25 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -922,16 +958,25 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1005,6 +1050,9 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1078,6 +1126,9 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1154,6 +1205,9 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1363,16 +1417,25 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1460,16 +1523,25 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1557,6 +1629,9 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1644,6 +1719,9 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1734,6 +1812,9 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2061,16 +2142,25 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2156,16 +2246,25 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2251,6 +2350,9 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2336,6 +2438,9 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2424,6 +2529,9 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -5176,16 +5284,25 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5340,16 +5457,25 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5504,6 +5630,9 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5658,6 +5787,9 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5815,6 +5947,9 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5876,6 +6011,9 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/release/deno
       - name: Configure hosts file for WPT
         if: '!startsWith(github.ref, ''refs/tags/'')'
         working-directory: tests/wpt/suite/
@@ -6249,16 +6387,25 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6415,16 +6562,25 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6581,6 +6737,9 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6737,6 +6896,9 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6896,6 +7058,9 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7078,16 +7243,25 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7166,16 +7340,25 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/denort
+      - name: Set target/debug/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
           path: target/debug/test_server
+      - name: Set target/debug/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7254,6 +7437,9 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7332,6 +7518,9 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7413,6 +7602,9 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
+      - name: Set target/debug/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: chmod +x target/debug/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7866,16 +8058,25 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8033,16 +8234,25 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
+      - name: Set target/release/denort permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/denort
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
           path: target/release/test_server
+      - name: Set target/release/test_server permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8200,6 +8410,9 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8357,6 +8570,9 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8517,6 +8733,9 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
+      - name: Set target/release/deno permissions
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: chmod +x target/release/deno
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
