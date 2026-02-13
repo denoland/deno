@@ -10,7 +10,6 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
-  literal,
   step,
 } from "jsr:@david/gagen@0.2.14";
 
@@ -946,7 +945,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   const additionalJobs = [];
 
-  for (const testCrate of testCrates) {
+  {
+    const testMatrix = defineMatrix({
+      include: testCrates.map((tc) => ({ test_crate: tc.name })),
+    });
     const {
       cacheCargoHomeStep,
       restoreCacheBuildOutputStep,
@@ -955,16 +957,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       ...buildItem,
       job: "test",
     });
-    const testCrateNameExpr = literal(testCrate.name);
+    const testCrateNameExpr = testMatrix.test_crate;
     additionalJobs.push(job(
-      jobIdForJob(`test-${testCrate.name}`),
+      jobIdForJob("test"),
       {
-        name: jobNameForJob(`test ${testCrate.name}`),
+        name:
+          `test ${testMatrix.test_crate} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
         defaults,
         env,
+        strategy: {
+          matrix: testMatrix,
+          failFast: false,
+        },
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
@@ -1016,7 +1023,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p cli_tests --test ${testCrate.name}`,
+            run: `cargo test -p cli_tests --test ${testMatrix.test_crate}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -1024,7 +1031,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(
               isDenoland.or(buildItem.use_sysroot),
             ),
-            run: `cargo test -p cli_tests --test ${testCrate.name} --release`,
+            run:
+              `cargo test -p cli_tests --test ${testMatrix.test_crate} --release`,
           },
           {
             name: "Ensure no git changes",
@@ -1046,8 +1054,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: conditions.status.always().and(isNotTag),
             with: {
               name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testCrate.name}.json`,
-              path: `target/test_results_${testCrate.name}.json`,
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}.json`,
+              path: `target/test_results_${testMatrix.test_crate}.json`,
             },
           }),
           saveCacheBuildOutputStep,
