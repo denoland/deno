@@ -38,6 +38,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import {
   BroadcastChannel as WebBroadcastChannel,
   refBroadcastChannel,
@@ -185,9 +186,9 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerstdin
   stdin = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
-  stdout: EventEmitter = new EventEmitter();
+  stdout: Readable = new Readable({ read() {} });
   // https://nodejs.org/api/worker_threads.html#workerstderr
-  stderr: EventEmitter = new EventEmitter();
+  stderr: Readable = new Readable({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -198,6 +199,11 @@ class NodeWorker extends EventEmitter {
         const invalidFlags = [];
         for (let i = 0; i < options.execArgv.length; i++) {
           const flag = options.execArgv[i];
+          // Items that don't start with '-' are arguments to the
+          // preceding flag (e.g. "--conditions node"), not flags.
+          if (!StringPrototypeStartsWith(flag, "-")) {
+            continue;
+          }
           if (!process.allowedNodeEnvironmentFlags.has(flag)) {
             invalidFlags[invalidFlags.length] = flag;
             continue;
@@ -402,6 +408,15 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #closeStdio() {
+    if (!this.stdout.readableEnded) {
+      this.stdout.push(null);
+    }
+    if (!this.stderr.readableEnded) {
+      this.stderr.push(null);
+    }
+  }
+
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
@@ -418,6 +433,7 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const err = new Error(data.errorMessage ?? data.message);
             if (data.name) {
@@ -441,6 +457,7 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", data ?? 0);
@@ -482,9 +499,9 @@ class NodeWorker extends EventEmitter {
         this.#workerOnline = true;
         this.emit("online");
       } else if (isWorkerStdoutMsg(message)) {
-        this.stdout.emit("data", message.data);
+        this.stdout.push(message.data);
       } else if (isWorkerStderrMsg(message)) {
-        this.stderr.emit("data", message.data);
+        this.stderr.push(message.data);
       } else {
         this.emit("message", message);
       }
@@ -529,6 +546,7 @@ class NodeWorker extends EventEmitter {
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
+    this.#closeStdio();
 
     if (!this.#exited) {
       this.#exited = true;
