@@ -492,6 +492,7 @@ const buildItems = handleBuildItems([{
 }, {
   ...Runners.linuxArm,
   profile: "debug",
+  use_sysroot: true,
 }, {
   ...Runners.linuxArm,
   profile: "release",
@@ -972,7 +973,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           ),
           testServerArtifact.download().if(
             testCrateNameExpr.equals("integration")
-              .or(testCrateNameExpr.equals("specs")),
+              .or(testCrateNameExpr.equals("specs"))
+              .or(testCrateNameExpr.equals("unit"))
+              .or(testCrateNameExpr.equals("unit_node")),
           ),
           {
             name: "Set up playwright cache",
