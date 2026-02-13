@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Child;

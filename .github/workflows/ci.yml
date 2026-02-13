@@ -181,6 +181,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -275,6 +278,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -369,6 +375,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -455,6 +464,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -544,6 +556,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -852,6 +867,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -944,6 +962,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1036,6 +1057,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1120,6 +1144,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1207,6 +1234,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1407,6 +1437,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1414,9 +1447,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1513,6 +1543,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1520,9 +1553,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1619,6 +1649,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1626,9 +1659,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1717,6 +1747,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1724,9 +1757,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1818,6 +1848,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1825,9 +1858,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2148,6 +2178,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2155,9 +2188,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2252,6 +2282,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2259,9 +2292,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2356,6 +2386,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2363,9 +2396,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2452,6 +2482,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2459,9 +2492,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2551,6 +2581,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2558,9 +2591,6 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2746,6 +2776,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2831,6 +2864,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2916,6 +2952,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2996,6 +3035,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3079,6 +3121,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3412,6 +3457,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3495,6 +3543,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3578,6 +3629,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3656,6 +3710,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3737,6 +3794,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3917,6 +3977,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4002,6 +4065,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4087,6 +4153,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4167,6 +4236,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4250,6 +4322,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4583,6 +4658,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4666,6 +4744,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4749,6 +4830,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4827,6 +4911,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4908,6 +4995,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -5277,6 +5367,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5450,6 +5543,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5623,6 +5719,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5788,6 +5887,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5956,6 +6058,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6399,6 +6504,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6574,6 +6682,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6749,6 +6860,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6916,6 +7030,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7086,6 +7203,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7352,6 +7472,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7449,6 +7572,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7546,6 +7672,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7635,6 +7764,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7727,6 +7859,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -8102,6 +8237,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8278,6 +8416,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8454,6 +8595,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8622,6 +8766,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8793,6 +8940,9 @@ jobs:
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'

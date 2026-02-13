@@ -961,6 +961,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
+          cloneStdSubmoduleStep,
           installNodeStep,
           installRustStep,
           installLldStep,
