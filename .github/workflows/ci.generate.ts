@@ -10,7 +10,7 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.9";
+} from "jsr:@david/gagen@0.2.10";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -36,9 +36,6 @@ const isMainOrTag = isMainBranch.or(isTag);
 const isPr = conditions.isPr();
 const hasCiFullLabel = conditions.hasPrLabel("ci-full");
 const hasCiBenchLabel = conditions.hasPrLabel("ci-bench");
-const isLinux = conditions.isRunnerOs("Linux");
-const isMacos = conditions.isRunnerOs("macOS");
-const isWindows = conditions.isRunnerOs("Windows");
 
 const Runners = {
   linuxX86: {
@@ -267,43 +264,6 @@ const installNodeStep = step({
     "node-version": 22,
   },
 });
-const installPythonStep = step({
-  name: "Install Python",
-  uses: "actions/setup-python@v6",
-  with: {
-    "python-version": 3.11,
-  },
-}, {
-  name: "Remove unused versions of Python",
-  if: isWindows,
-  shell: "pwsh",
-  run: [
-    '$env:PATH -split ";" |',
-    '  Where-Object { Test-Path "$_\\python.exe" } |',
-    "  Select-Object -Skip 1 |",
-    '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
-  ],
-});
-const setupPrebuiltMacStep = step({
-  if: isMacos,
-  env: {
-    GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-  },
-  run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-});
-const installLldStep = step
-  .dependsOn(
-    cloneStdSubmodule,
-    installDenoStep,
-    setupPrebuiltMacStep,
-  )({
-    name: "Install macOS aarch64 lld",
-    if: isMacos.and(conditions.isRunnerArch("ARM64")),
-    env: {
-      GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-    },
-    run: "./tools/install_prebuilt.js ld64.lld",
-  });
 const cacheCargoHomeStep = step({
   name: "Cache Cargo home",
   uses: "cirruslabs/cache@v4",
@@ -329,31 +289,83 @@ const installWasmStep = step({
   name: "Install wasm target",
   run: "rustup target add wasm32-unknown-unknown",
 });
-const setupGcloudStep = step(
-  {
-    name: "Authenticate with Google Cloud",
-    uses: "google-github-actions/auth@v3",
+
+function getOsSpecificSteps({
+  isWindows,
+  isMacos,
+}: {
+  isWindows: Condition;
+  isMacos: Condition;
+}) {
+  const installPythonStep = step({
+    name: "Install Python",
+    uses: "actions/setup-python@v6",
     with: {
-      "project_id": "denoland",
-      "credentials_json": "${{ secrets.GCP_SA_KEY }}",
-      "export_environment_variables": true,
-      "create_credentials_file": true,
+      "python-version": 3.11,
     },
-  },
-  {
-    name: "Setup gcloud (unix)",
-    if: isWindows.not(),
-    uses: "google-github-actions/setup-gcloud@v3",
-    with: { project_id: "denoland" },
-  },
-  step({
-    name: "Setup gcloud (windows)",
+  }, {
+    name: "Remove unused versions of Python",
     if: isWindows,
-    uses: "google-github-actions/setup-gcloud@v2",
-    env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
-    with: { project_id: "denoland" },
-  }).dependsOn(installPythonStep),
-);
+    shell: "pwsh",
+    run: [
+      '$env:PATH -split ";" |',
+      '  Where-Object { Test-Path "$_\\python.exe" } |',
+      "  Select-Object -Skip 1 |",
+      '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
+    ],
+  });
+  const setupPrebuiltMacStep = step({
+    if: isMacos,
+    env: {
+      GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+    },
+    run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+  });
+  const installLldStep = step
+    .dependsOn(
+      cloneStdSubmodule,
+      installDenoStep,
+      setupPrebuiltMacStep,
+    )({
+      name: "Install macOS aarch64 lld",
+      if: isMacos.and(conditions.isRunnerArch("ARM64")),
+      env: {
+        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+      },
+      run: "./tools/install_prebuilt.js ld64.lld",
+    });
+  const setupGcloudStep = step(
+    {
+      name: "Authenticate with Google Cloud",
+      uses: "google-github-actions/auth@v3",
+      with: {
+        "project_id": "denoland",
+        "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+        "export_environment_variables": true,
+        "create_credentials_file": true,
+      },
+    },
+    {
+      name: "Setup gcloud (unix)",
+      if: isWindows.not(),
+      uses: "google-github-actions/setup-gcloud@v3",
+      with: { project_id: "denoland" },
+    },
+    step({
+      name: "Setup gcloud (windows)",
+      if: isWindows,
+      uses: "google-github-actions/setup-gcloud@v2",
+      env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+      with: { project_id: "denoland" },
+    }).dependsOn(installPythonStep),
+  );
+  return {
+    installPythonStep,
+    setupPrebuiltMacStep,
+    installLldStep,
+    setupGcloudStep,
+  };
+}
 
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
@@ -511,6 +523,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         RUST_LIB_BACKTRACE: 0,
       },
       steps: (() => {
+        const isLinux = buildItem.os.equals("isLinux");
+        const isWindows = buildItem.os.equals("windows");
+        const isMacos = buildItem.os.equals("mac");
+        const {
+          installPythonStep,
+          setupPrebuiltMacStep,
+          installLldStep,
+          setupGcloudStep,
+        } = getOsSpecificSteps({
+          isWindows,
+          isMacos,
+        });
         const isTest = buildItem.job.equals("test");
         const isRelease = buildItem.profile.equals("release");
         const isDebug = buildItem.profile.equals("debug");
@@ -1152,9 +1176,18 @@ const libsJob = job("libs", {
       restoreCacheBuildOutputStep,
       installRustStep,
     );
+    const isMacos = libsMatrix.os.equals("macos");
+    const isWindows = libsMatrix.os.equals("windows");
+    const isLinux = libsMatrix.os.equals("linux");
+    const {
+      installLldStep,
+    } = getOsSpecificSteps({
+      isWindows,
+      isMacos,
+    });
 
     const macSetup = step.if(
-      libsMatrix.os.equals("macos").and(libsMatrix.arch.equals("aarch64")),
+      isMacos.and(libsMatrix.arch.equals("aarch64")),
     )(
       installLldStep,
       {
@@ -1168,7 +1201,7 @@ const libsJob = job("libs", {
     );
 
     const linuxCargoChecks = step
-      .if(libsMatrix.os.equals("linux"))
+      .if(isLinux)
       .dependsOn(installWasmStep)(
         // we want these crates to be Wasm compatible
         {
@@ -1220,16 +1253,25 @@ const publishCanaryJob = job("publish-canary", {
   runsOn: ubuntuX86Runner,
   needs: [...buildJobs],
   if: isDenoland.and(isMainBranch),
-  steps: step(
-    setupGcloudStep,
-    {
-      name: "Upload canary version file to dl.deno.land",
-      run: [
-        "echo ${{ github.sha }} > canary-latest.txt",
-        'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-      ],
-    },
-  ),
+  steps: (() => {
+    const {
+      setupGcloudStep,
+    } = getOsSpecificSteps({
+      // we only run this on linux
+      isWindows: conditions.isFalse(),
+      isMacos: conditions.isFalse(),
+    });
+    return step(
+      setupGcloudStep,
+      {
+        name: "Upload canary version file to dl.deno.land",
+        run: [
+          "echo ${{ github.sha }} > canary-latest.txt",
+          'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+        ],
+      },
+    );
+  })(),
 });
 
 // === generate workflow ===
