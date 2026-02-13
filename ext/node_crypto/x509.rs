@@ -15,7 +15,7 @@ use x509_parser::prelude::*;
 use yoke::Yoke;
 use yoke::Yokeable;
 
-use super::KeyObjectHandle;
+use crate::keys::KeyObjectHandle;
 
 enum CertificateSources {
   Der(Box<[u8]>),
@@ -76,7 +76,7 @@ struct CertificateView<'a> {
   cert: X509Certificate<'a>,
 }
 
-pub(crate) struct Certificate {
+pub struct Certificate {
   inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
 }
 

@@ -17,8 +17,8 @@ use super::keys::EcPrivateKey;
 use super::keys::EcPublicKey;
 use super::keys::KeyObjectHandle;
 use super::keys::RsaPssHashAlgorithm;
-use crate::ops::crypto::digest::match_fixed_digest;
-use crate::ops::crypto::digest::match_fixed_digest_with_oid;
+use crate::digest::match_fixed_digest;
+use crate::digest::match_fixed_digest_with_oid;
 
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
