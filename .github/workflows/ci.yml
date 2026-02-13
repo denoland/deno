@@ -200,6 +200,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -220,7 +233,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -270,6 +283,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -290,7 +316,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -340,6 +366,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -360,7 +399,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -410,6 +449,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -430,7 +482,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -480,6 +532,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -500,7 +565,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -784,6 +849,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -802,7 +880,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -852,6 +930,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -870,7 +961,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -920,6 +1011,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -938,7 +1042,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -988,6 +1092,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1006,7 +1123,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1056,6 +1173,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1074,7 +1204,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1246,6 +1376,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1266,7 +1409,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1316,6 +1459,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1336,7 +1492,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1386,6 +1542,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1406,7 +1575,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1456,6 +1625,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1476,7 +1658,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1526,6 +1708,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1546,7 +1741,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1830,6 +2025,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1848,7 +2056,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1898,6 +2106,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1916,7 +2137,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1966,6 +2187,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1984,7 +2218,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2034,6 +2268,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2052,7 +2299,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2102,6 +2349,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-macos-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2120,7 +2380,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2272,6 +2532,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2292,7 +2565,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2342,6 +2615,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2362,7 +2648,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2412,6 +2698,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2432,7 +2731,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2482,6 +2781,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2502,7 +2814,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2552,6 +2864,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2572,7 +2897,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2874,6 +3199,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2892,7 +3230,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2942,6 +3280,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2960,7 +3311,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3010,6 +3361,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3028,7 +3392,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3078,6 +3442,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3096,7 +3473,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3146,6 +3523,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3164,7 +3554,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3316,6 +3706,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3336,7 +3739,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3386,6 +3789,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3406,7 +3822,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3456,6 +3872,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3476,7 +3905,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3526,6 +3955,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3546,7 +3988,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3596,6 +4038,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3616,7 +4071,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3918,6 +4373,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3936,7 +4404,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3986,6 +4454,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4004,7 +4485,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4054,6 +4535,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4072,7 +4566,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4122,6 +4616,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4140,7 +4647,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4190,6 +4697,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-windows-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4208,7 +4728,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4549,6 +5069,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4567,7 +5100,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4617,6 +5150,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4635,7 +5181,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4685,6 +5231,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4703,7 +5262,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4753,6 +5312,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4771,7 +5343,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4821,6 +5393,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4839,7 +5424,7 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5164,6 +5749,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5184,7 +5782,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5234,6 +5832,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5254,7 +5865,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5304,6 +5915,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5324,7 +5948,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5374,6 +5998,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5394,7 +6031,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5444,6 +6081,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-x86_64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5464,7 +6114,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5616,6 +6266,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5639,7 +6302,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5689,6 +6352,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5712,7 +6388,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5762,6 +6438,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5785,7 +6474,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5835,6 +6524,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5858,7 +6560,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -5908,6 +6610,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5931,7 +6646,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6269,6 +6984,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6290,7 +7018,7 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p integration --test integration
+        run: cargo test -p cli_tests --test integration
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6340,6 +7068,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6361,7 +7102,7 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p integration --test specs
+        run: cargo test -p cli_tests --test specs
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6411,6 +7152,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6432,7 +7186,7 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p integration --test unit
+        run: cargo test -p cli_tests --test unit
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6482,6 +7236,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6503,7 +7270,7 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p integration --test unit_node
+        run: cargo test -p cli_tests --test unit_node
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -6553,6 +7320,19 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: 94-cargo-home-linux-aarch64-
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6574,7 +7354,7 @@ jobs:
         run: sudo modprobe vsock_loopback
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: cargo test -p integration --test node_compat
+        run: cargo test -p cli_tests --test node_compat
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"

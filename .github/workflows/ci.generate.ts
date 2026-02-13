@@ -199,9 +199,9 @@ function handleBuildItems(items: {
   os: "linux" | "macos" | "windows";
   arch: "x86_64" | "aarch64";
   runner: string | ExpressionValue;
-  testRunner?: string | ExpressionValue;
   profile: string;
   use_sysroot?: boolean;
+  testRunner?: string | ExpressionValue;
   wpt?: Condition | boolean;
 }[]) {
   return items.map(({ skip_pr, ...rest }) => {
@@ -271,15 +271,13 @@ const installNodeStep = step({
     "node-version": 22,
   },
 });
-// factory for cache steps parameterized by os/arch/profile/job
-// works with both defineExprObj (inline values) and defineMatrix (matrix expressions)
-function createCacheSteps(m: {
+
+function createCargoCacheHomeStep(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
-  profile: ExpressionValue;
   job: ExpressionValue;
 }) {
-  const cacheCargoHomeStep = step({
+  return step({
     name: "Cache Cargo home",
     uses: "cirruslabs/cache@v4",
     with: {
@@ -296,6 +294,17 @@ function createCacheSteps(m: {
       "restore-keys": `${cacheVersion}-cargo-home-${m.os}-${m.arch}-`,
     },
   });
+}
+
+// factory for cache steps parameterized by os/arch/profile/job
+// works with both defineExprObj (inline values) and defineMatrix (matrix expressions)
+function createCacheSteps(m: {
+  os: ExpressionValue;
+  arch: ExpressionValue;
+  profile: ExpressionValue;
+  job: ExpressionValue;
+}) {
+  const cacheCargoHomeStep = createCargoCacheHomeStep(m);
   const cacheKeyPrefix =
     `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
   const restoreCacheBuildOutputStep = step({
@@ -922,6 +931,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneSubmodule("./tests/node_compat/runner/suite"),
           installNodeStep,
           installRustStep,
+          createCargoCacheHomeStep(buildItem),
           denoArtifact.download(),
           denortArtifact.download(),
           {
@@ -943,7 +953,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p integration --test ${testCrate.name}`,
+            run: `cargo test -p cli_tests --test ${testCrate.name}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -951,7 +961,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(
               isDenoland.or(buildItem.use_sysroot),
             ),
-            run: `cargo test -p integration --test ${testCrate.name}`,
+            run: `cargo test -p cli_tests --test ${testCrate.name}`,
           },
           {
             name: "Ensure no git changes",
@@ -1082,6 +1092,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .if(hasCiBenchLabel.not().and(isNotTag).and(buildItem.skip.not()))(
             cloneRepoStep,
             installNodeStep,
+            installRustStep,
+            createCargoCacheHomeStep(buildItem),
             cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
             installDenoStep,
             denoArtifact.download(),
