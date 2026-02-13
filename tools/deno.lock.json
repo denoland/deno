@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@david/console-static-text@0.3": "0.3.0",
     "jsr:@david/dax@~0.43.2": "0.43.2",
+    "jsr:@david/gagen@0.2.11": "0.2.11",
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/rust-automation@0.22.2": "0.22.2",
@@ -36,6 +37,12 @@
         "jsr:@std/fs",
         "jsr:@std/io",
         "jsr:@std/path@1"
+      ]
+    },
+    "@david/gagen@0.2.11": {
+      "integrity": "17bd8a5be81172463aaabb5fe59d738e33f04d27113111d4ace19436625906b1",
+      "dependencies": [
+        "jsr:@std/yaml@^1.0.11"
       ]
     },
     "@david/path@0.2.0": {
@@ -358,16 +365,5 @@
     "https://deno.land/x/deno_dom@v0.1.3-alpha2/src/dom/nwsapi-types.ts": "54601c41f8ab524b565550cd764864d9cf109010619b8ce769cfa59cc3be4ed1",
     "https://deno.land/x/deno_dom@v0.1.3-alpha2/src/dom/nwsapi.js": "8a52f4d0b8d0371bfeefed5314f90b5623fcdfc2e4450b0ae54eb137f778a634",
     "https://deno.land/x/deno_dom@v0.1.3-alpha2/src/parser.ts": "bda4ab4a1c9a2e156877f33ee4e60caac935a7c995a86bbe026bdc0f0d31b8c1"
-  },
-  "workspace": {
-    "links": {
-      "jsr:@david/gagen": {
-        "dependencies": [
-          "jsr:@deno/dnt@~0.42.3",
-          "jsr:@std/assert@1",
-          "jsr:@std/yaml@^1.0.11"
-        ]
-      }
-    }
   }
 }
