@@ -492,7 +492,6 @@ const buildItems = handleBuildItems([{
 }, {
   ...Runners.linuxArm,
   profile: "debug",
-  use_sysroot: true,
 }, {
   ...Runners.linuxArm,
   profile: "release",
@@ -509,41 +508,42 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const jobIdForJob = (name: string) => `${name}-${profileName}`;
   const jobNameForJob = (name: string) =>
     `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`;
-  const createBinaryArtifact = (name: string, path: string) => {
-    const artifact = defineArtifact(`${profileName}-${name}`, {
-      path: path,
-      retentionDays: 3,
-    });
+  const createBinaryArtifact = (name: string) => {
+    const directory = `target/${buildItem.profile}`;
+    const exeExt = rawBuildItem.os === "windows" ? ".exe" : "";
+    const fileName = `${name}${exeExt}`;
+    const artifact = defineArtifact(
+      `${profileName}-${name.replaceAll("_", "-")}`,
+      {
+        path: directory,
+        retentionDays: 3,
+      },
+    );
+    const filePath = `${directory}/${fileName}`;
     return {
+      upload() {
+        return artifact.upload({
+          path: filePath,
+        });
+      },
       download() {
         return step(
-          artifact.download(),
+          artifact.download({
+            path: directory,
+          }),
           step({
-            name: `Set ${path} permissions`,
+            name: `Set ${filePath} permissions`,
             if: isWindows.not(),
-            run: `chmod +x ${path}`,
+            run: `chmod +x ${filePath}`,
           }),
         );
-      },
-      upload() {
-        return artifact.upload();
       },
     };
   };
 
-  const exeExt = rawBuildItem.os === "windows" ? ".exe" : "";
-  const denoArtifact = createBinaryArtifact(
-    "deno",
-    `target/${buildItem.profile}/deno${exeExt}`,
-  );
-  const denortArtifact = createBinaryArtifact(
-    "denort",
-    `target/${buildItem.profile}/denort${exeExt}`,
-  );
-  const testServerArtifact = createBinaryArtifact(
-    "test-server",
-    `target/${buildItem.profile}/test_server${exeExt}`,
-  );
+  const denoArtifact = createBinaryArtifact("deno");
+  const denortArtifact = createBinaryArtifact("denort");
+  const testServerArtifact = createBinaryArtifact("test_server");
   const env = {
     CARGO_TERM_COLOR: "always",
     RUST_BACKTRACE: "full",

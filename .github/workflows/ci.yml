@@ -210,7 +210,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -218,7 +218,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -226,7 +226,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -304,7 +304,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -312,7 +312,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -320,7 +320,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -398,7 +398,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -406,7 +406,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -484,7 +484,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -492,7 +492,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -573,7 +573,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -881,7 +881,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -889,7 +889,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -897,7 +897,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -973,7 +973,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -981,7 +981,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -989,7 +989,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -1065,7 +1065,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -1073,7 +1073,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -1149,7 +1149,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -1157,7 +1157,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -1236,7 +1236,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -1448,7 +1448,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -1456,7 +1456,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -1464,7 +1464,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -1554,7 +1554,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -1562,7 +1562,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -1570,7 +1570,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -1660,7 +1660,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -1668,7 +1668,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -1758,7 +1758,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -1766,7 +1766,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -1859,7 +1859,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -2189,7 +2189,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -2197,7 +2197,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -2205,7 +2205,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -2293,7 +2293,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -2301,7 +2301,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -2309,7 +2309,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -2397,7 +2397,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -2405,7 +2405,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -2493,7 +2493,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -2501,7 +2501,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -2592,7 +2592,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -2775,17 +2775,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
-          path: target/debug/denort.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2860,17 +2860,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
-          path: target/debug/denort.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2945,12 +2945,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3025,12 +3025,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3108,7 +3108,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3441,17 +3441,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
-          path: target/release/denort.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3524,17 +3524,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
-          path: target/release/denort.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3607,12 +3607,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3685,12 +3685,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3766,7 +3766,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
-          path: target/release/deno.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3946,17 +3946,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
-          path: target/debug/denort.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4031,17 +4031,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
-          path: target/debug/denort.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4116,12 +4116,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4196,12 +4196,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
-          path: target/debug/test_server.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4279,7 +4279,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
-          path: target/debug/deno.exe
+          path: target/debug
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4612,17 +4612,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
-          path: target/release/denort.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4695,17 +4695,17 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
-          path: target/release/denort.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4778,12 +4778,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4856,12 +4856,12 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
-          path: target/release/deno.exe
+          path: target/release
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
-          path: target/release/test_server.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4937,7 +4937,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
-          path: target/release/deno.exe
+          path: target/release
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -5387,7 +5387,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -5395,7 +5395,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/denort
@@ -5403,7 +5403,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/test_server
@@ -5560,7 +5560,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -5568,7 +5568,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/denort
@@ -5576,7 +5576,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/test_server
@@ -5733,7 +5733,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -5741,7 +5741,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/test_server
@@ -5898,7 +5898,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -5906,7 +5906,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/test_server
@@ -6066,7 +6066,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -6130,7 +6130,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
@@ -6506,7 +6506,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -6514,7 +6514,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -6522,7 +6522,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -6681,7 +6681,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -6689,7 +6689,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -6697,7 +6697,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -6856,7 +6856,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -6864,7 +6864,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -7023,7 +7023,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -7031,7 +7031,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -7193,7 +7193,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -7276,86 +7276,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
-      - name: Set up incremental LTO and sysroot build
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -7378,8 +7298,6 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - name: Check deno binary (in sysroot)
-        run: sudo chroot /sysroot "$(pwd)/target/debug/deno" --version
       - uses: actions/upload-artifact@v6
         with:
           name: debug-linux-aarch64-deno
@@ -7443,87 +7361,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7541,7 +7378,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -7549,7 +7386,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -7557,7 +7394,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -7621,87 +7458,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7719,7 +7475,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -7727,7 +7483,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
-          path: target/debug/denort
+          path: target/debug
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
@@ -7735,7 +7491,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -7799,87 +7555,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7897,7 +7572,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -7905,7 +7580,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -7969,87 +7644,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -8067,7 +7661,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -8075,7 +7669,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
-          path: target/debug/test_server
+          path: target/debug
       - name: Set target/debug/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/test_server
@@ -8142,87 +7736,6 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -8240,7 +7753,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
-          path: target/debug/deno
+          path: target/debug
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
@@ -8696,7 +8209,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -8704,7 +8217,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -8712,7 +8225,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -8872,7 +8385,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -8880,7 +8393,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
-          path: target/release/denort
+          path: target/release
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
@@ -8888,7 +8401,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -9048,7 +8561,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -9056,7 +8569,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -9216,7 +8729,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
@@ -9224,7 +8737,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
-          path: target/release/test_server
+          path: target/release
       - name: Set target/release/test_server permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/test_server
@@ -9387,7 +8900,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
-          path: target/release/deno
+          path: target/release
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
