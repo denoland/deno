@@ -259,7 +259,7 @@ const cloneSubmodule = (path: string) =>
     name: `Clone submodule ${path}`,
     run: `git submodule update --init --recursive --depth=1 -- ${path}`,
   });
-const cloneStdSubmodule = cloneSubmodule("./tests/util/std");
+const cloneStdSubmoduleStep = cloneSubmodule("./tests/util/std");
 const installDenoStep = step({
   name: "Install Deno",
   uses: "denoland/setup-deno@v2",
@@ -377,7 +377,7 @@ function getOsSpecificSteps({
   });
   const installLldStep = step
     .dependsOn(
-      cloneStdSubmodule,
+      cloneStdSubmoduleStep,
       installDenoStep,
       setupPrebuiltMacStep,
     )({
@@ -900,7 +900,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
         return step.if(buildItem.skip.not())(
           cloneRepoStep,
-          cloneStdSubmodule,
+          cloneStdSubmoduleStep,
           // ensure this happens right after cloning
           tarSourcePublishStep.if(shouldPublishCondition),
           {
@@ -1116,6 +1116,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
+          cloneStdSubmoduleStep,
           cloneSubmodule("./tests/wpt/suite"),
           installDenoStep,
           installPythonStep,
@@ -1295,7 +1296,7 @@ const lintJob = job("lint", {
     } = createCacheSteps(lintMatrix);
     return step(
       cloneRepoStep,
-      cloneStdSubmodule,
+      cloneStdSubmoduleStep,
       cacheCargoHomeStep,
       restoreCacheBuildOutputStep,
       installRustStep,

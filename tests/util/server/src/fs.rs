@@ -112,6 +112,10 @@ impl PathRef {
     PathRef(self.as_path().parent().unwrap().to_path_buf())
   }
 
+  pub fn maybe_parent(&self) -> Option<PathRef> {
+    Some(PathRef(self.as_path().parent()?.to_path_buf()))
+  }
+
   pub fn url_dir(&self) -> Url {
     Url::from_directory_path(self.as_path()).unwrap()
   }
@@ -169,7 +173,16 @@ impl PathRef {
   }
 
   pub fn create_dir_all(&self) {
-    fs::create_dir_all(self).unwrap();
+    fs::create_dir_all(self)
+      .with_context(|| {
+        format!(
+          "Could not create directory: {}\n  IsFile: {}\n  IsDir: {}",
+          self,
+          self.is_file(),
+          self.is_dir()
+        )
+      })
+      .unwrap();
   }
 
   pub fn remove_file(&self) {
@@ -221,10 +234,12 @@ impl PathRef {
   #[track_caller]
   pub fn rename(&self, to: impl AsRef<Path>) {
     let to = self.join(to);
-    if let Some(parent_path) = to.as_path().parent() {
-      fs::create_dir_all(parent_path).unwrap()
+    if let Some(parent_path) = to.maybe_parent() {
+      parent_path.create_dir_all();
     }
-    fs::rename(self, to).unwrap();
+    fs::rename(self, &to)
+      .with_context(|| format!("Failed renaming {} to {}", self, to))
+      .unwrap();
   }
 
   #[track_caller]

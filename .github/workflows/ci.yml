@@ -6113,6 +6113,9 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Clone submodule ./tests/wpt/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
