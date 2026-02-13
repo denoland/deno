@@ -525,7 +525,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       steps: (() => {
         const isLinux = buildItem.os.equals("isLinux");
         const isWindows = buildItem.os.equals("windows");
-        const isMacos = buildItem.os.equals("mac");
+        const isMacos = buildItem.os.equals("macos");
         const {
           installPythonStep,
           setupPrebuiltMacStep,
