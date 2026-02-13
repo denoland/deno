@@ -1052,7 +1052,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           ),
           cargoBuildStep,
           testStep,
-          benchStep,
           wptTests,
           publishStep,
           saveCacheBuildOutputStep.if(buildItem.save_cache),
@@ -1121,6 +1120,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   return {
     buildJob,
+    additionalJobs,
   };
 });
 
@@ -1358,7 +1358,13 @@ const workflow = createWorkflow({
       "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}",
     cancelInProgress: true,
   },
-  jobs: [preBuildJob, ...buildJobs, lintJob, libsJob, publishCanaryJob],
+  jobs: [
+    preBuildJob,
+    ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
+    lintJob,
+    libsJob,
+    publishCanaryJob,
+  ],
 });
 
 export function generate() {

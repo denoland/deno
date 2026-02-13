@@ -43,8 +43,8 @@ jobs:
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
-  test-debug-macos-x86_64:
-    name: test debug macos-x86_64
+  build-debug-macos-x86_64:
+    name: build debug macos-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -148,6 +148,16 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-macos-x86_64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-macos-x86_64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -168,7 +178,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-x86_64-debug.json
@@ -184,8 +194,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-macos-x86_64-debug-test-${{ github.sha }}'
-  test-release-macos-x86_64:
-    name: test release macos-x86_64
+  build-release-macos-x86_64:
+    name: build release macos-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -222,7 +232,7 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'')'
+      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || runner.arch == ''ARM64'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
@@ -240,7 +250,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -319,7 +329,7 @@ jobs:
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -327,7 +337,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
@@ -365,6 +375,18 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-macos-x86_64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-macos-x86_64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -384,7 +406,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-x86_64-release.json
@@ -435,8 +457,8 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
-  test-debug-macos-aarch64:
-    name: test debug macos-aarch64
+  build-debug-macos-aarch64:
+    name: build debug macos-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -540,6 +562,16 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-macos-aarch64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-macos-aarch64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -560,7 +592,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-aarch64-debug.json
@@ -576,8 +608,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-macos-aarch64-debug-test-${{ github.sha }}'
-  test-release-macos-aarch64:
-    name: test release macos-aarch64
+  build-release-macos-aarch64:
+    name: build release macos-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -614,7 +646,7 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'')'
+      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || runner.arch == ''ARM64'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
@@ -632,7 +664,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -711,7 +743,7 @@ jobs:
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -719,7 +751,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
@@ -757,6 +789,18 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-macos-aarch64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-macos-aarch64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -776,7 +820,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-macos-aarch64-release.json
@@ -827,8 +871,8 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
-  test-debug-windows-x86_64:
-    name: test debug windows-x86_64
+  build-debug-windows-x86_64:
+    name: build debug windows-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -917,6 +961,16 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-windows-x86_64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-windows-x86_64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -937,7 +991,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-x86_64-debug.json
@@ -953,8 +1007,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-windows-x86_64-debug-test-${{ github.sha }}'
-  test-release-windows-x86_64:
-    name: test release windows-x86_64
+  build-release-windows-x86_64:
+    name: build release windows-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -993,7 +1047,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1094,7 +1148,7 @@ jobs:
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -1130,7 +1184,7 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Setup gcloud (windows)
         uses: google-github-actions/setup-gcloud@v2
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
@@ -1155,6 +1209,18 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-windows-x86_64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-windows-x86_64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -1174,7 +1240,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-x86_64-release.json
@@ -1227,8 +1293,8 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
-  test-debug-windows-aarch64:
-    name: test debug windows-aarch64
+  build-debug-windows-aarch64:
+    name: build debug windows-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -1317,6 +1383,16 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-windows-aarch64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-windows-aarch64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -1337,7 +1413,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-aarch64-debug.json
@@ -1353,8 +1429,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-windows-aarch64-debug-test-${{ github.sha }}'
-  test-release-windows-aarch64:
-    name: test release windows-aarch64
+  build-release-windows-aarch64:
+    name: build release windows-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -1393,7 +1469,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1494,7 +1570,7 @@ jobs:
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -1530,7 +1606,7 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Setup gcloud (windows)
         uses: google-github-actions/setup-gcloud@v2
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
@@ -1555,6 +1631,18 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-windows-aarch64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-windows-aarch64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -1574,7 +1662,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-windows-aarch64-release.json
@@ -1627,8 +1715,8 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
-  test-release-linux-x86_64:
-    name: test release linux-x86_64
+  build-release-linux-x86_64:
+    name: build release linux-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -1814,7 +1902,7 @@ jobs:
           ./deno types > lib.deno.d.ts
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -1822,7 +1910,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Install Python
@@ -1865,6 +1953,16 @@ jobs:
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-linux-x86_64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-linux-x86_64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -1885,7 +1983,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-linux-x86_64-release.json
@@ -1982,239 +2080,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-linux-x86_64-release-test-${{ github.sha }}'
-  bench-release-linux-x86_64:
-    name: bench release linux-x86_64
-    needs:
-      - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
-    environment:
-      name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
-    timeout-minutes: 240
-    defaults:
-      run:
-        shell: bash
-    env:
-      CARGO_TERM_COLOR: always
-      RUST_BACKTRACE: full
-      RUST_LIB_BACKTRACE: 0
-    steps:
-      - name: Configure git
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        run: |-
-          git config --global core.symlinks true
-          git config --global fetch.parallel 32
-      - name: Clone repository
-        uses: actions/checkout@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        with:
-          fetch-depth: 5
-          submodules: false
-      - name: Clone submodule ./tests/util/std
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        with:
-          deno-version: v2.x
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        with:
-          path: |-
-            ~/.cargo/.crates.toml
-            ~/.cargo/.crates2.json
-            ~/.cargo/bin
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: never_saved
-          restore-keys: 94-cargo-target-linux-x86_64-release-bench-
-      - name: Apply and update mtime cache
-        uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        with:
-          cache-path: ./target
-      - name: Set up incremental LTO and sysroot build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        run: |-
-          # Setting up sysroot
-          export DEBIAN_FRONTEND=noninteractive
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
-          # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
-
-          # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
-          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
-            gpg --dearmor                                 |
-          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
-          # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
-          # Fix alternatives
-          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
-
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-
-          echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
-          cd /
-          xzcat /tmp/sysroot.tar.xz | sudo tar -x
-          sudo mount --rbind /dev /sysroot/dev
-          sudo mount --rbind /sys /sysroot/sys
-          sudo mount --rbind /home /sysroot/home
-          sudo mount -t proc /proc /sysroot/proc
-          cd
-
-          echo "Done."
-
-          # Configure the build environment. Both Rust and Clang will produce
-          # llvm bitcode only, so we can use lld's incremental LTO support.
-
-          # Load the sysroot's env vars
-          echo "sysroot env:"
-          cat /sysroot/.env
-          . /sysroot/.env
-
-          # Important notes:
-          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
-          #      to be in the Rust default flags in the smoketest, so uncertain why we need
-          #      to be explicit here.
-          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
-          #      to build because the object formats are not compatible.
-          echo "
-          CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          RUSTFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          RUSTDOCFLAGS<<__1
-            -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
-            -C link-arg=-ldl
-            -C link-arg=-Wl,--allow-shlib-undefined
-            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
-            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            -C link-arg=/tmp/memfd_create_shim.o
-            --cfg tokio_unstable
-            $RUSTFLAGS
-          __1
-          CC=/usr/bin/clang-21
-          CFLAGS=$CFLAGS
-          " > $GITHUB_ENV
-      - name: Install Node
-        uses: actions/setup-node@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        with:
-          node-version: 22
-      - name: Build release
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        run: |-
-          df -h
-          cargo build --release --locked --all-targets --features=panic-trace
-          df -h
-      - name: Generate symcache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        env:
-          NO_COLOR: 1
-        run: |-
-          target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
-          du -h deno.symcache
-          du -h target/release/deno
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build product size info
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        run: |-
-          du -hd1 "./target/release"
-          du -ha  "./target/release/deno"
-          du -ha  "./target/release/denort"
-      - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
-      - name: Install benchmark tools
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js wrk hyperfine
-      - name: Run benchmarks
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        run: cargo bench --locked
-      - name: Post benchmarks
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
-        env:
-          DENOBOT_PAT: '${{ secrets.DENOBOT_PAT }}'
-        run: |-
-          git clone --depth 1 --branch gh-pages                             \
-              https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
-              gh-pages
-          ./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release
-          cd gh-pages
-          git config user.email "propelml@gmail.com"
-          git config user.name "denobot"
-          git add .
-          git commit --message "Update benchmarks"
-          git push origin gh-pages
-      - name: Worker info
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && !startsWith(github.ref, ''refs/tags/'')'
-        run: |-
-          cat /proc/cpuinfo
-          cat /proc/meminfo
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-release-bench-${{ github.sha }}'
-  test-debug-linux-x86_64:
-    name: test debug linux-x86_64
+  build-debug-linux-x86_64:
+    name: build debug linux-x86_64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -2385,6 +2252,16 @@ jobs:
         run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
         run: sudo chroot /sysroot "$(pwd)/target/debug/deno" --version
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-linux-x86_64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-linux-x86_64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -2411,7 +2288,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-linux-x86_64-debug.json
@@ -2427,8 +2304,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-linux-x86_64-debug-test-${{ github.sha }}'
-  test-debug-linux-aarch64:
-    name: test debug linux-aarch64
+  build-debug-linux-aarch64:
+    name: build debug linux-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -2517,6 +2394,16 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-linux-aarch64-deno.zip
+          path: target/debug/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: debug-linux-aarch64-denort.zip
+          path: target/debug/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Set up playwright cache
@@ -2545,7 +2432,7 @@ jobs:
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: 'always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-linux-aarch64-debug.json
@@ -2561,8 +2448,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-linux-aarch64-debug-test-${{ github.sha }}'
-  test-release-linux-aarch64:
-    name: test release linux-aarch64
+  build-release-linux-aarch64:
+    name: build release linux-aarch64
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
@@ -2752,7 +2639,7 @@ jobs:
           ./deno types > lib.deno.d.ts
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -2760,7 +2647,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
-        if: '(!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || (!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         with:
           project_id: denoland
       - name: Log versions
@@ -2801,6 +2688,18 @@ jobs:
       - name: Check deno binary (in sysroot)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-linux-aarch64-deno.zip
+          path: target/release/deno
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        with:
+          name: release-linux-aarch64-denort.zip
+          path: target/release/denort
+          retention-days: 3
       - name: Clone submodule ./tests/node_compat/runner/suite
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
@@ -2823,7 +2722,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         run: deno run -RWN ./tools/combine_test_results.js
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always() && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: test-results-linux-aarch64-release.json
@@ -3064,6 +2963,10 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+      - name: Test Bin Libs
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --locked --lib -p deno -p denort -p node_shim
       - name: Test libs
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -3082,19 +2985,18 @@ jobs:
   publish-canary:
     name: publish canary
     needs:
-      - test-debug-macos-x86_64
-      - test-release-macos-x86_64
-      - test-debug-macos-aarch64
-      - test-release-macos-aarch64
-      - test-debug-windows-x86_64
-      - test-release-windows-x86_64
-      - test-debug-windows-aarch64
-      - test-release-windows-aarch64
-      - test-release-linux-x86_64
-      - bench-release-linux-x86_64
-      - test-debug-linux-x86_64
-      - test-debug-linux-aarch64
-      - test-release-linux-aarch64
+      - build-debug-macos-x86_64
+      - build-release-macos-x86_64
+      - build-debug-macos-aarch64
+      - build-release-macos-aarch64
+      - build-debug-windows-x86_64
+      - build-release-windows-x86_64
+      - build-debug-windows-aarch64
+      - build-release-windows-aarch64
+      - build-release-linux-x86_64
+      - build-debug-linux-x86_64
+      - build-debug-linux-aarch64
+      - build-release-linux-aarch64
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
