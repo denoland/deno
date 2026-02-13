@@ -160,6 +160,10 @@ impl PathRef {
     self.0.is_file()
   }
 
+  pub fn file_name(&self) -> Option<&OsStr> {
+    self.0.file_name()
+  }
+
   pub fn join(&self, path: impl AsRef<Path>) -> PathRef {
     PathRef(self.as_path().join(path))
   }
