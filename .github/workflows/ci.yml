@@ -142,7 +142,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-macos-x86_64-denort
+          name: debug-macos-x86_64-test-server
           path: target/debug/test_server
           retention-days: 3
       - name: Save cache build output (main)
@@ -219,7 +219,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-macos-x86_64-denort
+          name: debug-macos-x86_64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -304,7 +304,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-macos-x86_64-denort
+          name: debug-macos-x86_64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -735,7 +735,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-x86_64-denort
+          name: release-macos-x86_64-test-server
           path: target/release/test_server
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
@@ -847,7 +847,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-x86_64-denort
+          name: release-macos-x86_64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -930,7 +930,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-x86_64-denort
+          name: release-macos-x86_64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -1282,7 +1282,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-macos-aarch64-denort
+          name: debug-macos-aarch64-test-server
           path: target/debug/test_server
           retention-days: 3
       - name: Save cache build output (main)
@@ -1371,7 +1371,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-macos-aarch64-denort
+          name: debug-macos-aarch64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -1468,7 +1468,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-macos-aarch64-denort
+          name: debug-macos-aarch64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -1945,7 +1945,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-aarch64-denort
+          name: release-macos-aarch64-test-server
           path: target/release/test_server
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
@@ -2069,7 +2069,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-aarch64-denort
+          name: release-macos-aarch64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -2164,7 +2164,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-macos-aarch64-denort
+          name: release-macos-aarch64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -2535,7 +2535,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-windows-x86_64-denort
+          name: debug-windows-x86_64-test-server
           path: target/debug/test_server.exe
           retention-days: 3
       - name: Save cache build output (main)
@@ -2612,7 +2612,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-windows-x86_64-denort
+          name: debug-windows-x86_64-test-server
           path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -2697,7 +2697,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-windows-x86_64-denort
+          name: debug-windows-x86_64-test-server
           path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -3154,7 +3154,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-x86_64-denort
+          name: release-windows-x86_64-test-server
           path: target/release/test_server.exe
           retention-days: 3
       - name: Upload release to dl.deno.land (windows)
@@ -3268,7 +3268,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-x86_64-denort
+          name: release-windows-x86_64-test-server
           path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -3351,7 +3351,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-x86_64-denort
+          name: release-windows-x86_64-test-server
           path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -3686,7 +3686,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-windows-aarch64-denort
+          name: debug-windows-aarch64-test-server
           path: target/debug/test_server.exe
           retention-days: 3
       - name: Save cache build output (main)
@@ -3763,7 +3763,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-windows-aarch64-denort
+          name: debug-windows-aarch64-test-server
           path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -3848,7 +3848,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-windows-aarch64-denort
+          name: debug-windows-aarch64-test-server
           path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -4305,7 +4305,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-aarch64-denort
+          name: release-windows-aarch64-test-server
           path: target/release/test_server.exe
           retention-days: 3
       - name: Upload release to dl.deno.land (windows)
@@ -4419,7 +4419,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-aarch64-denort
+          name: release-windows-aarch64-test-server
           path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -4502,7 +4502,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-windows-aarch64-denort
+          name: release-windows-aarch64-test-server
           path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -4980,7 +4980,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: release-linux-x86_64-denort
+          name: release-linux-x86_64-test-server
           path: target/release/test_server
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
@@ -5184,7 +5184,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: release-linux-x86_64-denort
+          name: release-linux-x86_64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -5348,7 +5348,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: release-linux-x86_64-denort
+          name: release-linux-x86_64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -6099,7 +6099,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-linux-x86_64-denort
+          name: debug-linux-x86_64-test-server
           path: target/debug/test_server
           retention-days: 3
       - name: Save cache build output (main)
@@ -6257,7 +6257,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-linux-x86_64-denort
+          name: debug-linux-x86_64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -6423,7 +6423,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-linux-x86_64-denort
+          name: debug-linux-x86_64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -7009,7 +7009,7 @@ jobs:
           retention-days: 3
       - uses: actions/upload-artifact@v6
         with:
-          name: debug-linux-aarch64-denort
+          name: debug-linux-aarch64-test-server
           path: target/debug/test_server
           retention-days: 3
       - name: Save cache build output (main)
@@ -7086,7 +7086,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-linux-aarch64-denort
+          name: debug-linux-aarch64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -7174,7 +7174,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
-          name: debug-linux-aarch64-denort
+          name: debug-linux-aarch64-test-server
           path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -7681,7 +7681,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-linux-aarch64-denort
+          name: release-linux-aarch64-test-server
           path: target/release/test_server
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
@@ -7874,7 +7874,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-linux-aarch64-denort
+          name: release-linux-aarch64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
@@ -8041,7 +8041,7 @@ jobs:
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
-          name: release-linux-aarch64-denort
+          name: release-linux-aarch64-test-server
           path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5

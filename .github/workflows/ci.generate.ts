@@ -514,7 +514,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     path: `target/${buildItem.profile}/denort${exeExt}`,
     retentionDays: 3,
   });
-  const testServerArtifact = defineArtifact(`${profileName}-denort`, {
+  const testServerArtifact = defineArtifact(`${profileName}-test-server`, {
     path: `target/${buildItem.profile}/test_server${exeExt}`,
     retentionDays: 3,
   });
