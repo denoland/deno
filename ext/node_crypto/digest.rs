@@ -87,7 +87,7 @@ macro_rules! match_fixed_digest {
         $body
       }
       #[allow(dead_code)]
-      _ => crate::ops::crypto::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
+      _ => crate::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
 }
@@ -105,10 +105,10 @@ macro_rules! match_fixed_digest_with_eager_block_buffer {
         $body
       }
       "md5-sha1" => {
-        type $type = crate::ops::crypto::md5_sha1::Md5Sha1;
+        type $type = crate::md5_sha1::Md5Sha1;
         $body
       }
-      _ => crate::ops::crypto::digest::match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
+      _ => crate::digest::match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
 }
