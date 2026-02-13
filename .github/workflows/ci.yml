@@ -77,20 +77,6 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: runner.arch == 'ARM64'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        if: runner.arch == 'ARM64'
-        with:
-          deno-version: v2.x
-      - name: Install macOS aarch64 lld
-        if: runner.arch == 'ARM64'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - uses: dsherret/rust-toolchain-file@v1
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
@@ -205,23 +191,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -305,23 +279,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -405,23 +367,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -505,23 +455,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -605,23 +543,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -708,20 +634,10 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || runner.arch == ''ARM64'')'
+      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        with:
-          deno-version: v2.x
-      - name: Install macOS aarch64 lld
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
@@ -945,23 +861,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1043,23 +947,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1141,23 +1033,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1239,23 +1119,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1337,23 +1205,11 @@ jobs:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-      - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: ./tools/install_prebuilt.js ld64.lld
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1434,17 +1290,14 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: runner.arch == 'ARM64'
-        env:
+      - env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: runner.arch == 'ARM64'
         with:
           deno-version: v2.x
       - name: Install macOS aarch64 lld
-        if: runner.arch == 'ARM64'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -1563,19 +1416,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -1663,19 +1516,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -1763,19 +1616,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -1863,19 +1716,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -1963,19 +1816,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2065,17 +1918,17 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || runner.arch == ''ARM64'')'
+      - if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
       - name: Install macOS aarch64 lld
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2303,19 +2156,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2401,19 +2254,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2499,19 +2352,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2597,19 +2450,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
@@ -2695,19 +2548,19 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (runner.arch == ''ARM64'' || always())'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && runner.arch == ''ARM64'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld

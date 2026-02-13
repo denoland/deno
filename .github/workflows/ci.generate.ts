@@ -382,7 +382,7 @@ function getOsSpecificSteps({
       setupPrebuiltMacStep,
     )({
       name: "Install macOS aarch64 lld",
-      if: isMacos.and(conditions.isRunnerArch("ARM64")),
+      if: isMacos.and(isAarch64),
       env: {
         GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
       },
