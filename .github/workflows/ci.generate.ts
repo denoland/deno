@@ -1303,6 +1303,15 @@ function resolveWorkspaceCrates() {
   return { libCrates, binCrates };
 }
 
+function resolveTestCrateTests() {
+  const cargoToml = parseToml(
+    Deno.readTextFileSync(
+      new URL("../../tests/Cargo.toml", import.meta.url),
+    ),
+  ) as { test?: { name: string; path: string }[] };
+  return cargoToml.test ?? [];
+}
+
 function ensureNoIntegrationTests(
   member: string,
   cargoToml: {
