@@ -8,6 +8,7 @@ import {
   defineArtifact,
   defineExprObj,
   defineMatrix,
+  expr,
   type ExpressionValue,
   job,
   step,
@@ -344,9 +345,11 @@ const installWasmStep = step({
 function getOsSpecificSteps({
   isWindows,
   isMacos,
+  isAarch64,
 }: {
   isWindows: Condition;
   isMacos: Condition;
+  isAarch64: Condition;
 }) {
   const installPythonStep = step({
     name: "Install Python",
@@ -511,6 +514,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     path: `target/${buildItem.profile}/denort${exeExt}`,
     retentionDays: 3,
   });
+  const testServerArtifact = defineArtifact(`${profileName}-denort`, {
+    path: `target/${buildItem.profile}/test_server${exeExt}`,
+    retentionDays: 3,
+  });
   const env = {
     CARGO_TERM_COLOR: "always",
     RUST_BACKTRACE: "full",
@@ -541,9 +548,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   } = getOsSpecificSteps({
     isWindows,
     isMacos,
+    isAarch64: buildItem.arch.equals("aarch64"),
   });
   const isRelease = buildItem.profile.equals("release");
   const isDebug = buildItem.profile.equals("debug");
+  const sysRootStep = step({
+    if: buildItem.use_sysroot,
+    ...sysRootConfig,
+  });
   const buildJob = job(
     jobIdForJob("build"),
     {
@@ -572,10 +584,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               },
             },
           );
-        const sysRootStep = step({
-          if: buildItem.use_sysroot,
-          ...sysRootConfig,
-        });
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
           if: buildItem.os.equals("linux")
@@ -716,6 +724,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           }),
         );
+        const binsToBuild = ["deno", "denort", "test_server"]
+          .map((name) => `-- bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -737,7 +747,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                "cargo build --release --locked --bin deno --bin denort --features=panic-trace",
+                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
                 "df -h",
               ],
             },
@@ -772,8 +782,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               name: "Build debug",
               if: isDebug,
-              run:
-                "cargo build --locked --bin deno --bin denort --features=panic-trace",
+              run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
@@ -794,6 +803,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             denoArtifact.upload(),
             denortArtifact.upload(),
+            testServerArtifact.upload(),
           );
 
         const shouldPublishCondition = isRelease.and(isDenoland)
@@ -911,12 +921,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     },
   );
 
-  const benchCondition = isLinux.and(isRelease).and(
-    buildItem.arch.equals("X86_64"),
-  );
   const additionalJobs = [];
 
   for (const testCrate of testCrates) {
+    const testCrateNameExpr = expr(testCrate.name);
     additionalJobs.push(job(
       jobIdForJob(`test-${testCrate.name}`),
       {
@@ -928,12 +936,22 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
-          cloneSubmodule("./tests/node_compat/runner/suite"),
+          cloneSubmodule("./tests/node_compat/runner/suite")
+            .if(testCrateNameExpr.equals("node_compat")),
           installNodeStep,
           installRustStep,
+          installLldStep,
+          sysRootStep,
           createCargoCacheHomeStep(buildItem),
           denoArtifact.download(),
-          denortArtifact.download(),
+          denortArtifact.download().if(
+            testCrateNameExpr.equals("integration")
+              .or(testCrateNameExpr.equals("specs")),
+          ),
+          testServerArtifact.download().if(
+            testCrateNameExpr.equals("integration")
+              .or(testCrateNameExpr.equals("specs")),
+          ),
           {
             name: "Set up playwright cache",
             uses: "actions/cache@v5",
@@ -953,10 +971,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: [
-              "cargo build -p test_server --bin test_server",
-              `cargo test -p cli_tests --test ${testCrate.name}`,
-            ],
+            run: `cargo test -p cli_tests --test ${testCrate.name}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -964,10 +979,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(
               isDenoland.or(buildItem.use_sysroot),
             ),
-            run: [
-              "cargo build -p test_server --bin test_server --release",
-              `cargo test -p cli_tests --test ${testCrate.name} --release`,
-            ],
+            run: `cargo test -p cli_tests --test ${testCrate.name} --release`,
           },
           {
             name: "Ensure no git changes",
@@ -996,6 +1008,75 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         ),
       },
     ));
+  }
+
+  const libsCondition = isDebug.and(
+    isLinux.and(buildItem.arch.equals("X86_64"))
+      .or(isMacos.and(buildItem.arch.equals("arm64")))
+      .or(isWindows.and(buildItem.arch.equals("X86_64"))),
+  );
+  if (!libsCondition.isAlwaysFalse()) {
+    job(jobIdForJob("test-libs"), {
+      name: jobNameForJob("test libs"),
+      needs: [buildJob],
+      runsOn: buildItem.testRunner,
+      timeoutMinutes: 30,
+      steps: step.if(isNotTag.and(buildItem.skip.not()))(() => {
+        const linuxCargoChecks = step
+          .if(isLinux)
+          .dependsOn(installWasmStep)(
+            // we want these crates to be Wasm compatible
+            {
+              name: "Cargo check (deno_resolver)",
+              run:
+                "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+            },
+            {
+              name: "Cargo check (deno_npm_installer)",
+              run:
+                "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+            },
+            {
+              name: "Cargo check (deno_config)",
+              run: [
+                "cargo check --no-default-features -p deno_config",
+                "cargo check --no-default-features --features workspace -p deno_config",
+                "cargo check --no-default-features --features package_json -p deno_config",
+                "cargo check --no-default-features --features workspace --features sync -p deno_config",
+                "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+                "cargo check -p deno --features=lsp-tracing",
+              ],
+            },
+          );
+
+        return step(
+          cloneRepoStep,
+          installNodeStep,
+          installRustStep,
+          installLldStep,
+          sysRootStep,
+          createCargoCacheHomeStep(buildItem),
+          denoArtifact.download(),
+          testServerArtifact.download(),
+          linuxCargoChecks,
+          {
+            name: "Test Bin Libs",
+            run: `cargo test --locked --lib ${
+              binCrates.map((p) => `-p ${p}`).join(" ")
+            }`,
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+          },
+          {
+            name: "Test libs",
+            run: `cargo test --locked ${
+              libCrates.map((p) => `-p ${p}`).join(" ")
+            }`,
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+          },
+          saveCacheBuildOutputStep,
+        );
+      })(),
+    });
   }
 
   if (!buildItem.wpt.isAlwaysFalse()) {
@@ -1084,6 +1165,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     ));
   }
 
+  const benchCondition = isLinux.and(isRelease).and(
+    buildItem.arch.equals("X86_64"),
+  );
   if (!benchCondition.isAlwaysFalse()) {
     additionalJobs.push(job(
       jobIdForJob("bench"),
@@ -1214,115 +1298,6 @@ const lintJob = job("lint", {
   })(),
 });
 
-// === libs job ===
-
-const libsMatrix = defineMatrix({
-  include: [{
-    ...Runners.linuxX86,
-    profile: "debug",
-    job: "libs",
-  }, {
-    ...Runners.macosArm,
-    profile: "debug",
-    job: "libs",
-  }, {
-    ...Runners.windowsX86,
-    profile: "debug",
-    job: "libs",
-  }],
-});
-
-const libsJob = job("libs", {
-  name: `test libs ${libsMatrix.profile} ${libsMatrix.os}-${libsMatrix.arch}`,
-  needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
-  runsOn: libsMatrix.runner,
-  timeoutMinutes: 30,
-  strategy: {
-    matrix: libsMatrix,
-  },
-  steps: (() => {
-    const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
-    } = createCacheSteps(libsMatrix);
-    const repoSetupSteps = step(
-      cloneRepoStep,
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      installRustStep,
-    );
-    const isMacos = libsMatrix.os.equals("macos");
-    const isWindows = libsMatrix.os.equals("windows");
-    const isLinux = libsMatrix.os.equals("linux");
-    const {
-      installLldStep,
-    } = getOsSpecificSteps({
-      isWindows,
-      isMacos,
-    });
-
-    const macSetup = step.if(
-      isMacos.and(libsMatrix.arch.equals("aarch64")),
-    )(
-      installLldStep,
-      {
-        name: "Setup prebuilt (mac)",
-        if: libsMatrix.os.equals("macos"),
-        env: {
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-        },
-        run: "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
-      },
-    );
-
-    const linuxCargoChecks = step
-      .if(isLinux)
-      .dependsOn(installWasmStep)(
-        // we want these crates to be Wasm compatible
-        {
-          name: "Cargo check (deno_resolver)",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-        },
-        {
-          name: "Cargo check (deno_npm_installer)",
-          run:
-            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-        },
-        {
-          name: "Cargo check (deno_config)",
-          run: [
-            "cargo check --no-default-features -p deno_config",
-            "cargo check --no-default-features --features workspace -p deno_config",
-            "cargo check --no-default-features --features package_json -p deno_config",
-            "cargo check --no-default-features --features workspace --features sync -p deno_config",
-            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-            "cargo check -p deno --features=lsp-tracing",
-          ],
-        },
-      );
-
-    return step(
-      repoSetupSteps,
-      linuxCargoChecks,
-      step.dependsOn(repoSetupSteps, macSetup)({
-        name: "Test Bin Libs",
-        run: `cargo test --locked --lib ${
-          binCrates.map((p) => `-p ${p}`).join(" ")
-        }`,
-        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      }, {
-        name: "Test libs",
-        run: `cargo test --locked ${libCrates.map((p) => `-p ${p}`).join(" ")}`,
-        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-      }),
-      saveCacheBuildOutputStep,
-    );
-  })(),
-});
-
 // === publish-canary job ===
 
 const publishCanaryJob = job("publish-canary", {
@@ -1337,6 +1312,7 @@ const publishCanaryJob = job("publish-canary", {
       // we only run this on linux
       isWindows: conditions.isFalse(),
       isMacos: conditions.isFalse(),
+      isAarch64: conditions.isFalse(),
     });
     return step(
       setupGcloudStep,
@@ -1384,7 +1360,6 @@ const workflow = createWorkflow({
     preBuildJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
-    libsJob,
     publishCanaryJob,
   ],
 });
