@@ -273,7 +273,7 @@ impl InitializeParamsBuilder {
           }),
           workspace: Some(WorkspaceClientCapabilities {
             configuration: Some(true),
-            diagnostic: Some(lsp::DiagnosticWorkspaceClientCapabilities {
+            diagnostics: Some(lsp::DiagnosticWorkspaceClientCapabilities {
               refresh_support: Some(true),
             }),
             workspace_folders: Some(true),
@@ -956,9 +956,9 @@ impl LspClient {
           .iter()
           .map(|c| lsp::NotebookCell {
             kind: if c.language_id == "markdown" {
-              lsp::NotebookCellKind::Markup
+              lsp::NotebookCellKind::MARKUP
             } else {
-              lsp::NotebookCellKind::Code
+              lsp::NotebookCellKind::CODE
             },
             document: c.uri.clone(),
             metadata: None,

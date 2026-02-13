@@ -3999,7 +3999,7 @@ fn run_subcommand() -> Command {
   run_args(command("run", cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
 By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
-  <p(245)>deno run https://examples.deno.land/hello-world.ts</>
+  <p(245)>deno run https://docs.deno.com/hello_world.ts</>
 
 Grant permission to read from disk and listen to network:
   <p(245)>deno run --allow-read --allow-net jsr:@std/http/file-server</>
@@ -4011,7 +4011,7 @@ Grant all permissions:
   <p(245)>deno run -A jsr:@std/http/file-server</>
 
 Specifying the filename '-' to read the file from stdin.
-  <p(245)>curl https://examples.deno.land/hello-world.ts | deno run -</>
+  <p(245)>curl https://docs.deno.com/hello_world.ts | deno run -</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
 }
@@ -9549,7 +9549,7 @@ mod tests {
   #[test]
   fn repl_with_eval_file_flag() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://examples.deno.land/hello-world.ts"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://docs.deno.com/hello_world.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9557,7 +9557,7 @@ mod tests {
           eval_files: Some(vec![
             "./a.js".to_string(),
             "./b.ts".to_string(),
-            "https://examples.deno.land/hello-world.ts".to_string()
+            "https://docs.deno.com/hello_world.ts".to_string()
           ]),
           eval: None,
           is_default_command: false,

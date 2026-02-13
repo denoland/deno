@@ -89,7 +89,7 @@
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
     "parallel/test-buffer-ascii.js": {},
-    "parallel/test-buffer-backing-arraybuffer.js.js": {
+    "parallel/test-buffer-backing-arraybuffer.js": {
       "darwin": false,
       "linux": false,
       "windows": false,
@@ -185,6 +185,7 @@
     "parallel/test-child-process-exit-code.js": {},
     "parallel/test-child-process-flush-stdio.js": {},
     "parallel/test-child-process-fork-and-spawn.js": {},
+    "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-ref.js": {},
@@ -206,6 +207,7 @@
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
+    "parallel/test-child-process-stdin.js": {},
     "parallel/test-child-process-stdio-big-write-end.js": {},
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
@@ -1563,6 +1565,7 @@
     "parallel/test-worker-esmodule.js": {},
     "parallel/test-worker-event.js": {},
     "parallel/test-worker-exit-code.js": {},
+    "parallel/test-worker-execargv.js": {},
     "parallel/test-worker-execargv-invalid.js": {},
     "parallel/test-worker-fs-stat-watcher.js": {},
     "parallel/test-worker-invalid-workerdata.js": {},
@@ -1592,7 +1595,12 @@
     "parallel/test-zlib-brotli-flush.js": {},
     "parallel/test-zlib-brotli-from-brotli.js": {},
     "parallel/test-zlib-brotli-from-string.js": {},
-    // "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {},
+    "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+    },
     "parallel/test-zlib-brotli.js": {},
     "parallel/test-zlib-close-after-error.js": {},
     "parallel/test-zlib-close-after-write.js": {},
@@ -1621,7 +1629,12 @@
     "parallel/test-zlib-invalid-arg-value-brotli-compress.js": {},
     // "parallel/test-zlib-invalid-input-memory.js": {},
     "parallel/test-zlib-invalid-input.js": {},
-    // "parallel/test-zlib-kmaxlength-rangeerror.js": {},
+    "parallel/test-zlib-kmaxlength-rangeerror.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+    },
     "parallel/test-zlib-maxOutputLength.js": {},
     "parallel/test-zlib-no-stream.js": {},
     "parallel/test-zlib-not-string-or-buffer.js": {},
@@ -1644,7 +1657,12 @@
     "parallel/test-zlib-zstd-flush.js": {},
     "parallel/test-zlib-zstd-from-string.js": {},
     "parallel/test-zlib-zstd-from-zstd.js": {},
-    // "parallel/test-zlib-zstd-kmaxlength-rangeerror.js": {},
+    "parallel/test-zlib-zstd-kmaxlength-rangeerror.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+    },
     "parallel/test-zlib-zstd-pledged-src-size.js": {},
     "parallel/test-zlib-zstd.js": {},
     "parallel/test-zlib.js": {},
