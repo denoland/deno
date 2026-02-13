@@ -410,10 +410,10 @@ class NodeWorker extends EventEmitter {
 
   #closeStdio() {
     if (!this.stdout.readableEnded) {
-      this.stdout.push(null);
+      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
     }
     if (!this.stderr.readableEnded) {
-      this.stderr.push(null);
+      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
     }
   }
 
@@ -499,9 +499,17 @@ class NodeWorker extends EventEmitter {
         this.#workerOnline = true;
         this.emit("online");
       } else if (isWorkerStdoutMsg(message)) {
-        this.stdout.push(message.data);
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stdout,
+          message.data,
+        );
       } else if (isWorkerStderrMsg(message)) {
-        this.stderr.push(message.data);
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stderr,
+          message.data,
+        );
       } else {
         this.emit("message", message);
       }
