@@ -44,10 +44,130 @@ fn main() {
       }
     }
 
-    // No valid cached snapshot — the snapshot generator must be run first.
+    // No valid cached snapshot — try to auto-run the snapshot generator binary.
+    // OUT_DIR = <target>/<profile>/build/<crate>-<hash>/out
+    //   parent^1 = <target>/<profile>/build/<crate>-<hash>/
+    //   parent^2 = <target>/<profile>/build/
+    //   parent^3 = <target>/<profile>/
+    let target_profile_dir = o.parent().unwrap().parent().unwrap().parent().unwrap();
+    let generator_name = if cfg!(windows) {
+      "snapshot_generator.exe"
+    } else {
+      "snapshot_generator"
+    };
+    let generator_bin = target_profile_dir.join(generator_name);
+
+    if generator_bin.exists() {
+      eprintln!(
+        "Snapshot is stale — auto-running snapshot_generator..."
+      );
+      let status = std::process::Command::new(&generator_bin)
+        .status()
+        .unwrap_or_else(|e| {
+          panic!(
+            "Failed to run snapshot generator at {}: {e}",
+            generator_bin.display()
+          )
+        });
+      if !status.success() {
+        panic!(
+          "Snapshot generator failed with exit code: {:?}",
+          status.code()
+        );
+      }
+
+      // Re-read cache and verify snapshot is now fresh
+      if let (Ok(manifest_content), Ok(stored_hash)) = (
+        std::fs::read_to_string(&cache_manifest),
+        std::fs::read_to_string(&cache_hash),
+      ) {
+        if cache_snapshot.exists() {
+          if let Some(current_hash) = compute_hash_from_manifest(
+            &manifest_content,
+            shared::TS_VERSION,
+            &std::env::var("TARGET").unwrap(),
+          ) {
+            if current_hash == stored_hash {
+              copy_if_changed(&cache_snapshot, &snapshot_path);
+              emit_rerun_from_manifest(&manifest_content);
+              return;
+            }
+          }
+        }
+      }
+
+      panic!(
+        "Snapshot generator ran but the snapshot is still stale. \
+         This is a bug — please report it."
+      );
+    }
+
+    // Binary doesn't exist (fresh checkout) — auto-build and run the generator.
+    // We use a separate target dir to avoid deadlocking on Cargo's file lock.
+    let target_dir = o
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap();
+    let snapshot_target_dir = target_dir.join("snapshot_build");
+
+    let cargo =
+      std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+
+    let mut cmd = std::process::Command::new(&cargo);
+    cmd
+      .arg("run")
+      .arg("-p")
+      .arg("snapshot_generator")
+      .arg("--target-dir")
+      .arg(&snapshot_target_dir);
+    if !cfg!(debug_assertions) {
+      cmd.arg("--release");
+    }
+    cmd.env("SNAPSHOT_CACHE_DIR", &cache_dir);
+
+    eprintln!(
+      "Snapshot is stale — building and running snapshot_generator..."
+    );
+    eprintln!("(This may take a while on first build)");
+
+    let status = cmd.status().unwrap_or_else(|e| {
+      panic!("Failed to run cargo: {e}");
+    });
+    if !status.success() {
+      panic!(
+        "snapshot_generator failed (exit code {:?})",
+        status.code()
+      );
+    }
+
+    // Re-read cache and verify snapshot is now fresh
+    if let (Ok(manifest_content), Ok(stored_hash)) = (
+      std::fs::read_to_string(&cache_manifest),
+      std::fs::read_to_string(&cache_hash),
+    ) {
+      if cache_snapshot.exists() {
+        if let Some(current_hash) = compute_hash_from_manifest(
+          &manifest_content,
+          shared::TS_VERSION,
+          &std::env::var("TARGET").unwrap(),
+        ) {
+          if current_hash == stored_hash {
+            copy_if_changed(&cache_snapshot, &snapshot_path);
+            emit_rerun_from_manifest(&manifest_content);
+            return;
+          }
+        }
+      }
+    }
+
     panic!(
-      "Snapshot is stale or missing. Run the snapshot generator first:\n\
-       cargo run -p snapshot_generator"
+      "Snapshot generator ran but the snapshot is still stale. \
+       This is a bug — please report it."
     );
 
     fn get_stable_cache_dir(out_dir: &Path) -> PathBuf {

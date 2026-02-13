@@ -29,6 +29,9 @@ fn main() {
 }
 
 fn get_cache_dir() -> PathBuf {
+  if let Ok(dir) = std::env::var("SNAPSHOT_CACHE_DIR") {
+    return PathBuf::from(dir);
+  }
   let exe_path = std::env::current_exe().unwrap();
   // exe is at <target_dir>/<profile>/snapshot_generator
   let profile_dir = exe_path.parent().unwrap();
