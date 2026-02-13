@@ -339,9 +339,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -1026,6 +1023,9 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p cli_tests --test specs --release
@@ -1619,9 +1619,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -2361,6 +2358,9 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p cli_tests --test specs --release
@@ -2928,9 +2928,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -3610,6 +3607,9 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p cli_tests --test specs --release
@@ -4135,9 +4135,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -4817,6 +4814,9 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: cargo test -p cli_tests --test specs --release
@@ -5706,6 +5706,9 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo test -p cli_tests --test specs --release
@@ -6848,9 +6851,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -7666,9 +7666,6 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: cargo build -p test_ffi
-      - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -8594,6 +8591,9 @@ jobs:
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: cargo test -p cli_tests --test specs --release
