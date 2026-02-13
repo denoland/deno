@@ -130,17 +130,20 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-x86_64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-x86_64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-x86_64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-x86_64-test-server
           path: target/debug/test_server
@@ -209,7 +212,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
@@ -217,7 +221,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
@@ -225,7 +230,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
@@ -306,7 +312,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
@@ -314,7 +321,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
@@ -322,7 +330,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
@@ -406,7 +415,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
@@ -414,7 +424,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
@@ -495,7 +506,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
@@ -503,7 +515,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-test-server
@@ -587,7 +600,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-deno
@@ -781,19 +795,22 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-x86_64-deno
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-x86_64-denort
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-x86_64-test-server
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
@@ -898,7 +915,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
@@ -906,7 +924,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
@@ -914,7 +933,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
@@ -993,7 +1013,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
@@ -1001,7 +1022,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
@@ -1009,7 +1031,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
@@ -1091,7 +1114,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
@@ -1099,7 +1123,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
@@ -1178,7 +1203,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
@@ -1186,7 +1212,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-test-server
@@ -1268,7 +1295,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
@@ -1392,17 +1420,20 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-aarch64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-aarch64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-macos-aarch64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-macos-aarch64-test-server
           path: target/debug/test_server
@@ -1480,7 +1511,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1488,7 +1520,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
@@ -1496,7 +1529,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
@@ -1586,7 +1620,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1594,7 +1629,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
@@ -1602,7 +1638,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
@@ -1695,7 +1732,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1703,7 +1741,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
@@ -1793,7 +1832,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1801,7 +1841,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
@@ -1894,7 +1935,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1977,7 +2019,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-deno
@@ -1985,7 +2028,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-test-server
@@ -2190,19 +2234,22 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-aarch64-deno
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-aarch64-denort
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-macos-aarch64-test-server
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
@@ -2316,7 +2363,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
@@ -2324,7 +2372,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
@@ -2332,7 +2381,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
@@ -2420,7 +2470,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
@@ -2428,7 +2479,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
@@ -2436,7 +2488,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
@@ -2527,7 +2580,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
@@ -2535,7 +2589,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
@@ -2623,7 +2678,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
@@ -2631,7 +2687,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-test-server
@@ -2722,7 +2779,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-macos-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-macos-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
@@ -2829,17 +2887,20 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-x86_64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-x86_64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-x86_64-denort
           path: target/debug/denort.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-x86_64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-x86_64-test-server
           path: target/debug/test_server.exe
@@ -2908,17 +2969,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
@@ -2996,17 +3060,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
@@ -3087,12 +3154,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
@@ -3170,12 +3239,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
@@ -3256,7 +3327,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
@@ -3319,12 +3391,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-test-server
@@ -3542,19 +3616,22 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-x86_64-deno
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-x86_64-denort
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-x86_64-test-server
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
@@ -3661,17 +3738,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
@@ -3747,17 +3827,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
@@ -3836,12 +3919,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
@@ -3917,12 +4002,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-test-server
@@ -4001,7 +4088,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
@@ -4105,17 +4193,20 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-aarch64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-aarch64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-aarch64-denort
           path: target/debug/denort.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-windows-aarch64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-windows-aarch64-test-server
           path: target/debug/test_server.exe
@@ -4184,17 +4275,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
@@ -4272,17 +4366,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
@@ -4363,12 +4460,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
@@ -4446,12 +4545,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
           path: target/debug
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-test-server
@@ -4532,7 +4633,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-deno
@@ -4749,19 +4851,22 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/release/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-aarch64-deno
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-aarch64-denort
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-windows-aarch64-test-server
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
@@ -4868,17 +4973,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
@@ -4954,17 +5062,20 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
@@ -5043,12 +5154,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
@@ -5124,12 +5237,14 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-test-server
@@ -5208,7 +5323,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-windows-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-windows-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
@@ -5455,17 +5571,20 @@ jobs:
         run: target/release/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-x86_64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-x86_64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: release-linux-x86_64-denort
           path: target/release/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-x86_64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: release-linux-x86_64-test-server
           path: target/release/test_server
@@ -5661,7 +5780,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -5669,7 +5789,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
@@ -5677,7 +5798,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
@@ -5837,7 +5959,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -5845,7 +5968,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
@@ -5853,7 +5977,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
@@ -6016,7 +6141,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -6024,7 +6150,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
@@ -6184,7 +6311,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -6192,7 +6320,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-test-server
@@ -6355,7 +6484,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -6422,7 +6552,8 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           python-version: 3.11
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -6531,7 +6662,8 @@ jobs:
         if: '!contains(github.event.pull_request.labels.*.name, ''ci-bench'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           deno-version: v2.x
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!contains(github.event.pull_request.labels.*.name, ''ci-bench'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-deno
@@ -6730,17 +6862,20 @@ jobs:
         run: target/debug/deno eval "console.log(1+2)" | grep 3
       - name: Check deno binary (in sysroot)
         run: sudo chroot /sysroot "$(pwd)/target/debug/deno" --version
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-x86_64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-x86_64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-x86_64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-x86_64-test-server
           path: target/debug/test_server
@@ -6890,7 +7025,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -6898,7 +7034,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
@@ -6906,7 +7043,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
@@ -7068,7 +7206,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -7076,7 +7215,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
@@ -7084,7 +7224,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
@@ -7249,7 +7390,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -7257,7 +7399,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
@@ -7419,7 +7562,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -7427,7 +7571,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
@@ -7592,7 +7737,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -7739,7 +7885,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-x86_64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-deno
@@ -7747,7 +7894,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-x86_64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-test-server
@@ -7875,17 +8023,20 @@ jobs:
         env:
           NO_COLOR: 1
         run: target/debug/deno eval "console.log(1+2)" | grep 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-aarch64-deno
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-aarch64-denort
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact debug-linux-aarch64-test-server
+        uses: actions/upload-artifact@v6
         with:
           name: debug-linux-aarch64-test-server
           path: target/debug/test_server
@@ -7954,7 +8105,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
@@ -7962,7 +8114,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
@@ -7970,7 +8123,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
@@ -8054,7 +8208,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
@@ -8062,7 +8217,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
@@ -8070,7 +8226,8 @@ jobs:
       - name: Set target/debug/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
@@ -8157,7 +8314,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
@@ -8165,7 +8323,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
@@ -8249,7 +8408,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
@@ -8257,7 +8417,8 @@ jobs:
       - name: Set target/debug/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: chmod +x target/debug/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-test-server
@@ -8344,7 +8505,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact debug-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-deno
@@ -8605,19 +8767,22 @@ jobs:
       - name: Check deno binary (in sysroot)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-aarch64-deno
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-aarch64-denort
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
           retention-days: 3
-      - uses: actions/upload-artifact@v6
+      - name: Upload artifact release-linux-aarch64-test-server
+        uses: actions/upload-artifact@v6
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
@@ -8803,7 +8968,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
@@ -8811,7 +8977,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
@@ -8819,7 +8986,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
@@ -8982,7 +9150,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
@@ -8990,7 +9159,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-denort
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
@@ -8998,7 +9168,8 @@ jobs:
       - name: Set target/release/denort permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/denort
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
@@ -9164,7 +9335,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
@@ -9172,7 +9344,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
@@ -9335,7 +9508,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
@@ -9343,7 +9517,8 @@ jobs:
       - name: Set target/release/deno permissions
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-test-server
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-test-server
@@ -9509,7 +9684,8 @@ jobs:
             ~/.cargo/git/db
           key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: 94-cargo-home-linux-aarch64-
-      - uses: actions/download-artifact@v6
+      - name: Download artifact release-linux-aarch64-deno
+        uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
