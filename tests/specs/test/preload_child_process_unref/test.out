@@ -1,0 +1,12 @@
+[WILDCARD]------- pre-test output -------
+preload done
+----- pre-test output end -----
+running 1 test from ./test.ts
+should run ...
+------- output -------
+test executed
+----- output end -----
+should run ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

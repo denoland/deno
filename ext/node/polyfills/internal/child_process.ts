@@ -599,10 +599,28 @@ export class ChildProcess extends EventEmitter {
 
   ref() {
     this.#process.ref();
+    if (this.stdout && typeof this.stdout.ref === "function") {
+      this.stdout.ref();
+    }
+    if (this.stderr && typeof this.stderr.ref === "function") {
+      this.stderr.ref();
+    }
+    if (this.stdin && typeof this.stdin.ref === "function") {
+      this.stdin.ref();
+    }
   }
 
   unref() {
     this.#process.unref();
+    if (this.stdout && typeof this.stdout.unref === "function") {
+      this.stdout.unref();
+    }
+    if (this.stderr && typeof this.stderr.unref === "function") {
+      this.stderr.unref();
+    }
+    if (this.stdin && typeof this.stdin.unref === "function") {
+      this.stdin.unref();
+    }
   }
 
   async #_waitForChildStreamsToClose() {

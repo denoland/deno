@@ -1,0 +1,5 @@
+{
+  "args": "test --allow-all --preload=preload.ts test.ts",
+  "exitCode": 0,
+  "output": "test.out"
+}
