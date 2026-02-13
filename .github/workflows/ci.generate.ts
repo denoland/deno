@@ -321,27 +321,31 @@ const installWasmStep = step({
   name: "Install wasm target",
   run: "rustup target add wasm32-unknown-unknown",
 });
-const setupGcloud = step.dependsOn(installPythonStep)({
-  name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v3",
-  with: {
-    "project_id": "denoland",
-    "credentials_json": "${{ secrets.GCP_SA_KEY }}",
-    "export_environment_variables": true,
-    "create_credentials_file": true,
+const setupGcloud = step(
+  {
+    name: "Authenticate with Google Cloud",
+    uses: "google-github-actions/auth@v3",
+    with: {
+      "project_id": "denoland",
+      "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+      "export_environment_variables": true,
+      "create_credentials_file": true,
+    },
   },
-}, {
-  name: "Setup gcloud (unix)",
-  if: isWindows.not(),
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: { project_id: "denoland" },
-}, {
-  name: "Setup gcloud (windows)",
-  if: isWindows,
-  uses: "google-github-actions/setup-gcloud@v2",
-  env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
-  with: { project_id: "denoland" },
-});
+  {
+    name: "Setup gcloud (unix)",
+    if: isWindows.not(),
+    uses: "google-github-actions/setup-gcloud@v3",
+    with: { project_id: "denoland" },
+  },
+  step({
+    name: "Setup gcloud (windows)",
+    if: isWindows,
+    uses: "google-github-actions/setup-gcloud@v2",
+    env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+    with: { project_id: "denoland" },
+  }).dependsOn(installPythonStep),
+);
 
 // === pre_build job ===
 // The pre_build step is used to skip running the CI on draft PRs and to not even
@@ -1199,21 +1203,7 @@ const publishCanaryJob = job("publish-canary", {
   needs: [buildJob],
   if: isDenoland.and(isMainBranch),
   steps: step(
-    {
-      name: "Authenticate with Google Cloud",
-      uses: "google-github-actions/auth@v3",
-      with: {
-        "project_id": "denoland",
-        "credentials_json": "${{ secrets.GCP_SA_KEY }}",
-        "export_environment_variables": true,
-        "create_credentials_file": true,
-      },
-    },
-    {
-      name: "Setup gcloud",
-      uses: "google-github-actions/setup-gcloud@v3",
-      with: { project_id: "denoland" },
-    },
+    setupGcloud,
     {
       name: "Upload canary version file to dl.deno.land",
       run: [

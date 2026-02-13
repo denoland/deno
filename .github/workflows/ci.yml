@@ -416,13 +416,26 @@ jobs:
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip
           Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v3
+        if: '!(matrix.skip) && matrix.profile == ''release'' && matrix.job == ''test'' && github.repository == ''denoland/deno'' && (((github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && github.ref == ''refs/heads/main'') || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@v3
+        if: '!(matrix.skip) && matrix.profile == ''release'' && matrix.job == ''test'' && github.repository == ''denoland/deno'' && (((github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && github.ref == ''refs/heads/main'') || startsWith(github.ref, ''refs/tags/'')) && runner.os != ''Windows'''
+        with:
+          project_id: denoland
       - name: Install Python
         uses: actions/setup-python@v6
-        if: '!(matrix.skip) && ((matrix.profile == ''release'' && (github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && matrix.job == ''test'' && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || matrix.wpt == true || (matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(matrix.skip) && ((matrix.profile == ''release'' && (github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && matrix.job == ''test'' && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && runner.os == ''Windows'') || matrix.wpt == true || (matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && runner.os == ''Windows''))'
         with:
           python-version: 3.11
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && ((matrix.profile == ''release'' && (github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && matrix.job == ''test'' && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'') || matrix.wpt == true || (matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/''))) && runner.os == ''Windows'''
+        if: '!(matrix.skip) && ((matrix.profile == ''release'' && (github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && matrix.job == ''test'' && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && runner.os == ''Windows'') || matrix.wpt == true || (matrix.job == ''test'' && matrix.profile == ''release'' && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && runner.os == ''Windows'')) && runner.os == ''Windows'''
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -444,19 +457,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
-        if: '!(matrix.skip) && matrix.profile == ''release'' && matrix.job == ''test'' && github.repository == ''denoland/deno'' && (((github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && github.ref == ''refs/heads/main'') || startsWith(github.ref, ''refs/tags/''))'
-        with:
-          project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-          export_environment_variables: true
-          create_credentials_file: true
-      - name: Setup gcloud (unix)
-        uses: google-github-actions/setup-gcloud@v3
-        if: '!(matrix.skip) && matrix.profile == ''release'' && matrix.job == ''test'' && github.repository == ''denoland/deno'' && (((github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && github.ref == ''refs/heads/main'') || startsWith(github.ref, ''refs/tags/'')) && runner.os != ''Windows'''
-        with:
-          project_id: denoland
       - name: Setup gcloud (windows)
         uses: google-github-actions/setup-gcloud@v2
         if: '!(matrix.skip) && matrix.profile == ''release'' && matrix.job == ''test'' && github.repository == ''denoland/deno'' && (((github.repository == ''denoland/deno'' || matrix.use_sysroot == true) && github.ref == ''refs/heads/main'') || startsWith(github.ref, ''refs/tags/'')) && runner.os == ''Windows'''
@@ -892,8 +892,29 @@ jobs:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
-      - name: Setup gcloud
+      - name: Setup gcloud (unix)
         uses: google-github-actions/setup-gcloud@v3
+        if: runner.os != 'Windows'
+        with:
+          project_id: denoland
+      - name: Install Python
+        uses: actions/setup-python@v6
+        if: runner.os == 'Windows'
+        with:
+          python-version: 3.11
+      - name: Remove unused versions of Python
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
+      - name: Setup gcloud (windows)
+        uses: google-github-actions/setup-gcloud@v2
+        if: runner.os == 'Windows'
+        env:
+          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
           project_id: denoland
       - name: Upload canary version file to dl.deno.land
