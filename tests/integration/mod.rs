@@ -31,6 +31,8 @@ mod coverage;
 mod eval;
 #[path = "flags_tests.rs"]
 mod flags;
+#[path = "ffi_tests.rs"]
+mod ffi;
 #[path = "fmt_tests.rs"]
 mod fmt;
 #[path = "init_tests.rs"]
@@ -43,6 +45,8 @@ mod jsr;
 mod jupyter;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "napi_tests.rs"]
+mod napi;
 #[path = "npm_tests.rs"]
 mod npm;
 #[path = "pm_tests.rs"]
@@ -58,6 +62,8 @@ mod run;
 mod serve;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
+#[path = "sqlite_extension_tests.rs"]
+mod sqlite_extension;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]

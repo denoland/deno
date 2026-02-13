@@ -994,6 +994,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: "sudo modprobe vsock_loopback",
           },
           {
+            name: "Build ffi (debug)",
+            if: isDebug.and(testCrateNameExpr.equals("specs")),
+            run: "cargo build -p test_ffi",
+          },
+          {
+            name: "Build ffi (release)",
+            if: isDebug.and(testCrateNameExpr.equals("specs")),
+            run: "cargo build --release -p test_ffi",
+          },
+          {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
@@ -1424,9 +1434,6 @@ function resolveWorkspaceCrates() {
   const libCrates: string[] = [];
   const binCrates: string[] = [];
   for (const member of rootCargoToml.workspace.members) {
-    // test crates depend on the deno binary at runtime
-    if (member.startsWith("tests")) continue;
-
     const cargoToml = parseToml(
       Deno.readTextFileSync(
         new URL(`../../${member}/Cargo.toml`, import.meta.url),
@@ -1437,7 +1444,11 @@ function resolveWorkspaceCrates() {
       test?: { path?: string }[];
     };
 
-    if (cargoToml.bin) {
+    if (member.startsWith("tests")) {
+      if (!member.endsWith("tests")) {
+        ensureNoIntegrationTests(member, cargoToml);
+      }
+    } else if (cargoToml.bin) {
       ensureNoIntegrationTests(member, cargoToml);
       binCrates.push(cargoToml.package.name);
     } else {
@@ -1469,12 +1480,12 @@ function ensureNoIntegrationTests(
   }
   if (errors.length > 0) {
     throw new Error(
-      `binary crate "${cargoToml.package.name}" (${member}) ${
+      `crate "${cargoToml.package.name}" (${member}) ${
         errors.join(" and ")
       }. ` +
-        `Integration tests in binary crates can't run on the CI because we avoid running cargo test ` +
-        `directly on the CI since we build the deno binary, then upload it to other jobs. ` +
-        `Move them or use #[cfg(test)] lib tests instead.`,
+        `Integration tests in these crates won't run on CI because we build ` +
+        `binaries on one runner then test on another. ` +
+        `Move them to spec tests, the main cli_tests crate, or use #[cfg(test)] lib tests instead.`,
     );
   }
 }

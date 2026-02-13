@@ -336,6 +336,12 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -1610,6 +1616,12 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -2913,6 +2925,12 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -4114,6 +4132,12 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -6821,6 +6845,12 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -7633,6 +7663,12 @@ jobs:
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: sudo modprobe vsock_loopback
+      - name: Build ffi (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build -p test_ffi
+      - name: Build ffi (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p test_ffi
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:

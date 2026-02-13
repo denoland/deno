@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-
 use std::process::Command;
 
 use test_util::deno_cmd;
@@ -17,7 +14,7 @@ const BUILD_VARIANT: &str = "debug";
 #[cfg(not(debug_assertions))]
 const BUILD_VARIANT: &str = "release";
 
-fn build() {
+fn napi_build() {
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin =
     build_plugin_base.arg("build").arg("-p").arg("test_napi");
@@ -57,9 +54,9 @@ fn build() {
   }
 }
 
-#[test]
+#[test_util::test]
 fn napi_tests() {
-  build();
+  napi_build();
 
   let _http_guard = http_server();
   let output = deno_cmd()

@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-
 use std::process::Command;
 
 use pretty_assertions::assert_eq;
@@ -27,8 +24,8 @@ fn build() {
   assert!(build_plugin_output.status.success());
 }
 
-#[test]
-fn basic() {
+#[test_util::test]
+fn ffi_basic() {
   build();
 
   let output = deno_cmd()
@@ -42,7 +39,7 @@ fn basic() {
     .arg("--unstable-ffi")
     .arg("--quiet")
     .arg(r#"--v8-flags=--allow-natives-syntax"#)
-    .arg("tests/test.js")
+    .arg("testdata/test.js")
     .env("NO_COLOR", "1")
     .env("DENO_UNSTABLE_FFI_TRACE_TURBO", "1")
     .output()
@@ -140,8 +137,8 @@ fn basic() {
   assert_eq!(stderr, "");
 }
 
-#[test]
-fn symbol_types() {
+#[test_util::test]
+fn ffi_symbol_types() {
   build();
 
   let output = deno_cmd()
@@ -152,7 +149,7 @@ fn symbol_types() {
     .arg("--no-lock")
     .arg("--unstable-ffi")
     .arg("--quiet")
-    .arg("tests/ffi_types.ts")
+    .arg("testdata/ffi_types.ts")
     .env("NO_COLOR", "1")
     .output()
     .unwrap();
@@ -167,8 +164,8 @@ fn symbol_types() {
   assert_eq!(stderr, "");
 }
 
-#[test]
-fn thread_safe_callback() {
+#[test_util::test]
+fn ffi_thread_safe_callback() {
   build();
 
   let output = deno_cmd()
@@ -181,7 +178,7 @@ fn thread_safe_callback() {
     .arg("--allow-read")
     .arg("--unstable-ffi")
     .arg("--quiet")
-    .arg("tests/thread_safe_test.js")
+    .arg("testdata/thread_safe_test.js")
     .env("NO_COLOR", "1")
     .output()
     .unwrap();
@@ -205,8 +202,8 @@ fn thread_safe_callback() {
   assert_eq!(stderr, "");
 }
 
-#[test]
-fn event_loop_integration() {
+#[test_util::test]
+fn ffi_event_loop_integration() {
   build();
 
   let output = deno_cmd()
@@ -219,7 +216,7 @@ fn event_loop_integration() {
     .arg("--allow-read")
     .arg("--unstable-ffi")
     .arg("--quiet")
-    .arg("tests/event_loop_integration.ts")
+    .arg("testdata/event_loop_integration.ts")
     .env("NO_COLOR", "1")
     .output()
     .unwrap();
@@ -261,8 +258,8 @@ fn event_loop_integration() {
   assert_eq!(stderr, "");
 }
 
-#[test]
-fn ffi_callback_errors_test() {
+#[test_util::test]
+fn ffi_callback_errors() {
   build();
 
   let output = deno_cmd()
@@ -275,7 +272,7 @@ fn ffi_callback_errors_test() {
     .arg("--allow-read")
     .arg("--unstable-ffi")
     .arg("--quiet")
-    .arg("tests/ffi_callback_errors.ts")
+    .arg("testdata/ffi_callback_errors.ts")
     .env("NO_COLOR", "1")
     .output()
     .unwrap();

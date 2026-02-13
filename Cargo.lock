@@ -8934,13 +8934,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sqlite_extension_test"
-version = "0.1.0"
-dependencies = [
- "test_server",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9690,10 +9683,6 @@ dependencies = [
 [[package]]
 name = "test_ffi"
 version = "0.1.0"
-dependencies = [
- "pretty_assertions",
- "test_server",
-]
 
 [[package]]
 name = "test_macro"
@@ -9711,7 +9700,6 @@ dependencies = [
  "libuv-sys-lite",
  "napi-build",
  "napi-sys",
- "test_server",
 ]
 
 [[package]]
