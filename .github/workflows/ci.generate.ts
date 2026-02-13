@@ -719,7 +719,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                "cargo build --release --locked --bin deno --bin denort --all-targets --features=panic-trace",
+                "cargo build --release --locked --bin deno --bin denort --features=panic-trace",
                 "df -h",
               ],
             },
@@ -755,7 +755,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Build debug",
               if: isDebug,
               run:
-                "cargo build --locked --all-targets --bin deno --bin denort --features=panic-trace",
+                "cargo build --locked --bin deno --bin denort --features=panic-trace",
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
