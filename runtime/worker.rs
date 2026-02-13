@@ -453,7 +453,16 @@ impl MainWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
-      u.hydrate(services.module_loader)
+      let js_runtime = u.hydrate(services.module_loader);
+
+      let op_state = js_runtime.op_state();
+      let current_handler =
+        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+      if let Some(new_handler) = current_handler.maybe_reload() {
+        op_state.borrow_mut().put(Rc::new(new_handler));
+      }
+
+      js_runtime
     } else {
       let mut extensions = common_extensions::<
         TInNpmPackageChecker,
@@ -1254,6 +1263,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
@@ -1265,6 +1275,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
+      maybe_code,
       options,
     )
   }

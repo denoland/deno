@@ -1,0 +1,56 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "eszip"
+version = "0.109.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A utility that can download JavaScript and TypeScript module graphs and store them locally in a special zip file"
+
+[lib]
+path = "lib.rs"
+
+[[example]]
+name = "eszip_builder"
+path = "examples/builder.rs"
+
+[[example]]
+name = "eszip_viewer"
+path = "examples/viewer.rs"
+
+[features]
+xxhash3 = ["xxhash-rust/xxh3"]
+sha256 = ["dep:sha2"]
+# backwards compatibility. Disabling sha256 will break compatibility with eszips older than v2.2
+default = ["sha256"]
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1.68"
+base64 = "0.21.0"
+deno_ast = { workspace = true, features = ["transpiling"] }
+deno_error = "0.7.0"
+deno_graph = { workspace = true, default-features = false, features = ["swc"] }
+deno_npm.workspace = true
+deno_semver.workspace = true
+futures = "0.3.26"
+hashlink = "0.8.2"
+import_map.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = { version = "0.10.1", optional = true }
+thiserror = "2"
+url.workspace = true
+xxhash-rust = { version = "0.8", optional = true }
+
+[dev-dependencies]
+import_map.workspace = true
+insta = "1.34.0"
+jsonc-parser.workspace = true
+pretty_assertions.workspace = true
+reqwest = { workspace = true, features = ["rustls-tls"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true, features = ["macros", "rt"] }

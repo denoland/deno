@@ -637,7 +637,7 @@ impl Inner {
     let Some(document) = self.document_modules.documents.get(uri) else {
       match exists {
         Exists::Enforce
-          if !uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) =>
+          if !uri.scheme().as_str().eq_ignore_ascii_case("deno") =>
         {
           return Err(LspError::invalid_params(format!(
             "Unable to find document for: {}",
@@ -1143,6 +1143,7 @@ impl Inner {
             | MediaType::Css
             | MediaType::Html
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Unknown => {
               continue;
@@ -1316,7 +1317,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1366,7 +1368,8 @@ impl Inner {
     if batch_queue
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       batch_queue.clear();
       return;
@@ -1495,7 +1498,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1843,7 +1847,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("untitled"));
+      .as_str()
+      .eq_ignore_ascii_case("untitled");
     if !is_untitled && !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }
@@ -5074,7 +5079,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
       && params.text_document.uri.path().as_str() == "/status.md"
     {
       let mut contents = String::new();

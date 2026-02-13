@@ -26,8 +26,8 @@ use std::path::PathBuf;
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsWrite;
+use sys_traits::PathsInErrorsExt;
 
-use crate::BinEntriesError;
 use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::relative_path;
 
@@ -303,7 +303,8 @@ pub fn set_up_bin_shim<'a>(
   bin_script: &'a str,
   package_path: &'a Path,
   bin_node_modules_dir_path: &'a Path,
-) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
+) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   let shim_path = bin_node_modules_dir_path.join(bin_name);
   let target_file = package_path.join(bin_script);
 
@@ -325,18 +326,11 @@ pub fn set_up_bin_shim<'a>(
 
   let rel_target =
     relative_path(bin_node_modules_dir_path, &target_file).unwrap();
-  let shebang = resolve_shebang(sys, &target_file);
+  let shebang = resolve_shebang(sys.as_ref(), &target_file);
   let shim = ShimData::new(rel_target.to_string_lossy(), shebang);
 
-  let write_shim = |path: PathBuf, contents: &str| {
-    sys
-      .fs_write(&path, contents)
-      .map_err(|err| BinEntriesError::SetUpBin {
-        name: bin_name.to_string(),
-        path,
-        source: Box::new(err.into()),
-      })
-  };
+  let write_shim =
+    |path: PathBuf, contents: &str| sys.fs_write(&path, contents);
 
   write_shim(shim_path.with_extension("cmd"), &shim.generate_cmd())?;
   write_shim(shim_path.clone(), &shim.generate_sh())?;
