@@ -4,6 +4,7 @@
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
 import type { MonthSummary } from "./add_day_summary_to_month_summary.ts";
 import { toJson } from "@std/streams/to-json";
+import { parse as parseJsonc } from "@std/jsonc";
 
 const token = Deno.env.get("SLACK_TOKEN");
 const channel = Deno.env.get("SLACK_CHANNEL");
@@ -175,6 +176,7 @@ type Block = { type: string; text: { type: string; text: string } } | any;
 const MAX_NEWLY_PASSING = 30;
 const MAX_NEWLY_FAILING = 30;
 const MAX_FLAKY = 20;
+const MAX_UNENABLED_PASSING = 50;
 const FLAKY_HISTORY_DAYS = 14; // + today = 15 runs
 
 async function generateThreadBlocks(
@@ -351,6 +353,74 @@ async function generateThreadBlocks(
   return blocks;
 }
 
+async function generateUnabledPassingBlocks(
+  monthSummary: MonthSummary,
+): Promise<Block[] | null> {
+  const sortedReports = Object.values(monthSummary.reports).sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+  const todaySummary = sortedReports.at(-1);
+  if (!todaySummary) return null;
+
+  console.log("Checking for passing-but-not-enabled tests...");
+
+  // Read config.jsonc to get enabled test names
+  const configText = await Deno.readTextFile(
+    "tests/node_compat/config.jsonc",
+  );
+  const config = parseJsonc(configText) as { tests: Record<string, unknown> };
+  const enabledTests = new Set(Object.keys(config.tests));
+
+  // Fetch today's full reports
+  const todayReports = await fetchReportsForDate(todaySummary.date);
+
+  // Find tests passing on ALL platforms but not in config
+  const passingNotEnabled = new Map<string, OSName[]>();
+
+  const allTestNames = new Set<string>();
+  for (const os of OS_NAMES) {
+    for (const name of Object.keys(todayReports[os]?.results ?? {})) {
+      allTestNames.add(name);
+    }
+  }
+
+  for (const testName of allTestNames) {
+    if (enabledTests.has(testName)) continue;
+
+    const passingOses: OSName[] = [];
+    for (const os of OS_NAMES) {
+      if (getTestStatus(todayReports[os], testName) === "pass") {
+        passingOses.push(os);
+      }
+    }
+    if (passingOses.length > 0) {
+      passingNotEnabled.set(testName, passingOses);
+    }
+  }
+
+  if (passingNotEnabled.size === 0) return null;
+
+  // Sort: tests passing on all platforms first, then by name
+  const sorted = [...passingNotEnabled.entries()].sort(([a, aOs], [b, bOs]) => {
+    if (bOs.length !== aOs.length) return bOs.length - aOs.length;
+    return a.localeCompare(b);
+  });
+
+  const blocks: Block[] = [];
+  let text =
+    `*Passing but not enabled in config.jsonc (${sorted.length}):*\n\`\`\`\n`;
+  for (const [testName, oses] of sorted.slice(0, MAX_UNENABLED_PASSING)) {
+    text += `${testName} (${formatOsList(oses)})\n`;
+  }
+  if (sorted.length > MAX_UNENABLED_PASSING) {
+    text += `...and ${sorted.length - MAX_UNENABLED_PASSING} more\n`;
+  }
+  text += `\`\`\``;
+  blocks.push({ type: "section", text: { type: "mrkdwn", text } });
+
+  return blocks;
+}
+
 async function main() {
   const monthSummary = await Deno.readTextFile("tests/node_compat/summary.json")
     .then(JSON.parse) as MonthSummary;
@@ -383,6 +453,24 @@ async function main() {
         }
       } catch (threadError) {
         console.error("Failed to post thread:", threadError);
+      }
+
+      // Post thread with passing-but-not-enabled tests
+      try {
+        const unenabled = await generateUnabledPassingBlocks(monthSummary);
+        if (unenabled) {
+          const unenableResult = await client.chat.postMessage({
+            token,
+            channel,
+            thread_ts: result.ts,
+            blocks: unenabled,
+            unfurl_links: false,
+            unfurl_media: false,
+          });
+          console.log("Unenabled passing thread posted:", unenableResult);
+        }
+      } catch (unenableError) {
+        console.error("Failed to post unenabled passing thread:", unenableError);
       }
     }
   } catch (error) {
