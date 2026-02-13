@@ -725,7 +725,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           }),
         );
         const binsToBuild = ["deno", "denort", "test_server"]
-          .map((name) => `-- bin ${name}`).join(" ");
+          .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),

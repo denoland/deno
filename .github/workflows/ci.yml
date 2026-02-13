@@ -111,7 +111,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -635,7 +635,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -1251,7 +1251,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -1845,7 +1845,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -2504,7 +2504,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -3017,7 +3017,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -3655,7 +3655,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -4168,7 +4168,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -4894,7 +4894,7 @@ jobs:
       - name: Build release
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         env:
@@ -6066,7 +6066,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -6978,7 +6978,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -7587,7 +7587,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
           df -h
-          cargo build --release --locked -- bin deno -- bin denort -- bin test_server --features=panic-trace
+          cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
           df -h
       - name: Generate symcache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
