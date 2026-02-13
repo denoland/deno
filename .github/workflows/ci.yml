@@ -181,9 +181,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -215,12 +212,12 @@ jobs:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/test_server
@@ -269,9 +266,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -303,12 +297,12 @@ jobs:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug/test_server
@@ -357,9 +351,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -390,16 +381,6 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -445,9 +426,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -478,16 +456,6 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -534,7 +502,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -566,16 +534,6 @@ jobs:
         with:
           name: debug-macos-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-macos-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -851,9 +809,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -885,12 +840,12 @@ jobs:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/test_server
@@ -937,9 +892,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -971,12 +923,12 @@ jobs:
           name: release-macos-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release/test_server
@@ -1023,9 +975,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1056,16 +1005,6 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1109,9 +1048,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1142,16 +1078,6 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1196,7 +1122,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -1228,16 +1154,6 @@ jobs:
         with:
           name: release-macos-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-macos-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1405,9 +1321,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1451,12 +1364,12 @@ jobs:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/test_server
@@ -1505,9 +1418,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1551,12 +1461,12 @@ jobs:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug/test_server
@@ -1605,9 +1515,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1650,16 +1557,6 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1705,9 +1602,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1750,16 +1644,6 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1806,7 +1690,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -1850,16 +1734,6 @@ jobs:
         with:
           name: debug-macos-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-macos-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2145,9 +2019,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2191,12 +2062,12 @@ jobs:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/test_server
@@ -2243,9 +2114,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2289,12 +2157,12 @@ jobs:
           name: release-macos-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release/test_server
@@ -2341,9 +2209,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2386,16 +2251,6 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2439,9 +2294,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2484,16 +2336,6 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2538,7 +2380,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -2582,16 +2424,6 @@ jobs:
         with:
           name: release-macos-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-macos-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2742,9 +2574,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2776,12 +2605,12 @@ jobs:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug/test_server.exe
@@ -2830,9 +2659,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2864,12 +2690,12 @@ jobs:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug/test_server.exe
@@ -2918,9 +2744,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2951,16 +2774,6 @@ jobs:
         with:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3006,9 +2819,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3039,16 +2849,6 @@ jobs:
         with:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3095,7 +2895,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -3127,16 +2927,6 @@ jobs:
         with:
           name: debug-windows-x86_64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-windows-x86_64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3440,9 +3230,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3474,12 +3261,12 @@ jobs:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/test_server.exe
@@ -3526,9 +3313,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3560,12 +3344,12 @@ jobs:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release/test_server.exe
@@ -3612,9 +3396,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3645,16 +3426,6 @@ jobs:
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3698,9 +3469,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3731,16 +3499,6 @@ jobs:
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3785,7 +3543,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -3817,16 +3575,6 @@ jobs:
         with:
           name: release-windows-x86_64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-windows-x86_64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3977,9 +3725,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4011,12 +3756,12 @@ jobs:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug/test_server.exe
@@ -4065,9 +3810,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4099,12 +3841,12 @@ jobs:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug/test_server.exe
@@ -4153,9 +3895,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4186,16 +3925,6 @@ jobs:
         with:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4241,9 +3970,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4274,16 +4000,6 @@ jobs:
         with:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4330,7 +4046,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -4362,16 +4078,6 @@ jobs:
         with:
           name: debug-windows-aarch64-deno
           path: target/debug/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-windows-aarch64-denort
-          path: target/debug/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4675,9 +4381,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4709,12 +4412,12 @@ jobs:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/test_server.exe
@@ -4761,9 +4464,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4795,12 +4495,12 @@ jobs:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/denort.exe
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release/test_server.exe
@@ -4847,9 +4547,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4880,16 +4577,6 @@ jobs:
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4933,9 +4620,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4966,16 +4650,6 @@ jobs:
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -5020,7 +4694,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -5052,16 +4726,6 @@ jobs:
         with:
           name: release-windows-aarch64-deno
           path: target/release/deno.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/denort.exe
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-windows-aarch64-denort
-          path: target/release/test_server.exe
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -5401,9 +5065,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5516,12 +5177,12 @@ jobs:
           name: release-linux-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/test_server
@@ -5568,9 +5229,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5683,12 +5341,12 @@ jobs:
           name: release-linux-x86_64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release/test_server
@@ -5735,9 +5393,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5849,16 +5504,6 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5902,9 +5547,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6016,16 +5658,6 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6070,7 +5702,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -6183,16 +5815,6 @@ jobs:
         with:
           name: release-linux-x86_64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-linux-x86_64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6516,9 +6138,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6631,12 +6250,12 @@ jobs:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/test_server
@@ -6685,9 +6304,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6800,12 +6416,12 @@ jobs:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug/test_server
@@ -6854,9 +6470,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6968,16 +6581,6 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7023,9 +6626,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7137,16 +6737,6 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7193,7 +6783,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -7306,16 +6896,6 @@ jobs:
         with:
           name: debug-linux-x86_64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-linux-x86_64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7468,9 +7048,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7502,12 +7079,12 @@ jobs:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/test_server
@@ -7559,9 +7136,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7593,12 +7167,12 @@ jobs:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug/test_server
@@ -7650,9 +7224,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7683,16 +7254,6 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7741,9 +7302,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7774,16 +7332,6 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7833,7 +7381,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -7865,16 +7413,6 @@ jobs:
         with:
           name: debug-linux-aarch64-deno
           path: target/debug/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: debug-linux-aarch64-denort
-          path: target/debug/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -8217,9 +7755,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && integration == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8332,12 +7867,12 @@ jobs:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (integration == ''integration'' || integration == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/test_server
@@ -8387,9 +7922,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && specs == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8502,12 +8034,12 @@ jobs:
           name: release-linux-aarch64-deno
           path: target/release/deno
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/denort
       - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (specs == ''integration'' || specs == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release/test_server
@@ -8557,9 +8089,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8671,16 +8200,6 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit == ''integration'' || unit == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8727,9 +8246,6 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && unit_node == ''node_compat'''
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8841,16 +8357,6 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (unit_node == ''integration'' || unit_node == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -8898,7 +8404,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && node_compat == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
@@ -9011,16 +8517,6 @@ jobs:
         with:
           name: release-linux-aarch64-deno
           path: target/release/deno
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/denort
-      - uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (node_compat == ''integration'' || node_compat == ''specs'')'
-        with:
-          name: release-linux-aarch64-denort
-          path: target/release/test_server
       - name: Set up playwright cache
         uses: actions/cache@v5
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'

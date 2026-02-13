@@ -8,11 +8,11 @@ import {
   defineArtifact,
   defineExprObj,
   defineMatrix,
-  expr,
   type ExpressionValue,
   job,
+  literal,
   step,
-} from "jsr:@david/gagen@0.2.11";
+} from "jsr:@david/gagen@0.2.12";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -924,7 +924,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   for (const testCrate of testCrates) {
-    const testCrateNameExpr = expr(testCrate.name);
+    const testCrateNameExpr = literal(testCrate.name);
     additionalJobs.push(job(
       jobIdForJob(`test-${testCrate.name}`),
       {
@@ -1021,7 +1021,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       needs: [buildJob],
       runsOn: buildItem.testRunner,
       timeoutMinutes: 30,
-      steps: step.if(isNotTag.and(buildItem.skip.not()))(() => {
+      steps: step.if(isNotTag.and(buildItem.skip.not()))((() => {
         const linuxCargoChecks = step
           .if(isLinux)
           .dependsOn(installWasmStep)(
@@ -1075,7 +1075,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           saveCacheBuildOutputStep,
         );
-      })(),
+      })()),
     });
   }
 
