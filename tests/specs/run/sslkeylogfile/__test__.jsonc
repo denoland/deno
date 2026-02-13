@@ -18,7 +18,7 @@
     "warns_on_unwritable_path": {
       "envs": { "SSLKEYLOGFILE": "/nonexistent/path/keylog.txt" },
       "args": "run --allow-net --allow-env main.ts",
-      "output": "[WILDCARD]SSLKEYLOGFILE is set but the file could not be opened:[WILDCARD]"
+      "output": "[WILDCARD]SSLKEYLOGFILE is set but '/nonexistent/path/keylog.txt' could not be opened:[WILDCARD]"
     },
     "mutating_env_does_not_enable_keylog": {
       "args": "run --allow-net --allow-env=SSLKEYLOGFILE --allow-read=./late_keylog.txt mutate_env.ts",

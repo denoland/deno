@@ -32,7 +32,8 @@ pub fn get_ssl_key_log() -> Arc<dyn KeyLog> {
         && let Err(e) = OpenOptions::new().append(true).create(true).open(&path)
       {
         log::warn!(
-          "SSLKEYLOGFILE is set but the file could not be opened: {e}"
+          "SSLKEYLOGFILE is set but '{}' could not be opened: {e}",
+          path.to_string_lossy()
         );
       }
       Arc::new(KeyLogFile::new())
