@@ -193,7 +193,7 @@ CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
-function handleMatrixItems(items: {
+function handleBuildItems(items: {
   skip_pr?: Condition | true;
   skip?: Condition | boolean;
   os: "linux" | "macos" | "windows";
@@ -384,7 +384,7 @@ const preBuildJob = job("pre_build", {
 
 // === build job ===
 
-const buildMatrixItems = handleMatrixItems([{
+const buildItems = handleBuildItems([{
   ...Runners.macosX86,
   job: "test",
   profile: "debug",
@@ -473,16 +473,16 @@ const saveCacheBuildOutputStep = step({
   },
 });
 
-const buildJobs = buildMatrixItems.map((matrixItem) => {
-  const buildMatrix = defineExprObj(matrixItem);
+const buildJobs = buildItems.map((rawBuildItem) => {
+  const buildItem = defineExprObj(rawBuildItem);
   return job(
-    `${matrixItem.job}-${matrixItem.profile}-${matrixItem.os}-${matrixItem.arch}`,
+    `${buildItem.job}-${buildItem.profile}-${buildItem.os}-${buildItem.arch}`,
     {
       name:
-        `${buildMatrix.job} ${buildMatrix.profile} ${buildMatrix.os}-${buildMatrix.arch}`,
+        `${buildItem.job} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
       needs: [preBuildJob],
       if: preBuildJob.outputs.skip_build.notEquals("true"),
-      runsOn: buildMatrix.runner,
+      runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
       environment: {
@@ -511,9 +511,9 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
         RUST_LIB_BACKTRACE: 0,
       },
       steps: (() => {
-        const isTest = buildMatrix.job.equals("test");
-        const isRelease = buildMatrix.profile.equals("release");
-        const isDebug = buildMatrix.profile.equals("debug");
+        const isTest = buildItem.job.equals("test");
+        const isRelease = buildItem.profile.equals("release");
+        const isDebug = buildItem.profile.equals("debug");
         const cloneWptSubmodule = cloneSubmodule("./tests/wpt/suite");
         const cargoBuildCacheStep = step
           .dependsOn(cacheCargoHomeStep, installRustStep)(
@@ -528,13 +528,13 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
             },
           );
         const sysRootStep = step({
-          if: buildMatrix.use_sysroot,
+          if: buildItem.use_sysroot,
           ...sysRootConfig,
         });
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
-          if: buildMatrix.os.equals("linux")
-            .and(buildMatrix.arch.equals("x86_64")),
+          if: buildItem.os.equals("linux")
+            .and(buildItem.arch.equals("x86_64")),
           run: [
             "mkdir -p target/release",
             'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
@@ -546,7 +546,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
           {
             name: "Upload PR artifact (linux)",
             if: isTest.and(
-              buildMatrix.use_sysroot.or(
+              buildItem.use_sysroot.or(
                 isDenoland.and(isMainOrTag),
               ),
             ),
@@ -574,7 +574,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
           },
           step.dependsOn(setupPrebuiltMacStep)({
             name: "Install rust-codesign",
-            if: buildMatrix.os.equals("macos").and(isDenoland),
+            if: buildItem.os.equals("macos").and(isDenoland),
             env: {
               GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
             },
@@ -677,7 +677,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
         );
         const cargoBuildReleaseStep = step
           .if(
-            isRelease.and(isDenoland.or(buildMatrix.use_sysroot)),
+            isRelease.and(isDenoland.or(buildItem.use_sysroot)),
           )
           .dependsOn(
             installLldStep,
@@ -747,14 +747,14 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
             {
               // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
               name: "Check deno binary (in sysroot)",
-              if: isTest.and(buildMatrix.use_sysroot),
+              if: isTest.and(buildItem.use_sysroot),
               run:
                 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
             },
           );
 
         const benchStep = step
-          .if(buildMatrix.job.equals("bench").and(isNotTag).and(isRelease))
+          .if(buildItem.job.equals("bench").and(isNotTag).and(isRelease))
           .dependsOn(installNodeStep)(
             cloneSubmodule("./cli/bench/testdata/lsp_benchdata"),
             step.dependsOn(installDenoStep, setupPrebuiltMacStep)({
@@ -804,8 +804,8 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
               },
             },
             {
-              if: buildMatrix.os.equals("linux").and(
-                buildMatrix.arch.equals("aarch64"),
+              if: buildItem.os.equals("linux").and(
+                buildItem.arch.equals("aarch64"),
               ),
               name: "Load 'vsock_loopback; kernel module",
               run: "sudo modprobe vsock_loopback",
@@ -813,7 +813,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
             cargoBuildStep,
             {
               name: "Autobahn testsuite",
-              if: isLinux.and(buildMatrix.arch.notEquals("aarch64")).and(
+              if: isLinux.and(buildItem.arch.notEquals("aarch64")).and(
                 isRelease,
               )
                 .and(isNotTag),
@@ -831,7 +831,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
             {
               name: "Test (fast, debug)",
               if: isDebug.and(
-                isTag.or(buildMatrix.os.notEquals("linux")),
+                isTag.or(buildItem.os.notEquals("linux")),
               ),
               run: [
                 // Run unit then integration tests. Skip doc tests here
@@ -844,7 +844,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
             {
               name: "Test (release)",
               if: isRelease.and(
-                isDenoland.or(buildMatrix.use_sysroot),
+                isDenoland.or(buildItem.use_sysroot),
               ).and(isNotTag),
               run:
                 `cargo test --workspace --release --locked ${libExcludeArgs} --features=panic-trace`,
@@ -881,7 +881,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
           );
 
         const wptTests = step
-          .if(buildMatrix.wpt)
+          .if(buildItem.wpt)
           .dependsOn(cloneWptSubmodule, installDenoStep, installPythonStep)({
             name: "Configure hosts file for WPT",
             run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
@@ -1007,7 +1007,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
           },
         );
 
-        return step.if(buildMatrix.skip.not())(
+        return step.if(buildItem.skip.not())(
           cloneRepoStep,
           cloneStdSubmodule,
           // ensure this happens right after cloning
@@ -1021,7 +1021,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
               "cat /etc/hosts",
               "rm ~/.curlrc || true",
             ],
-            if: buildMatrix.os.equals("macos"),
+            if: buildItem.os.equals("macos"),
           },
           step({
             name: "Log versions",
@@ -1050,7 +1050,7 @@ const buildJobs = buildMatrixItems.map((matrixItem) => {
           benchStep,
           wptTests,
           publishStep,
-          saveCacheBuildOutputStep.if(buildMatrix.save_cache),
+          saveCacheBuildOutputStep.if(buildItem.save_cache),
         );
       })(),
     },
