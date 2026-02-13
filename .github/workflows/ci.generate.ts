@@ -204,7 +204,7 @@ function handleBuildItems(items: {
   return items.map(({ skip_pr, ...rest }) => {
     const defaultValues = {
       skip: false,
-      use_sysroot: false,
+      "use_sysroot": false,
       wpt: false,
     };
     if (skip_pr == null) {
@@ -1351,15 +1351,6 @@ function resolveWorkspaceCrates() {
     }
   }
   return { libCrates, binCrates };
-}
-
-function resolveTestCrateTests() {
-  const cargoToml = parseToml(
-    Deno.readTextFileSync(
-      new URL("../../tests/Cargo.toml", import.meta.url),
-    ),
-  ) as { test?: { name: string; path: string }[] };
-  return cargoToml.test ?? [];
 }
 
 function ensureNoIntegrationTests(
