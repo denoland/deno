@@ -207,7 +207,6 @@ function handleBuildItems(items: {
 }[]) {
   return items.map(({ skip_pr, ...rest }) => {
     const defaultValues = {
-      job: "build",
       skip: false,
       "use_sysroot": false,
       wpt: false,
@@ -276,7 +275,6 @@ const installNodeStep = step({
 function createCargoCacheHomeStep(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
-  job: ExpressionValue;
 }) {
   return step({
     name: "Cache Cargo home",
@@ -303,7 +301,7 @@ function createCacheSteps(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
   profile: ExpressionValue;
-  job: ExpressionValue;
+  job: string;
 }) {
   const cacheCargoHomeStep = createCargoCacheHomeStep(m);
   const cacheKeyPrefix =
@@ -556,11 +554,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       shell: "bash",
     },
   };
-  const {
-    cacheCargoHomeStep,
-    restoreCacheBuildOutputStep,
-    saveCacheBuildOutputStep,
-  } = createCacheSteps(buildItem);
 
   const {
     installPythonStep,
@@ -594,6 +587,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       defaults,
       env,
       steps: (() => {
+        const {
+          cacheCargoHomeStep,
+          restoreCacheBuildOutputStep,
+          saveCacheBuildOutputStep,
+        } = createCacheSteps({
+          ...buildItem,
+          job: "build",
+        });
         const cargoBuildCacheStep = step
           .dependsOn(cacheCargoHomeStep, installRustStep)(
             restoreCacheBuildOutputStep,
@@ -946,6 +947,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   for (const testCrate of testCrates) {
+    const {
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      saveCacheBuildOutputStep,
+    } = createCacheSteps({
+      ...buildItem,
+      job: "test",
+    });
     const testCrateNameExpr = literal(testCrate.name);
     additionalJobs.push(job(
       jobIdForJob(`test-${testCrate.name}`),
@@ -961,11 +970,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
           cloneStdSubmoduleStep,
+          cacheCargoHomeStep,
+          restoreCacheBuildOutputStep,
           installNodeStep,
           installRustStep,
           installLldStep,
           sysRootStep,
-          createCargoCacheHomeStep(buildItem),
           denoArtifact.download(),
           denortArtifact.download().if(
             testCrateNameExpr.equals("integration")
@@ -1040,6 +1050,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               path: `target/test_results_${testCrate.name}.json`,
             },
           }),
+          saveCacheBuildOutputStep,
         ),
       },
     ));
@@ -1051,6 +1062,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       .or(isWindows.and(buildItem.arch.equals("x86_64"))),
   );
   if (libsCondition.isPossiblyTrue()) {
+    const {
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      saveCacheBuildOutputStep,
+    } = createCacheSteps({
+      ...buildItem,
+      job: "test-libs",
+    });
     additionalJobs.push(job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
       needs: [buildJob],
@@ -1058,52 +1077,69 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
         cloneRepoStep,
+        cacheCargoHomeStep,
+        restoreCacheBuildOutputStep,
         installNodeStep,
         installRustStep,
         installLldStep,
         sysRootStep,
-        createCargoCacheHomeStep(buildItem),
         denoArtifact.download(),
         testServerArtifact.download(),
-        step
-          .if(isLinux)
-          .dependsOn(installWasmStep)(
-            // we want these crates to be Wasm compatible
-            {
-              name: "Cargo check (deno_resolver)",
-              run:
-                "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
-            },
-            {
-              name: "Cargo check (deno_npm_installer)",
-              run:
-                "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
-            },
-            {
-              name: "Cargo check (deno_config)",
-              run: [
-                "cargo check --no-default-features -p deno_config",
-                "cargo check --no-default-features --features workspace -p deno_config",
-                "cargo check --no-default-features --features package_json -p deno_config",
-                "cargo check --no-default-features --features workspace --features sync -p deno_config",
-                "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
-                "cargo check -p deno --features=lsp-tracing",
-              ],
-            },
-          ),
         {
-          name: "Test Bin Libs",
+          name: "Test libs",
           run: `cargo test --locked --lib ${
-            binCrates.map((p) => `-p ${p}`).join(" ")
+            [...binCrates, ...libCrates].map((p) => `-p ${p}`).join(" ")
           }`,
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
+        saveCacheBuildOutputStep,
+      ),
+    }));
+  }
+  if (
+    isDebug.and(isLinux).and(buildItem.arch.equals("x86_64")).isPossiblyTrue()
+  ) {
+    const {
+      cacheCargoHomeStep,
+      restoreCacheBuildOutputStep,
+      saveCacheBuildOutputStep,
+    } = createCacheSteps({
+      ...buildItem,
+      job: "build-libs",
+    });
+    additionalJobs.push(job(jobIdForJob("build-libs"), {
+      name: jobNameForJob("build libs"),
+      needs: [preBuildJob],
+      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      runsOn: buildItem.runner,
+      timeoutMinutes: 30,
+      steps: step.if(isNotTag.and(buildItem.skip.not()))(
+        cloneRepoStep,
+        installRustStep,
+        cacheCargoHomeStep,
+        restoreCacheBuildOutputStep,
+        installWasmStep,
+        // we want these crates to be Wasm compatible
         {
-          name: "Test libs",
-          run: `cargo test --locked ${
-            libCrates.map((p) => `-p ${p}`).join(" ")
-          }`,
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+            "cargo check -p deno --features=lsp-tracing",
+          ],
         },
         saveCacheBuildOutputStep,
       ),
@@ -1303,7 +1339,10 @@ const lintJob = job("lint", {
       cacheCargoHomeStep,
       restoreCacheBuildOutputStep,
       saveCacheBuildOutputStep,
-    } = createCacheSteps(lintMatrix);
+    } = createCacheSteps({
+      ...lintMatrix,
+      job: "lint",
+    });
     return step(
       cloneRepoStep,
       cloneStdSubmoduleStep,
