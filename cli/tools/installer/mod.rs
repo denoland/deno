@@ -1285,7 +1285,6 @@ fn is_in_path(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
 
-
   use deno_lib::args::UnstableConfig;
   use deno_npm::resolution::NpmVersionResolver;
   use test_util::TempDir;
@@ -1924,8 +1923,7 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    let module_url =
-      Url::from_file_path(&local_module).unwrap().to_string();
+    let module_url = Url::from_file_path(&local_module).unwrap().to_string();
     // ensure the unicode path is preserved in the shim
     assert!(content.contains(&module_url));
   }

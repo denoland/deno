@@ -62,13 +62,12 @@ mod test {
   #[test]
   fn process_active() {
     // launch a long running process that blocks on stdin
-    let mut child =
-      Command::new(if cfg!(windows) { "cmd.exe" } else { "cat" })
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut child = Command::new(if cfg!(windows) { "cmd.exe" } else { "cat" })
+      .stdin(Stdio::piped())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .unwrap();
 
     let pid = child.id();
     assert!(is_process_active(pid));
