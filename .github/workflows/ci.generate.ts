@@ -1065,7 +1065,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   const libsCondition = isDebug.and(
-    isLinux.and(buildItem.arch.equals("x86_64"))
+    isLinux.and(buildItem.arch.equals("aarch64"))
       .or(isMacos.and(buildItem.arch.equals("aarch64")))
       .or(isWindows.and(buildItem.arch.equals("x86_64"))),
   );
@@ -1265,6 +1265,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             installRustStep,
             createCargoCacheHomeStep(buildItem),
             cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
+            cloneStdSubmoduleStep,
             installDenoStep,
             denoArtifact.download(),
             {
