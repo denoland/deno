@@ -89,9 +89,8 @@ const Runners = {
   },
 } as const;
 
-// discover all non-binary, non-test workspace members for the libs test job
-const libCrates = resolveLibCrates();
-const libTestCrateArgs = libCrates.map((p) => `-p ${p}`).join(" ");
+// discover workspace members for the libs test job, split by type
+const { binCrates, libCrates } = resolveWorkspaceCrates();
 const libExcludeArgs = libCrates.map((p) => `--exclude ${p}`).join(" ");
 
 const prCacheKeyPrefix =
@@ -1177,8 +1176,14 @@ const libsJob = job("libs", {
       repoSetupSteps,
       linuxCargoChecks,
       step.dependsOn(repoSetupSteps, macSetup)({
+        name: "Test Bin Libs",
+        run: `cargo test --locked --lib ${
+          binCrates.map((p) => `-p ${p}`).join(" ")
+        }`,
+        env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+      }, {
         name: "Test libs",
-        run: `cargo test --locked ${libTestCrateArgs}`,
+        run: `cargo test --locked ${libCrates.map((p) => `-p ${p}`).join(" ")}`,
         env: { CARGO_PROFILE_DEV_DEBUG: 0 },
       }),
       saveCacheBuildOutputStep,
@@ -1266,13 +1271,14 @@ if (import.meta.main) {
   });
 }
 
-function resolveLibCrates() {
-  // discover all non-binary, non-test workspace members for the libs test job
+function resolveWorkspaceCrates() {
+  // discover workspace members for the libs test job, split by type
   const rootCargoToml = parseToml(
     Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
   ) as { workspace: { members: string[] } };
 
   const libCrates: string[] = [];
+  const binCrates: string[] = [];
   for (const member of rootCargoToml.workspace.members) {
     // test crates depend on the deno binary at runtime
     if (member.startsWith("tests")) continue;
@@ -1281,12 +1287,60 @@ function resolveLibCrates() {
       Deno.readTextFileSync(
         new URL(`../../${member}/Cargo.toml`, import.meta.url),
       ),
-    ) as { package: { name: string }; bin?: unknown[] };
+    ) as {
+      package: { name: string };
+      bin?: unknown[];
+      test?: { path?: string }[];
+    };
 
-    // skip binary crates (they need their own build step)
-    if (cargoToml.bin) continue;
-
-    libCrates.push(cargoToml.package.name);
+    if (cargoToml.bin) {
+      ensureNoIntegrationTests(member, cargoToml);
+      binCrates.push(cargoToml.package.name);
+    } else {
+      libCrates.push(cargoToml.package.name);
+    }
   }
-  return libCrates;
+  return { libCrates, binCrates };
+}
+
+function ensureNoIntegrationTests(
+  member: string,
+  cargoToml: {
+    package: { name: string };
+    test?: { path?: string }[];
+  },
+) {
+  const errors: string[] = [];
+  if (existsSync(new URL(`../../${member}/tests/`, import.meta.url))) {
+    errors.push("has a tests/ folder");
+  }
+  const hasNonRunnerTests = cargoToml.test?.some(
+    // this path is allowed because it's only used by deno and denort
+    // to cause the deno and denort binaries to be built when running
+    // tests, but it doesn't actually run any tests itself
+    (t) => t.path !== "integration_tests_runner.rs",
+  );
+  if (hasNonRunnerTests) {
+    errors.push("has a [[test]] section in Cargo.toml");
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `binary crate "${cargoToml.package.name}" (${member}) ${
+        errors.join(" and ")
+      }. ` +
+        `Integration tests in binary crates can't run on the CI because we avoid running cargo test ` +
+        `directly on the CI since we build the deno binary, then upload it to other jobs. ` +
+        `Move them or use #[cfg(test)] lib tests instead.`,
+    );
+  }
+}
+
+function existsSync(path: string | URL) {
+  try {
+    Deno.statSync(path);
+    return true;
+  } catch (e) {
+    if (!(e instanceof Deno.errors.NotFound)) throw e;
+    return false;
+  }
 }
