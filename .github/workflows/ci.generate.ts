@@ -12,7 +12,7 @@ import {
   job,
   literal,
   step,
-} from "jsr:@david/gagen@0.2.12";
+} from "jsr:@david/gagen@0.2.13";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -515,7 +515,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     const artifact = defineArtifact(
       `${profileName}-${name.replaceAll("_", "-")}`,
       {
-        path: directory,
         retentionDays: 3,
       },
     );
@@ -529,7 +528,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       download() {
         return step(
           artifact.download({
-            path: directory,
+            dirPath: directory,
           }),
           step({
             name: `Set ${filePath} permissions`,
@@ -1047,18 +1046,26 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   const libsCondition = isDebug.and(
-    isLinux.and(buildItem.arch.equals("X86_64"))
-      .or(isMacos.and(buildItem.arch.equals("arm64")))
-      .or(isWindows.and(buildItem.arch.equals("X86_64"))),
+    isLinux.and(buildItem.arch.equals("x86_64"))
+      .or(isMacos.and(buildItem.arch.equals("aarch64")))
+      .or(isWindows.and(buildItem.arch.equals("x86_64"))),
   );
   if (libsCondition.isPossiblyTrue()) {
-    job(jobIdForJob("test-libs"), {
+    additionalJobs.push(job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
       needs: [buildJob],
-      runsOn: buildItem.testRunner,
+      runsOn: buildItem.testRunner ?? buildItem.runner,
       timeoutMinutes: 30,
-      steps: step.if(isNotTag.and(buildItem.skip.not()))((() => {
-        const linuxCargoChecks = step
+      steps: step.if(isNotTag.and(buildItem.skip.not()))(
+        cloneRepoStep,
+        installNodeStep,
+        installRustStep,
+        installLldStep,
+        sysRootStep,
+        createCargoCacheHomeStep(buildItem),
+        denoArtifact.download(),
+        testServerArtifact.download(),
+        step
           .if(isLinux)
           .dependsOn(installWasmStep)(
             // we want these crates to be Wasm compatible
@@ -1083,36 +1090,24 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "cargo check -p deno --features=lsp-tracing",
               ],
             },
-          );
-
-        return step(
-          cloneRepoStep,
-          installNodeStep,
-          installRustStep,
-          installLldStep,
-          sysRootStep,
-          createCargoCacheHomeStep(buildItem),
-          denoArtifact.download(),
-          testServerArtifact.download(),
-          linuxCargoChecks,
-          {
-            name: "Test Bin Libs",
-            run: `cargo test --locked --lib ${
-              binCrates.map((p) => `-p ${p}`).join(" ")
-            }`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-          },
-          {
-            name: "Test libs",
-            run: `cargo test --locked ${
-              libCrates.map((p) => `-p ${p}`).join(" ")
-            }`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-          },
-          saveCacheBuildOutputStep,
-        );
-      })()),
-    });
+          ),
+        {
+          name: "Test Bin Libs",
+          run: `cargo test --locked --lib ${
+            binCrates.map((p) => `-p ${p}`).join(" ")
+          }`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test libs",
+          run: `cargo test --locked ${
+            libCrates.map((p) => `-p ${p}`).join(" ")
+          }`,
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        saveCacheBuildOutputStep,
+      ),
+    }));
   }
 
   if (buildItem.wpt.isPossiblyTrue()) {
@@ -1203,7 +1198,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   const benchCondition = isLinux.and(isRelease).and(
-    buildItem.arch.equals("X86_64"),
+    buildItem.arch.equals("x86_64"),
   );
   if (benchCondition.isPossiblyTrue()) {
     additionalJobs.push(job(

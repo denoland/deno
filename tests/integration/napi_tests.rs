@@ -24,7 +24,12 @@ fn napi_build() {
     build_plugin = build_plugin.arg("--release");
   }
   let build_plugin_output = build_plugin.output().unwrap();
-  assert!(build_plugin_output.status.success());
+  assert!(
+    build_plugin_output.status.success(),
+    "cargo build failed:\nstdout: {}\nstderr: {}",
+    String::from_utf8_lossy(&build_plugin_output.stdout),
+    String::from_utf8_lossy(&build_plugin_output.stderr)
+  );
 
   // cc module.c -undefined dynamic_lookup -shared -Wl,-no_fixup_chains -dynamic -o module.dylib
   #[cfg(not(target_os = "windows"))]
@@ -36,6 +41,7 @@ fn napi_build() {
     };
 
     let mut cc = Command::new("cc");
+    cc.current_dir(napi_tests_path());
 
     #[cfg(not(target_os = "macos"))]
     let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
@@ -52,7 +58,12 @@ fn napi_build() {
         .arg(out)
     };
     let c_module_output = c_module.output().unwrap();
-    assert!(c_module_output.status.success());
+    assert!(
+      c_module_output.status.success(),
+      "cc failed:\nstdout: {}\nstderr: {}",
+      String::from_utf8_lossy(&c_module_output.stdout),
+      String::from_utf8_lossy(&c_module_output.stderr)
+    );
   }
 }
 
@@ -75,9 +86,7 @@ fn napi_tests() {
     .arg("--no-lock")
     .arg(".")
     .envs(env_vars_for_npm_tests())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
+    .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
