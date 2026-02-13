@@ -1553,6 +1553,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "SSLKEYLOGFILE",
+    description: "Write TLS session keys to the specified file in NSS Key Log format\nfor debugging encrypted traffic with tools like Wireshark.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_TRUST_PROXY_HEADERS",
     description: "If specified, removes X-deno-client-address header when serving HTTP.",
     example: None,
