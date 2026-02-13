@@ -190,14 +190,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -258,14 +260,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -326,14 +330,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -394,14 +400,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -462,14 +470,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -764,14 +774,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -830,14 +842,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -896,14 +910,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -962,14 +978,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1028,14 +1046,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1216,14 +1236,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1284,14 +1306,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1352,14 +1376,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1420,14 +1446,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1488,14 +1516,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -1769,7 +1799,7 @@ jobs:
     name: test integration release macos-aarch64
     needs:
       - build-release-macos-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -1790,14 +1820,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1835,7 +1867,7 @@ jobs:
     name: test specs release macos-aarch64
     needs:
       - build-release-macos-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -1856,14 +1888,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1901,7 +1935,7 @@ jobs:
     name: test unit release macos-aarch64
     needs:
       - build-release-macos-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -1922,14 +1956,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -1967,7 +2003,7 @@ jobs:
     name: test unit_node release macos-aarch64
     needs:
       - build-release-macos-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -1988,14 +2024,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2033,7 +2071,7 @@ jobs:
     name: test node_compat release macos-aarch64
     needs:
       - build-release-macos-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -2054,14 +2092,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2222,14 +2262,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2290,14 +2332,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2358,14 +2402,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2426,14 +2472,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2494,14 +2542,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -2793,7 +2843,7 @@ jobs:
     name: test integration release windows-x86_64
     needs:
       - build-release-windows-x86_64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -2814,14 +2864,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2859,7 +2911,7 @@ jobs:
     name: test specs release windows-x86_64
     needs:
       - build-release-windows-x86_64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -2880,14 +2932,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2925,7 +2979,7 @@ jobs:
     name: test unit release windows-x86_64
     needs:
       - build-release-windows-x86_64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -2946,14 +3000,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -2991,7 +3047,7 @@ jobs:
     name: test unit_node release windows-x86_64
     needs:
       - build-release-windows-x86_64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -3012,14 +3068,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3057,7 +3115,7 @@ jobs:
     name: test node_compat release windows-x86_64
     needs:
       - build-release-windows-x86_64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -3078,14 +3136,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3246,14 +3306,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3314,14 +3376,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3382,14 +3446,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3450,14 +3516,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3518,14 +3586,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3838,14 +3908,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3904,14 +3976,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -3970,14 +4044,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4036,14 +4112,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4102,14 +4180,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -4438,7 +4518,7 @@ jobs:
     name: test integration release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -4459,14 +4539,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4504,7 +4586,7 @@ jobs:
     name: test specs release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -4525,14 +4607,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4570,7 +4654,7 @@ jobs:
     name: test unit release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -4591,14 +4675,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4636,7 +4722,7 @@ jobs:
     name: test unit_node release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -4657,14 +4743,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4702,7 +4790,7 @@ jobs:
     name: test node_compat release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -4723,14 +4811,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -4768,7 +4858,7 @@ jobs:
     name: wpt release linux-x86_64
     needs:
       - build-release-linux-x86_64
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -5064,14 +5154,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5132,14 +5224,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5200,14 +5294,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5268,14 +5364,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5336,14 +5434,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5485,7 +5585,7 @@ jobs:
     name: test integration debug linux-aarch64
     needs:
       - build-debug-linux-aarch64
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
       run:
@@ -5506,14 +5606,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5556,7 +5658,7 @@ jobs:
     name: test specs debug linux-aarch64
     needs:
       - build-debug-linux-aarch64
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
       run:
@@ -5577,14 +5679,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5627,7 +5731,7 @@ jobs:
     name: test unit debug linux-aarch64
     needs:
       - build-debug-linux-aarch64
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
       run:
@@ -5648,14 +5752,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5698,7 +5804,7 @@ jobs:
     name: test unit_node debug linux-aarch64
     needs:
       - build-debug-linux-aarch64
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
       run:
@@ -5719,14 +5825,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -5769,7 +5877,7 @@ jobs:
     name: test node_compat debug linux-aarch64
     needs:
       - build-debug-linux-aarch64
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     defaults:
       run:
@@ -5790,14 +5898,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -6128,7 +6238,7 @@ jobs:
     name: test integration release linux-aarch64
     needs:
       - build-release-linux-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -6149,14 +6259,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6197,7 +6309,7 @@ jobs:
     name: test specs release linux-aarch64
     needs:
       - build-release-linux-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -6218,14 +6330,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6266,7 +6380,7 @@ jobs:
     name: test unit release linux-aarch64
     needs:
       - build-release-linux-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -6287,14 +6401,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6335,7 +6451,7 @@ jobs:
     name: test unit_node release linux-aarch64
     needs:
       - build-release-linux-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -6356,14 +6472,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6404,7 +6522,7 @@ jobs:
     name: test node_compat release linux-aarch64
     needs:
       - build-release-linux-aarch64
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     timeout-minutes: 240
     defaults:
       run:
@@ -6425,14 +6543,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/node_compat/runner/suite
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           node-version: 22
-      - name: Clone submodule ./tests/node_compat/runner/suite
+      - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - uses: actions/download-artifact@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
@@ -6560,7 +6680,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
-    name: 'libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
+    name: 'test libs ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'

@@ -20,7 +20,8 @@ const cacheVersion = 94;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
+const ubuntuARMXlRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
+const ubuntuARMRunner = "ubuntu-24.04-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
@@ -48,11 +49,13 @@ const Runners = {
     os: "linux",
     arch: "x86_64",
     runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner),
+    testRunner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
     arch: "aarch64",
-    runner: ubuntuARMRunner,
+    runner: ubuntuARMXlRunner,
+    testRunner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -70,6 +73,7 @@ const Runners = {
     // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
     runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
       .else(macosArmRunner),
+    testRunner: macosArmRunner,
   },
   windowsX86: {
     os: "windows",
@@ -80,6 +84,7 @@ const Runners = {
     os: "windows",
     arch: "x86_64",
     runner: isDenoland.then(windowsX86XlRunner).else(windowsX86Runner),
+    testRunner: windowsX86Runner,
   },
   windowsArm: {
     os: "windows",
@@ -194,6 +199,7 @@ function handleBuildItems(items: {
   os: "linux" | "macos" | "windows";
   arch: "x86_64" | "aarch64";
   runner: string | ExpressionValue;
+  testRunner?: string | ExpressionValue;
   profile: string;
   use_sysroot?: boolean;
   wpt?: Condition | boolean;
@@ -217,6 +223,9 @@ function handleBuildItems(items: {
       return {
         ...defaultValues,
         ...rest,
+        testRunner: shouldSkip.then(ubuntuX86Runner).else(
+          rest.testRunner ?? rest.runner,
+        ),
         runner: shouldSkip.then(ubuntuX86Runner).else(rest.runner),
         skip: shouldSkip,
         // do not save the cache on main if it won't be used by prs most of the time
@@ -904,14 +913,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       {
         name: jobNameForJob(`test ${testCrate.name}`),
         needs: [buildJob],
-        runsOn: buildItem.runner,
+        runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
         defaults,
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
           cloneRepoStep,
-          installNodeStep,
           cloneSubmodule("./tests/node_compat/runner/suite"),
+          installNodeStep,
+          installRustStep,
           denoArtifact.download(),
           denortArtifact.download(),
           {
@@ -978,7 +988,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       {
         name: jobNameForJob("wpt"),
         needs: [buildJob],
-        runsOn: buildItem.runner,
+        runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
         defaults,
         env,
@@ -1205,7 +1215,7 @@ const libsMatrix = defineMatrix({
 });
 
 const libsJob = job("libs", {
-  name: `libs ${libsMatrix.profile} ${libsMatrix.os}-${libsMatrix.arch}`,
+  name: `test libs ${libsMatrix.profile} ${libsMatrix.os}-${libsMatrix.arch}`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true"),
   runsOn: libsMatrix.runner,
