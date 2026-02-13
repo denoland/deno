@@ -14,7 +14,6 @@ use std::process::Stdio;
 use std::time::SystemTime;
 
 use anyhow::Error as AnyError;
-use serde_json;
 use serde_json::Value;
 use test_util::PathRef;
 

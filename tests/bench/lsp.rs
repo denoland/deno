@@ -6,7 +6,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json;
 use serde_json::Value;
 use serde_json::json;
 use test_util::PathRef;
@@ -80,7 +79,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
   let mut requests: Vec<tower_lsp::jsonrpc::Request> =
     serde_json::from_slice(FIXTURE_DECO_APPS).unwrap();
   let apps =
-    test_util::root_path().join("cli/bench/testdata/lsp_benchdata/apps");
+    test_util::root_path().join("tests/bench/testdata/lsp_benchdata/apps");
 
   // it's a bit wasteful to do this for every run, but it's the easiest with the way things
   // are currently structured
