@@ -503,7 +503,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       name:
         `${buildItem.job} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true").and(
+        buildItem.skip.not(),
+      ),
       runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
@@ -517,14 +519,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           // Windows, so we set bash as the default shell
           shell: "bash",
         },
-      },
-      strategy: {
-        // Always run main branch builds to completion. This allows the cache to
-        // stay mostly up-to-date in situations where a single job fails due to
-        // e.g. a flaky test.
-        // Don't fast-fail on tag build because publishing binaries shouldn't be
-        // prevented if any of the stages fail (which can be a false negative).
-        failFast: isPr.or(isMainBranch.not().and(isTag.not())),
       },
       env: {
         CARGO_TERM_COLOR: "always",
@@ -1047,7 +1041,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
         );
 
-        return step.if(buildItem.skip.not())(
+        return step(
           cloneRepoStep,
           cloneStdSubmodule,
           // ensure this happens right after cloning
