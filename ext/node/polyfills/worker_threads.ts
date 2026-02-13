@@ -97,15 +97,21 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
 
-interface WorkerStderrMsg {
-  type: "WORKER_STDERR";
+interface WorkerStdioMsg {
+  type: "WORKER_STDERR" | "WORKER_STDOUT";
   data: string;
 }
 
-function isWorkerStderrMsg(data: unknown): data is WorkerStderrMsg {
+function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
   return typeof data === "object" && data !== null &&
     ObjectHasOwn(data, "type") &&
     (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
 }
 
 // Flags that are valid Node.js environment flags but not allowed in workers
@@ -176,6 +182,10 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout: EventEmitter = new EventEmitter();
   // https://nodejs.org/api/worker_threads.html#workerstderr
   stderr: EventEmitter = new EventEmitter();
 
@@ -471,6 +481,8 @@ class NodeWorker extends EventEmitter {
       ) {
         this.#workerOnline = true;
         this.emit("online");
+      } else if (isWorkerStdoutMsg(message)) {
+        this.stdout.emit("data", message.data);
       } else if (isWorkerStderrMsg(message)) {
         this.stderr.emit("data", message.data);
       } else {
@@ -713,6 +725,26 @@ internals.__initWorkerThreads = (
             }
           }
         }
+
+        // Forward stdout writes to the parent so worker.stdout
+        // is readable from the host side.
+        const origStdoutWrite = FunctionPrototypeBind(
+          process.stdout.write,
+          process.stdout,
+        );
+        process.stdout.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDOUT",
+            data: typeof chunk === "string" ? chunk : String(chunk),
+          });
+          return FunctionPrototypeCall(
+            origStdoutWrite,
+            process.stdout,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
 
         // Forward stderr writes to the parent so worker.stderr
         // is readable from the host side.
