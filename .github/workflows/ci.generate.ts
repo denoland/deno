@@ -1015,7 +1015,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       .or(isMacos.and(buildItem.arch.equals("arm64")))
       .or(isWindows.and(buildItem.arch.equals("X86_64"))),
   );
-  if (!libsCondition.isAlwaysFalse()) {
+  if (libsCondition.isPossiblyTrue()) {
     job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
       needs: [buildJob],
@@ -1079,7 +1079,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     });
   }
 
-  if (!buildItem.wpt.isAlwaysFalse()) {
+  if (buildItem.wpt.isPossiblyTrue()) {
     additionalJobs.push(job(
       jobIdForJob("wpt"),
       {
@@ -1168,7 +1168,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const benchCondition = isLinux.and(isRelease).and(
     buildItem.arch.equals("X86_64"),
   );
-  if (!benchCondition.isAlwaysFalse()) {
+  if (benchCondition.isPossiblyTrue()) {
     additionalJobs.push(job(
       jobIdForJob("bench"),
       {
