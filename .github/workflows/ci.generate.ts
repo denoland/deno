@@ -298,17 +298,32 @@ function createCargoCacheHomeStep(m: {
   });
 }
 
+const seenCachePrefixes: string[] = [];
+
 // factory for cache steps parameterized by os/arch/profile/job
 // works with both defineExprObj (inline values) and defineMatrix (matrix expressions)
 function createCacheSteps(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
   profile: ExpressionValue;
-  job: string;
+  cachePrefix: string;
 }) {
+  // ensure the cache prefixes don't start with one another
+  if (!seenCachePrefixes.includes(m.cachePrefix)) {
+    for (const prefix of seenCachePrefixes) {
+      if (
+        prefix.startsWith(m.cachePrefix) || m.cachePrefix.startsWith(prefix)
+      ) {
+        throw new Error(
+          `Cache prefixes cannot start with one another or they will be accidentally used: ${prefix} -- ${m.cachePrefix}`,
+        );
+      }
+    }
+    seenCachePrefixes.push(m.cachePrefix);
+  }
   const cacheCargoHomeStep = createCargoCacheHomeStep(m);
   const cacheKeyPrefix =
-    `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
+    `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}-`;
   const restoreCacheBuildOutputStep = step.if(isMainBranch.not().and(isNotTag))(
     {
       name: "Restore cache build output (PR)",
@@ -604,7 +619,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           saveCacheBuildOutputStep,
         } = createCacheSteps({
           ...buildItem,
-          job: "build",
+          cachePrefix: "build-main",
         });
         const cargoBuildCacheStep = step
           .dependsOn(cacheCargoHomeStep, installRustStep)(
@@ -952,7 +967,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       saveCacheBuildOutputStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "test",
+      cachePrefix: "test-integration",
     });
     const testCrateNameExpr = testMatrix.test_crate;
     additionalJobs.push(job(
@@ -1075,7 +1090,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       saveCacheBuildOutputStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "test-libs",
+      cachePrefix: "test-libs",
     });
     additionalJobs.push(job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
@@ -1112,7 +1127,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       saveCacheBuildOutputStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "build-libs",
+      cachePrefix: "build-libs",
     });
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
@@ -1359,7 +1374,7 @@ const lintJob = job("lint", {
       saveCacheBuildOutputStep,
     } = createCacheSteps({
       ...lintMatrix,
-      job: "lint",
+      cachePrefix: "lint",
     });
     return step(
       cloneRepoStep,
