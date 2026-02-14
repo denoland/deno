@@ -1020,7 +1020,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
+            run:
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {

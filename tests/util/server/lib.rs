@@ -3,11 +3,10 @@
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
-use tokio::net::TcpStream;
-
 // re-export test_util so server source files can use crate::PathRef,
 // crate::testdata_path, crate::consts::*, etc. without changes
 pub use test_util::*;
+use tokio::net::TcpStream;
 
 pub mod https;
 pub mod npm;
@@ -65,8 +64,7 @@ impl TestContextServerExt for test_util::TestContext {
       format!("{:x}", hasher.finalize())
     }
 
-    let url =
-      url::Url::parse(self.envs().get("JSR_URL").unwrap()).unwrap();
+    let url = url::Url::parse(self.envs().get("JSR_URL").unwrap()).unwrap();
     let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
     let bytes = sync_fetch(url);
     get_checksum(&bytes)

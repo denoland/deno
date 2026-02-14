@@ -22,13 +22,12 @@ use crate::println;
 use crate::testdata_path;
 
 #[cfg(feature = "lsp")]
-pub fn url_to_uri(
-  url: &Url,
-) -> Result<lsp_types::Uri, anyhow::Error> {
+pub fn url_to_uri(url: &Url) -> Result<lsp_types::Uri, anyhow::Error> {
   use std::str::FromStr;
+
   use url::Position;
-  let uri_before_path =
-    lsp_types::Uri::from_str(&url[..Position::BeforePath]).map_err(|err| {
+  let uri_before_path = lsp_types::Uri::from_str(&url[..Position::BeforePath])
+    .map_err(|err| {
       anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
     })?;
   let mut encoded_path =

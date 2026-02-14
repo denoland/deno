@@ -194,10 +194,7 @@ pub fn npm_registry_unset_url() -> String {
 }
 
 pub fn npm_jsr_registry_url() -> String {
-  format!(
-    "http://localhost:{}/",
-    consts::PUBLIC_NPM_JSR_REGISTRY_PORT
-  )
+  format!("http://localhost:{}/", consts::PUBLIC_NPM_JSR_REGISTRY_PORT)
 }
 
 pub fn npm_jsr_registry_unset_url() -> String {

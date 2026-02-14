@@ -1524,10 +1524,8 @@ pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
     crate::consts::TSGO_PLATFORM
   );
 
-  let url = format!(
-    "{}/{archive_name}",
-    crate::consts::tsgo::DOWNLOAD_BASE_URL
-  );
+  let url =
+    format!("{}/{archive_name}", crate::consts::tsgo::DOWNLOAD_BASE_URL);
 
   let response = reqwest::get(url).await?;
   let bytes = response.bytes().await?;
