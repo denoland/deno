@@ -29,6 +29,7 @@ cbc.workspace = true
 const-oid.workspace = true
 ctr.workspace = true
 data-encoding.workspace = true
+deno_ast.workspace = true
 deno_core.workspace = true
 deno_crypto_provider.workspace = true
 deno_error.workspace = true

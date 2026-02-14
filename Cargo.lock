@@ -2491,6 +2491,7 @@ dependencies = [
  "const-oid",
  "ctr",
  "data-encoding",
+ "deno_ast",
  "deno_core",
  "deno_crypto_provider",
  "deno_error",
