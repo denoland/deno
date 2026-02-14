@@ -524,6 +524,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
+name = "bench_tests"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "bencher",
+ "chrono",
+ "deno_tower_lsp",
+ "lazy-regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "test_server",
+ "tokio",
+ "walkdir",
+]
+
+[[package]]
 name = "bencher"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -980,52 +997,6 @@ name = "clap_lex"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
-
-[[package]]
-name = "cli_tests"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bencher",
- "bytes",
- "chrono",
- "deno_cache_dir",
- "deno_lockfile",
- "deno_semver",
- "deno_terminal",
- "deno_tower_lsp",
- "deno_unsync",
- "fastwebsockets",
- "file_test_runner",
- "hickory-proto",
- "hickory-server",
- "http 1.1.0",
- "http-body-util",
- "hyper 1.6.0",
- "hyper-util",
- "jsonc-parser 0.28.0",
- "lazy-regex",
- "nix 0.27.1",
- "once_cell",
- "os_pipe",
- "pretty_assertions",
- "regex",
- "reqwest",
- "rustls",
- "rustls-pemfile",
- "rustls-tokio-stream",
- "serde",
- "serde_json",
- "sys_traits",
- "tempfile",
- "test_server",
- "tokio",
- "url",
- "uuid",
- "walkdir",
- "zeromq 0.4.1",
-]
 
 [[package]]
 name = "clipboard-win"
@@ -5668,6 +5639,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "integration_tests"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "deno_cache_dir",
+ "deno_lockfile",
+ "deno_semver",
+ "deno_tower_lsp",
+ "deno_unsync",
+ "fastwebsockets",
+ "file_test_runner",
+ "hickory-proto",
+ "hickory-server",
+ "http 1.1.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "lazy-regex",
+ "nix 0.27.1",
+ "os_pipe",
+ "pretty_assertions",
+ "regex",
+ "reqwest",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-tokio-stream",
+ "serde",
+ "serde_json",
+ "sys_traits",
+ "tempfile",
+ "test_server",
+ "tokio",
+ "url",
+ "uuid",
+ "walkdir",
+ "zeromq 0.4.1",
+]
+
+[[package]]
 name = "inventory"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6561,6 +6574,20 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "node_compat_tests"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "deno_terminal",
+ "file_test_runner",
+ "jsonc-parser 0.28.0",
+ "regex",
+ "serde",
+ "serde_json",
+ "test_server",
 ]
 
 [[package]]
@@ -8893,6 +8920,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "specs_tests"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "file_test_runner",
+ "serde",
+ "serde_json",
+ "test_server",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10338,6 +10376,14 @@ name = "unicode_categories"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
+
+[[package]]
+name = "unit_node_tests"
+version = "0.0.0"
+dependencies = [
+ "file_test_runner",
+ "test_server",
+]
 
 [[package]]
 name = "unit_tests"

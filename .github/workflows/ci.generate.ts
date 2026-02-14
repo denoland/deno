@@ -1290,7 +1290,7 @@ const benchJob = job(
         },
         {
           name: "Run benchmarks",
-          run: "cargo bench -p cli_tests --bench deno_bench --locked",
+          run: "cargo bench -p bench_tests --bench deno_bench --locked",
         },
         {
           name: "Post benchmarks",
@@ -1566,7 +1566,7 @@ function ensureNoIntegrationTests(
       }. ` +
         `Integration tests in these crates won't run on CI because we build ` +
         `binaries on one runner then test on another. ` +
-        `Move them to spec tests, the main cli_tests crate, or use #[cfg(test)] lib tests instead.`,
+        `Move them to spec tests, the test crates in tests/, or use #[cfg(test)] lib tests instead.`,
     );
   }
 }
