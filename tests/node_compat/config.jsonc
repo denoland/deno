@@ -1589,6 +1589,7 @@
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
+    "parallel/test-worker-unref-from-message-during-exit.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
     "parallel/test-worker.mjs": {},
