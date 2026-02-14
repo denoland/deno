@@ -11,7 +11,7 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.15";
+} from "jsr:@david/gagen@0.2.16";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version

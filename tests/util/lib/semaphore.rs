@@ -51,6 +51,10 @@ impl Semaphore {
     Permit(self)
   }
 
+  pub fn get_max(&self) -> usize {
+    self.permits.lock().max
+  }
+
   pub fn set_max(&self, n: usize) {
     let mut permits = self.permits.lock();
     let is_greater = n > permits.max;
