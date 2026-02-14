@@ -10,7 +10,6 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
-  literal,
   step,
 } from "jsr:@david/gagen@0.2.15";
 
