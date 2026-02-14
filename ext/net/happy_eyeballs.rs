@@ -285,14 +285,10 @@ mod tests {
     assert_eq!(result.attempted_addresses, vec![addr]);
   }
 
-  /// Returns a socket address that will refuse connections.
-  /// Note: There's a small race window where another process could bind
-  /// to this port, but it's acceptable for test purposes.
+  /// Returns a socket address that deterministically refuses connections.
+  /// Port 0 is not a valid destination port for TCP connects.
   async fn get_refusing_addr() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    drop(listener);
-    addr
+    "127.0.0.1:0".parse().unwrap()
   }
 
   #[tokio::test]
