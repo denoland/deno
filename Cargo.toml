@@ -309,7 +309,7 @@ opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_
 opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
 
 # canvas
-image = { version = "0.25.4", default-features = false }
+image = { version = "0.25.9", default-features = false }
 lcms2 = "6.1.0"
 
 # cli
@@ -417,6 +417,10 @@ win32job = "=2.0.3"
 winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
+
+[patch.crates-io]
+image = { git = "https://github.com/Hajime-san/image.git", branch = "fix-avif-brand" }
+libsui = { git = "https://github.com/Hajime-san/sui.git", branch = "fix-image" }
 
 [profile.release]
 codegen-units = 1
