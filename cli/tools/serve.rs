@@ -43,14 +43,14 @@ pub async fn serve(
   }
 
   // Set DENO_SERVE_ADDRESS if --unix-socket is provided
-  if let Some(ref socket_path) = serve_flags.unix_socket {
+  if let Some(ref _socket_path) = serve_flags.unix_socket {
     #[cfg(windows)]
     bail!("The `--unix-socket` flag is not available on Windows");
 
     #[cfg(not(windows))]
     // SAFETY: We're doing this before any threads are created.
     unsafe {
-      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", socket_path))
+      std::env::set_var("DENO_SERVE_ADDRESS", format!("unix:{}", _socket_path))
     };
   }
 
@@ -202,7 +202,7 @@ async fn serve_with_watch(
       let unix_socket = unix_socket.clone();
       Ok(async move {
         // Set DENO_SERVE_ADDRESS if --unix-socket is provided
-        if let Some(ref socket_path) = unix_socket {
+        if let Some(ref _socket_path) = unix_socket {
           #[cfg(windows)]
           bail!("The `--unix-socket` flag is not available on Windows");
 
@@ -211,7 +211,7 @@ async fn serve_with_watch(
           unsafe {
             std::env::set_var(
               "DENO_SERVE_ADDRESS",
-              format!("unix:{}", socket_path),
+              format!("unix:{}", _socket_path),
             )
           };
         }
