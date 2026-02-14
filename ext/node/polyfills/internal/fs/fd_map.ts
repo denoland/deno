@@ -21,7 +21,11 @@ export function registerFd(fd: number, rid: number): void {
 export function getRid(fd: number): number {
   const rid = MapPrototypeGet(fdMap, fd);
   if (rid !== undefined) {
-    return rid;
+    // Verify the resource still exists - it might have been closed.
+    // For fd 0, 1, 2 (stdio), the rid equals fd and they're always valid.
+    if (fd <= 2) {
+      return rid;
+    }
   }
   // The FD is not in the map. This can happen when a raw OS file descriptor
   // is received from another thread (e.g. via worker_threads postMessage).
