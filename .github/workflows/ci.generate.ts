@@ -1413,6 +1413,28 @@ const publishCanaryJob = job("publish-canary", {
   })(),
 });
 
+// === ci-ok job (status check gate) ===
+
+const ensureCiSuccessJob = job("ensure-success", {
+  name: "ensure success",
+  needs: [
+    benchJob,
+    ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
+    lintJob,
+  ],
+  if: conditions.status.always(),
+  runsOn: "ubuntu-latest",
+  steps: step({
+    name: "Ensure CI success",
+    run: [
+      "if [[ \"${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}\" == \"true\" ]]; then",
+      "  echo 'CI failed'",
+      "  exit 1",
+      "fi",
+    ],
+  }),
+});
+
 // === generate workflow ===
 
 const workflow = createWorkflow({
@@ -1447,6 +1469,7 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    ensureCiSuccessJob,
     publishCanaryJob,
   ],
 });
