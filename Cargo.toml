@@ -52,6 +52,7 @@ members = [
   "runtime/permissions",
   "runtime/subprocess_windows",
   "tests",
+  "tests/unit",
   "tests/bench_util",
   "tests/ffi",
   "tests/napi",

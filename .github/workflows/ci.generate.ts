@@ -93,9 +93,12 @@ const Runners = {
   },
 } as const;
 
+// discover test crates first so we know which workspace members are test packages
+const { testCrates, testPackageMembers } = resolveTestCrateTests();
 // discover workspace members for the libs test job, split by type
-const { binCrates, libCrates } = resolveWorkspaceCrates();
-const testCrates = resolveTestCrateTests();
+const { binCrates, libCrates } = resolveWorkspaceCrates(
+  testPackageMembers,
+);
 
 const prCachePath = [
   // this must match for save and restore (https://github.com/actions/cache/issues/1444)
@@ -938,7 +941,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   {
     const testMatrix = defineMatrix({
-      include: testCrates.map((tc) => ({ test_crate: tc.name })),
+      include: testCrates.map((tc) => ({
+        test_crate: tc.name,
+        test_package: tc.package,
+      })),
     });
     const {
       cacheCargoHomeStep,
@@ -1014,7 +1020,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p cli_tests --test ${testMatrix.test_crate}`,
+            run: `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -1023,7 +1029,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               isDenoland.or(buildItem.use_sysroot),
             ),
             run:
-              `cargo test -p cli_tests --test ${testMatrix.test_crate} --release`,
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
           },
           {
             name: "Ensure no git changes",
@@ -1467,15 +1473,40 @@ if (import.meta.main) {
 }
 
 function resolveTestCrateTests() {
-  const cargoToml = parseToml(
-    Deno.readTextFileSync(
-      new URL("../../tests/Cargo.toml", import.meta.url),
-    ),
-  ) as { test?: { name: string; path: string }[] };
-  return cargoToml.test ?? [];
+  const rootCargoToml = parseToml(
+    Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+  ) as { workspace: { members: string[] } };
+
+  const testCrates: { name: string; package: string }[] = [];
+  const testPackageMembers = new Set<string>();
+
+  for (const member of rootCargoToml.workspace.members) {
+    if (!member.startsWith("tests")) continue;
+    const cargoToml = parseToml(
+      Deno.readTextFileSync(
+        new URL(`../../${member}/Cargo.toml`, import.meta.url),
+      ),
+    ) as {
+      package: { name: string; autotests?: boolean };
+      test?: { name: string; path: string }[];
+    };
+    // only include crates that explicitly disable auto-test discovery,
+    // indicating they are intentional test packages (not helper libraries
+    // like tests/ffi or tests/util/server)
+    if (cargoToml.package.autotests !== false) continue;
+    const tests = cargoToml.test ?? [];
+    if (tests.length > 0) {
+      testPackageMembers.add(member);
+      for (const test of tests) {
+        testCrates.push({ name: test.name, package: cargoToml.package.name });
+      }
+    }
+  }
+
+  return { testCrates, testPackageMembers };
 }
 
-function resolveWorkspaceCrates() {
+function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
   // discover workspace members for the libs test job, split by type
   const rootCargoToml = parseToml(
     Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
@@ -1495,7 +1526,7 @@ function resolveWorkspaceCrates() {
     };
 
     if (member.startsWith("tests")) {
-      if (!member.endsWith("tests")) {
+      if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
     } else if (cargoToml.bin) {
