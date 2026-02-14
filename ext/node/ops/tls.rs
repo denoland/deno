@@ -30,6 +30,8 @@ use deno_net::UnsafelyIgnoreCertificateErrors;
 use deno_net::ops::NetError;
 use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
+use deno_node_crypto::x509::Certificate;
+use deno_node_crypto::x509::CertificateObject;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -42,9 +44,6 @@ use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
 use webpki_root_certs;
-
-use super::crypto::x509::Certificate;
-use super::crypto::x509::CertificateObject;
 
 #[derive(Clone)]
 struct NodeTlsState {

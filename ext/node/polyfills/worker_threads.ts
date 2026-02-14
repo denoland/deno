@@ -59,9 +59,13 @@ const {
   PromiseReject,
   PromiseResolve,
   SafeMap,
+  SafeRegExp,
   SafeSet,
   SafeWeakMap,
   String,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
@@ -92,6 +96,36 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     ObjectHasOwn(data, "type") &&
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
+
+interface WorkerStderrMsg {
+  type: "WORKER_STDERR";
+  data: string;
+}
+
+function isWorkerStderrMsg(data: unknown): data is WorkerStderrMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+// Flags that are valid Node.js environment flags but not allowed in workers
+// because they affect per-process state.
+const workerDisallowedFlags = new SafeSet([
+  "--title",
+  "--redirect-warnings",
+  "--trace-event-file-pattern",
+  "--trace-event-categories",
+  "--trace-events-enabled",
+  "--diagnostic-dir",
+  "--report-signal",
+  "--report-filename",
+  "--report-dir",
+  "--report-directory",
+  "--report-compact",
+  "--report-on-signal",
+  "--report-on-fatalerror",
+  "--report-uncaught-exception",
+]);
 
 export interface WorkerOptions {
   // only for typings
@@ -142,6 +176,8 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
+  // https://nodejs.org/api/worker_threads.html#workerstderr
+  stderr: EventEmitter = new EventEmitter();
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -149,17 +185,54 @@ class NodeWorker extends EventEmitter {
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
       if (options.execArgv.length > 0) {
-        throw new ERR_WORKER_INVALID_EXEC_ARGV(options.execArgv);
+        const invalidFlags = [];
+        for (let i = 0; i < options.execArgv.length; i++) {
+          const flag = options.execArgv[i];
+          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+            invalidFlags[invalidFlags.length] = flag;
+            continue;
+          }
+          const eqIdx = StringPrototypeIndexOf(flag, "=");
+          const flagName = eqIdx === -1
+            ? flag
+            : StringPrototypeSlice(flag, 0, eqIdx);
+          if (workerDisallowedFlags.has(flagName)) {
+            invalidFlags[invalidFlags.length] = flag;
+          }
+        }
+        if (invalidFlags.length > 0) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(invalidFlags);
+        }
       }
     }
 
     if (options?.env) {
       const nodeOptions = options.env.NODE_OPTIONS;
       if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
-        throw new ERR_WORKER_INVALID_EXEC_ARGV(
-          [nodeOptions],
-          "invalid NODE_OPTIONS env variable",
+        // Parse NODE_OPTIONS and validate each flag
+        const parts = StringPrototypeSplit(
+          StringPrototypeTrim(nodeOptions),
+          new SafeRegExp("\\s+"),
         );
+        let hasInvalid = false;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (StringPrototypeStartsWith(part, "-")) {
+            if (
+              !process.allowedNodeEnvironmentFlags.has(part) ||
+              workerDisallowedFlags.has(part)
+            ) {
+              hasInvalid = true;
+              break;
+            }
+          }
+        }
+        if (hasInvalid) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(
+            [nodeOptions],
+            "invalid NODE_OPTIONS env variable",
+          );
+        }
       }
     }
 
@@ -243,6 +316,7 @@ class NodeWorker extends EventEmitter {
       environmentData: environmentData,
       env: env_,
       argv: argv_,
+      execArgv: options?.execArgv ?? [],
       name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
@@ -346,7 +420,7 @@ class NodeWorker extends EventEmitter {
           }
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 1);
+            this.emit("exit", data.exitCode ?? 1);
           }
           return;
         }
@@ -397,6 +471,8 @@ class NodeWorker extends EventEmitter {
       ) {
         this.#workerOnline = true;
         this.emit("online");
+      } else if (isWorkerStderrMsg(message)) {
+        this.stderr.emit("data", message.data);
       } else {
         this.emit("message", message);
       }
@@ -627,6 +703,36 @@ internals.__initWorkerThreads = (
             process.argv[i + 2] = metadata.argv[i];
           }
         }
+
+        // Set process.execArgv for worker threads.
+        if (metadata.execArgv) {
+          process.execArgv = metadata.execArgv;
+          for (let i = 0; i < metadata.execArgv.length; i++) {
+            if (metadata.execArgv[i] === "--trace-warnings") {
+              process.traceProcessWarnings = true;
+            }
+          }
+        }
+
+        // Forward stderr writes to the parent so worker.stderr
+        // is readable from the host side.
+        const origStderrWrite = FunctionPrototypeBind(
+          process.stderr.write,
+          process.stderr,
+        );
+        process.stderr.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDERR",
+            data: typeof chunk === "string" ? chunk : String(chunk),
+          });
+          return FunctionPrototypeCall(
+            origStderrWrite,
+            process.stderr,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
       }
     }
     defaultExport.workerData = workerData;

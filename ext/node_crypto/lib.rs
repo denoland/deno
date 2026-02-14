@@ -1,4 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+
 use std::future::Future;
 use std::rc::Rc;
 
@@ -33,16 +37,127 @@ use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 
 pub mod cipher;
-mod dh;
+pub(crate) mod dh;
 pub mod digest;
 pub mod keys;
-mod md5_sha1;
-mod pkcs3;
-mod primes;
+pub(crate) mod md5_sha1;
+pub(crate) mod pkcs3;
+pub(crate) mod primes;
 pub mod sign;
 pub mod x509;
 
 use self::digest::match_fixed_digest_with_eager_block_buffer;
+
+deno_core::extension!(
+  deno_node_crypto,
+  ops = [
+    op_node_check_prime_async,
+    op_node_check_prime_bytes_async,
+    op_node_check_prime_bytes,
+    op_node_check_prime,
+    op_node_cipheriv_encrypt,
+    op_node_cipheriv_final,
+    op_node_cipheriv_set_aad,
+    op_node_cipheriv_take,
+    op_node_create_cipheriv,
+    op_node_create_decipheriv,
+    op_node_create_hash,
+    op_node_decipheriv_decrypt,
+    op_node_decipheriv_final,
+    op_node_decipheriv_set_aad,
+    op_node_decipheriv_auth_tag,
+    op_node_dh_compute_secret,
+    op_node_diffie_hellman,
+    op_node_ecdh_compute_public_key,
+    op_node_ecdh_compute_secret,
+    op_node_ecdh_encode_pubkey,
+    op_node_ecdh_generate_keys,
+    op_node_fill_random_async,
+    op_node_fill_random,
+    op_node_gen_prime_async,
+    op_node_gen_prime,
+    op_node_get_hash_size,
+    op_node_get_hashes,
+    op_node_hash_clone,
+    op_node_hash_digest_hex,
+    op_node_hash_digest,
+    op_node_hash_update_str,
+    op_node_hash_update,
+    op_node_hkdf_async,
+    op_node_hkdf,
+    op_node_pbkdf2_async,
+    op_node_pbkdf2,
+    op_node_pbkdf2_validate,
+    op_node_private_decrypt,
+    op_node_private_encrypt,
+    op_node_public_encrypt,
+    op_node_random_int,
+    op_node_scrypt_async,
+    op_node_scrypt_sync,
+    op_node_sign,
+    op_node_sign_ed25519,
+    op_node_verify,
+    op_node_verify_ed25519,
+    op_node_verify_spkac,
+    op_node_cert_export_public_key,
+    op_node_cert_export_challenge,
+    keys::op_node_create_private_key,
+    keys::op_node_create_ed_raw,
+    keys::op_node_create_rsa_jwk,
+    keys::op_node_create_ec_jwk,
+    keys::op_node_create_public_key,
+    keys::op_node_create_secret_key,
+    keys::op_node_derive_public_key_from_private_key,
+    keys::op_node_dh_keys_generate_and_export,
+    keys::op_node_export_private_key_der,
+    keys::op_node_export_private_key_jwk,
+    keys::op_node_export_private_key_pem,
+    keys::op_node_export_public_key_der,
+    keys::op_node_export_public_key_pem,
+    keys::op_node_export_public_key_jwk,
+    keys::op_node_export_secret_key_b64url,
+    keys::op_node_export_secret_key,
+    keys::op_node_generate_dh_group_key_async,
+    keys::op_node_generate_dh_group_key,
+    keys::op_node_generate_dh_key_async,
+    keys::op_node_generate_dh_key,
+    keys::op_node_generate_dsa_key_async,
+    keys::op_node_generate_dsa_key,
+    keys::op_node_generate_ec_key_async,
+    keys::op_node_generate_ec_key,
+    keys::op_node_generate_ed25519_key_async,
+    keys::op_node_generate_ed25519_key,
+    keys::op_node_generate_rsa_key_async,
+    keys::op_node_generate_rsa_key,
+    keys::op_node_generate_rsa_pss_key,
+    keys::op_node_generate_rsa_pss_key_async,
+    keys::op_node_generate_secret_key_async,
+    keys::op_node_generate_secret_key,
+    keys::op_node_generate_x25519_key_async,
+    keys::op_node_generate_x25519_key,
+    keys::op_node_get_asymmetric_key_details,
+    keys::op_node_get_asymmetric_key_type,
+    keys::op_node_get_private_key_from_pair,
+    keys::op_node_get_public_key_from_pair,
+    keys::op_node_get_symmetric_key_size,
+    keys::op_node_key_type,
+    x509::op_node_x509_parse,
+    x509::op_node_x509_ca,
+    x509::op_node_x509_check_email,
+    x509::op_node_x509_check_host,
+    x509::op_node_x509_fingerprint,
+    x509::op_node_x509_fingerprint256,
+    x509::op_node_x509_fingerprint512,
+    x509::op_node_x509_get_issuer,
+    x509::op_node_x509_get_subject,
+    x509::op_node_x509_get_valid_from,
+    x509::op_node_x509_get_valid_to,
+    x509::op_node_x509_get_serial_number,
+    x509::op_node_x509_key_usage,
+    x509::op_node_x509_public_key,
+  ],
+  objects = [digest::Hasher,],
+);
 
 #[op2(fast)]
 pub fn op_node_check_prime(

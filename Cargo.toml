@@ -22,6 +22,8 @@ members = [
   "ext/napi/sym",
   "ext/net",
   "ext/node",
+  "ext/node_crypto",
+  "ext/node_sqlite",
   "ext/rt_helper",
   "ext/signals",
   "ext/telemetry",
@@ -105,6 +107,8 @@ deno_kv = { version = "0.139.0", path = "./ext/kv" }
 deno_napi = { version = "0.162.0", path = "./ext/napi" }
 deno_net = { version = "0.223.0", path = "./ext/net" }
 deno_node = { version = "0.169.0", path = "./ext/node" }
+deno_node_crypto = { version = "0.1.0", path = "./ext/node_crypto" }
+deno_node_sqlite = { version = "0.1.0", path = "./ext/node_sqlite" }
 deno_os = { version = "0.48.0", path = "./ext/os" }
 deno_process = { version = "0.46.0", path = "./ext/process" }
 deno_signals = { version = "0.22.0", path = "./ext/signals" }
@@ -183,6 +187,7 @@ fastwebsockets = { version = "^0.8.1", features = ["upgrade", "unstable-split"] 
 file_test_runner = "0.12.1"
 filetime = "0.2.16"
 flate2 = { version = "1.0.30", default-features = false }
+fluent-uri = "0.4.1"
 fqdn = "0.5"
 fs3 = "0.5.0"
 futures = "0.3.31"
@@ -214,7 +219,7 @@ lazy-regex = "3"
 libc = "0.2.168"
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.28", features = ["kv"] }
-lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.5.0"
@@ -277,7 +282,7 @@ tokio-socks = "0.5.1"
 tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
 tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
-tower-lsp = { package = "deno_tower_lsp", version = "=0.4.3", features = ["proposed"] }
+tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"
 tracing-opentelemetry = "0.28.0"
