@@ -87,6 +87,10 @@ function getErrorSourceLocation(
 
     // startColumn from V8 is 1-based, convert to 0-based
     startColumn = typeof startColumn === "number" ? startColumn - 1 : 0;
+
+    // On commonjs modules, the code is wrapped in a function,
+    // which offsets the first line of the module.
+    // TODO(Tango992): This is a workaround, we should find a better way to get the correct source location.
     if (lineNumber === 1 && startColumn > sourceLine.length) {
       startColumn -= Module.wrapper[0].length;
     }
