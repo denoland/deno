@@ -6090,14 +6090,13 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.13.0"
+version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dd268ef2098e102e82c67d9de9076a2f1cef12ae284a7a35635ea30fa2dda9e"
+checksum = "e2b6d6bbf43ba95540d1681826c8d7acb9744708398463ccbcd3c3a5d04c2fdc"
 dependencies = [
  "editpe",
  "image",
  "libc",
- "object",
  "sha2",
  "windows-sys 0.48.0",
  "zerocopy 0.7.32",
@@ -6784,9 +6783,6 @@ version = "0.36.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27b64972346851a39438c60b341ebc01bba47464ae329e55cf343eb93964efd9"
 dependencies = [
- "crc32fast",
- "hashbrown 0.14.5",
- "indexmap 2.9.0",
  "memchr",
 ]
 
