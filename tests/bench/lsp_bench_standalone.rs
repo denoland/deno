@@ -1,10 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_bench_util::bencher::Bencher;
-use deno_bench_util::bencher::benchmark_group;
-use deno_bench_util::bencher::benchmark_main;
-use deno_core::serde_json::Value;
-use deno_core::serde_json::json;
+use bencher::Bencher;
+use bencher::benchmark_group;
+use bencher::benchmark_main;
+use serde_json::Value;
+use serde_json::json;
 use test_util::lsp::LspClientBuilder;
 
 // Intended to match the benchmark in quick-lint-js

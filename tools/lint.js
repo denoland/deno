@@ -61,9 +61,6 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/npm/*",
-    ":!:cli/bench/testdata/express-router.js",
-    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
     ":!:cli/tools/doc/prism.css",
@@ -75,7 +72,10 @@ async function dlint() {
     ":!:runtime/examples/",
     ":!:libs/eszip/testdata/**",
     ":!:target/",
-    ":!:tests/ffi/tests/test.js",
+    ":!:tests/bench/testdata/npm/*",
+    ":!:tests/bench/testdata/express-router.js",
+    ":!:tests/bench/testdata/react-dom.js",
+    ":!:tests/ffi/testdata/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
@@ -382,7 +382,7 @@ async function ensureNoNewTopLevelEntries() {
     throw new Error(
       `New top-level entries detected: ${newEntries.join(", ")}. ` +
         `Only the following top-level entries are allowed: ${
-          allowed.join(", ")
+          Array.from(allowed).join(", ")
         }`,
     );
   }
