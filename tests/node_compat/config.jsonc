@@ -1588,6 +1588,7 @@
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
+    "parallel/test-worker-terminate-null-handler.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
