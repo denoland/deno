@@ -619,16 +619,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
         const preRelease = step(
           {
-            name: "Upload PR artifact (linux)",
-            if: buildItem.use_sysroot.or(isDenoland.and(isMainOrTag)),
-            uses: "actions/upload-artifact@v6",
-            with: {
-              name:
-                `deno-${buildItem.os}-${buildItem.arch}-\${{ github.event.number }}`,
-              path: "target/release/deno",
-            },
-          },
-          {
             name: "Pre-release (linux)",
             if: isLinux.and(isDenoland),
             run: [
@@ -1065,6 +1055,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   const libsCondition = isDebug.and(
+    // aarc64 runner seems faster than x86
     isLinux.and(buildItem.arch.equals("aarch64"))
       .or(isMacos.and(buildItem.arch.equals("aarch64")))
       .or(isWindows.and(buildItem.arch.equals("x86_64"))),

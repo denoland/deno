@@ -388,12 +388,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        with:
-          name: 'deno-macos-x86_64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Install rust-codesign
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -1142,12 +1136,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        with:
-          name: 'deno-macos-aarch64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Install rust-codesign
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -1826,12 +1814,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        with:
-          name: 'deno-windows-x86_64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -2453,12 +2435,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        with:
-          name: 'deno-windows-aarch64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Authenticate with Azure (windows)
         uses: azure/login@v2
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -2920,11 +2896,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        with:
-          name: 'deno-linux-x86_64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Pre-release (linux)
         if: github.repository == 'denoland/deno'
         run: |-
@@ -4450,12 +4421,6 @@ jobs:
           target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
           du -h deno.symcache
           du -h target/release/deno
-      - name: Upload PR artifact (linux)
-        uses: actions/upload-artifact@v6
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        with:
-          name: 'deno-linux-aarch64-${{ github.event.number }}'
-          path: target/release/deno
       - name: Pre-release (linux)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: |-
