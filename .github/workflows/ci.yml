@@ -105,7 +105,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Build debug
@@ -224,6 +224,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-macos-x86_64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -343,7 +348,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -368,7 +373,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Configure canary build
@@ -589,6 +594,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-macos-x86_64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -733,7 +743,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Build debug
@@ -852,6 +862,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-macos-aarch64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -977,6 +992,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-macos-aarch64-debug-test-libs-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1091,7 +1111,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1116,7 +1136,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Configure canary build
@@ -1337,6 +1357,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-macos-aarch64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1473,7 +1498,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Build debug
@@ -1592,6 +1617,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-windows-x86_64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1699,6 +1729,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-windows-x86_64-debug-test-libs-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1769,7 +1804,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1794,7 +1829,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Configure canary build
@@ -2054,6 +2089,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-windows-x86_64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2172,7 +2212,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Build debug
@@ -2291,6 +2331,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-windows-aarch64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2390,7 +2435,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.repository == ''denoland/deno'' || !startsWith(github.ref, ''refs/tags/''))'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2415,7 +2460,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Configure canary build
@@ -2675,6 +2720,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-windows-aarch64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -2774,6 +2824,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2798,7 +2849,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Set up incremental LTO and sysroot build
@@ -3096,6 +3147,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-x86_64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3316,7 +3372,7 @@ jobs:
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -3416,6 +3472,9 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js wrk hyperfine
+      - name: Build library for rlib file sizes
+        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release --lib -p deno
       - name: Run benchmarks
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
         run: cargo bench -p cli_tests --bench deno_bench --locked
@@ -3495,7 +3554,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Set up incremental LTO and sysroot build
@@ -3696,6 +3755,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-x86_64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3896,6 +3960,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-x86_64-debug-build-libs-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install wasm target
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: rustup target add wasm32-unknown-unknown
@@ -3981,7 +4050,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-debug-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Build debug
@@ -4100,6 +4169,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-aarch64-debug-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4219,6 +4293,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-aarch64-debug-test-libs-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4295,7 +4374,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4320,7 +4399,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-release-build-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Set up incremental LTO and sysroot build
@@ -4616,6 +4695,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: 94-cargo-target-linux-aarch64-release-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        with:
+          cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4813,6 +4897,7 @@ jobs:
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Cache Cargo home
         uses: cirruslabs/cache@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4835,6 +4920,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-'
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2

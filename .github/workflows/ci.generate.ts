@@ -11,7 +11,7 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.14";
+} from "jsr:@david/gagen@0.2.15";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -278,6 +278,7 @@ function createCargoCacheHomeStep(m: {
   return step({
     name: "Cache Cargo home",
     uses: "cirruslabs/cache@v4",
+    if: isNotTag,
     with: {
       path: [
         "~/.cargo/.crates.toml",
@@ -305,16 +306,24 @@ function createCacheSteps(m: {
   const cacheCargoHomeStep = createCargoCacheHomeStep(m);
   const cacheKeyPrefix =
     `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
-  const restoreCacheBuildOutputStep = step({
-    name: "Restore cache build output (PR)",
-    uses: "actions/cache/restore@v4",
-    if: isMainBranch.not().and(isNotTag),
-    with: {
-      path: prCachePath,
-      key: "never_saved",
-      "restore-keys": cacheKeyPrefix,
+  const restoreCacheBuildOutputStep = step.if(isMainBranch.not().and(isNotTag))(
+    {
+      name: "Restore cache build output (PR)",
+      uses: "actions/cache/restore@v4",
+      with: {
+        path: prCachePath,
+        key: "never_saved",
+        "restore-keys": cacheKeyPrefix,
+      },
     },
-  });
+    {
+      name: "Apply and update mtime cache",
+      uses: "./.github/mtime_cache",
+      with: {
+        "cache-path": "./target",
+      },
+    },
+  );
   const saveCacheBuildOutputStep = step({
     // in main branch, always create a fresh cache
     name: "Save cache build output (main)",
@@ -597,14 +606,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const cargoBuildCacheStep = step
           .dependsOn(cacheCargoHomeStep, installRustStep)(
             restoreCacheBuildOutputStep,
-            {
-              name: "Apply and update mtime cache",
-              if: isNotTag,
-              uses: "./.github/mtime_cache",
-              with: {
-                "cache-path": "./target",
-              },
-            },
           );
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
@@ -1263,6 +1264,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Install benchmark tools",
               env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
               run: "./tools/install_prebuilt.js wrk hyperfine",
+            },
+            {
+              name: "Build library for rlib file sizes",
+              run: "cargo build --release --lib -p deno",
             },
             {
               name: "Run benchmarks",
