@@ -2,9 +2,12 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -17,6 +20,35 @@ use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
+
+/// Process-wide set of file descriptors opened via node:fs.
+/// Only these fds (plus stdio 0/1/2) are allowed to be dup'd
+/// by `op_node_dup_fd`, preventing access to internal Deno fds
+/// (e.g. SQLite, cache).
+#[derive(Clone, Default)]
+pub struct NodeFsOpenedFds(Arc<RwLock<HashSet<i32>>>);
+
+impl NodeFsOpenedFds {
+  pub fn new() -> Self {
+    Self(Arc::new(RwLock::new(HashSet::new())))
+  }
+
+  pub fn insert(&self, fd: i32) {
+    self.0.write().unwrap().insert(fd);
+  }
+
+  pub fn remove(&self, fd: i32) {
+    self.0.write().unwrap().remove(&fd);
+  }
+
+  /// Returns true if the fd was opened via node:fs or is stdio (0-2).
+  pub fn contains(&self, fd: i32) -> bool {
+    if fd >= 0 && fd <= 2 {
+      return true;
+    }
+    self.0.read().unwrap().contains(&fd)
+  }
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
@@ -116,6 +148,16 @@ pub fn op_node_open_sync(
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
+
+  // Register the OS fd so op_node_dup_fd will allow dup'ing it
+  #[cfg(unix)]
+  {
+    use deno_core::ResourceHandle;
+    if let Ok(ResourceHandle::Fd(fd)) = state.resource_table.get_handle(rid) {
+      state.borrow::<NodeFsOpenedFds>().insert(fd);
+    }
+  }
+
   Ok(rid)
 }
 
@@ -143,12 +185,26 @@ pub async fn op_node_open(
   };
   let file = fs.open_async(path.as_owned(), options).await?;
 
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
+  let rid = {
+    let mut state = state.borrow_mut();
+    let rid = state
+      .resource_table
+      .add(FileResource::new(file, "fsFile".to_string()));
+
+    // Register the OS fd so op_node_dup_fd will allow dup'ing it
+    #[cfg(unix)]
+    {
+      use deno_core::ResourceHandle;
+      if let Ok(ResourceHandle::Fd(fd)) = state.resource_table.get_handle(rid) {
+        state.borrow::<NodeFsOpenedFds>().insert(fd);
+      }
+    }
+
+    rid
+  };
   Ok(rid)
 }
+
 #[derive(Debug, Serialize)]
 pub struct StatFs {
   #[serde(rename = "type")]
@@ -573,4 +629,117 @@ pub fn op_node_file_from_fd(
     std::io::ErrorKind::Unsupported,
     "op_node_file_from_fd is not supported on this platform",
   )))
+}
+
+/// Create a file resource from a raw file descriptor by dup'ing it first.
+/// This is safe for cross-worker use because the dup'd fd is independently
+/// owned and can be closed without affecting the original.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<ResourceId, FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // Only allow dup'ing fds that were opened through node:fs (or stdio).
+  if !state.borrow::<NodeFsOpenedFds>().contains(fd) {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "File descriptor was not opened through node:fs",
+    )));
+  }
+
+  // SAFETY: dup() creates a new fd pointing to the same open file description.
+  let new_fd = unsafe { libc::dup(fd) };
+  if new_fd < 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // Clear O_NONBLOCK flag - the PTY fd might be in non-blocking mode,
+  // but StdFileResourceInner uses spawn_blocking for reads which expects
+  // blocking I/O. We need blocking reads so the read will wait for data.
+  // SAFETY: new_fd is valid, fcntl with F_GETFL/F_SETFL is safe
+  unsafe {
+    let flags = libc::fcntl(new_fd, libc::F_GETFL);
+    if flags >= 0 && (flags & libc::O_NONBLOCK) != 0 {
+      libc::fcntl(new_fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+    }
+  }
+
+  // SAFETY: new_fd is a valid fd we just created via dup().
+  let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  _state: &mut OpState,
+  #[smi] _fd: i32,
+) -> Result<ResourceId, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "op_node_dup_fd is not supported on this platform",
+  )))
+}
+
+/// Retrieves the OS file descriptor for a given resource ID.
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_get_fd(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, FsError> {
+  use deno_core::ResourceHandle;
+  let handle = state.resource_table.get_handle(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "Bad resource ID",
+    ))
+  })?;
+  match handle {
+    ResourceHandle::Fd(fd) => Ok(fd),
+    _ => Err(FsError::Io(std::io::Error::other(
+      "Resource is not a file descriptor",
+    ))),
+  }
+}
+
+/// On non-Unix platforms, return the RID as-is for now.
+#[cfg(not(unix))]
+#[op2(fast)]
+pub fn op_node_get_fd(
+  _state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<i32, FsError> {
+  Ok(rid as i32)
+}
+
+/// Remove an fd from the node:fs allow list when it is closed.
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_unregister_fd(state: &mut OpState, #[smi] fd: i32) {
+  state.borrow::<NodeFsOpenedFds>().remove(fd);
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+pub fn op_node_unregister_fd(_state: &mut OpState, #[smi] _fd: i32) {
+  // no-op on non-unix platforms
 }

@@ -381,6 +381,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   sys: TSys,
   options: LibMainWorkerOptions,
   bundle_provider: Option<Arc<dyn BundleProvider>>,
+  node_fs_opened_fds: deno_runtime::deno_node::ops::fs::NodeFsOpenedFds,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -462,6 +463,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         ),
         permissions: args.permissions,
         bundle_provider: shared.bundle_provider.clone(),
+        node_fs_opened_fds: shared.node_fs_opened_fds.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
       let options = WebWorkerOptions {
@@ -571,6 +573,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         sys,
         options,
         bundle_provider,
+        node_fs_opened_fds: Default::default(),
       }),
     }
   }
@@ -661,6 +664,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       permissions,
       v8_code_cache: shared.code_cache.clone(),
       bundle_provider: shared.bundle_provider.clone(),
+      node_fs_opened_fds: shared.node_fs_opened_fds.clone(),
     };
 
     let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();

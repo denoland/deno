@@ -1,0 +1,4 @@
+node:fs fd >= 3: true
+read via node:fs: hello world
+node:fs close: ok
+unblessed fd rejected: true

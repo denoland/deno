@@ -4,6 +4,7 @@ import { primordials } from "ext:core/mod.js";
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 const {
   Error,
@@ -26,14 +27,14 @@ export function ftruncate(
   if (!callback) throw new Error("No callback function supplied");
 
   PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncate(len),
+    new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).truncate(len),
     () => callback(null),
     callback,
   );
 }
 
 export function ftruncateSync(fd: number, len?: number) {
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncateSync(len);
+  new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).truncateSync(len);
 }
 
 export const ftruncatePromise = promisify(ftruncate) as (
