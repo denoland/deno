@@ -816,18 +816,12 @@ internals.__initWorkerThreads = (
           const stdinHandler = (ev) => {
             const msg = ev.data;
             if (isWorkerStdinMsg(msg)) {
-              FunctionPrototypeCall(
-                Readable.prototype.push,
-                workerStdin,
-                msg.data,
-              );
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(msg.data);
               ev.stopImmediatePropagation();
             } else if (isWorkerStdinEndMsg(msg)) {
-              FunctionPrototypeCall(
-                Readable.prototype.push,
-                workerStdin,
-                null,
-              );
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(null);
               parentPort.removeEventListener("message", stdinHandler);
               ev.stopImmediatePropagation();
             }
