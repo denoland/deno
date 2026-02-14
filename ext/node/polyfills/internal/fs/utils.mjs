@@ -195,7 +195,7 @@ export class Dirent {
   }
 }
 
-export function direntFromDeno(entry) {
+export function direntFromDeno(entry, path) {
   let type;
 
   if (entry.isDirectory) {
@@ -206,7 +206,7 @@ export function direntFromDeno(entry) {
     type = UV_DIRENT_LINK;
   }
 
-  return new Dirent(entry.name, type, entry.parentPath);
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
 }
 
 export class DirentFromStats extends Dirent {
