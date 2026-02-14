@@ -38,6 +38,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import {
   BroadcastChannel as WebBroadcastChannel,
   refBroadcastChannel,
@@ -97,15 +98,21 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
 
-interface WorkerStderrMsg {
-  type: "WORKER_STDERR";
+interface WorkerStdioMsg {
+  type: "WORKER_STDERR" | "WORKER_STDOUT";
   data: string;
 }
 
-function isWorkerStderrMsg(data: unknown): data is WorkerStderrMsg {
+function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
   return typeof data === "object" && data !== null &&
     ObjectHasOwn(data, "type") &&
     (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
 }
 
 // Flags that are valid Node.js environment flags but not allowed in workers
@@ -176,8 +183,12 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout: Readable = new Readable({ read() {} });
   // https://nodejs.org/api/worker_threads.html#workerstderr
-  stderr: EventEmitter = new EventEmitter();
+  stderr: Readable = new Readable({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -188,6 +199,11 @@ class NodeWorker extends EventEmitter {
         const invalidFlags = [];
         for (let i = 0; i < options.execArgv.length; i++) {
           const flag = options.execArgv[i];
+          // Items that don't start with '-' are arguments to the
+          // preceding flag (e.g. "--conditions node"), not flags.
+          if (!StringPrototypeStartsWith(flag, "-")) {
+            continue;
+          }
           if (!process.allowedNodeEnvironmentFlags.has(flag)) {
             invalidFlags[invalidFlags.length] = flag;
             continue;
@@ -392,6 +408,15 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #closeStdio() {
+    if (!this.stdout.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+    }
+    if (!this.stderr.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+    }
+  }
+
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
@@ -408,6 +433,7 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const err = new Error(data.errorMessage ?? data.message);
             if (data.name) {
@@ -431,6 +457,7 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", data ?? 0);
@@ -471,8 +498,18 @@ class NodeWorker extends EventEmitter {
       ) {
         this.#workerOnline = true;
         this.emit("online");
+      } else if (isWorkerStdoutMsg(message)) {
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stdout,
+          message.data,
+        );
       } else if (isWorkerStderrMsg(message)) {
-        this.stderr.emit("data", message.data);
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stderr,
+          message.data,
+        );
       } else {
         this.emit("message", message);
       }
@@ -517,6 +554,7 @@ class NodeWorker extends EventEmitter {
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
+    this.#closeStdio();
 
     if (!this.#exited) {
       this.#exited = true;
@@ -713,6 +751,26 @@ internals.__initWorkerThreads = (
             }
           }
         }
+
+        // Forward stdout writes to the parent so worker.stdout
+        // is readable from the host side.
+        const origStdoutWrite = FunctionPrototypeBind(
+          process.stdout.write,
+          process.stdout,
+        );
+        process.stdout.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDOUT",
+            data: typeof chunk === "string" ? chunk : String(chunk),
+          });
+          return FunctionPrototypeCall(
+            origStdoutWrite,
+            process.stdout,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
 
         // Forward stderr writes to the parent so worker.stderr
         // is readable from the host side.
