@@ -30,6 +30,7 @@ use crate::HttpServerGuard;
 use crate::TempDir;
 use crate::assertions::assert_wildcard_match;
 use crate::assertions::assert_wildcard_match_with_logger;
+use crate::consts::tsgo_prebuilt_path;
 use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
@@ -38,13 +39,13 @@ use crate::eprintln;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::jsr_registry_unset_url;
+#[cfg(feature = "lsp")]
 use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
 use crate::print::spawn_thread;
 use crate::println;
 use crate::pty::Pty;
-use crate::servers::tsgo_prebuilt_path;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::tests_path;
@@ -334,6 +335,7 @@ impl TestContext {
       .current_dir(&self.cwd)
   }
 
+  #[cfg(feature = "lsp")]
   pub fn new_lsp_command(&self) -> LspClientBuilder {
     let mut builder = LspClientBuilder::new_with_dir(self.deno_dir.clone())
       .deno_exe(&self.deno_exe)
@@ -362,39 +364,13 @@ impl TestContext {
       .skip_output_check();
   }
 
-  pub fn get_jsr_package_integrity(&self, sub_path: &str) -> String {
-    fn get_checksum(bytes: &[u8]) -> String {
-      use sha2::Digest;
-      let mut hasher = sha2::Sha256::new();
-      hasher.update(bytes);
-      format!("{:x}", hasher.finalize())
-    }
-
-    let url = url::Url::parse(self.envs.get("JSR_URL").unwrap()).unwrap();
-    let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
-    let bytes = sync_fetch(url);
-    get_checksum(&bytes)
+  pub fn deno_exe(&self) -> &PathRef {
+    &self.deno_exe
   }
-}
 
-fn sync_fetch(url: url::Url) -> bytes::Bytes {
-  std::thread::scope(move |s| {
-    s.spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .unwrap();
-      runtime.block_on(async move {
-        let client = reqwest::Client::new();
-        let response = client.get(url).send().await.unwrap();
-        assert!(response.status().is_success());
-        response.bytes().await.unwrap()
-      })
-    })
-    .join()
-    .unwrap()
-  })
+  pub fn envs(&self) -> &HashMap<String, String> {
+    &self.envs
+  }
 }
 
 /// We can't clone an stdio, so if someone clones a DenoCmd,

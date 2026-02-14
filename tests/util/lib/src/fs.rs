@@ -9,26 +9,26 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use lsp_types::Uri;
 use pretty_assertions::assert_eq;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use url::Position;
 use url::Url;
 
 use crate::assertions::assert_wildcard_match;
-use crate::lsp::SourceFile;
-use crate::lsp::source_file;
 use crate::println;
 use crate::testdata_path;
 
-pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
+#[cfg(feature = "lsp")]
+pub fn url_to_uri(
+  url: &Url,
+) -> Result<lsp_types::Uri, anyhow::Error> {
+  use std::str::FromStr;
+  use url::Position;
   let uri_before_path =
-    Uri::from_str(&url[..Position::BeforePath]).map_err(|err| {
+    lsp_types::Uri::from_str(&url[..Position::BeforePath]).map_err(|err| {
       anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
     })?;
   let mut encoded_path =
@@ -71,9 +71,11 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
   Ok(uri)
 }
 
-pub fn url_to_notebook_cell_uri(url: &Url) -> Uri {
+#[cfg(feature = "lsp")]
+pub fn url_to_notebook_cell_uri(url: &Url) -> lsp_types::Uri {
+  use std::str::FromStr;
   let uri = url_to_uri(url).unwrap();
-  Uri::from_str(&format!(
+  lsp_types::Uri::from_str(&format!(
     "vscode-notebook-cell:{}",
     uri.as_str().strip_prefix("file:").unwrap()
   ))
@@ -124,11 +126,13 @@ impl PathRef {
     Url::from_file_path(self.as_path()).unwrap()
   }
 
-  pub fn uri_dir(&self) -> Uri {
+  #[cfg(feature = "lsp")]
+  pub fn uri_dir(&self) -> lsp_types::Uri {
     url_to_uri(&self.url_dir()).unwrap()
   }
 
-  pub fn uri_file(&self) -> Uri {
+  #[cfg(feature = "lsp")]
+  pub fn uri_file(&self) -> lsp_types::Uri {
     url_to_uri(&self.url_file()).unwrap()
   }
 
@@ -548,7 +552,8 @@ impl TempDir {
     Url::from_directory_path(self.path()).unwrap()
   }
 
-  pub fn uri(&self) -> Uri {
+  #[cfg(feature = "lsp")]
+  pub fn uri(&self) -> lsp_types::Uri {
     url_to_uri(&self.url()).unwrap()
   }
 
@@ -585,13 +590,14 @@ impl TempDir {
     self.target_path().join(path).write(text)
   }
 
+  #[cfg(feature = "lsp")]
   pub fn source_file(
     &self,
     path: impl AsRef<Path>,
     text: impl AsRef<str>,
-  ) -> SourceFile {
+  ) -> crate::lsp::SourceFile {
     let path = self.target_path().join(path);
-    source_file(path, text)
+    crate::lsp::source_file(path, text)
   }
 
   pub fn symlink_dir(

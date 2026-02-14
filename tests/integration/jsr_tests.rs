@@ -7,6 +7,7 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use serde_json::Value;
 use serde_json::json;
+use test_server::TestContextServerExt;
 use test_util as util;
 use url::Url;
 use util::TestContextBuilder;

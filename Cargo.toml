@@ -60,6 +60,7 @@ members = [
   "tests/bench_util",
   "tests/ffi",
   "tests/napi",
+  "tests/util/lib",
   "tests/util/server",
   "tests/util/test_macro",
 ]
@@ -149,7 +150,8 @@ napi_sym = { version = "0.161.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.69.0", path = "./libs/node_resolver" }
 node_shim = { version = "0.6.0", path = "libs/node_shim" }
 test_macro = { path = "./tests/util/test_macro" }
-test_util = { package = "test_server", path = "./tests/util/server" }
+test_server = { path = "./tests/util/server" }
+test_util = { path = "./tests/util/lib" }
 
 deno_tunnel = "0.8.1"
 

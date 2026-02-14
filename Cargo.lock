@@ -535,7 +535,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "test_server",
+ "test_util",
  "tokio",
  "walkdir",
 ]
@@ -1745,7 +1745,7 @@ dependencies = [
  "sys_traits",
  "tar",
  "tempfile",
- "test_server",
+ "test_util",
  "text-size",
  "text_lines",
  "thiserror 2.0.12",
@@ -2717,7 +2717,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sys_traits",
- "test_server",
+ "test_util",
  "thiserror 2.0.12",
  "tokio",
  "twox-hash 2.1.0",
@@ -2900,7 +2900,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sys_traits",
- "test_server",
+ "test_util",
  "thiserror 2.0.12",
  "twox-hash 2.1.0",
  "url",
@@ -2966,7 +2966,7 @@ dependencies = [
  "same-file",
  "serde",
  "sys_traits",
- "test_server",
+ "test_util",
  "thiserror 2.0.12",
  "tokio",
  "tokio-metrics",
@@ -3358,7 +3358,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sys_traits",
- "test_server",
+ "test_util",
  "thiserror 2.0.12",
  "tokio",
  "url",
@@ -4277,12 +4277,6 @@ dependencies = [
  "redox_syscall 0.4.1",
  "windows-sys 0.52.0",
 ]
-
-[[package]]
-name = "fixedbitset"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "fixedbitset"
@@ -5673,6 +5667,7 @@ dependencies = [
  "sys_traits",
  "tempfile",
  "test_server",
+ "test_util",
  "tokio",
  "url",
  "uuid",
@@ -6460,12 +6455,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b52c1b33ff98142aecea13138bd399b68aa7ab5d9546c300988c345004001eea"
 
 [[package]]
-name = "multimap"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
-
-[[package]]
 name = "naga"
 version = "28.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6587,7 +6576,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "test_server",
+ "test_util",
 ]
 
 [[package]]
@@ -7263,21 +7252,11 @@ dependencies = [
 
 [[package]]
 name = "petgraph"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1d3afd2628e69da2be385eb6f2fd57c8ac7977ceeff6dc166ff1657b0e386a9"
-dependencies = [
- "fixedbitset 0.4.2",
- "indexmap 2.9.0",
-]
-
-[[package]]
-name = "petgraph"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
 dependencies = [
- "fixedbitset 0.5.7",
+ "fixedbitset",
  "indexmap 2.9.0",
 ]
 
@@ -7563,27 +7542,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost-build"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c1318b19085f08681016926435853bbf7858f9c082d0999b80550ff5d9abe15"
-dependencies = [
- "bytes",
- "heck 0.5.0",
- "itertools 0.13.0",
- "log",
- "multimap",
- "once_cell",
- "petgraph 0.6.4",
- "prettyplease",
- "prost",
- "prost-types",
- "regex",
- "syn 2.0.87",
- "tempfile",
-]
-
-[[package]]
 name = "prost-derive"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7594,15 +7552,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.87",
-]
-
-[[package]]
-name = "prost-types"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4759aa0d3a6232fb8dbdb97b61de2c20047c68aca932c7ed76da9d788508d670"
-dependencies = [
- "prost",
 ]
 
 [[package]]
@@ -8927,7 +8876,7 @@ dependencies = [
  "file_test_runner",
  "serde",
  "serde_json",
- "test_server",
+ "test_util",
 ]
 
 [[package]]
@@ -9099,7 +9048,7 @@ dependencies = [
  "indexmap 2.9.0",
  "is-macro",
  "once_cell",
- "petgraph 0.7.1",
+ "petgraph",
  "radix_fmt",
  "relative-path",
  "rustc-hash 2.1.1",
@@ -9341,7 +9290,7 @@ dependencies = [
  "indexmap 2.9.0",
  "once_cell",
  "par-core",
- "petgraph 0.7.1",
+ "petgraph",
  "rustc-hash 2.1.1",
  "serde_json",
  "swc_atoms",
@@ -9466,7 +9415,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a42314199595da31f253f6ea4dd3d67e9ed0a5745d0b07dad11de200b4ae9336"
 dependencies = [
  "auto_impl",
- "petgraph 0.7.1",
+ "petgraph",
  "rustc-hash 2.1.1",
  "tracing",
 ]
@@ -9748,22 +9697,46 @@ dependencies = [
  "async-stream",
  "base64 0.22.1",
  "bytes",
- "console_static_text",
- "crossterm",
  "deno_unsync",
  "denokv_proto",
  "faster-hex",
  "fastwebsockets",
- "file_test_runner",
  "flate2",
- "fluent-uri",
  "futures",
- "glob",
  "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
+ "once_cell",
+ "parking_lot",
+ "percent-encoding",
+ "pretty_assertions",
+ "prost",
+ "reqwest",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-tokio-stream",
+ "semver 1.0.25",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "test_util",
+ "tokio",
+ "url",
+ "zip",
+]
+
+[[package]]
+name = "test_util"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_static_text",
+ "crossterm",
+ "file_test_runner",
+ "fluent-uri",
  "indexmap 2.9.0",
  "inventory",
  "jsonc-parser 0.28.0",
@@ -9777,26 +9750,15 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "pretty_assertions",
- "prost",
- "prost-build",
  "regex",
- "reqwest",
- "rustls",
- "rustls-pemfile",
- "rustls-tokio-stream",
- "semver 1.0.25",
  "serde",
  "serde_json",
- "sha2",
- "tar",
  "tempfile",
  "termcolor",
  "test_macro",
- "tokio",
  "url",
  "win32job",
  "winapi",
- "zip",
 ]
 
 [[package]]
@@ -10382,7 +10344,7 @@ name = "unit_node_tests"
 version = "0.0.0"
 dependencies = [
  "file_test_runner",
- "test_server",
+ "test_util",
 ]
 
 [[package]]
@@ -10390,7 +10352,7 @@ name = "unit_tests"
 version = "0.0.0"
 dependencies = [
  "file_test_runner",
- "test_server",
+ "test_util",
 ]
 
 [[package]]

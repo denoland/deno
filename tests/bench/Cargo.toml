@@ -27,7 +27,7 @@ lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-test_util.workspace = true
+test_util = { workspace = true, features = ["lsp"] }
 tokio.workspace = true
 tower-lsp.workspace = true
 walkdir.workspace = true
