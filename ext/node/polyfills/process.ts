@@ -128,6 +128,18 @@ export const exit = (code?: number | string) => {
   // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
   // At this point, we don't have to pass around Node's raw/string exit value.
   process.reallyExit(ProcessExitCode);
+
+  // In a worker, reallyExit() returns because Deno.exit() calls workerClose()
+  // instead of std::process::exit(). But workerClose() already called V8's
+  // terminate_execution(). Spinning here gives V8 a loop back-edge to detect
+  // the pending termination and throw an uncatchable TerminationException,
+  // matching Node.js behavior where process.exit() immediately halts all JS.
+  // On the main thread reallyExit() normally never returns, but users can
+  // override it (test-process-really-exit.js), so only spin in workers.
+  if (internals.__isWorkerThread) {
+    // deno-lint-ignore no-empty
+    for (;;) {}
+  }
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */

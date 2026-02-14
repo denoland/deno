@@ -677,6 +677,7 @@ internals.__initWorkerThreads = (
   moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
+  internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits
