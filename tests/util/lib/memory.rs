@@ -33,18 +33,16 @@ fn mem_info_impl() -> Option<MemInfo> {
   #[allow(clippy::disallowed_methods)]
   if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
     for line in meminfo.lines() {
-      if line.starts_with("MemTotal:") {
-        if let Some(kb) = line.split_whitespace().nth(1) {
-          if let Ok(kb) = kb.parse::<u64>() {
-            total = kb * 1024;
-          }
-        }
-      } else if line.starts_with("MemAvailable:") {
-        if let Some(kb) = line.split_whitespace().nth(1) {
-          if let Ok(kb) = kb.parse::<u64>() {
-            available = kb * 1024;
-          }
-        }
+      if line.starts_with("MemTotal:")
+        && let Some(kb) = line.split_whitespace().nth(1)
+        && let Ok(kb) = kb.parse::<u64>()
+      {
+        total = kb * 1024;
+      } else if line.starts_with("MemAvailable:")
+        && let Some(kb) = line.split_whitespace().nth(1)
+        && let Ok(kb) = kb.parse::<u64>()
+      {
+        available = kb * 1024;
       }
     }
   }
