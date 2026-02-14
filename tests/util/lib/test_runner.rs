@@ -72,20 +72,64 @@ impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
 }
 
 pub struct Parallelism {
-  semaphore: Semaphore,
+  semaphore: Arc<Semaphore>,
   max_parallelism: file_test_runner::Parallelism,
   has_raised_count: Mutex<usize>,
+  // dropping this shuts down the memory monitor thread
+  _monitor_tx: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
     let parallelism = file_test_runner::Parallelism::default();
+    let semaphore = Arc::new(Semaphore::new(parallelism.get()));
+    let monitor_tx = spawn_memory_monitor(semaphore.clone(), parallelism.get());
     Self {
       max_parallelism: Default::default(),
-      semaphore: Semaphore::new(parallelism.get()),
+      semaphore,
       has_raised_count: Default::default(),
+      _monitor_tx: monitor_tx,
     }
   }
+}
+
+fn spawn_memory_monitor(
+  semaphore: Arc<Semaphore>,
+  original_max: usize,
+) -> Option<std::sync::mpsc::Sender<()>> {
+  let info = crate::memory::mem_info()?;
+  let threshold = info.total / 10; // 10% of total memory
+
+  let (tx, rx) = std::sync::mpsc::channel::<()>();
+  #[allow(clippy::disallowed_methods)]
+  std::thread::spawn(move || {
+    let mut reduced_by = 0;
+    loop {
+      match rx.recv_timeout(Duration::from_secs(2)) {
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        // channel closed, exit
+        _ => return,
+      }
+      let Some(current) = crate::memory::mem_info() else {
+        continue;
+      };
+      if current.available < threshold {
+        // low memory: reduce parallelism by 1, but never below 1
+        if original_max.saturating_sub(reduced_by) > 1 {
+          reduced_by += 1;
+          let new_max = original_max - reduced_by;
+          semaphore.set_max(new_max);
+        }
+      } else if reduced_by > 0 {
+        // memory recovered: restore parallelism by 1
+        reduced_by -= 1;
+        let new_max = original_max - reduced_by;
+        semaphore.set_max(new_max);
+      }
+    }
+  });
+
+  Some(tx)
 }
 
 impl Parallelism {

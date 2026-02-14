@@ -44,7 +44,7 @@ lsp-types = { workspace = true, optional = true }
 percent-encoding = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "sysinfoapi", "winbase", "winerror"] }
 win32job.workspace = true
 
 [target.'cfg(unix)'.dependencies]

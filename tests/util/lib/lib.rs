@@ -21,6 +21,7 @@ mod fs;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 mod macros;
+mod memory;
 mod parsers;
 pub mod print;
 pub mod process;
