@@ -287,13 +287,13 @@ mod tests {
 
   /// Returns a socket address that deterministically refuses connections.
   /// Port 0 is not a valid destination port for TCP connects.
-  async fn get_refusing_addr() -> SocketAddr {
+  fn get_refusing_addr() -> SocketAddr {
     "127.0.0.1:0".parse().unwrap()
   }
 
   #[tokio::test]
   async fn test_connect_single_address_fails() {
-    let bad_addr = get_refusing_addr().await;
+    let bad_addr = get_refusing_addr();
 
     let result =
       connect_happy_eyeballs(vec![bad_addr], Duration::from_millis(100), None)
@@ -306,7 +306,7 @@ mod tests {
   async fn test_connect_fallback_to_second() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let good_addr = listener.local_addr().unwrap();
-    let bad_addr = get_refusing_addr().await;
+    let bad_addr = get_refusing_addr();
 
     let result = connect_happy_eyeballs(
       vec![bad_addr, good_addr],
@@ -325,7 +325,7 @@ mod tests {
   async fn test_connect_immediate_fallback_without_pending_attempts() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let good_addr = listener.local_addr().unwrap();
-    let bad_addr = get_refusing_addr().await;
+    let bad_addr = get_refusing_addr();
 
     let attempt_delay = Duration::from_millis(700);
     let start = std::time::Instant::now();
@@ -346,8 +346,8 @@ mod tests {
 
   #[tokio::test]
   async fn test_connect_all_fail() {
-    let bad1 = get_refusing_addr().await;
-    let bad2 = get_refusing_addr().await;
+    let bad1 = get_refusing_addr();
+    let bad2 = get_refusing_addr();
 
     let result = connect_happy_eyeballs(
       vec![bad1, bad2],
