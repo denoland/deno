@@ -1591,6 +1591,7 @@
     "parallel/test-worker-terminate-microtask-loop.js": {},
     "parallel/test-worker-terminate-null-handler.js": {},
     "parallel/test-worker-terminate-unrefed.js": {},
+    "parallel/test-worker-unref-from-message-during-exit.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker.js": {},
     "parallel/test-worker.mjs": {},

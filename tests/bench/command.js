@@ -6,6 +6,6 @@ Deno.bench("echo deno", async () => {
 
 Deno.bench("cat 128kb", async () => {
   await new Deno.Command("cat", {
-    args: ["./cli/bench/testdata/128k.bin"],
+    args: ["./tests/bench/testdata/128k.bin"],
   }).output();
 });

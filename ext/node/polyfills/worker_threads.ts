@@ -160,7 +160,7 @@ const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
   #name = "";
-  #refCount = 1;
+  #refed = true;
   #messagePromise = undefined;
   #controlPromise = undefined;
   #workerOnline = false;
@@ -381,25 +381,24 @@ class NodeWorker extends EventEmitter {
   }
 
   [privateWorkerRef](ref) {
-    if (ref) {
-      this.#refCount++;
-    } else {
-      this.#refCount--;
+    if (ref === this.#refed) {
+      return;
     }
+    this.#refed = ref;
 
-    if (!ref && this.#refCount == 0) {
-      if (this.#controlPromise) {
-        core.unrefOpPromise(this.#controlPromise);
-      }
-      if (this.#messagePromise) {
-        core.unrefOpPromise(this.#messagePromise);
-      }
-    } else if (ref && this.#refCount == 1) {
+    if (ref) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.refOpPromise(this.#messagePromise);
+      }
+    } else {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
       }
     }
   }
@@ -420,7 +419,7 @@ class NodeWorker extends EventEmitter {
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#controlPromise);
       }
       const { 0: type, 1: data } = await this.#controlPromise;
@@ -474,7 +473,7 @@ class NodeWorker extends EventEmitter {
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
