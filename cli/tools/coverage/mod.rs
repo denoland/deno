@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::fs::File;
@@ -551,6 +551,7 @@ pub fn cover_files(
       | MediaType::Unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs

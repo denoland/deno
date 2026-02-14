@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -51,17 +51,15 @@ fn op_remap_specifier(
 }
 
 #[op2]
-#[serde]
 fn op_libs() -> Vec<String> {
   crate::tsc::lib_names()
 }
 
 #[op2]
-#[serde]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
-  #[serde] specifiers: Vec<(bool, String)>,
+  #[scoped] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }

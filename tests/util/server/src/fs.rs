@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -17,6 +17,7 @@ use lsp_types::Uri;
 use pretty_assertions::assert_eq;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use url::Position;
 use url::Url;
 
 use crate::assertions::assert_wildcard_match;
@@ -25,77 +26,49 @@ use crate::lsp::source_file;
 use crate::println;
 use crate::testdata_path;
 
-/// Characters that are left unencoded in a `Url` path but will be encoded in a
-/// VSCode URI.
-const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
-  &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'!')
-    .add(b'$')
-    .add(b'&')
-    .add(b'\'')
-    .add(b'(')
-    .add(b')')
-    .add(b'*')
-    .add(b'+')
-    .add(b',')
-    .add(b':')
-    .add(b';')
-    .add(b'=')
-    .add(b'@')
-    .add(b'[')
-    .add(b']')
-    .add(b'^')
-    .add(b'|');
-
-/// Characters that may be left unencoded in a `Url` query but not valid in a
-/// `Uri` query.
-const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
-  &URL_TO_URI_PATH.add(b'\\').add(b'`').add(b'{').add(b'}');
-
-/// Characters that may be left unencoded in a `Url` fragment but not valid in
-/// a `Uri` fragment.
-const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
-  &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
-
 pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
-  let components = url::quirks::internal_components(url);
-  let mut input = String::with_capacity(url.as_str().len());
-  input.push_str(&url.as_str()[..components.path_start as usize]);
-  let path = url.path();
-  let mut chars = path.chars();
-  let has_drive_letter = chars.next().is_some_and(|c| c == '/')
-    && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-    && chars.next().is_some_and(|c| c == ':')
-    && chars.next().is_none_or(|c| c == '/');
-  if has_drive_letter {
-    let (dl_part, rest) = path.split_at(2);
-    input.push_str(&dl_part.to_ascii_lowercase());
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(rest, URL_TO_URI_PATH).to_string(),
-    );
-  } else {
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH).to_string(),
-    );
-  }
-  if let Some(query) = url.query() {
-    input.push('?');
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(query, URL_TO_URI_QUERY)
-        .to_string(),
-    );
-  }
-  if let Some(fragment) = url.fragment() {
-    input.push('#');
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(fragment, URL_TO_URI_FRAGMENT)
-        .to_string(),
-    );
-  }
-  Uri::from_str(&input).map_err(|err| {
-    anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
-  })
+  let uri_before_path =
+    Uri::from_str(&url[..Position::BeforePath]).map_err(|err| {
+      anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
+    })?;
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(url.path().trim_end_matches('/'))
+      .decode_utf8_lossy(),
+  );
+  let encoded_query = url.query().map(|query| {
+    let mut encoded_query = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Query,
+    >::new();
+    encoded_query.encode_str::<fluent_uri::pct_enc::encoder::Query>(query);
+    encoded_query
+  });
+  let encoded_fragment = url.fragment().map(|fragment| {
+    let mut encoded_fragment = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Fragment,
+    >::new();
+    encoded_fragment
+      .encode_str::<fluent_uri::pct_enc::encoder::Fragment>(fragment);
+    encoded_fragment
+  });
+  let uri = fluent_uri::Uri::builder()
+    .scheme(uri_before_path.scheme())
+    .optional(
+      fluent_uri::build::Builder::authority,
+      uri_before_path.authority(),
+    )
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, encoded_query.as_deref())
+    .optional(
+      fluent_uri::build::Builder::fragment,
+      encoded_fragment.as_deref(),
+    )
+    .build()
+    .expect("component constraints should be met by the above")
+    .normalize()
+    .into();
+  Ok(uri)
 }
 
 pub fn url_to_notebook_cell_uri(url: &Url) -> Uri {

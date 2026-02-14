@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod setup;
 mod tsgo_version;
@@ -713,6 +713,7 @@ fn load_inner(
     | MediaType::Css
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Html
     | MediaType::Sql
     | MediaType::Wasm

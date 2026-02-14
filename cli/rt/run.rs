@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -242,9 +242,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       {
         PackageJsonDepValue::File(_) => Err(JsErrorBox::from_err(
           DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier.into_box(),
-        )),
-        PackageJsonDepValue::JsrReq(_) => Err(JsErrorBox::from_err(
-          DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
         )),
         PackageJsonDepValue::Req(req) => Ok(
           self
@@ -1071,7 +1068,6 @@ pub async fn run(
     feature_checker,
     fs,
     None,
-    None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),
@@ -1094,8 +1090,7 @@ pub async fn run(
   } else {
     None
   };
-  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(v8_platform, true);
+  deno_core::JsRuntime::init_platform(v8_platform);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

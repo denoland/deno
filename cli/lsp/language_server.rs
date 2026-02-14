@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -312,6 +312,7 @@ pub struct Inner {
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  force_push_based_diagnostics: bool,
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
@@ -577,7 +578,6 @@ impl Inner {
     let npm_search_api = CliNpmSearchApi::new(
       module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
       }),
@@ -608,6 +608,7 @@ impl Inner {
       npm_search_api,
       performance,
       registered_semantic_tokens_capabilities: false,
+      force_push_based_diagnostics: false,
       resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -636,7 +637,7 @@ impl Inner {
     let Some(document) = self.document_modules.documents.get(uri) else {
       match exists {
         Exists::Enforce
-          if !uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) =>
+          if !uri.scheme().as_str().eq_ignore_ascii_case("deno") =>
         {
           return Err(LspError::invalid_params(format!(
             "Unable to find document for: {}",
@@ -833,7 +834,6 @@ impl Inner {
     self.npm_search_api = CliNpmSearchApi::new(
       self.module_registry.file_fetcher.clone(),
       Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         // todo(dsherret): the npm_search_api should probably be specific
         // to each workspace so that the link packages can be properly
         // hooked up
@@ -894,6 +894,10 @@ impl Inner {
     }));
     self.registered_semantic_tokens_capabilities = true;
   }
+
+  fn is_using_push_based_diagnostics(&self) -> bool {
+    self.force_push_based_diagnostics || !self.config.diagnostic_capable()
+  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -909,8 +913,6 @@ impl Inner {
     if let Some(parent_pid) = params.process_id {
       parent_process_checker::start(parent_pid)
     }
-
-    let capabilities = capabilities::server_capabilities(&params.capabilities);
 
     let version = format!(
       "{} ({}, {})",
@@ -982,15 +984,15 @@ impl Inner {
       }
       self.config.set_workspace_folders(workspace_folders);
       if let Some(options) = params.initialization_options {
-        self.config.set_workspace_settings(
-          WorkspaceSettings::from_initialization_options(options),
-          vec![],
-        );
+        let settings = WorkspaceSettings::from_initialization_options(options);
+        self.force_push_based_diagnostics =
+          settings.force_push_based_diagnostics;
+        self.config.set_workspace_settings(settings, vec![]);
       }
       self.config.set_client_capabilities(params.capabilities);
     }
 
-    if !self.config.diagnostic_capable() {
+    if self.is_using_push_based_diagnostics() {
       let mut diagnostics_server = DiagnosticsServer::new(
         self.client.clone(),
         self.performance.clone(),
@@ -1005,6 +1007,13 @@ impl Inner {
 
     self.update_tracing();
     self.update_debug_flag();
+
+    let mut capabilities =
+      capabilities::server_capabilities(&self.config.client_capabilities);
+
+    if self.force_push_based_diagnostics {
+      capabilities.diagnostic_provider = None;
+    }
 
     if capabilities.semantic_tokens_provider.is_some() {
       self.registered_semantic_tokens_capabilities = true;
@@ -1134,6 +1143,7 @@ impl Inner {
             | MediaType::Css
             | MediaType::Html
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Unknown => {
               continue;
@@ -1307,7 +1317,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1357,7 +1368,8 @@ impl Inner {
     if batch_queue
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       batch_queue.clear();
       return;
@@ -1486,7 +1498,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
     {
       return;
     }
@@ -1728,7 +1741,7 @@ impl Inner {
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
-      if self.config.diagnostic_capable()
+      if !self.is_using_push_based_diagnostics()
         && self.config.diagnostic_refresh_capable()
       {
         self.client.refresh_diagnostics();
@@ -1834,7 +1847,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("untitled"));
+      .as_str()
+      .eq_ignore_ascii_case("untitled");
     if !is_untitled && !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }
@@ -4850,7 +4864,7 @@ impl Inner {
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
-    if self.config.diagnostic_capable()
+    if !self.is_using_push_based_diagnostics()
       && self.config.diagnostic_refresh_capable()
     {
       self.client.refresh_diagnostics();
@@ -5065,7 +5079,8 @@ impl Inner {
       .text_document
       .uri
       .scheme()
-      .is_some_and(|s| s.eq_lowercase("deno"))
+      .as_str()
+      .eq_ignore_ascii_case("deno")
       && params.text_document.uri.path().as_str() == "/status.md"
     {
       let mut contents = String::new();

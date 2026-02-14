@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
 import {
   assert,
   assertEquals,
-  assertExists,
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
@@ -489,30 +488,6 @@ Deno.test({
         child.kill();
       }
     }
-  },
-});
-
-Deno.test({
-  name: "[node/child_process] ChildProcess.kill()",
-  async fn() {
-    const script = path.join(
-      path.dirname(path.fromFileUrl(import.meta.url)),
-      "./testdata/infinite_loop.js",
-    );
-    const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout<void>();
-    const pStdout = withTimeout<void>();
-    const pStderr = withTimeout<void>();
-    childProcess.on("exit", () => p.resolve());
-    childProcess.stdout.on("close", () => pStdout.resolve());
-    childProcess.stderr.on("close", () => pStderr.resolve());
-    childProcess.kill("SIGKILL");
-    await p.promise;
-    await pStdout.promise;
-    await pStderr.promise;
-    assert(childProcess.killed);
-    assertEquals(childProcess.signalCode, "SIGKILL");
-    assertExists(childProcess.exitCode);
   },
 });
 

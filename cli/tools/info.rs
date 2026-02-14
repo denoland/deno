@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -28,9 +28,8 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
 use crate::args::Flags;
@@ -98,13 +97,6 @@ pub async fn info(
           deno_package_json::PackageJsonDepValue::File(_) => {
             return Err(
               DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-                .into_box()
-                .into(),
-            );
-          }
-          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
-            return Err(
-              DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
                 .into_box()
                 .into(),
             );
@@ -313,6 +305,7 @@ fn add_npm_packages_to_json(
   // ideally deno_graph could handle this, but for now we just modify the json here
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
+  let mut redirects_to_add = Vec::new();
   if let Some(modules) = modules {
     for module in modules.iter_mut() {
       if matches!(module.get("kind").and_then(|k| k.as_str()), Some("npm")) {
@@ -322,19 +315,43 @@ fn add_npm_packages_to_json(
         let maybe_package = module
           .get("specifier")
           .and_then(|k| k.as_str())
-          .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
-          .and_then(|package_ref| {
+          .and_then(|specifier| {
+            NpmPackageReqReference::from_str(specifier).ok()
+          })
+          .and_then(|package_req_ref| {
             npm_snapshot
-              .resolve_package_from_deno_module(package_ref.nv())
+              .resolve_pkg_from_pkg_req(package_req_ref.req())
               .ok()
+              .map(|pkg| (package_req_ref, pkg))
           });
-        if let Some(pkg) = maybe_package
+        if let Some((pkg_req_ref, pkg)) = maybe_package
           && let Some(module) = module.as_object_mut()
         {
           module.insert(
             "npmPackage".to_string(),
             pkg.id.as_serialized().into_string().into(),
           );
+
+          // for backwards compat, change the specifier
+          // from a req to an nv
+          if let Some(value) = module.get_mut("specifier")
+            && let Some(specifier) = value.as_str()
+          {
+            let new_specifier = format!(
+              "npm:/{}{}",
+              pkg.id.nv,
+              pkg_req_ref
+                .sub_path()
+                .map(|path| format!("/{}", path))
+                .unwrap_or_default()
+            );
+            // Only add a redirect if the specifier is actually changing
+            if specifier != new_specifier {
+              redirects_to_add
+                .push((specifier.to_string(), new_specifier.clone()));
+            }
+            *value = serde_json::Value::String(new_specifier);
+          }
         }
       }
 
@@ -393,13 +410,21 @@ fn add_npm_packages_to_json(
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
+
+  if let Some(redirects) = json.get_mut("redirects")
+    && let serde_json::Value::Object(redirects) = redirects
+  {
+    for (from, to) in redirects_to_add {
+      redirects.insert(from, to.into());
+    }
+  }
 }
 
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
   package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_ids: HashMap<PackageNv, NpmPackageId>,
+  resolved_ids: HashMap<PackageReq, NpmPackageId>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
@@ -410,20 +435,17 @@ impl NpmInfo {
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
-    if graph.npm_packages.is_empty() {
-      return info; // skip going over the modules if there's no npm packages
-    }
 
     for module in graph.modules() {
-      if let Module::Npm(module) = module {
-        // TODO(dsherret): ok to use for now, but we should use the req in the future
-        #[allow(deprecated)]
-        let nv = module.nv_reference.nv();
-        if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
-          info.resolved_ids.insert(nv.clone(), package.id.clone());
-          if !info.packages.contains_key(&package.id) {
-            info.fill_package_info(package, npm_resolver, npm_snapshot);
-          }
+      if let Module::Npm(module) = module
+        && let Ok(package) =
+          npm_snapshot.resolve_pkg_from_pkg_req(module.pkg_req_ref.req())
+      {
+        info
+          .resolved_ids
+          .insert(module.pkg_req_ref.req().clone(), package.id.clone());
+        if !info.packages.contains_key(&package.id) {
+          info.fill_package_info(package, npm_resolver, npm_snapshot);
         }
       }
     }
@@ -454,9 +476,9 @@ impl NpmInfo {
 
   pub fn resolve_package(
     &self,
-    nv: &PackageNv,
+    req: &PackageReq,
   ) -> Option<&NpmResolutionPackage> {
-    let id = self.resolved_ids.get(nv)?;
+    let id = self.resolved_ids.get(req)?;
     self.packages.get(id)
   }
 }
@@ -593,8 +615,11 @@ impl<'a> GraphDisplayContext<'a> {
     module: &Module,
     type_dep: bool,
   ) -> DisplayTreeNode {
-    enum PackageOrSpecifier {
-      Package(Box<NpmResolutionPackage>),
+    enum PackageOrSpecifier<'a> {
+      Package {
+        package: Box<NpmResolutionPackage>,
+        sub_path: Option<&'a str>,
+      },
       Specifier(ModuleSpecifier),
     }
 
@@ -602,35 +627,47 @@ impl<'a> GraphDisplayContext<'a> {
 
     let package_or_specifier = match module.npm() {
       Some(npm) => {
-        // TODO(dsherret): ok to use for now, but we should use the req in the future
-        #[allow(deprecated)]
-        let nv = npm.nv_reference.nv();
-        match self.npm_info.resolve_package(nv) {
-          Some(package) => Package(Box::new(package.clone())),
+        match self.npm_info.resolve_package(npm.pkg_req_ref.req()) {
+          Some(package) => Package {
+            package: Box::new(package.clone()),
+            sub_path: npm.pkg_req_ref.sub_path(),
+          },
           None => Specifier(module.specifier().clone()), // should never happen
         }
       }
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized().into_string(),
+      Package { package, .. } => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
+    let header_text = match &package_or_specifier {
+      Package { package, sub_path } => {
+        format!(
+          "npm:/{}{}",
+          package.id.as_serialized(),
+          sub_path
+            .map(|path| format!("/{}", path))
+            .unwrap_or_default()
+        )
+      }
+      Specifier(specifier) => specifier.to_string(),
+    };
     let header_text = if was_seen {
       let specifier_str = if type_dep {
-        colors::italic_gray(module.specifier()).to_string()
+        colors::italic_gray(header_text).to_string()
       } else {
-        colors::gray(module.specifier()).to_string()
+        colors::gray(header_text).to_string()
       };
       format!("{} {}", specifier_str, colors::gray("*"))
     } else {
       let header_text = if type_dep {
-        colors::italic(module.specifier()).to_string()
+        colors::italic(header_text).to_string()
       } else {
-        module.specifier().to_string()
+        header_text
       };
       let maybe_size = match &package_or_specifier {
-        Package(package) => {
+        Package { package, .. } => {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
@@ -647,7 +684,7 @@ impl<'a> GraphDisplayContext<'a> {
 
     if !was_seen {
       match &package_or_specifier {
-        Package(package) => {
+        Package { package, .. } => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => match module {

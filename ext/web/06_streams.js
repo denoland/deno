@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -4308,11 +4308,12 @@ function transformStreamUnblockWrite(stream) {
  * @returns {Promise<void>}
  */
 function writableStreamAbort(stream, reason) {
-  const state = stream[_state];
+  let state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
+  state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
@@ -4325,7 +4326,7 @@ function writableStreamAbort(stream, reason) {
     wasAlreadyErroring = true;
     reason = undefined;
   }
-  /** Deferred<void> */
+  /** @type {Deferred<void>} */
   const deferred = new Deferred();
   stream[_pendingAbortRequest] = {
     deferred,
@@ -7261,6 +7262,7 @@ export {
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
   ReadableStreamDefaultController,

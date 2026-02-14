@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
@@ -14,7 +14,6 @@ import { primordials } from "ext:core/mod.js";
 
 const {
   Error,
-  ErrorPrototype,
   PromisePrototypeThen,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
@@ -50,7 +49,7 @@ export function lstat(
   PromisePrototypeThen(
     Deno.lstat(path),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(err),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "lstat" })),
   );
 }
 
@@ -83,11 +82,6 @@ export function lstatSync(
     ) {
       return;
     }
-
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
-    } else {
-      throw err;
-    }
+    throw denoErrorToNodeError(err, { syscall: "lstat" });
   }
 }

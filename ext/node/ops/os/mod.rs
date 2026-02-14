@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
@@ -59,7 +60,7 @@ pub fn op_node_os_set_priority(
   priority::set_priority(pid, priority).map_err(OsError::Priority)
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct UserInfo {
   username: String,
   homedir: String,
@@ -199,7 +200,6 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_os_user_info(
   state: &mut OpState,
   #[smi] uid: u32,

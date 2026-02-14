@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -86,21 +86,17 @@ pub fn op_worker_threads_filename<TSys: ExtNodeSys + 'static>(
     let path = ensure_read_permission(state, Cow::Borrowed(path))
       .map_err(WorkerThreadsFilenameError::Permission)?;
     let sys = state.borrow::<TSys>();
-    let canonicalized_path =
-      deno_path_util::strip_unc_prefix(sys.fs_canonicalize(&path)?);
+    let canonicalized_path = match sys.fs_canonicalize(&path) {
+      Ok(p) => deno_path_util::strip_unc_prefix(p),
+      Err(_) => path.to_path_buf(),
+    };
     Url::from_file_path(canonicalized_path)
       .map_err(|_| WorkerThreadsFilenameError::UrlFromPathString)?
   };
   let url_path = url
     .to_file_path()
     .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission(state, Cow::Owned(url_path))
+  let _url_path = ensure_read_permission(state, Cow::Owned(url_path))
     .map_err(WorkerThreadsFilenameError::Permission)?;
-  let sys = state.borrow::<TSys>();
-  if !sys.fs_exists_no_err(&url_path) {
-    return Err(WorkerThreadsFilenameError::FileNotFound(
-      url_path.to_path_buf(),
-    ));
-  }
   Ok(Some(url.into()))
 }

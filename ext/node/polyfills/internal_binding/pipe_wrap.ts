@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -36,7 +36,6 @@ import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
 
 const { internalRidSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -58,6 +57,7 @@ import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
 const {
+  Error,
   ErrorPrototype,
   FunctionPrototypeCall,
   MapPrototypeGet,
@@ -166,7 +166,7 @@ export class Pipe extends ConnectionWrap {
         break;
       }
       default: {
-        unreachable();
+        throw new Error("Unreachable code");
       }
     }
 
@@ -416,11 +416,19 @@ export class Pipe extends ConnectionWrap {
     if (this.#listener) {
       this.#listener.ref();
     }
+    const stream = this[kStreamBaseField];
+    if (stream && typeof stream.ref === "function") {
+      stream.ref();
+    }
   }
 
   override unref() {
     if (this.#listener) {
       this.#listener.unref();
+    }
+    const stream = this[kStreamBaseField];
+    if (stream && typeof stream.unref === "function") {
+      stream.unref();
     }
   }
 

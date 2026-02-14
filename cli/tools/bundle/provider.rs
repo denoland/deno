@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -74,7 +74,7 @@ fn convert_build_output_file(
 ) -> rt_bundle::BuildOutputFile {
   rt_bundle::BuildOutputFile {
     path: file.path,
-    contents: Some(file.contents),
+    contents: Some(file.contents.into()),
     hash: file.hash,
   }
 }

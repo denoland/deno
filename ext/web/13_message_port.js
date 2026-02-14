@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -542,6 +542,7 @@ export {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,

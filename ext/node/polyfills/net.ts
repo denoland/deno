@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -100,7 +100,7 @@ import {
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 import {

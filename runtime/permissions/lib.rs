@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -4025,7 +4025,7 @@ impl PermissionsContainer {
       })
     } else {
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, api_name)
+      self.check_special_file(path, access_kind, api_name)
     }
   }
 
@@ -4177,21 +4177,32 @@ impl PermissionsContainer {
   pub fn check_special_file<'a>(
     &self,
     path: SpecialFilePathQueryDescriptor<'a>,
+    access_kind: OpenAccessKind,
     _api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let requested = path.requested;
     let canonicalized = path.canonicalized;
     let path = path.path;
 
-    // Safe files with no major additional side-effects. While there's a small risk of someone
-    // draining system entropy by just reading one of these files constantly, that's not really
-    // something we worry about as they already have --allow-read to /dev.
+    // Safe files with no major additional side-effects.
     if cfg!(unix)
       && (path == OsStr::new("/dev/random")
         || path == OsStr::new("/dev/urandom")
         || path == OsStr::new("/dev/zero")
         || path == OsStr::new("/dev/null"))
     {
+      return Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: requested.map(Cow::Owned),
+        },
+        canonicalized,
+      });
+    }
+
+    // We allow /dev/tty access specifically for checking isatty() or reading input,
+    // but we BLOCK write access to prevent permission prompt spoofing attacks.
+    if cfg!(unix) && path == OsStr::new("/dev/tty") && !access_kind.is_write() {
       return Ok(CheckedPath {
         path: PathWithRequested {
           path,

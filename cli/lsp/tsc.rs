@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -46,8 +46,9 @@ use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
+use deno_runtime::deno_inspector_server::InspectPublishUid;
+use deno_runtime::deno_inspector_server::InspectorServer;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -463,7 +464,14 @@ impl TsServer {
             .ok()
         })
         .map(|addr| {
-          Arc::new(InspectorServer::new(addr, "deno-lsp-tsc").unwrap())
+          Arc::new(
+            InspectorServer::new(
+              addr,
+              "deno-lsp-tsc",
+              InspectPublishUid::default(),
+            )
+            .unwrap(),
+          )
         });
       self
         .inspector_server
@@ -4738,7 +4746,6 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
 }
 
 #[op2]
-#[serde]
 fn op_libs() -> Vec<String> {
   crate::tsc::lib_names()
 }
@@ -4833,12 +4840,11 @@ fn op_release(
 }
 
 #[op2]
-#[serde]
 #[allow(clippy::type_complexity)]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
-  #[serde] specifiers: Vec<(bool, String)>,
+  #[scoped] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let _span = super::logging::lsp_tracing_info_span!("op_resolve").entered();
   op_resolve_inner(state, ResolveArgs { base, specifiers })
@@ -4891,8 +4897,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
   }
 }
 
-#[op2(async)]
-#[to_v8]
+#[op2]
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
 ) -> convert::OptionNull<TscRequestArray> {
@@ -5741,7 +5746,7 @@ impl UserPreferences {
       quote_preference: if config
         .tree
         .workspace_dir_for_specifier(specifier)
-        .is_some_and(|ctx| ctx.maybe_deno_json().is_some())
+        .is_some_and(|ctx| ctx.member_or_root_deno_json().is_some())
       {
         base_preferences.quote_preference
       } else {

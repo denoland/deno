@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
@@ -409,7 +409,7 @@ impl FileSystem for RealFs {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {

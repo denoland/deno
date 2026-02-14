@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod args;
 mod cache;
@@ -112,26 +112,28 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 }
 
 async fn run_subcommand(
-  flags: Arc<Flags>,
+  flags: Flags,
   unconfigured_runtime: Option<UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
-      tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
+      tools::pm::add(Arc::new(flags), add_flags, tools::pm::AddCommandName::Add)
+        .await
     }),
-    DenoSubcommand::Audit(audit_flags) => {
-      spawn_subcommand(async { tools::pm::audit(flags, audit_flags).await })
-    }
+    DenoSubcommand::Audit(audit_flags) => spawn_subcommand(async {
+      tools::pm::audit(Arc::new(flags), audit_flags).await
+    }),
     DenoSubcommand::ApproveScripts(approve_scripts_flags) => {
       spawn_subcommand(async move {
-        tools::pm::approve_scripts(flags, approve_scripts_flags).await
+        tools::pm::approve_scripts(Arc::new(flags), approve_scripts_flags).await
       })
     }
-    DenoSubcommand::Remove(remove_flags) => {
-      spawn_subcommand(async { tools::pm::remove(flags, remove_flags).await })
-    }
+    DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
+      tools::pm::remove(Arc::new(flags), remove_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
+      let flags = Arc::new(flags);
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags)
           .boxed_local()
@@ -145,20 +147,20 @@ async fn run_subcommand(
         "⚠️  {} is experimental and subject to changes",
         colors::cyan("deno bundle")
       );
-      tools::bundle::bundle(flags, bundle_flags).await
+      tools::bundle::bundle(Arc::new(flags), bundle_flags).await
     }),
     DenoSubcommand::Deploy(deploy_flags) => spawn_subcommand(async move {
-      tools::deploy::deploy(Arc::unwrap_or_clone(flags), deploy_flags).await
+      tools::deploy::deploy(flags, deploy_flags).await
     }),
-    DenoSubcommand::Doc(doc_flags) => {
-      spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
-    }
+    DenoSubcommand::Doc(doc_flags) => spawn_subcommand(async {
+      tools::doc::doc(Arc::new(flags), doc_flags).await
+    }),
     DenoSubcommand::Eval(eval_flags) => spawn_subcommand(async {
-      tools::run::eval_command(flags, eval_flags).await
+      tools::run::eval_command(Arc::new(flags), eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
       tools::installer::install_from_entrypoints(
-        flags,
+        Arc::new(flags),
         self::args::InstallEntrypointsFlags {
           entrypoints: cache_flags.files,
           lockfile_only: false,
@@ -166,30 +168,20 @@ async fn run_subcommand(
       )
       .await
     }),
-    DenoSubcommand::Check(check_flags) => {
-      spawn_subcommand(
-        async move { tools::check::check(flags, check_flags).await },
-      )
-    }
-    DenoSubcommand::Clean(clean_flags) => {
-      spawn_subcommand(
-        async move { tools::clean::clean(flags, clean_flags).await },
-      )
-    }
+    DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
+      tools::check::check(Arc::new(flags), check_flags).await
+    }),
+    DenoSubcommand::Clean(clean_flags) => spawn_subcommand(async move {
+      tools::clean::clean(Arc::new(flags), clean_flags).await
+    }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      if compile_flags.eszip {
-        tools::compile::compile_eszip(flags, compile_flags)
-          .boxed_local()
-          .await
-      } else {
-        tools::compile::compile(flags, compile_flags).await
-      }
+      tools::compile::compile(flags, compile_flags).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
       let reporter =
         crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
       tools::coverage::cover_files(
-        flags,
+        Arc::new(flags),
         coverage_flags.files.include,
         coverage_flags.files.ignore,
         coverage_flags.include,
@@ -198,19 +190,17 @@ async fn run_subcommand(
         &[&*reporter],
       )
     }),
-    DenoSubcommand::Fmt(fmt_flags) => {
-      spawn_subcommand(
-        async move { tools::fmt::format(flags, fmt_flags).await },
-      )
-    }
+    DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
+      tools::fmt::format(Arc::new(flags), fmt_flags).await
+    }),
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async { tools::init::init_project(init_flags).await })
     }
-    DenoSubcommand::Info(info_flags) => {
-      spawn_subcommand(async { tools::info::info(flags, info_flags).await })
-    }
+    DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
+      tools::info::info(Arc::new(flags), info_flags).await
+    }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
-      tools::installer::install_command(flags, install_flags).await
+      tools::installer::install_command(Arc::new(flags), install_flags).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -220,10 +210,10 @@ async fn run_subcommand(
       })
     }
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
-      tools::jupyter::kernel(flags, jupyter_flags).await
+      tools::jupyter::kernel(Arc::new(flags), jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
-      tools::installer::uninstall(flags, uninstall_flags).await
+      tools::installer::uninstall(Arc::new(flags), uninstall_flags).await
     }),
     DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
@@ -246,20 +236,20 @@ async fn run_subcommand(
         );
         Ok(())
       } else {
-        tools::lint::lint(flags, lint_flags).await
+        tools::lint::lint(Arc::new(flags), lint_flags).await
       }
     }),
-    DenoSubcommand::Outdated(update_flags) => {
+    DenoSubcommand::Outdated(update_flags) => spawn_subcommand(async move {
+      tools::pm::outdated(Arc::new(flags), update_flags).await
+    }),
+    DenoSubcommand::Repl(repl_flags) => spawn_subcommand(async move {
+      tools::repl::run(Arc::new(flags), repl_flags).await
+    }),
+    DenoSubcommand::X(x_flags) => {
       spawn_subcommand(
-        async move { tools::pm::outdated(flags, update_flags).await },
+        async move { tools::x::run(Arc::new(flags), x_flags).await },
       )
     }
-    DenoSubcommand::Repl(repl_flags) => {
-      spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
-    }
-    DenoSubcommand::X(x_flags) => spawn_subcommand(async move {
-      tools::x::run(flags, x_flags, unconfigured_runtime, roots).await
-    }),
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
         let task_flags = TaskFlags {
@@ -270,7 +260,7 @@ async fn run_subcommand(
           filter: None,
           eval: false,
         };
-        let mut flags = flags.deref().clone();
+        let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
         writeln!(
           &mut std::io::stdout(),
@@ -284,14 +274,20 @@ async fn run_subcommand(
           .map(|_| 1)
       } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
-        tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
+        tools::run::run_from_stdin(Arc::new(flags), unconfigured_runtime, roots)
           .boxed_local()
           .await
       } else if flags.eszip {
-        tools::run::run_eszip(flags, run_flags, unconfigured_runtime, roots)
-          .boxed_local()
-          .await
+        tools::run::run_eszip(
+          Arc::new(flags),
+          run_flags,
+          unconfigured_runtime,
+          roots,
+        )
+        .boxed_local()
+        .await
       } else {
+        let flags = Arc::new(flags);
         let result = tools::run::run_script(
           WorkerExecutionMode::Run,
           flags.clone(),
@@ -393,10 +389,16 @@ async fn run_subcommand(
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
-      tools::serve::serve(flags, serve_flags, unconfigured_runtime, roots).await
+      tools::serve::serve(
+        Arc::new(flags),
+        serve_flags,
+        unconfigured_runtime,
+        roots,
+      )
+      .await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
-      tools::task::execute_script(flags, task_flags).await
+      tools::task::execute_script(Arc::new(flags), task_flags).await
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
@@ -420,9 +422,9 @@ async fn run_subcommand(
         }
 
         if test_flags.watch.is_some() {
-          tools::test::run_tests_with_watch(flags, test_flags).await
+          tools::test::run_tests_with_watch(Arc::new(flags), test_flags).await
         } else {
-          tools::test::run_tests(flags, test_flags).await
+          tools::test::run_tests(Arc::new(flags), test_flags).await
         }
       })
     }
@@ -446,7 +448,7 @@ async fn run_subcommand(
     }),
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
-      tools::upgrade::upgrade(flags, upgrade_flags).await
+      tools::upgrade::upgrade(Arc::new(flags), upgrade_flags).await
     }),
     #[cfg(not(feature = "upgrade"))]
     DenoSubcommand::Upgrade(_) => exit_with_message(
@@ -458,7 +460,7 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
-      tools::publish::publish(flags, publish_flags).await
+      tools::publish::publish(Arc::new(flags), publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
@@ -679,7 +681,7 @@ pub fn main() {
     }
 
     (
-      run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await,
+      run_subcommand(flags, waited_unconfigured_runtime, roots).await,
       initial_cwd,
     )
   };
@@ -798,7 +800,6 @@ fn init_v8(flags: &Flags) {
   let default_v8_flags = match flags.subcommand {
     DenoSubcommand::Lsp => vec![
       "--stack-size=1024".to_string(),
-      "--js-explicit-resource-management".to_string(),
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       "--max-old-space-size=3072".to_string(),
@@ -818,11 +819,7 @@ fn init_v8(flags: &Flags) {
     None
   };
 
-  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(
-    v8_platform,
-    /* import assertions enabled */ false,
-  );
+  deno_core::JsRuntime::init_platform(v8_platform);
 }
 
 fn init_logging(

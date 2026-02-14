@@ -9,7 +9,7 @@
  * @since v10.0.0
  */
 declare module "fs/promises" {
-    import { Abortable } from "node:events";
+    import { Abortable, EventEmitter } from "node:events";
     import { Stream } from "node:stream";
     import { ReadableStream } from "node:stream/web";
     import {
@@ -91,8 +91,7 @@ declare module "fs/promises" {
     interface ReadableWebStreamOptions {
         autoClose?: boolean | undefined;
     }
-    // TODO: Add `EventEmitter` close
-    interface FileHandle {
+    interface FileHandle extends EventEmitter {
         /**
          * The numeric file descriptor managed by the {FileHandle} object.
          * @since v10.0.0

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -34,6 +34,7 @@ use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
+use sys_traits::PathsInErrorsExt;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -52,7 +53,7 @@ pub type CliNpmInstaller =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
+pub type CliNpmResolver<TSys = CliSys> = deno_resolver::npm::NpmResolver<TSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
@@ -268,9 +269,6 @@ pub enum DenoTaskLifecycleScriptsError {
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[class(inherit)]
-  #[error(transparent)]
-  BinEntries(#[from] deno_npm_installer::BinEntriesError),
-  #[class(inherit)]
   #[error(
     "failed to create npm process state tempfile for running lifecycle scripts"
   )]
@@ -296,7 +294,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
     let sys = CliSys::default();
-    let mut bin_entries = BinEntries::new(&sys);
+    let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
     // get custom commands for each bin available in the node_modules dir (essentially
     // the scripts that are in `node_modules/.bin`)
     let base = self
@@ -567,7 +565,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     snapshot: &NpmResolutionSnapshot,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
-    let mut bin_entries = BinEntries::new(&sys);
+    let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
     self
       .resolve_custom_commands_from_packages(
         extra_info_provider,

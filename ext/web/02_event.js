@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those

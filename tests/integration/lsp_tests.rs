@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 
@@ -6607,7 +6607,7 @@ fn lsp_cache_then_definition() {
   }));
   // Prior to the fix, this would cause a faulty memoization that maps the
   // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
-  // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
+  // being reverse-mapped to "deno:/http/localhost:4545/run/002_hello.ts" on
   // "textDocument/definition" request.
   client.cache(
     ["http://localhost:4545/run/002_hello.ts"],
@@ -6624,7 +6624,7 @@ fn lsp_cache_then_definition() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/run/002_hello.ts",
+      "targetUri": "deno:/http/localhost:4545/run/002_hello.ts",
       "targetRange": {
         "start": {
           "line": 0,
@@ -8347,7 +8347,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": Url::parse("file:///a/🦕.ts").unwrap(),
+      "uri": url_to_uri(&Url::parse("file:///a/🦕.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
@@ -11434,7 +11434,7 @@ fn lsp_lockfile_redirect_resolution() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/subdir/mod2.ts",
+      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
       "targetRange": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 1, "character": 0 },
@@ -12121,8 +12121,8 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      // Drive letters are not uppercase in our normalized URI representation.
-      "uri": "file:///C:/file.ts",
+      // Colons are not encoded in our normalized URI representation.
+      "uri": "file:///C%3A/file.ts",
       "languageId": "typescript",
       "version": 1,
       "text": r#"
@@ -12132,7 +12132,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
     },
   }));
   let list = client.get_completion_list(
-    "file:///C:/file.ts",
+    "file:///C%3A/file.ts",
     (2, 23),
     json!({ "triggerKind": 1 }),
   );
@@ -12146,10 +12146,10 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "sortText": "11",
       "data": {
         "tsc": {
-          // Accordingly, the drive letter returned here is lowercase.
+          // Accordingly, the colon returned here is decoded.
           // Spec-compliant language clients must deal with that. See:
           // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
-          "uri": "file:///c%3A/file.ts",
+          "uri": "file:///C:/file.ts",
           "position": 55,
           "name": "foo",
           "useCodeSnippet": false,
@@ -16136,7 +16136,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -17144,7 +17144,7 @@ fn lsp_workspace_lockfile() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": "deno:/http/localhost%3A4545/subdir/mod2.ts",
+      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
       "targetRange": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 1, "character": 0 },
@@ -17269,7 +17269,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -19721,8 +19721,101 @@ fn lsp_push_diagnostics() {
   client.initialize(|builder| {
     builder.with_capabilities(|capabilities| {
       capabilities.text_document.as_mut().unwrap().diagnostic = None;
-      capabilities.workspace.as_mut().unwrap().diagnostic = None;
+      capabilities.workspace.as_mut().unwrap().diagnostics = None;
     });
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file1.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const foo: string = 1;
+        foo;
+      "#,
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file2.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "foo";
+      "#,
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file3.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // @ts-ignore
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "file:///a/file1.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 14 },
+              "end": { "line": 1, "character": 17 },
+            },
+            "severity": 1,
+            "code": 2322,
+            "source": "deno-ts",
+            "message": "Type 'number' is not assignable to type 'string'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": "file:///a/file2.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 15 },
+              "end": { "line": 1, "character": 20 },
+            },
+            "severity": 1,
+            "code": "import-prefix-missing",
+            "source": "deno",
+            "message": "Import \"foo\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": "file:///a/file3.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 8 },
+              "end": { "line": 1, "character": 21 },
+            },
+            "severity": 2,
+            "code": "ban-ts-comment",
+            "source": "deno-lint",
+            "message": "`@ts-ignore` is not allowed without comment\nAdd an in-line comment explaining the reason for using `@ts-ignore`, like `// @ts-ignore: <reason>`",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+}
+
+#[test(timeout = 300)]
+fn lsp_force_push_based_diagnostics_setting() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_force_push_based_diagnostics(true);
   });
   client.did_open(json!({
     "textDocument": {

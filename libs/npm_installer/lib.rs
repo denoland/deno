@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -32,7 +32,6 @@ pub mod resolution;
 mod rt;
 
 pub use bin_entries::BinEntries;
-pub use bin_entries::BinEntriesError;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
@@ -52,7 +51,10 @@ use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
+use self::local::LocalNpmPackageInstallerOptions;
 pub use self::local::LocalSetupCache;
+pub use self::local::node_modules_package_actual_dir_to_name;
+pub use self::local::remove_unused_node_modules_symlinks;
 use self::package_json::NpmInstallDepsProvider;
 use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
@@ -146,6 +148,7 @@ pub trait NpmInstallerSys:
 }
 
 pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
+  pub clean_on_install: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
@@ -207,10 +210,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_resolution.clone(),
           sys,
           tarball_cache,
-          node_modules_folder,
-          options.lifecycle_scripts,
-          options.system_info,
-          install_reporter,
+          LocalNpmPackageInstallerOptions {
+            clean_on_install: options.clean_on_install,
+            lifecycle_scripts: options.lifecycle_scripts,
+            system_info: options.system_info,
+            reporter: install_reporter,
+            node_modules_folder,
+          },
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -369,15 +375,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
-        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_)
-        | deno_package_json::PackageJsonDepValueParseErrorKind::JsrVersionReq(
-          _,
-        ) => {
-          return Err(Box::new(err.clone()));
-        }
-        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme,
-        } if scheme == "jsr" => {
+        deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq { .. } => {
           return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
@@ -416,12 +415,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if pkg_json_remote_pkgs.iter().all(|pkg| {
-      self
-        .npm_resolution
-        .resolve_pkg_id_from_pkg_req(&pkg.req)
-        .is_ok()
-    }) {
+    if !self.npm_resolution.is_pending()
+      && pkg_json_remote_pkgs.iter().all(|pkg| {
+        self
+          .npm_resolution
+          .resolve_pkg_id_from_pkg_req(&pkg.req)
+          .is_ok()
+      })
+    {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );

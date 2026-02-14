@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -69,8 +69,8 @@ pub(super) struct GPUSamplerDescriptor {
   pub mag_filter: GPUFilterMode,
   #[webidl(default = GPUFilterMode::Nearest)]
   pub min_filter: GPUFilterMode,
-  #[webidl(default = GPUFilterMode::Nearest)]
-  pub mipmap_filter: GPUFilterMode,
+  #[webidl(default = GPUMipmapFilterMode::Nearest)]
+  pub mipmap_filter: GPUMipmapFilterMode,
 
   #[webidl(default = 0.0)]
   pub lod_min_clamp: f32,
@@ -102,7 +102,6 @@ impl From<GPUAddressMode> for wgpu_types::AddressMode {
   }
 }
 
-// Same as GPUMipmapFilterMode
 #[derive(WebIDL)]
 #[webidl(enum)]
 pub(crate) enum GPUFilterMode {
@@ -115,6 +114,22 @@ impl From<GPUFilterMode> for wgpu_types::FilterMode {
     match value {
       GPUFilterMode::Nearest => Self::Nearest,
       GPUFilterMode::Linear => Self::Linear,
+    }
+  }
+}
+
+#[derive(WebIDL)]
+#[webidl(enum)]
+pub(crate) enum GPUMipmapFilterMode {
+  Nearest,
+  Linear,
+}
+
+impl From<GPUMipmapFilterMode> for wgpu_types::MipmapFilterMode {
+  fn from(value: GPUMipmapFilterMode) -> Self {
+    match value {
+      GPUMipmapFilterMode::Nearest => Self::Nearest,
+      GPUMipmapFilterMode::Linear => Self::Linear,
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -14,6 +14,25 @@ use crate::eprintln;
 use crate::strip_ansi_codes;
 
 const PTY_ROWS_COLS: (u16, u16) = (500, 800);
+
+/// Result of running a command in a PTY
+#[derive(Debug)]
+pub struct PtyOutput {
+  pub exit_code: Option<i32>,
+  pub output: Vec<u8>,
+}
+
+/// Runs a command in a PTY and waits for it to complete.
+/// Returns the exit code and captured output.
+pub fn run_in_pty(
+  program: &Path,
+  args: &[&str],
+  cwd: &Path,
+  env_vars: Option<HashMap<String, String>>,
+  timeout: Duration,
+) -> PtyOutput {
+  run_in_pty_impl(program, args, cwd, env_vars, timeout)
+}
 
 /// Points to know about when writing pty tests:
 ///
@@ -330,6 +349,161 @@ fn set_winsize(
 }
 
 #[cfg(unix)]
+fn run_in_pty_impl(
+  program: &Path,
+  args: &[&str],
+  cwd: &Path,
+  env_vars: Option<HashMap<String, String>>,
+  timeout: Duration,
+) -> PtyOutput {
+  use std::os::unix::process::CommandExt;
+
+  // RAII guard for file descriptors to prevent leaks on panic
+  struct FdGuard(i32);
+  impl Drop for FdGuard {
+    fn drop(&mut self) {
+      // SAFETY: Closing an owned file descriptor
+      unsafe { libc::close(self.0) };
+    }
+  }
+
+  // SAFETY: Posix APIs
+  let (fdm_guard, fds_guard) = unsafe {
+    let fdm = libc::posix_openpt(libc::O_RDWR);
+    if fdm < 0 {
+      panic!("posix_openpt failed");
+    }
+    let fdm_guard = FdGuard(fdm);
+
+    let res = libc::grantpt(fdm);
+    if res != 0 {
+      panic!("grantpt failed");
+    }
+    let res = libc::unlockpt(fdm);
+    if res != 0 {
+      panic!("unlockpt failed");
+    }
+    let fds = libc::open(libc::ptsname(fdm), libc::O_RDWR);
+    if fds < 0 {
+      panic!("open(ptsname) failed");
+    }
+    let fds_guard = FdGuard(fds);
+
+    (fdm_guard, fds_guard)
+  };
+
+  let fdm = fdm_guard.0;
+  let fds = fds_guard.0;
+
+  // SAFETY: Posix APIs
+  let mut child = unsafe {
+    std::process::Command::new(program)
+      .current_dir(cwd)
+      .args(args)
+      .envs(env_vars.unwrap_or_default())
+      .pre_exec(move || {
+        // Create a new session
+        if libc::setsid() == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        // Set the controlling terminal
+        if libc::ioctl(fds, libc::TIOCSCTTY as libc::c_ulong, 0) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        set_winsize(fds, PTY_ROWS_COLS.0, PTY_ROWS_COLS.1)?;
+        // Close parent's main handle
+        libc::close(fdm);
+        // Redirect stdin/stdout/stderr to the PTY
+        if libc::dup2(fds, 0) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        if libc::dup2(fds, 1) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        if libc::dup2(fds, 2) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        libc::close(fds);
+        Ok(())
+      })
+      .spawn()
+      .unwrap()
+  };
+
+  // Child spawned successfully, close fds in parent (fdm will be used for reading)
+  drop(fds_guard);
+  // Forget fdm_guard since we'll transfer ownership to File below
+  std::mem::forget(fdm_guard);
+
+  // Set non-blocking mode for reading
+  use nix::fcntl::FcntlArg;
+  use nix::fcntl::OFlag;
+  use nix::fcntl::fcntl;
+  let flags = fcntl(fdm, FcntlArg::F_GETFL).unwrap();
+  let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
+  fcntl(fdm, FcntlArg::F_SETFL(new_flags)).unwrap();
+
+  let start_time = Instant::now();
+  let mut output = Vec::new();
+  let mut buf = [0u8; 1024];
+
+  use std::os::fd::FromRawFd;
+  // SAFETY: fdm is a valid file descriptor for the master side of the PTY,
+  // obtained from posix_openpt. We take ownership of it here.
+  let mut file = unsafe { std::fs::File::from_raw_fd(fdm) };
+
+  loop {
+    // Check if process has exited
+    match child.try_wait() {
+      Ok(Some(status)) => {
+        // Process exited, read any remaining output
+        loop {
+          match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => output.extend_from_slice(&buf[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(_) => break,
+          }
+        }
+        return PtyOutput {
+          exit_code: status.code(),
+          output,
+        };
+      }
+      Ok(None) => {
+        // Process still running
+      }
+      Err(_) => {
+        return PtyOutput {
+          exit_code: None,
+          output,
+        };
+      }
+    }
+
+    // Check timeout
+    if start_time.elapsed() > timeout {
+      let _ = child.kill();
+      let _ = child.wait();
+      return PtyOutput {
+        exit_code: None,
+        output,
+      };
+    }
+
+    // Try to read output
+    match file.read(&mut buf) {
+      Ok(n) if n > 0 => {
+        output.extend_from_slice(&buf[..n]);
+      }
+      _ => {
+        std::thread::sleep(Duration::from_millis(10));
+      }
+    }
+  }
+}
+
+#[cfg(unix)]
 fn create_pty(
   program: &Path,
   args: &[&str],
@@ -433,6 +607,70 @@ mod unix {
 
     fn flush(&mut self) -> std::io::Result<()> {
       self.file.flush()
+    }
+  }
+}
+
+#[cfg(target_os = "windows")]
+fn run_in_pty_impl(
+  program: &Path,
+  args: &[&str],
+  cwd: &Path,
+  env_vars: Option<HashMap<String, String>>,
+  timeout: Duration,
+) -> PtyOutput {
+  use std::io::Read;
+
+  let mut pty =
+    windows::WinPseudoConsoleWithWait::new(program, args, cwd, env_vars);
+  let start_time = Instant::now();
+  let mut output = Vec::new();
+  let mut buf = [0u8; 1024];
+  let mut consecutive_empty_reads = 0;
+
+  loop {
+    // Check timeout
+    if start_time.elapsed() > timeout {
+      return PtyOutput {
+        exit_code: None,
+        output,
+      };
+    }
+
+    // Check if process has exited
+    if let Some(exit_code) = pty.try_get_exit_code() {
+      // Read any remaining output
+      loop {
+        match pty.read(&mut buf) {
+          Ok(n) if n > 0 => output.extend_from_slice(&buf[..n]),
+          _ => break,
+        }
+      }
+      return PtyOutput {
+        exit_code: Some(exit_code),
+        output,
+      };
+    }
+
+    // Try to read output
+    match pty.read(&mut buf) {
+      Ok(n) if n > 0 => {
+        output.extend_from_slice(&buf[..n]);
+        consecutive_empty_reads = 0;
+      }
+      _ => {
+        consecutive_empty_reads += 1;
+        if consecutive_empty_reads > 100 {
+          // Likely process has exited
+          if let Some(exit_code) = pty.try_get_exit_code() {
+            return PtyOutput {
+              exit_code: Some(exit_code),
+              output,
+            };
+          }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+      }
     }
   }
 }
@@ -651,6 +889,167 @@ mod windows {
   }
 
   impl SystemPty for WinPseudoConsole {}
+
+  /// A variant of WinPseudoConsole that allows waiting for the process to exit
+  /// and getting its exit code.
+  pub struct WinPseudoConsoleWithWait {
+    _stdin_write_handle: WinHandle,
+    stdout_read_handle: WinHandle,
+    process_handle: WinHandle,
+    _thread_handle: WinHandle,
+    _attribute_list: ProcThreadAttributeList,
+    console_handle: WinHandle,
+  }
+
+  impl WinPseudoConsoleWithWait {
+    pub fn new(
+      program: &Path,
+      args: &[&str],
+      cwd: &Path,
+      maybe_env_vars: Option<HashMap<String, String>>,
+    ) -> Self {
+      // SAFETY: Generous use of winapi to create a PTY
+      unsafe {
+        let mut size: COORD = std::mem::zeroed();
+        size.Y = super::PTY_ROWS_COLS.0 as i16;
+        size.X = super::PTY_ROWS_COLS.1 as i16;
+        let mut console_handle = std::ptr::null_mut();
+        let (stdin_read_handle, stdin_write_handle) = create_pipe();
+        let (stdout_read_handle, stdout_write_handle) = create_pipe();
+
+        let result = CreatePseudoConsole(
+          size,
+          stdin_read_handle.as_raw_handle(),
+          stdout_write_handle.as_raw_handle(),
+          0,
+          &mut console_handle,
+        );
+        assert_eq!(result, S_OK);
+
+        let mut environment_vars = maybe_env_vars.map(get_env_vars);
+        let mut attribute_list = ProcThreadAttributeList::new(console_handle);
+        let mut startup_info: STARTUPINFOEXW = std::mem::zeroed();
+        startup_info.StartupInfo.cb =
+          std::mem::size_of::<STARTUPINFOEXW>() as u32;
+        startup_info.lpAttributeList = attribute_list.as_mut_ptr();
+
+        let mut proc_info: PROCESS_INFORMATION = std::mem::zeroed();
+        let command = format!(
+          "\"{}\" {}",
+          program.to_string_lossy(),
+          args
+            .iter()
+            .map(|a| format!("\"{}\"", a))
+            .collect::<Vec<_>>()
+            .join(" ")
+        )
+        .trim()
+        .to_string();
+        let mut application_str = to_windows_str(&program.to_string_lossy());
+        let mut command_str = to_windows_str(&command);
+        let cwd_str = cwd.to_string_lossy().replace('/', "\\");
+        let mut cwd_vec = to_windows_str(&cwd_str);
+
+        assert_win_success!(CreateProcessW(
+          application_str.as_mut_ptr(),
+          command_str.as_mut_ptr(),
+          ptr::null_mut(),
+          ptr::null_mut(),
+          FALSE,
+          EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+          environment_vars
+            .as_mut()
+            .map(|v| v.as_mut_ptr() as LPVOID)
+            .unwrap_or(ptr::null_mut()),
+          cwd_vec.as_mut_ptr(),
+          &mut startup_info.StartupInfo,
+          &mut proc_info,
+        ));
+
+        // close the handles that the pseudoconsole now has
+        drop(stdin_read_handle);
+        drop(stdout_write_handle);
+
+        Self {
+          _stdin_write_handle: stdin_write_handle,
+          stdout_read_handle,
+          process_handle: WinHandle::new(proc_info.hProcess),
+          _thread_handle: WinHandle::new(proc_info.hThread),
+          _attribute_list: attribute_list,
+          console_handle: WinHandle::new(console_handle),
+        }
+      }
+    }
+
+    /// Try to get the exit code if the process has finished.
+    /// Returns None if the process is still running.
+    pub fn try_get_exit_code(&self) -> Option<i32> {
+      use winapi::um::minwinbase::STILL_ACTIVE;
+      use winapi::um::processthreadsapi::GetExitCodeProcess;
+      use winapi::um::winbase::WAIT_OBJECT_0;
+
+      // SAFETY: winapi call
+      unsafe {
+        let result =
+          WaitForSingleObject(self.process_handle.as_raw_handle(), 0);
+        if result == WAIT_OBJECT_0 {
+          let mut exit_code: u32 = 0;
+          if GetExitCodeProcess(
+            self.process_handle.as_raw_handle(),
+            &mut exit_code,
+          ) != 0
+            && exit_code != STILL_ACTIVE
+          {
+            return Some(exit_code as i32);
+          }
+        }
+        None
+      }
+    }
+  }
+
+  impl Drop for WinPseudoConsoleWithWait {
+    fn drop(&mut self) {
+      // SAFETY: winapi call
+      unsafe {
+        ClosePseudoConsole(self.console_handle.as_raw_handle());
+      }
+    }
+  }
+
+  impl Read for WinPseudoConsoleWithWait {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+      let mut bytes_available = 0;
+      // SAFETY: winapi call
+      handle_err!(unsafe {
+        PeekNamedPipe(
+          self.stdout_read_handle.as_raw_handle(),
+          ptr::null_mut(),
+          0,
+          ptr::null_mut(),
+          &mut bytes_available,
+          ptr::null_mut(),
+        )
+      });
+      if bytes_available == 0 {
+        return Err(std::io::Error::new(ErrorKind::WouldBlock, "Would block."));
+      }
+
+      let mut bytes_read = 0;
+      // SAFETY: winapi call
+      handle_err!(unsafe {
+        ReadFile(
+          self.stdout_read_handle.as_raw_handle(),
+          buf.as_mut_ptr() as _,
+          buf.len() as u32,
+          &mut bytes_read,
+          ptr::null_mut(),
+        )
+      });
+
+      Ok(bytes_read as usize)
+    }
+  }
 
   impl std::io::Write for WinPseudoConsole {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {

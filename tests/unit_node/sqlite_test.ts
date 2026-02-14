@@ -1,6 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import sqlite, { backup, DatabaseSync } from "node:sqlite";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert";
 import * as nodeAssert from "node:assert";
 import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
@@ -323,7 +328,7 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
 
   const { done, value } = iter.next();
   assertEquals(done, true);
-  assertEquals(value, undefined);
+  assertEquals(value, null);
 
   db.close();
 });
@@ -452,15 +457,18 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
-Deno.test("[node/sqlite] calling StatementSync methods after connection has closed", () => {
+Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
+  const errMessageClosed = "database is not open";
 
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE test (value INTEGER)");
   const stmt = db.prepare("INSERT INTO test (value) VALUES (?), (?)");
+  const sess = db.createSession();
   stmt.run(1, 2);
   db.close();
 
+  assertThrows(() => stmt.run(), Error, errMessageClosed);
   assertThrows(() => stmt.all(), Error, errMessage);
   assertThrows(() => stmt.expandedSQL, Error, errMessage);
   assertThrows(() => stmt.get(), Error, errMessage);
@@ -473,6 +481,9 @@ Deno.test("[node/sqlite] calling StatementSync methods after connection has clos
   );
   assertThrows(() => stmt.setReadBigInts(true), Error, errMessage);
   assertThrows(() => stmt.sourceSQL, Error, errMessage);
+
+  assertThrows(() => sess.changeset(), Error, errMessageClosed);
+  assertThrows(() => sess.patchset(), Error, errMessageClosed);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144
@@ -969,4 +980,259 @@ Deno.test("[node/sqlite] backup fails when path cannot be opened", async () => {
 Deno.test("[node/sqlite] backup has correct name and length", () => {
   assertEquals(backup.name, "backup");
   assertEquals(backup.length, 2);
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered positional parameters (?1, ?2) should work", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL
+    )
+  `);
+
+  // Test basic numbered parameters
+  const stmt = db.prepare("INSERT INTO users (name, email) VALUES (?1, ?2)");
+  const result = stmt.run("Alice", "alice@example.com");
+  assertEquals(result.changes, 1);
+
+  // Verify the data was inserted correctly
+  const row = db.prepare("SELECT name, email FROM users WHERE id = 1").get();
+  assertEquals(row, {
+    name: "Alice",
+    email: "alice@example.com",
+    __proto__: null,
+  });
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered parameters can be reused (?1 appearing multiple times)", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE nodes (
+      id INTEGER PRIMARY KEY,
+      parent_id INTEGER
+    )
+  `);
+  db.exec(
+    "INSERT INTO nodes (id, parent_id) VALUES (1, NULL), (2, 1), (3, 1), (4, 2)",
+  );
+
+  // Use same parameter twice - important use case for SQLite
+  const stmt = db.prepare(
+    "SELECT * FROM nodes WHERE id = ?1 OR parent_id = ?1 ORDER BY id",
+  );
+  const rows = stmt.all(1);
+
+  assertEquals(rows.length, 3); // id=1, and two nodes with parent_id=1
+  assertEquals(rows[0], { id: 1, parent_id: null, __proto__: null });
+  assertEquals(rows[1], { id: 2, parent_id: 1, __proto__: null });
+  assertEquals(rows[2], { id: 3, parent_id: 1, __proto__: null });
+});
+
+// https://github.com/denoland/deno/issues/31719 - numbered positional parameters
+Deno.test("[node/sqlite] numbered parameters in different order (?2, ?1)", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (a TEXT, b TEXT)");
+
+  // Parameters appear as ?2, ?1 in SQL but binding should still work positionally
+  const stmt = db.prepare("INSERT INTO test (a, b) VALUES (?2, ?1)");
+  stmt.run("first_arg", "second_arg");
+
+  const row = db.prepare("SELECT a, b FROM test").get();
+  // first_arg binds to ?1, second_arg binds to ?2
+  // SQL puts ?2 in column a, ?1 in column b
+  assertEquals(row, { a: "second_arg", b: "first_arg", __proto__: null });
+});
+
+Deno.test("[node/sqlite] Database GC should not invalidate statements and sessions", () => {
+  const db = new DatabaseSync(":memory:");
+  const stmt = db.prepare("SELECT 1");
+  const sess = db.createSession();
+  const a = [];
+  for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000000; i++) a.push(0); // Try to trigger GC
+    stmt.run();
+    sess.changeset();
+  }
+});
+
+// https://github.com/denoland/deno/issues/31744
+Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("create table if not exists t1(id integer primary key)");
+  const p = db.prepare(`insert into t1(id) values (?)`);
+  for (let id = 1; id <= 1_000_000; id++) {
+    p.run(id);
+  }
+  const iter = db.prepare(`select id from t1`).iterate();
+  for (const { id } of iter) {
+    assertEquals(typeof id, "number");
+  }
+});
+
+Deno.test("sql.run inserts data", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  // @ts-expect-error count is a valid property
+  const count = db.prepare("SELECT COUNT(*) as count FROM foo").get().count;
+  assertStrictEquals(count, 3);
+});
+
+Deno.test("sql.get retrieves a single row", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  const first = sql.get`SELECT * FROM foo ORDER BY id ASC`;
+  assert(first);
+  assertStrictEquals(first.text, "bob");
+  assertStrictEquals(first.id, 1);
+  assertStrictEquals(Object.getPrototypeOf(first), null);
+});
+
+Deno.test("sql.all retrieves all rows", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  const all = sql.all`SELECT * FROM foo ORDER BY id ASC`;
+  assertStrictEquals(Array.isArray(all), true);
+  assertStrictEquals(all.length, 3);
+  for (const row of all) {
+    assertStrictEquals(Object.getPrototypeOf(row), null);
+  }
+  assertEquals((all as Array<{ text: string }>).map((r) => r.text), [
+    "bob",
+    "mac",
+    "alice",
+  ]);
+});
+
+Deno.test("sql.iterate retrieves rows via iterator", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"bob"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"mac"})`.changes,
+    1,
+  );
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"alice"})`.changes,
+    1,
+  );
+
+  const iter = sql.iterate`SELECT * FROM foo ORDER BY id ASC`;
+  const iterRows = [];
+  for (const row of iter) {
+    assert(row);
+    assertStrictEquals(Object.getPrototypeOf(row), null);
+    iterRows.push(row.text);
+  }
+  assertEquals(iterRows, ["bob", "mac", "alice"]);
+});
+
+Deno.test("queries with no results", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  const none = sql.get`SELECT * FROM foo WHERE text = ${"notfound"}`;
+  assertStrictEquals(none, undefined);
+
+  const empty = sql.all`SELECT * FROM foo WHERE text = ${"notfound"}`;
+  assertEquals(empty, []);
+
+  let count = 0;
+  // eslint-disable-next-line no-unused-vars
+  for (const _ of sql.iterate`SELECT * FROM foo WHERE text = ${"notfound"}`) {
+    count++;
+  }
+  assertStrictEquals(count, 0);
+});
+
+Deno.test("TagStore capacity, size, and clear", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(sql.capacity, 10);
+  assertStrictEquals(sql.size(), 0);
+
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"one"})`.changes,
+    1,
+  );
+  assertStrictEquals(sql.size(), 1);
+
+  assert(sql.get`SELECT * FROM foo WHERE text = ${"one"}`);
+  assertStrictEquals(sql.size(), 2);
+
+  // Using the same template string shouldn't increase the size
+  assertStrictEquals(
+    sql.get`SELECT * FROM foo WHERE text = ${"two"}`,
+    undefined,
+  );
+  assertStrictEquals(sql.size(), 2);
+
+  assertStrictEquals(sql.all`SELECT * FROM foo`.length, 1);
+  assertStrictEquals(sql.size(), 3);
+
+  sql.clear();
+  assertStrictEquals(sql.size(), 0);
+  assertStrictEquals(sql.capacity, 10);
+});
+
+Deno.test("sql.db returns the associated DatabaseSync instance", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(sql.db, db);
 });

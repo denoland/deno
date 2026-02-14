@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod esbuild;
 mod externals;
@@ -32,6 +32,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
+use deno_error::JsErrorClass;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
@@ -1147,8 +1148,8 @@ impl BundleLoadError {
       BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.error.as_kind(),
-            ModuleErrorKind::UnsupportedMediaType { .. },
+            e.original().as_module_error_kind(),
+            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
           ),
           _ => false,
         },
@@ -1182,8 +1183,11 @@ fn maybe_ignorable_resolution_error(
       ..
     },
   ) = error.as_kind()
-    && let deno_graph::source::ResolveError::ImportMap(import_map_err) =
+    && let deno_graph::source::ResolveError::Other(other_err) =
       resolve_error.deref()
+    && let Some(import_map_err) = other_err
+      .get_ref()
+      .downcast_ref::<import_map::ImportMapError>()
     && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(..) =
       import_map_err.as_kind()
   {
@@ -1325,6 +1329,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1681,6 +1686,7 @@ fn media_type_to_loader(
     Json => esbuild_client::BuiltinLoader::Json,
     Jsonc => esbuild_client::BuiltinLoader::Text,
     Json5 => esbuild_client::BuiltinLoader::Text,
+    Markdown => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,

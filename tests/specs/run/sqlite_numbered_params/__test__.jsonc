@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "basic_numbered_params": {
+      "args": "run main.ts",
+      "output": "main.out"
+    }
+  }
+}

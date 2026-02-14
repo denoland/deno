@@ -1,4 +1,4 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "test_server"
@@ -31,6 +31,7 @@ faster-hex.workspace = true
 fastwebsockets.workspace = true
 file_test_runner.workspace = true
 flate2 = { workspace = true, features = ["default"] }
+fluent-uri.workspace = true
 futures.workspace = true
 glob.workspace = true
 h2.workspace = true
