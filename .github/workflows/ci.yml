@@ -509,6 +509,11 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        with:
+          deno-version: v2.x
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Cache Cargo home

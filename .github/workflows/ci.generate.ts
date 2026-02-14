@@ -634,7 +634,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "./deno types > lib.deno.d.ts",
             ],
           },
-          step.dependsOn(setupPrebuiltMacStep)({
+          step.dependsOn(setupPrebuiltMacStep, installDenoStep)({
             name: "Install rust-codesign",
             if: buildItem.os.equals("macos").and(isDenoland),
             env: {
