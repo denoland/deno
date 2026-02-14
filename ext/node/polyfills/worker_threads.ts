@@ -558,8 +558,8 @@ class NodeWorker extends EventEmitter {
 
     if (!this.#exited) {
       this.#exited = true;
-      this.emit("exit", 0);
-      return PromiseResolve(0);
+      this.emit("exit", 1);
+      return PromiseResolve(1);
     }
 
     // Worker already exited - Node.js returns undefined in this case
