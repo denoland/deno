@@ -5638,7 +5638,6 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bencher",
  "bytes",
  "chrono",
  "deno_cache_dir",
@@ -5672,7 +5671,6 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
- "walkdir",
  "zeromq 0.4.1",
 ]
 

@@ -17,20 +17,9 @@ name = "integration"
 path = "mod.rs"
 harness = false
 
-[[bench]]
-name = "deno_bench"
-harness = false
-path = "./bench/main.rs"
-
-[[bench]]
-name = "lsp_bench_standalone"
-harness = false
-path = "./bench/lsp_bench_standalone.rs"
-
 [dev-dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-bencher.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_cache_dir.workspace = true
@@ -63,7 +52,6 @@ tokio.workspace = true
 tower-lsp.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
-walkdir.workspace = true
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
