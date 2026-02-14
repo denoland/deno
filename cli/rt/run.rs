@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -148,6 +148,7 @@ impl SharedModuleLoaderState {
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
+  sys: DenoRtSys,
 }
 
 impl std::fmt::Debug for EmbeddedModuleLoader {
@@ -241,9 +242,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       {
         PackageJsonDepValue::File(_) => Err(JsErrorBox::from_err(
           DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier.into_box(),
-        )),
-        PackageJsonDepValue::JsrReq(_) => Err(JsErrorBox::from_err(
-          DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
         )),
         PackageJsonDepValue::Req(req) => Ok(
           self
@@ -592,6 +590,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     Some(Cow::Owned(data.data.to_vec()))
   }
 
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    use sys_traits::FsMetadata;
+    let specifier = Url::parse(source_url).ok()?;
+    // only bother checking this for npm packages that might depend on this
+    if self.shared.node_resolver.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return self.sys.fs_is_file(path).ok();
+    }
+
+    Some(true)
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
@@ -667,12 +678,14 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
 
 struct StandaloneModuleLoaderFactory {
   shared: Arc<SharedModuleLoaderState>,
+  sys: DenoRtSys,
 }
 
 impl StandaloneModuleLoaderFactory {
   pub fn create_result(&self) -> CreateModuleLoaderResult {
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
+      sys: self.sys.clone(),
     });
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
@@ -981,6 +994,7 @@ pub async fn run(
       vfs: vfs.clone(),
       workspace_resolver,
     }),
+    sys: sys.clone(),
   };
 
   let permissions = {
@@ -1054,7 +1068,6 @@ pub async fn run(
     feature_checker,
     fs,
     None,
-    None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),
@@ -1077,8 +1090,7 @@ pub async fn run(
   } else {
     None
   };
-  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(v8_platform, true);
+  deno_core::JsRuntime::init_platform(v8_platform);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

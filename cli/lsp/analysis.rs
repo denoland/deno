@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -777,7 +777,7 @@ pub fn fix_ts_import_changes_for_file_rename(
   let Ok(new_uri) = Uri::from_str(new_uri) else {
     return Ok(Vec::new());
   };
-  if !new_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+  if !new_uri.scheme().as_str().eq_ignore_ascii_case("file") {
     return Ok(Vec::new());
   }
   let new_file_hints = [uri_to_url(&new_uri)];

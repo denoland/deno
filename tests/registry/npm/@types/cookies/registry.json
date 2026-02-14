@@ -1,0 +1,58 @@
+{
+  "name": "@types/cookies",
+  "dist-tags": {
+    "ts6.0": "0.9.2",
+    "ts5.2": "0.9.2",
+    "ts5.9": "0.9.2",
+    "latest": "0.9.2",
+    "ts5.5": "0.9.2",
+    "ts5.3": "0.9.2",
+    "ts5.4": "0.9.2",
+    "ts5.7": "0.9.2",
+    "ts5.8": "0.9.2",
+    "ts5.6": "0.9.2"
+  },
+  "versions": {
+    "0.9.2": {
+      "name": "@types/cookies",
+      "version": "0.9.2",
+      "license": "MIT",
+      "_id": "@types/cookies@0.9.2",
+      "dist": {
+        "shasum": "ccdf86d782f2dea34531dd32733a25be48177cd4",
+        "tarball": "http://localhost:4260/@types/cookies/cookies-0.9.2.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-1AvkDdZM2dbyFybL4fxpuNCaWyv//0AwsuUk2DWeXyM1/5ZKm6W3z6mQi24RZ4l2ucY+bkSHzbDVpySqPGuV8A==",
+        "unpackedSize": 9480
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/cookies"
+      },
+      "description": "TypeScript definitions for cookies",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*",
+        "@types/connect": "*",
+        "@types/express": "*",
+        "@types/keygrip": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "7410d28dd681c4edc5efa3e79488cf8e63f8bf785f5c4c324c6997dc53a40091"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/cookies",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/cookies"
+  },
+  "description": "TypeScript definitions for cookies"
+}

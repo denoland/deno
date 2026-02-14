@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -95,6 +95,10 @@ declare module "ext:deno_web/09_file.js" {
 
 declare module "ext:deno_web/06_streams.js" {
   const ReadableStream: typeof ReadableStream;
+  function readableStreamCancel<T>(
+    stream: ReadableStream<T>,
+    reason?: string,
+  ): Promise<void>;
   function isReadableStreamDisturbed(stream: ReadableStream): boolean;
   function createProxy<T>(stream: ReadableStream<T>): ReadableStream<T>;
 }
@@ -120,8 +124,9 @@ declare module "ext:deno_web/13_message_port.js" {
 }
 
 declare module "ext:deno_web/00_url.js" {
-  const URL: typeof URL;
-  const URLSearchParams: typeof URLSearchParams;
+  const URL: typeof globalThis.URL;
+  const URLPrototype: typeof globalThis.URL.prototype;
+  const URLSearchParams: typeof globalThis.URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -51,6 +51,7 @@ type ResolveNpmResolutionSnapshotFn = Box<
 pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
+  pub clean_on_install: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
@@ -369,6 +370,7 @@ impl<
             workspace_factory.sys().clone(),
             self.tarball_cache()?.clone(),
             NpmInstallerOptions {
+              clean_on_install: self.options.clean_on_install,
               maybe_lockfile: self.maybe_lockfile().await?.cloned(),
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?

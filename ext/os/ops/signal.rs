@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -72,7 +72,7 @@ pub fn op_signal_bind(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

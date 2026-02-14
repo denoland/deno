@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference lib="deno.ns" />
 import {
@@ -42,6 +42,7 @@ import {
   lutimes,
   open,
   stat,
+  statfs,
   writeFile,
 } from "node:fs/promises";
 import process from "node:process";
@@ -70,19 +71,6 @@ Deno.test(
     const dataRead = readFileSync(filename, "utf8");
 
     assert(dataRead === "Hello");
-  },
-);
-
-Deno.test(
-  "[node/fs writeFileSync] write file throws error when encoding is not implemented",
-  () => {
-    const data = "Hello";
-    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
-
-    assertThrows(
-      () => writeFileSync(filename, data, { encoding: "utf16le" }),
-      'The value "utf16le" is invalid for option "encoding"',
-    );
   },
 );
 
@@ -180,6 +168,13 @@ Deno.test(
         }'`,
       );
     }
+  },
+);
+
+Deno.test(
+  "[node/fs/promises statfs] export statfs function",
+  async () => {
+    await statfs(import.meta.filename!);
   },
 );
 

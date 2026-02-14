@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -87,7 +87,7 @@ pub async fn publish(
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.maybe_deno_json() {
+    match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
@@ -124,7 +124,10 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
-    Some(cli_factory.node_resolver().await?.clone()),
+    cli_factory.node_resolver().await?.clone(),
+    cli_factory.npm_req_resolver().await?.clone(),
+    cli_factory.pkg_json_resolver()?.clone(),
+    cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
@@ -138,7 +141,10 @@ pub async fn publish(
     cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
+    GraphDiagnosticsCollector::new(
+      cli_factory.npm_resolver().await?.clone(),
+      parsed_source_cache.clone(),
+    ),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
@@ -1274,13 +1280,19 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
-static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 12] = [
   "LICENSE",
   "LICENSE.md",
   "LICENSE.txt",
   "LICENCE",
   "LICENCE.md",
   "LICENCE.txt",
+  "COPYING",
+  "COPYING.md",
+  "COPYING.txt",
+  "COPYING.LESSER",
+  "COPYING.LESSER.md",
+  "COPYING.LESSER.txt",
 ];
 
 fn resolve_license_file(

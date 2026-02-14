@@ -1,0 +1,4 @@
+{
+  "args": "serve --quiet -P --port 12818 main.ts",
+  "output": "serve.out"
+}

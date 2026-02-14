@@ -1,0 +1,11 @@
+╭ @denotest/with-vuln1 is susceptible to prototype pollution
+│ Severity:   high
+│ Package:    @edenotest/with-vuln1
+│ Vulnerable: <1.1.0
+│ Patched:    >=1.1.0
+│ Path:       @denotest/with-vuln1
+│ Info:       https://example.com/vuln/101010
+╰ Actions:    install @denotest/with-vuln1@1.1.0
+
+Found 1 vulnerabilities
+Severity: 0 low, 0 moderate, 1 high, 0 critical

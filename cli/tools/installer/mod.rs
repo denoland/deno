@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::env;
@@ -35,7 +35,9 @@ use regex::RegexBuilder;
 
 pub use self::bin_name_resolver::BinNameResolver;
 use crate::args::AddFlags;
+use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
@@ -81,7 +83,7 @@ pub struct InstallStats {
   pub downloaded_jsr: DashSet<String>,
   pub reused_jsr: DashSet<String>,
   pub resolved_npm: DashSet<String>,
-  pub downloaded_npm: Count,
+  pub downloaded_npm: DashSet<String>,
   pub intialized_npm: DashSet<String>,
   pub reused_npm: Count,
 }
@@ -107,7 +109,7 @@ impl std::fmt::Debug for InstallStats {
       )
       .field("resolved_npm", &self.resolved_npm.len())
       .field("resolved_jsr_count", &self.resolved_jsr.len())
-      .field("downloaded_npm", &self.downloaded_npm.get())
+      .field("downloaded_npm", &self.downloaded_npm.len())
       .field("downloaded_jsr_count", &self.downloaded_jsr.len())
       .field(
         "intialized_npm",
@@ -151,18 +153,13 @@ impl InstallReporter {
 }
 
 impl deno_npm_installer::InstallProgressReporter for InstallReporter {
-  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {
-    // log::info!("initializing: {}", nv);
-  }
+  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {}
 
   fn initialized(&self, nv: &deno_semver::package::PackageNv) {
-    // log::info!("initialized: {}", nv);
     self.stats.intialized_npm.insert(nv.to_string());
   }
 
-  fn blocking(&self, _message: &str) {
-    // log::info!("blocking: {}", message);
-  }
+  fn blocking(&self, _message: &str) {}
 
   fn scripts_not_run_warning(
     &self,
@@ -217,8 +214,8 @@ impl deno_npm::resolution::Reporter for InstallReporter {
 impl deno_npm_cache::TarballCacheReporter for InstallReporter {
   fn download_started(&self, _nv: &deno_semver::package::PackageNv) {}
 
-  fn downloaded(&self, _nv: &deno_semver::package::PackageNv) {
-    self.stats.downloaded_npm.inc();
+  fn downloaded(&self, nv: &deno_semver::package::PackageNv) {
+    self.stats.downloaded_npm.insert(nv.to_string());
   }
 
   fn reused_cache(&self, _nv: &deno_semver::package::PackageNv) {
@@ -392,8 +389,8 @@ pub async fn uninstall(
   let mut removed = remove_file_if_exists(&file_path)?;
 
   if cfg!(windows) {
-    let file_path = file_path.with_extension("cmd");
-    removed |= remove_file_if_exists(&file_path)?;
+    removed |= remove_file_if_exists(&file_path.with_extension("cmd"))?;
+    removed |= remove_file_if_exists(&file_path.with_extension("exe"))?;
   }
 
   if !removed {
@@ -406,9 +403,28 @@ pub async fn uninstall(
   // There might be some extra files to delete
   // Note: tsconfig.json is legacy. We renamed it to deno.json.
   // Remove cleaning it up after January 2024
+  // Use the base file path (without extension) to compute related files
+  let base_file = installation_dir.join(&uninstall_flags.name);
+
   for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    let file_path = file_path.with_extension(ext);
-    remove_file_if_exists(&file_path)?;
+    // remove the plain extension files (e.g., name.deno.json, name.lock.json)
+    let file_path_ext = base_file.with_extension(ext);
+    remove_file_if_exists(&file_path_ext)?;
+
+    // also remove the hidden per-command copies created at install time
+    // (e.g., .name.deno.json)
+    let hidden_file = get_hidden_file_with_ext(&base_file, ext);
+    remove_file_if_exists(&hidden_file)?;
+
+    // On Windows, installs use a shim with a .cmd extension, which means the
+    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+    // those as well to be thorough.
+    #[cfg(windows)]
+    {
+      let base_with_cmd = base_file.with_extension("cmd");
+      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+      remove_file_if_exists(&hidden_cmd_file)?;
+    }
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
@@ -522,9 +538,6 @@ fn categorize_installed_npm_deps(
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
 
@@ -545,9 +558,6 @@ fn categorize_installed_npm_deps(
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
   }
@@ -555,12 +565,13 @@ fn categorize_installed_npm_deps(
   let mut installed_normal_deps = Vec::new();
   let mut installed_dev_deps = Vec::new();
 
+  let npm_installed_set = if npm_resolver.root_node_modules_path().is_some() {
+    &install_reporter.stats.intialized_npm
+  } else {
+    &install_reporter.stats.downloaded_npm
+  };
   for pkg in top_level_packages {
-    if !install_reporter
-      .stats
-      .intialized_npm
-      .contains(&pkg.nv.to_string())
-    {
+    if !npm_installed_set.contains(&pkg.nv.to_string()) {
       continue;
     }
     if normal_deps.contains(&pkg.nv.name.to_string()) {
@@ -645,7 +656,7 @@ pub fn print_install_report(
       );
     }
 
-    let npm_download = rep.stats.downloaded_npm.get();
+    let npm_download = rep.stats.downloaded_npm.len();
     log::info!(
       "{} {} {}",
       deno_terminal::colors::gray("Downloaded"),
@@ -791,13 +802,13 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags {
     InstallFlags::Global(global_flags) => {
-      install_global(flags, global_flags).await
+      Box::pin(install_global(flags, global_flags)).await
     }
     InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
-      install_local(flags, local_flags).await
+      Box::pin(install_local(flags, local_flags)).await
     }
   }
 }
@@ -846,6 +857,11 @@ async fn install_global(
       "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
       crate::colors::yellow("Warning")
     );
+  }
+
+  if install_flags_global.compile {
+    return Box::pin(install_global_compiled(flags, install_flags_global))
+      .await;
   }
 
   for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
@@ -919,6 +935,78 @@ async fn install_global(
     )
     .await?;
   }
+  Ok(())
+}
+
+async fn install_global_compiled(
+  flags: Arc<Flags>,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let install_dir =
+    get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
+
+  if let Ok(metadata) = fs::metadata(&install_dir) {
+    if !metadata.is_dir() {
+      return Err(anyhow!("Installation path is not a directory"));
+    }
+  } else {
+    fs::create_dir_all(&install_dir)?;
+  }
+
+  let source_file = install_flags_global
+    .module_urls
+    .first()
+    .ok_or_else(|| anyhow!("No module URL provided"))?
+    .clone();
+
+  // Determine the output path
+  let output = if let Some(ref name) = install_flags_global.name {
+    let mut output_path = install_dir.join(name);
+    if cfg!(windows) {
+      output_path = output_path.with_extension("exe");
+    }
+    output_path.to_string_lossy().into_owned()
+  } else {
+    format!("{}/", install_dir.to_string_lossy())
+  };
+
+  let output_path = PathBuf::from(&output);
+  if output_path.is_file() && !install_flags_global.force {
+    return Err(anyhow!(
+      "Existing installation found. Aborting (Use -f to overwrite).",
+    ));
+  }
+
+  let compile_flags = CompileFlags {
+    source_file,
+    output: Some(output.clone()),
+    args: install_flags_global.args,
+    target: None,
+    no_terminal: false,
+    icon: None,
+    include: vec![],
+    exclude: vec![],
+    eszip: false,
+  };
+
+  let mut new_flags = flags.as_ref().clone();
+  new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
+
+  crate::tools::compile::compile(new_flags, compile_flags).await?;
+
+  log::info!("Successfully installed {}", output);
+
+  if !is_in_path(&install_dir) {
+    let installation_dir_str = install_dir.to_string_lossy();
+    log::info!("Add {} to PATH", installation_dir_str);
+    if cfg!(windows) {
+      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
+    } else {
+      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+    }
+  }
+
   Ok(())
 }
 
@@ -1264,6 +1352,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1300,6 +1389,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1322,6 +1412,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1350,6 +1441,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1378,6 +1470,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1404,6 +1497,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1430,6 +1524,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1461,6 +1556,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1497,6 +1593,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1529,6 +1626,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1562,6 +1660,7 @@ mod tests {
         name: None,
         root: Some(temp_dir.to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1599,6 +1698,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1634,6 +1734,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1663,6 +1764,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1683,6 +1785,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await;
@@ -1706,6 +1809,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1736,6 +1840,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1765,6 +1870,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1805,6 +1911,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1850,6 +1957,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1892,6 +2000,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1926,6 +2035,7 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       File::create(&file_path).unwrap();
     }
+    let shim_path = file_path.clone();
 
     // create extra files
     {
@@ -1940,6 +2050,18 @@ mod tests {
     {
       let file_path = file_path.with_extension("lock.json");
       File::create(file_path).unwrap();
+    }
+
+    // create hidden per-command copies as produced by install
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
+      File::create(hidden_file).unwrap();
+    }
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
+      File::create(hidden_file).unwrap();
     }
 
     uninstall(
@@ -1958,6 +2080,14 @@ mod tests {
     assert!(!file_path.with_extension("tsconfig.json").exists());
     assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
+
+    // hidden per-command files should also be removed
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+    );
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+    );
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");

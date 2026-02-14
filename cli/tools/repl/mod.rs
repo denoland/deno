@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io;
 use std::io::Write;
@@ -310,15 +310,25 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
 
   loop {
     let mut line_fut = std::pin::pin!(async {
-      let len = receiver.read_u32_le().await?;
-      let mut buf = vec![0; len as _];
+      let len = match receiver.read_u32_le().await {
+        Ok(n) => n,
+        // Treat the case of 0-byte input as "expected" EOF
+        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+          return Ok(None);
+        }
+        Err(e) => return Err(e),
+      };
+      let mut buf = vec![0; len as usize];
       receiver.read_exact(&mut buf).await?;
-      Ok::<_, AnyError>(buf)
+      Ok(Some(buf))
     });
     let mut poll_worker = true;
     let line = loop {
       tokio::select! {
-        line = &mut line_fut => break line?,
+        line = &mut line_fut => match line? {
+          Some(line) => break line,
+          None => return Ok(repl_session.worker.exit_code()),
+        },
         _ = repl_session.run_event_loop(), if poll_worker => {
           poll_worker = false;
           continue;

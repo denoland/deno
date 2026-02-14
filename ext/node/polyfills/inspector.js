@@ -1,5 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file prefer-primordials
 
 import process from "node:process";
 import { EventEmitter } from "node:events";
@@ -32,6 +34,18 @@ import {
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
 } from "ext:deno_node/internal/errors.ts";
+import { isMainThread } from "node:worker_threads";
+
+function isLoopback(host) {
+  const hostLower = host.toLowerCase();
+
+  return (
+    hostLower === "localhost" ||
+    hostLower.startsWith("127.") ||
+    hostLower === "[::1]" ||
+    hostLower === "[0:0:0:0:0:0:0:1]"
+  );
+}
 
 const {
   ArrayPrototypePush,
@@ -155,7 +169,6 @@ class Session extends EventEmitter {
     }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
-    // deno-lint-ignore prefer-primordials
     for (const callback of this.#messageCallbacks.values()) {
       process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
@@ -185,15 +198,22 @@ function open(port, host, wait) {
     // equiv of handling args[1]->IsString()
     host = undefined;
   }
-  op_inspector_open(port, host);
-  if (wait) {
-    op_inspector_wait();
+
+  if (host && !isLoopback(host)) {
+    process.emitWarning(
+      "Binding the inspector to a public IP with an open port is insecure, " +
+        "as it allows external hosts to connect to the inspector " +
+        "and perform a remote code execution attack.",
+      "SecurityWarning",
+    );
   }
+
+  op_inspector_open(port, host, !!wait);
 
   return {
     __proto__: null,
     [SymbolDispose]() {
-      _debugEnd();
+      op_inspector_close();
     },
   };
 }
@@ -203,7 +223,11 @@ function close() {
 }
 
 function url() {
-  return op_inspector_url();
+  const u = op_inspector_url();
+  if (u === null) {
+    return undefined;
+  }
+  return u;
 }
 
 function waitForDebugger() {

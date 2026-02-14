@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { Buffer } from "node:buffer";
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
@@ -39,6 +39,16 @@ Deno.test("napi external arraybuffer", function () {
   let buf = objectWrap.test_external_arraybuffer();
   assertEquals(new Uint8Array(buf), new Uint8Array([1, 2, 3]));
   buf = null;
+});
+
+Deno.test("napi class accessor property is writable", function () {
+  // Accessor properties (getter/setter) defined via napi_define_class
+  // should be writable via the setter even when napi_writable is not
+  // set in the attributes. napi_writable only applies to data properties.
+  const obj = new objectWrap.NapiAccessorObject();
+  assertEquals(obj.value, 0);
+  obj.value = 42;
+  assertEquals(obj.value, 42);
 });
 
 Deno.test("napi object wrap userland owned", function () {

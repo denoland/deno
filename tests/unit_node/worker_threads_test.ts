@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -13,7 +13,11 @@ import { EventEmitter, once } from "node:events";
 import process from "node:process";
 
 Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
-  assertEquals<unknown>(workerThreads.BroadcastChannel, BroadcastChannel);
+  const bc = new workerThreads.BroadcastChannel("test");
+  assert(bc instanceof BroadcastChannel);
+  assert(typeof bc.ref === "function");
+  assert(typeof bc.unref === "function");
+  bc.close();
 });
 
 Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", () => {
@@ -273,17 +277,6 @@ Deno.test({
     assertThrows(
       () => {
         new workerThreads.Worker(new URL("https://example.com"));
-      },
-    );
-  },
-});
-
-Deno.test({
-  name: "[node/worker_threads] throws on non-existend file",
-  fn() {
-    assertThrows(
-      () => {
-        new workerThreads.Worker(new URL("file://very/unlikely"));
       },
     );
   },

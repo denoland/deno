@@ -66,7 +66,7 @@
           "type": "boolean",
           "description": "Allow all permissions for the program to run unrestricted."
         },
-        "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "read": { "$ref": "#/$defs/allowDenyIgnorePermissionConfigValue" },
         "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "env": { "$ref": "#/$defs/allowDenyIgnorePermissionConfigValue" },
@@ -241,7 +241,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window"],
+          "default": ["deno.window", "deno.unstable", "node"],
           "items": {
             "type": "string",
             "examples": [
@@ -270,7 +270,8 @@
               "es2022",
               "es2023",
               "es2024",
-              "esnext"
+              "esnext",
+              "node"
             ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
@@ -459,6 +460,68 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.\n\nSee more: https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax"
+        }
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "description": "Configuration for `deno deploy` and `deno sandbox`.",
+      "additionalProperties": false,
+      "properties": {
+        "org": {
+          "type": "string",
+          "description": "The organization slug or ID to interact with."
+        },
+        "app": {
+          "type": "string",
+          "description": "The application slug or ID to interact with."
+        },
+        "framework": {
+          "type": "string",
+          "description": "The framework this application is built with, such as `nextjs` or `fresh`. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "install": {
+          "type": "string",
+          "description": "The command to install dependencies. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "build": {
+          "type": "string",
+          "description": "The command to build the application. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "predeploy": {
+          "type": "string",
+          "description": "The command to run before deploying, usually used to run database migrations. When specified, takes precedence over all configuration specified in the console."
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime configuration for the deployed application. When specified, takes precedence over all configuration specified in the console.",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["dynamic", "static"],
+              "default": "dynamic",
+              "description": "The runtime mode. Use 'dynamic' for server-rendered applications or 'static' for pre-built static files."
+            },
+            "entrypoint": {
+              "type": "string",
+              "description": "The entrypoint file for dynamic mode (e.g., 'main.ts')."
+            },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Arguments to pass to the entrypoint for dynamic mode."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "The working directory. For dynamic mode, this is the current working directory. For static mode, this is the directory containing static files to serve."
+            },
+            "spa": {
+              "type": "boolean",
+              "description": "Enable single-page application mode for static deployments. When enabled, all routes will fall back to index.html.",
+              "default": false
+            }
+          }
         }
       }
     },

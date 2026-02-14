@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 mod go;
 mod js;
@@ -24,6 +24,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -120,25 +121,38 @@ macro_rules! maybe_compressed_source {
   }};
 }
 
-macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
+macro_rules! maybe_compressed_static_asset {
+  ($name: expr, $file: expr, $is_lib: literal) => {
     (
       $name,
       StaticAsset {
-        is_lib: true,
+        is_lib: $is_lib,
         source: maybe_compressed_source!(concat!("tsc/dts/", $file)),
       },
     )
+  };
+  ($e: expr, $is_lib: literal) => {
+    maybe_compressed_static_asset!($e, $e, $is_lib)
+  };
+}
+
+macro_rules! maybe_compressed_lib {
+  ($name: expr, $file: expr) => {
+    maybe_compressed_static_asset!($name, $file, true)
   };
   ($e: expr) => {
     maybe_compressed_lib!($e, $e)
   };
 }
 
+// Include the auto-generated node type libs macro
+include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
+
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   Compressed(CompressedSource),
+  #[allow(dead_code)]
   Uncompressed(&'static str),
   #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
@@ -172,7 +186,7 @@ pub struct StaticAsset {
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
   IndexMap<&'static str, StaticAsset>,
 > = Lazy::new(|| {
-  IndexMap::from([
+  Vec::from([
     // compressed in build.rs
     maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
     maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
@@ -292,6 +306,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -300,16 +315,37 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     (
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
-      "node_types.d.ts",
+      "reference_types_node.d.ts",
       StaticAsset {
         is_lib: false,
         source: StaticAssetSource::Uncompressed(
-          "/// <reference types=\"npm:@types/node\" />\n",
+          // causes either the built-in node types to be used or it
+          // prefers the @types/node if it exists
+          "/// <reference lib=\"node\" />\n/// <reference types=\"npm:@types/node\" />\n",
         ),
       },
     ),
   ])
+  .into_iter()
+  .chain(node_type_libs!())
+  .collect()
 });
+
+pub fn lib_names() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for (key, value) in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.iter() {
+    if !value.is_lib {
+      continue;
+    }
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -475,6 +511,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
+  pub jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   pub hash_data: u64,
   pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -516,6 +553,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     | MediaType::Html
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
@@ -600,14 +638,17 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveArgs {
+pub struct ResolveArgs<'a> {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  pub base: String,
+  pub base: &'a str,
   /// A list of specifiers that should be resolved.
   /// (is_cjs: bool, raw_specifier: String)
   pub specifiers: Vec<(bool, String)>,
@@ -660,17 +701,17 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(_)) => {
-      if let Some(npm) = maybe_npm
-        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
-      {
-        let package_folder = npm
-          .npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+    Some(Module::Npm(module)) => {
+      if let Some(npm) = maybe_npm {
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            module.pkg_req_ref.req(),
+            referrer,
+          )?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            req_ref.sub_path(),
+            module.pkg_req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -746,8 +787,6 @@ fn resolve_non_graph_specifier_types(
     match NpmPackageReqReference::from_str(raw_specifier) {
       Ok(npm_req_ref) => {
         debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-        // todo(dsherret): add support for injecting this in the graph so
-        // we don't need this special code here.
         // This could occur when resolving npm:@types/node when it is
         // injected and not part of the graph
         let package_folder =
@@ -846,7 +885,14 @@ pub fn exec(
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut remapped_specifiers = HashMap::new();
-  log::debug!("exec request, root_names: {:?}", request.root_names);
+  log::debug!(
+    "exec request, root_names: {:?}",
+    request
+      .root_names
+      .iter()
+      .map(|r| (r.0.as_str(), r.1))
+      .collect::<Vec<_>>()
+  );
   let root_names: Vec<String> = request
     .root_names
     .iter()
@@ -901,15 +947,21 @@ pub fn resolve_specifier_for_tsc(
   referrer_module: Option<&Module>,
   remapped_specifiers: &mut HashMap<String, ModuleSpecifier>,
 ) -> Result<(String, Option<&'static str>), ResolveError> {
-  if specifier.starts_with("node:") {
-    return Ok((
-      MISSING_DEPENDENCY_SPECIFIER.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ));
+  if specifier.starts_with("node:")
+    && let Ok(specifier) = ModuleSpecifier::parse(&specifier)
+  {
+    return Ok((specifier.into(), Some(MediaType::Dts.as_ts_extension())));
   }
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+  if referrer.scheme() == "asset"
+    && deno_path_util::is_relative_specifier(&specifier)
+  {
+    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
+    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
@@ -935,12 +987,19 @@ pub fn resolve_specifier_for_tsc(
       )?
     }
     _ => {
-      match resolve_non_graph_specifier_types(
+      let result = resolve_non_graph_specifier_types(
         &specifier,
         referrer,
         resolution_mode,
         maybe_npm,
-      ) {
+      );
+      if result.is_err() && specifier == "node" {
+        return Ok((
+          "asset:///reference_types_node.d.ts".to_string(),
+          Some(MediaType::Dts.as_ts_extension()),
+        ));
+      }
+      match result {
         Ok(maybe_result) => maybe_result,
         Err(
           err
@@ -950,7 +1009,10 @@ pub fn resolve_specifier_for_tsc(
         ) => {
           // it's most likely requesting the jsxImportSource, which isn't loaded
           // into the graph when not using jsx, so just ignore this error
-          if specifier.ends_with("/jsx-runtime") {
+          if specifier.ends_with("/jsx-runtime")
+            // ignore in order to support attempt to load when it doesn't exist
+            || specifier == "npm:@types/node"
+          {
             None
           } else {
             return Err(err.into());
@@ -1074,6 +1136,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
     media_type = MediaType::from_str(load_specifier);
+    is_cjs = media_type == MediaType::Dcts;
     maybe_source.map(T::from_static)
   } else if let Some(source) = load_raw_import_source(&specifier) {
     return Ok(Some(LoadResponse {
@@ -1224,11 +1287,15 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "CloseEvent",
   "CompressionStream",
   "CountQueuingStrategy",
+  "Crypto",
+  "CryptoKey",
   "CustomEvent",
   "DecompressionStream",
   "Disposable",
   "DOMException",
+  "ErrorEvent",
   "Event",
+  "EventListenerObject",
   "EventSource",
   "EventTarget",
   "fetch",
@@ -1241,8 +1308,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "MessageChannel",
   "MessageEvent",
   "MessagePort",
+  "navigator",
   "Navigator",
   "performance",
+  "Performance",
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
@@ -1258,6 +1327,7 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "Request",
   "Response",
   "Storage",
+  "SubtleCrypto",
   "TextDecoder",
   "TextDecoderStream",
   "TextEncoder",

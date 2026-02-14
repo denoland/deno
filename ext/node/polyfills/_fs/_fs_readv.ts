@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   ERR_INVALID_ARG_TYPE,
@@ -18,6 +18,7 @@ import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 
 const {
   ObjectDefineProperty,
+  Promise,
   PromisePrototypeThen,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
@@ -98,6 +99,11 @@ ObjectDefineProperty(readv, customPromisifyArgs, {
   enumerable: false,
 });
 
+export interface ReadVResult {
+  bytesRead: number;
+  buffers: readonly ArrayBufferView[];
+}
+
 export function readvSync(
   fd: number,
   buffers: readonly ArrayBufferView[],
@@ -136,4 +142,17 @@ export function readvSync(
   readTotal += readInBuf;
 
   return readTotal;
+}
+
+export function readvPromise(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  position?: number,
+): Promise<ReadVResult> {
+  return new Promise((resolve, reject) => {
+    readv(fd, buffers, position ?? null, (err, bytesRead, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesRead, buffers });
+    });
+  });
 }

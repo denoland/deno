@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_error::JsErrorClass;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -876,7 +877,9 @@ fn maybe_ambient_specifier_resolution_err(
           Some(specifier.to_string())
         }
       },
-      ResolveError::ImportMap(import_map_error) => {
+      ResolveError::Other(err) => {
+        let import_map_error =
+          err.get_ref().downcast_ref::<import_map::ImportMapError>()?;
         match import_map_error.as_kind() {
           ImportMapErrorKind::UnmappedBareSpecifier(spec, _) => {
             Some(spec.clone())
@@ -891,7 +894,6 @@ fn maybe_ambient_specifier_resolution_err(
           | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
         }
       }
-      ResolveError::Other(..) => None,
     },
   }
 }
@@ -1010,17 +1012,6 @@ fn diagnose_resolution(
                       if !is_mapped {
                         diagnostics.push(DenoDiagnostic::BareNodeSpecifier(
                           module_name.to_string(),
-                        ));
-                      }
-                    } else if let Some(npm_resolver) = managed_npm_resolver {
-                      // check that a @types/node package exists in the resolver
-                      let types_node_req =
-                        PackageReq::from_str("@types/node").unwrap();
-                      if !npm_resolver.is_pkg_req_folder_cached(&types_node_req)
-                      {
-                        diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-                          types_node_req,
-                          ModuleSpecifier::parse("npm:@types/node").unwrap(),
                         ));
                       }
                     }

@@ -1,0 +1,194 @@
+# original
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@dsherret/dax": "jsr:@dsherret/dax@0.0.1",
+      "jsr:@dsherret/which@0.0.1": "jsr:@dsherret/which@0.0.1",
+      "jsr:@oak/commons@0.4": "jsr:@oak/commons@0.4.0",
+      "jsr:@oak/oak": "jsr:@oak/oak@12.6.3",
+      "jsr:@std/assert@0.210": "jsr:@std/assert@0.210.0",
+      "jsr:@std/assert@^0.210.0": "jsr:@std/assert@0.210.0",
+      "jsr:@std/bytes@0.210": "jsr:@std/bytes@0.210.0",
+      "jsr:@std/bytes@^0.210.0": "jsr:@std/bytes@0.210.0",
+      "jsr:@std/crypto@0.210": "jsr:@std/crypto@0.210.0",
+      "jsr:@std/encoding@0.210": "jsr:@std/encoding@0.210.0",
+      "jsr:@std/encoding@^0.210.0": "jsr:@std/encoding@0.210.0",
+      "jsr:@std/fmt@0.210.0": "jsr:@std/fmt@0.210.0",
+      "jsr:@std/fs@0.210.0": "jsr:@std/fs@0.210.0",
+      "jsr:@std/http@0.210": "jsr:@std/http@0.210.0",
+      "jsr:@std/io@0.210": "jsr:@std/io@0.210.0",
+      "jsr:@std/io@0.210.0": "jsr:@std/io@0.210.0",
+      "jsr:@std/io@^0.210.0": "jsr:@std/io@0.210.0",
+      "jsr:@std/media_types@0.210": "jsr:@std/media_types@0.210.0",
+      "jsr:@std/path@0.210": "jsr:@std/path@0.210.0",
+      "jsr:@std/path@0.210.0": "jsr:@std/path@0.210.0",
+      "jsr:@std/path@^0.210.0": "jsr:@std/path@0.210.0",
+      "jsr:@std/streams@0.210": "jsr:@std/streams@0.210.0",
+      "jsr:@std/streams@0.210.0": "jsr:@std/streams@0.210.0",
+      "jsr:@zome_unreferenced/package": "jsr:@zome_unreferenced/package@0.1.0",
+      "jsr:@zome_unreferenced/package_b": "jsr:@zome_unreferenced/package_b@0.1.0",
+      "npm:path-to-regexp@6.2.1": "npm:path-to-regexp@6.2.1"
+    },
+    "npm": {
+      "path-to-regexp@6.2.1": {
+        "integrity": "sha512-JLyh7xT1kizaEvcaXOQwOc2/Yhw6KZOvPf1S8401UyLk86CU79LN3vl7ztXGm/pZ+YjoyAJ4rxmHwbkBXJX+yw==",
+        "dependencies": {}
+      }
+    },
+    "jsr": {
+      "@dsherret/dax@0.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@dsherret/which@0.0.1",
+          "jsr:@std/fmt@0.210.0",
+          "jsr:@std/fs@0.210.0",
+          "jsr:@std/io@0.210.0",
+          "jsr:@std/path@0.210.0",
+          "jsr:@std/streams@0.210.0"
+        ]
+      },
+      "@dsherret/which@0.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@oak/commons@0.4.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@0.210"
+        ]
+      },
+      "@oak/oak@12.6.3": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@oak/commons@0.4",
+          "jsr:@std/bytes@0.210",
+          "jsr:@std/crypto@0.210",
+          "jsr:@std/encoding@0.210",
+          "jsr:@std/http@0.210",
+          "jsr:@std/io@0.210",
+          "jsr:@std/media_types@0.210",
+          "jsr:@std/path@0.210",
+          "jsr:@std/streams@0.210",
+          "npm:path-to-regexp@6.2.1"
+        ]
+      },
+      "@std/assert@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@std/bytes@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@std/crypto@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0",
+          "jsr:@std/encoding@^0.210.0"
+        ]
+      },
+      "@std/encoding@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@std/fmt@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@std/fs@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0",
+          "jsr:@std/path@^0.210.0"
+        ]
+      },
+      "@std/http@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0",
+          "jsr:@std/encoding@^0.210.0"
+        ]
+      },
+      "@std/io@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0",
+          "jsr:@std/bytes@^0.210.0"
+        ]
+      },
+      "@std/media_types@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      },
+      "@std/path@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0"
+        ]
+      },
+      "@std/streams@0.210.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@std/assert@^0.210.0",
+          "jsr:@std/bytes@^0.210.0",
+          "jsr:@std/io@^0.210.0"
+        ]
+      },
+      "@zome_unreferenced/package@0.1.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@zome_unreferenced/package_b"
+        ]
+      },
+      "@zome_unreferenced/package_b@0.1.0": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      }
+    }
+  },
+  "remote": {
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@dsherret/dax"
+    ],
+    "members": {
+      "package_a": {
+        "dependencies": [
+          "jsr:@oak/oak"
+        ]
+      }
+    }
+  }
+}
+
+# remove package_a member
+{
+  "dependencies": [
+    "jsr:@dsherret/dax"
+  ]
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@zome_unreferenced/package@*": "0.1.0",
+    "jsr:@zome_unreferenced/package_b@*": "0.1.0"
+  },
+  "jsr": {
+    "@zome_unreferenced/package@0.1.0": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+      "dependencies": [
+        "jsr:@zome_unreferenced/package_b"
+      ]
+    },
+    "@zome_unreferenced/package_b@0.1.0": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+    }
+  },
+  "npm": {
+    "path-to-regexp@6.2.1": {
+      "integrity": "sha512-JLyh7xT1kizaEvcaXOQwOc2/Yhw6KZOvPf1S8401UyLk86CU79LN3vl7ztXGm/pZ+YjoyAJ4rxmHwbkBXJX+yw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@dsherret/dax@*"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -282,10 +282,7 @@ const validateAbortSignal = hideStackFrames(
   },
 );
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
+/** @type {(value: unknown, name: string) => asserts value is Function} */
 const validateFunction = hideStackFrames(
   (value, name) => {
     if (typeof value !== "function") {

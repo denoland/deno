@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -140,7 +140,7 @@ impl HandleWrap {
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'_, '_>,
-    #[global] cb: Option<v8::Global<v8::Function>>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
       return Ok(());
