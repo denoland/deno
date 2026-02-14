@@ -5025,8 +5025,8 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
-  lint-ci-success:
-    name: lint ci success
+  lint-ci-status:
+    name: lint ci status
     needs:
       - bench
       - build-debug-macos-x86_64

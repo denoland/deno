@@ -1413,10 +1413,10 @@ const publishCanaryJob = job("publish-canary", {
   })(),
 });
 
-// === lint ci success job (status check gate) ===
+// === lint ci status job (status check gate) ===
 
-const lintCiSuccessJob = job("lint-ci-success", {
-  name: "lint ci success",
+const lintCiStatusJob = job("lint-ci-status", {
+  name: "lint ci status",
   needs: [
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
@@ -1470,7 +1470,7 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
-    lintCiSuccessJob,
+    lintCiStatusJob,
     publishCanaryJob,
   ],
 });
