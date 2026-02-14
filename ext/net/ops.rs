@@ -553,28 +553,27 @@ pub async fn op_net_connect_tcp_inner(
   });
 
   // Use Happy Eyeballs if enabled and multiple addresses available
-  let tcp_stream = if options.auto_select_family && addrs.len() > 1 {
+  let tcp_stream_result = if options.auto_select_family && addrs.len() > 1 {
     let attempt_delay =
       Duration::from_millis(options.auto_select_family_attempt_delay);
-    let result = crate::happy_eyeballs::connect_happy_eyeballs(
+    crate::happy_eyeballs::connect_happy_eyeballs(
       addrs,
       attempt_delay,
       cancel_handle.clone(),
     )
     .await
-    .map_err(NetError::Io)?;
-    result.stream
+    .map(|result| result.stream)
+    .map_err(NetError::Io)
   } else {
     // Single address or Happy Eyeballs disabled - use first address
     let addr = addrs[0];
-    let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
-      TcpStream::connect(&addr).or_cancel(cancel_handle).await?
+    if let Some(cancel_handle) = &cancel_handle {
+      match TcpStream::connect(&addr).or_cancel(cancel_handle).await {
+        Ok(result) => result.map_err(NetError::Io),
+        Err(err) => Err(NetError::Canceled(err)),
+      }
     } else {
-      TcpStream::connect(&addr).await
-    };
-    match tcp_stream_result {
-      Ok(stream) => stream,
-      Err(e) => return Err(NetError::Io(e)),
+      TcpStream::connect(&addr).await.map_err(NetError::Io)
     }
   };
 
@@ -583,6 +582,8 @@ pub async fn op_net_connect_tcp_inner(
   {
     res.close();
   }
+
+  let tcp_stream = tcp_stream_result?;
 
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
