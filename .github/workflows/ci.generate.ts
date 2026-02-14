@@ -1413,10 +1413,10 @@ const publishCanaryJob = job("publish-canary", {
   })(),
 });
 
-// === ci-ok job (status check gate) ===
+// === lint ci success job (status check gate) ===
 
-const ensureCiSuccessJob = job("ensure-success", {
-  name: "ensure success",
+const lintCiSuccessJob = job("lint-ci-success", {
+  name: "lint ci success",
   needs: [
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
@@ -1424,6 +1424,7 @@ const ensureCiSuccessJob = job("ensure-success", {
   ],
   if: conditions.status.always(),
   runsOn: "ubuntu-latest",
+  // we use this job in the main branch rule status checks for PRs
   steps: step({
     name: "Ensure CI success",
     run: [
@@ -1469,7 +1470,7 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
-    ensureCiSuccessJob,
+    lintCiSuccessJob,
     publishCanaryJob,
   ],
 });
