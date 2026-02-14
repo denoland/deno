@@ -274,16 +274,16 @@ function createRestoreAndSaveCacheSteps(m: {
   const path = m.path.join("\n");
   const restoreCacheStep = step({
     name: `Restore cache ${m.name}`,
-    uses: "actions/cache/restore@v4",
+    uses: "cirruslabs/cache/restore@v4",
     with: {
       path,
       key: "never_saved",
-      "restore-keys": m.cacheKeyPrefix,
+      "restore-keys": `${m.cacheKeyPrefix}-`,
     },
   });
   const saveCacheStep = step({
     name: `Cache ${m.name}`,
-    uses: "actions/cache/save@v4",
+    uses: "cirruslabs/cache/save@v4",
     with: {
       path,
       key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
