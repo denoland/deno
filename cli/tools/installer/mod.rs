@@ -35,7 +35,9 @@ use regex::RegexBuilder;
 
 pub use self::bin_name_resolver::BinNameResolver;
 use crate::args::AddFlags;
+use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
@@ -387,8 +389,8 @@ pub async fn uninstall(
   let mut removed = remove_file_if_exists(&file_path)?;
 
   if cfg!(windows) {
-    let file_path = file_path.with_extension("cmd");
-    removed |= remove_file_if_exists(&file_path)?;
+    removed |= remove_file_if_exists(&file_path.with_extension("cmd"))?;
+    removed |= remove_file_if_exists(&file_path.with_extension("exe"))?;
   }
 
   if !removed {
@@ -536,9 +538,6 @@ fn categorize_installed_npm_deps(
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
 
@@ -558,9 +557,6 @@ fn categorize_installed_npm_deps(
           _package_json_dep_workspace_req,
         ) => {
           // ignore workspace deps
-        }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
         }
       }
     }
@@ -806,13 +802,13 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags {
     InstallFlags::Global(global_flags) => {
-      install_global(flags, global_flags).await
+      Box::pin(install_global(flags, global_flags)).await
     }
     InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
-      install_local(flags, local_flags).await
+      Box::pin(install_local(flags, local_flags)).await
     }
   }
 }
@@ -861,6 +857,11 @@ async fn install_global(
       "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
       crate::colors::yellow("Warning")
     );
+  }
+
+  if install_flags_global.compile {
+    return Box::pin(install_global_compiled(flags, install_flags_global))
+      .await;
   }
 
   for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
@@ -934,6 +935,78 @@ async fn install_global(
     )
     .await?;
   }
+  Ok(())
+}
+
+async fn install_global_compiled(
+  flags: Arc<Flags>,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let install_dir =
+    get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
+
+  if let Ok(metadata) = fs::metadata(&install_dir) {
+    if !metadata.is_dir() {
+      return Err(anyhow!("Installation path is not a directory"));
+    }
+  } else {
+    fs::create_dir_all(&install_dir)?;
+  }
+
+  let source_file = install_flags_global
+    .module_urls
+    .first()
+    .ok_or_else(|| anyhow!("No module URL provided"))?
+    .clone();
+
+  // Determine the output path
+  let output = if let Some(ref name) = install_flags_global.name {
+    let mut output_path = install_dir.join(name);
+    if cfg!(windows) {
+      output_path = output_path.with_extension("exe");
+    }
+    output_path.to_string_lossy().into_owned()
+  } else {
+    format!("{}/", install_dir.to_string_lossy())
+  };
+
+  let output_path = PathBuf::from(&output);
+  if output_path.is_file() && !install_flags_global.force {
+    return Err(anyhow!(
+      "Existing installation found. Aborting (Use -f to overwrite).",
+    ));
+  }
+
+  let compile_flags = CompileFlags {
+    source_file,
+    output: Some(output.clone()),
+    args: install_flags_global.args,
+    target: None,
+    no_terminal: false,
+    icon: None,
+    include: vec![],
+    exclude: vec![],
+    eszip: false,
+  };
+
+  let mut new_flags = flags.as_ref().clone();
+  new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
+
+  crate::tools::compile::compile(new_flags, compile_flags).await?;
+
+  log::info!("Successfully installed {}", output);
+
+  if !is_in_path(&install_dir) {
+    let installation_dir_str = install_dir.to_string_lossy();
+    log::info!("Add {} to PATH", installation_dir_str);
+    if cfg!(windows) {
+      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
+    } else {
+      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+    }
+  }
+
   Ok(())
 }
 
@@ -1279,6 +1352,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1315,6 +1389,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1337,6 +1412,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1365,6 +1441,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1393,6 +1470,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1419,6 +1497,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1445,6 +1524,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1476,6 +1556,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1512,6 +1593,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1544,6 +1626,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1577,6 +1660,7 @@ mod tests {
         name: None,
         root: Some(temp_dir.to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1614,6 +1698,7 @@ mod tests {
         name: None,
         root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1649,6 +1734,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1678,6 +1764,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1698,6 +1785,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await;
@@ -1721,6 +1809,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1751,6 +1840,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1780,6 +1870,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1820,6 +1911,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1865,6 +1957,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1907,6 +2000,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;

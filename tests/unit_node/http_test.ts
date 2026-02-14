@@ -2267,3 +2267,23 @@ Deno.test("[node/http] Server.address() includes family property", async () => {
     await promise;
   }
 });
+
+Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.writeEarlyHints(
+      { link: "</styles.css>; rel=preload; as=style" },
+      () => {
+        res.writeHead(200);
+        res.end("ok");
+      },
+    );
+  });
+  server.listen(0, async () => {
+    const addr = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${addr.port}`);
+    assertEquals(await res.text(), "ok");
+    server.close(() => resolve());
+  });
+  await promise;
+});

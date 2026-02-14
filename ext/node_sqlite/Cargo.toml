@@ -1,0 +1,20 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_node_sqlite"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Node sqlite compatibility for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_permissions.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true

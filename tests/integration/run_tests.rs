@@ -3402,7 +3402,7 @@ fn handle_invalid_path_error() {
 fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
   let socket_path = if cfg!(windows) {
-    PathRef::new(r"\\.\pipe\deno-permission-broker")
+    PathRef::new(r"\\.\pipe\deno-permission-broker-nonexistent")
   } else {
     context.temp_dir().path().join("broker.sock")
   };

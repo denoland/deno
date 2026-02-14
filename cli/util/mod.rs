@@ -12,6 +12,7 @@ pub mod path;
 pub mod progress_bar;
 pub mod retry;
 pub mod sync;
+pub mod temp;
 pub mod text_encoding;
 pub mod unix;
 pub mod v8;

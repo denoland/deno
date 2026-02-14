@@ -416,11 +416,19 @@ export class Pipe extends ConnectionWrap {
     if (this.#listener) {
       this.#listener.ref();
     }
+    const stream = this[kStreamBaseField];
+    if (stream && typeof stream.ref === "function") {
+      stream.ref();
+    }
   }
 
   override unref() {
     if (this.#listener) {
       this.#listener.unref();
+    }
+    const stream = this[kStreamBaseField];
+    if (stream && typeof stream.unref === "function") {
+      stream.unref();
     }
   }
 

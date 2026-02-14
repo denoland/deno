@@ -1572,6 +1572,10 @@ export type ServerResponse = {
   end(chunk?: any, encoding?: any, cb?: any): void;
 
   flushHeaders(): void;
+  writeEarlyHints(
+    hints: Record<string, string | string[]>,
+    callback?: () => void,
+  ): void;
   _implicitHeader(): void;
 
   // Undocumented field used by `npm:light-my-request`.
@@ -1979,6 +1983,15 @@ ServerResponse.prototype.detachSocket = function (
 };
 
 ServerResponse.prototype.writeContinue = function writeContinue(cb) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  _hints,
+  cb,
+) {
   if (cb) {
     nextTick(cb);
   }

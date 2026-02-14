@@ -3,7 +3,6 @@
 pub mod blocklist;
 pub mod buffer;
 pub mod constant;
-pub mod crypto;
 pub mod dns;
 pub mod fs;
 pub mod handle_wrap;
@@ -17,7 +16,6 @@ pub mod os;
 pub mod perf_hooks;
 pub mod process;
 pub mod require;
-pub mod sqlite;
 pub mod tls;
 pub mod util;
 pub mod v8;

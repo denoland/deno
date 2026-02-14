@@ -44,9 +44,6 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  #[class(generic)]
-  #[error("JSR specifiers are not supported in package.json: {req}")]
-  JsrReqUnsupported { req: PackageReq },
 }
 
 pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
@@ -196,13 +193,6 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           match value {
             PackageJsonDepValue::File(_) => {
               // skip
-            }
-            PackageJsonDepValue::JsrReq(req) => {
-              return Err(
-                ByonmResolvePkgFolderFromDenoReqError::JsrReqUnsupported {
-                  req: req.clone(),
-                },
-              );
             }
             PackageJsonDepValue::Req(dep_req) => {
               if dep_req.name == req.name

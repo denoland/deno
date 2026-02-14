@@ -11,7 +11,6 @@
 - remote
 
 ./node_modules
-- .bin
 - .deno
 -- [WILDCARD]
 -- @denotest+add@1.0.0

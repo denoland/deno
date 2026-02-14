@@ -22,6 +22,7 @@ use crate::CronSpec;
 use crate::Traceparent;
 
 pub struct SocketCronHandler {
+  socket_addr: String,
   socket_task_tx: mpsc::Sender<SocketTaskCommand>,
   socket_task_handle: deno_core::unsync::JoinHandle<()>,
   socket_task_exit_error: Rc<OnceCell<CronError>>,
@@ -38,13 +39,15 @@ pub(crate) enum SocketTaskCommand {
     name: String,
     success: bool,
   },
+  AckReject,
 }
 
 #[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 enum OutboundMessage<'a> {
   Register { crons: &'a [CronRegistration<'a>] },
   Result { name: &'a str, success: bool },
+  RejectAck,
 }
 
 #[derive(Serialize)]
@@ -73,13 +76,15 @@ impl SocketCronHandler {
     let socket_task_exit_error = Rc::new(OnceCell::new());
     let reject_reason = Rc::new(OnceCell::new());
     let socket_task_handle = spawn(Self::socket_task(
-      socket_addr,
+      socket_addr.clone(),
+      socket_task_tx.clone(),
       socket_task_rx,
       socket_task_exit_error.clone(),
       reject_reason.clone(),
     ));
 
     Self {
+      socket_addr,
       socket_task_tx,
       socket_task_handle,
       socket_task_exit_error,
@@ -87,8 +92,13 @@ impl SocketCronHandler {
     }
   }
 
+  pub fn socket_addr(&self) -> &str {
+    &self.socket_addr
+  }
+
   async fn socket_task(
     socket_addr: String,
+    socket_task_tx: mpsc::Sender<SocketTaskCommand>,
     mut socket_task_rx: mpsc::Receiver<SocketTaskCommand>,
     exit_error: Rc<OnceCell<CronError>>,
     reject_reason: Rc<OnceCell<String>>,
@@ -133,13 +143,22 @@ impl SocketCronHandler {
                 return;
               }
             }
+            SocketTaskCommand::AckReject => {
+              if let Err(e) = send_reject_ack(&mut socket_writer).await {
+                let _ = exit_error.set(CronError::SocketError(format!(
+                  "Failed to send reject acknowledgment: {}",
+                  e
+                )));
+                return;
+              }
+            }
           }
         }
 
         result = socket_reader.next_line() => {
           match result {
             Ok(Some(line)) => {
-              let _ = handle_inbound_messages(&line, &invocation_txs, &reject_reason);
+              let _ = handle_inbound_messages(&line, &invocation_txs, &reject_reason, &socket_task_tx);
             }
             Ok(None) => {
               let _ = exit_error.set(CronError::SocketError(
@@ -426,10 +445,24 @@ async fn send_execution_result(
   Ok(())
 }
 
+async fn send_reject_ack(
+  socket_writer: &mut BufWriter<impl tokio::io::AsyncWrite + Unpin>,
+) -> Result<(), std::io::Error> {
+  let msg = OutboundMessage::RejectAck;
+
+  let json = serde_json::to_string(&msg).map_err(std::io::Error::other)?;
+  socket_writer.write_all(json.as_bytes()).await?;
+  socket_writer.write_all(b"\n").await?;
+  socket_writer.flush().await?;
+
+  Ok(())
+}
+
 fn handle_inbound_messages(
   line: &str,
   invocation_txs: &HashMap<String, mpsc::Sender<Traceparent>>,
   reject_reason: &Rc<OnceCell<String>>,
+  socket_task_tx: &mpsc::Sender<SocketTaskCommand>,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let msg: InboundMessage = serde_json::from_str(line)?;
 
@@ -440,7 +473,9 @@ fn handle_inbound_messages(
       }
     }
     InboundMessage::RejectNewCrons { reason } => {
-      let _ = reject_reason.set(reason);
+      if reject_reason.set(reason).is_ok() {
+        let _ = socket_task_tx.try_send(SocketTaskCommand::AckReject);
+      }
     }
   }
 

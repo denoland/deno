@@ -103,15 +103,19 @@ impl NodeJsMirror {
     entries.push((header_file, header_checksum));
 
     if cfg!(windows) {
-      if !cfg!(target_arch = "x86_64") {
-        panic!("unsupported target arch on windows, only support x86_64");
-      }
-      let Some(bytes) = self.get_node_lib_bytes(version, "win-x64") else {
+      let win_platform = if cfg!(target_arch = "x86_64") {
+        "win-x64"
+      } else if cfg!(target_arch = "aarch64") {
+        "win-arm64"
+      } else {
+        panic!("unsupported target arch on windows");
+      };
+      let Some(bytes) = self.get_node_lib_bytes(version, win_platform) else {
         eprintln!("test server failed to get node lib");
         return None;
       };
       {
-        let file = format!("{version}/win-x64/node.lib");
+        let file = format!("{version}/{win_platform}/node.lib");
         let checksum = self.get_checksum(&file, bytes);
         let filename_for_checksum =
           file.trim_start_matches(&format!("{version}/"));

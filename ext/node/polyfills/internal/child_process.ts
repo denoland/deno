@@ -156,6 +156,8 @@ function flushStdio(subprocess: ChildProcess) {
 // StreamBase, so it can be used with node streams
 class StreamResource implements StreamBase {
   #rid: number;
+  #isUnref = false;
+  #pendingPromises: Set<Promise<number>> = new Set();
   constructor(rid: number) {
     this.#rid = rid;
   }
@@ -164,18 +166,40 @@ class StreamResource implements StreamBase {
   }
   async read(p: Uint8Array): Promise<number | null> {
     const readPromise = core.read(this.#rid, p);
-    core.unrefOpPromise(readPromise);
-    const nread = await readPromise;
-    return nread > 0 ? nread : null;
+    this.#pendingPromises.add(readPromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(readPromise);
+    }
+    try {
+      const nread = await readPromise;
+      return nread > 0 ? nread : null;
+    } finally {
+      this.#pendingPromises.delete(readPromise);
+    }
   }
   ref(): void {
-    return;
+    this.#isUnref = false;
+    for (const promise of this.#pendingPromises) {
+      core.refOpPromise(promise);
+    }
   }
   unref(): void {
-    return;
+    this.#isUnref = true;
+    for (const promise of this.#pendingPromises) {
+      core.unrefOpPromise(promise);
+    }
   }
-  write(p: Uint8Array): Promise<number> {
-    return core.write(this.#rid, p);
+  async write(p: Uint8Array): Promise<number> {
+    const writePromise = core.write(this.#rid, p);
+    this.#pendingPromises.add(writePromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(writePromise);
+    }
+    try {
+      return await writePromise;
+    } finally {
+      this.#pendingPromises.delete(writePromise);
+    }
   }
 }
 
@@ -377,9 +401,25 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
+      // Get stdio rids to create Socket instances
+      const stdioRids = internals.getStdioRids(this.#process);
+
       if (stdin === "pipe") {
         assert(this.#process.stdin);
-        this.stdin = Writable.fromWeb(this.#process.stdin);
+        if (stdioRids.stdinRid !== null) {
+          // Create Socket instance for stdin (like Node.js does)
+          this.stdin = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdinRid),
+            ),
+            writable: true,
+            readable: false,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdin = Writable.fromWeb(this.#process.stdin);
+        }
       }
 
       if (stdin instanceof Stream) {
@@ -395,7 +435,20 @@ export class ChildProcess extends EventEmitter {
       if (stdout === "pipe") {
         assert(this.#process.stdout);
         this[kClosesNeeded]++;
-        this.stdout = Readable.fromWeb(this.#process.stdout);
+        if (stdioRids.stdoutRid !== null) {
+          // Create Socket instance for stdout (like Node.js does)
+          this.stdout = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdoutRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdout = Readable.fromWeb(this.#process.stdout);
+        }
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -404,7 +457,20 @@ export class ChildProcess extends EventEmitter {
       if (stderr === "pipe") {
         assert(this.#process.stderr);
         this[kClosesNeeded]++;
-        this.stderr = Readable.fromWeb(this.#process.stderr);
+        if (stdioRids.stderrRid !== null) {
+          // Create Socket instance for stderr (like Node.js does)
+          this.stderr = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stderrRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stderr = Readable.fromWeb(this.#process.stderr);
+        }
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -476,12 +542,15 @@ export class ChildProcess extends EventEmitter {
 
       (async () => {
         const status = await this.#process.status;
-        this.exitCode = status.code;
+        this.signalCode = this.signalCode || status.signal || null;
+        if (this.signalCode) {
+          this.exitCode = null;
+        } else {
+          this.exitCode = status.code;
+        }
         this.#spawned.promise.then(async () => {
-          const exitCode = this.signalCode == null ? this.exitCode : null;
-          const signalCode = this.signalCode == null ? null : this.signalCode;
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
-          this.emit("exit", exitCode, signalCode);
+          this.emit("exit", this.exitCode, this.signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
           maybeClose(this);
@@ -968,7 +1037,16 @@ export function normalizeSpawnArguments(
   ]);
 
   if (options.shell) {
-    let command = ArrayPrototypeJoin([file, ...args], " ");
+    // When args are provided, escape them to prevent shell injection.
+    // When no args are provided (just a string command), the user intends
+    // for shell interpretation, so don't escape.
+    let command;
+    if (args.length > 0) {
+      const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
+      command = ArrayPrototypeJoin(escapedParts, " ");
+    } else {
+      command = file;
+    }
     // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
     command = transformDenoShellCommand(command, options.env);
     // Set the shell, switches, and commands.
@@ -1087,6 +1165,43 @@ function waitForStreamToClose(stream: Stream) {
 }
 
 /**
+ * Escapes a string for safe use as a shell argument.
+ * On Unix, wraps in single quotes and escapes embedded single quotes.
+ * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
+ */
+function escapeShellArg(arg: string): string {
+  if (process.platform === "win32") {
+    // Windows: use double quotes, escape double quotes and backslashes
+    // Empty string needs to be quoted
+    if (arg === "") {
+      return '""';
+    }
+    // If no special characters, return as-is
+    if (!/[\s"\\]/.test(arg)) {
+      return arg;
+    }
+    // Escape backslashes before quotes, then escape quotes
+    let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
+    // Escape trailing backslashes
+    escaped = escaped.replace(/(\\+)$/, "$1$1");
+    return `"${escaped}"`;
+  } else {
+    // Unix: use single quotes, escape embedded single quotes
+    // Empty string needs to be quoted
+    if (arg === "") {
+      return "''";
+    }
+    // If no special characters, return as-is
+    if (!/[^a-zA-Z0-9_./-]/.test(arg)) {
+      return arg;
+    }
+    // Wrap in single quotes and escape any embedded single quotes
+    // Single quotes are escaped by ending the string, adding an escaped quote, and starting a new string
+    return "'" + arg.replace(/'/g, "'\\''") + "'";
+  }
+}
+
+/**
  * Simple shell argument splitter that handles double and single quotes.
  * Used to parse the arguments portion of a shell command string.
  */
@@ -1182,7 +1297,7 @@ function transformDenoShellCommand(
     // Check if any translated arg contains shell metacharacters (e.g. from eval
     // wrapping). If so, the result can't be safely used in a shell command.
     for (let i = 0; i < result.deno_args.length; i++) {
-      if (/[();&|<>`!]/.test(result.deno_args[i])) {
+      if (/[();&|<>`!\n\r]/.test(result.deno_args[i])) {
         return command;
       }
     }

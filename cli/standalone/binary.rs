@@ -185,7 +185,6 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   libsui::utils::is_elf(&data)
     || libsui::utils::is_pe(&data)
     || libsui::utils::is_macho(&data)
-    || data.is_empty()
 }
 
 pub struct WriteBinOptions<'a> {

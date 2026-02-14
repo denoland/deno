@@ -404,7 +404,11 @@ mod npm {
       if let Some(finding) = adv.findings.first()
         && let Some(path) = finding.paths.first()
       {
-        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path);
+        let path_fmt = path
+          .split(">")
+          .collect::<Vec<_>>()
+          .join(colors::gray(" > ").to_string().as_str());
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path_fmt);
       }
       if actions.is_empty() {
         _ = writeln!(stdout, "╰ {}      {}", colors::gray("Info:"), adv.url);

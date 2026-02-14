@@ -8,7 +8,7 @@ Deno.cron("early-cron", "* * * * *", () => {
 console.error("[ISOLATE] early-cron registered successfully");
 
 // 2. Start HTTP server
-Deno.serve(() => new Response("ok"));
+Deno.serve({ port: 0 }, () => new Response("ok"));
 console.error("[ISOLATE] Deno.serve started");
 
 // 3. Wait for rejection message to be processed

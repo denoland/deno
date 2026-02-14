@@ -1934,8 +1934,9 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
       .filter((line) => !line.trim().startsWith("at"))
       .join("\n");
 
-    const expectedResult =
-      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    const expectedResult = "TypeError: Type incorrect\n" +
+      "    ... 3 lines matching cause stack trace ...\n" +
+      "  cause: SyntaxError: Improper syntax\n}";
     assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
@@ -2273,7 +2274,7 @@ Deno.test(function inspectError() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
 });
 
@@ -2296,11 +2297,11 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by [Circular *1]",
+    "cause: [Circular *1]",
   );
 });
 
@@ -2316,7 +2317,7 @@ Deno.test(function inspectErrorWithCauseFormat() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error)),
-    "Caused by { code: 100500 }",
+    "[cause]: { code: 100500 }",
   );
 });
 
@@ -2439,7 +2440,7 @@ Deno.test(async function inspectAggregateError() {
   } catch (err) {
     assertEquals(
       Deno.inspect(err).trimEnd(),
-      "AggregateError: All promises were rejected",
+      "[AggregateError: All promises were rejected] { [errors]: [] }",
     );
   }
 });
