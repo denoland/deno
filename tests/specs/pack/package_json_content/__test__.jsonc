@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_package_json_content": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-pkg-json-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-pkg-json-1.0.0.tgz && cat package/package.json && echo"
+        ],
+        "output": "package_json.out"
+      }]
+    }
+  }
+}
