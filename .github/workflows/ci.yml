@@ -187,7 +187,7 @@ jobs:
         run: cargo build --release -p deno
       - name: Run benchmarks
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
-        run: cargo bench -p cli_tests --bench deno_bench --locked
+        run: cargo bench -p bench_tests --bench deno_bench --locked
       - name: Post benchmarks
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -337,10 +337,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -446,7 +451,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -712,10 +717,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -819,7 +829,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -980,10 +990,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1098,7 +1113,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1475,10 +1490,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1591,7 +1611,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1735,10 +1755,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1835,7 +1860,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2207,10 +2232,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2305,7 +2335,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2449,10 +2479,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2549,7 +2584,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2838,10 +2873,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2936,7 +2976,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3265,10 +3305,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3453,7 +3498,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3777,10 +3822,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3967,7 +4017,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4191,10 +4241,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4303,7 +4358,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4717,10 +4772,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4908,7 +4968,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"

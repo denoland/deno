@@ -1419,6 +1419,30 @@ const publishCanaryJob = job("publish-canary", {
   })(),
 });
 
+// === lint ci status job (status check gate) ===
+
+const lintCiStatusJob = job("lint-ci-status", {
+  name: "lint ci status",
+  // We use this job in the main branch rule status checks for PRs.
+  // All jobs that are required to pass on a PR should be listed here.
+  needs: [
+    benchJob,
+    ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
+    lintJob,
+  ],
+  if: conditions.status.always(),
+  runsOn: "ubuntu-latest",
+  steps: step({
+    name: "Ensure CI success",
+    run: [
+      "if [[ \"${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}\" == \"true\" ]]; then",
+      "  echo 'CI failed'",
+      "  exit 1",
+      "fi",
+    ],
+  }),
+});
+
 // === generate workflow ===
 
 const workflow = createWorkflow({
@@ -1453,6 +1477,7 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    lintCiStatusJob,
     publishCanaryJob,
   ],
 });
