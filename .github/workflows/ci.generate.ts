@@ -1417,6 +1417,8 @@ const publishCanaryJob = job("publish-canary", {
 
 const lintCiStatusJob = job("lint-ci-status", {
   name: "lint ci status",
+  // We use this job in the main branch rule status checks for PRs.
+  // All jobs that are required to pass on a PR should be listed here.
   needs: [
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
@@ -1424,7 +1426,6 @@ const lintCiStatusJob = job("lint-ci-status", {
   ],
   if: conditions.status.always(),
   runsOn: "ubuntu-latest",
-  // we use this job in the main branch rule status checks for PRs
   steps: step({
     name: "Ensure CI success",
     run: [
