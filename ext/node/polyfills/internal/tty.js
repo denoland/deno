@@ -4,7 +4,7 @@
 
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
   Error,
@@ -24,11 +24,14 @@ const {
   StringPrototypeToLowerCase,
 } = primordials;
 
+import { op_node_is_tty, op_set_raw } from "ext:core/ops";
+
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import * as io from "ext:deno_io/12_io.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   clearLine,
   clearScreenDown,
@@ -255,6 +258,79 @@ export function getColorDepth(env = process.env) {
   return COLORS_2;
 }
 
+const { internalRidSymbol } = core;
+
+// Helper class to wrap a resource ID as a stream-like object.
+// Used for PTY file descriptors (fd > 2) that come from NAPI modules like node-pty.
+class TTYStream {
+  #rid;
+  #ref = true;
+  #opPromise;
+
+  constructor(rid) {
+    this.#rid = rid;
+  }
+
+  get [internalRidSymbol]() {
+    return this.#rid;
+  }
+
+  get rid() {
+    return this.#rid;
+  }
+
+  async read(p) {
+    if (p.length === 0) return 0;
+    this.#opPromise = core.read(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    const nread = await this.#opPromise;
+    return nread === 0 ? null : nread;
+  }
+
+  readSync(p) {
+    if (p.length === 0) return 0;
+    const nread = core.readSync(this.#rid, p);
+    return nread === 0 ? null : nread;
+  }
+
+  write(p) {
+    return core.write(this.#rid, p);
+  }
+
+  writeSync(p) {
+    return core.writeSync(this.#rid, p);
+  }
+
+  close() {
+    core.tryClose(this.#rid);
+  }
+
+  setRaw(mode, options = { __proto__: null }) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
+  }
+
+  [io.REF]() {
+    this.#ref = true;
+    if (this.#opPromise) {
+      core.refOpPromise(this.#opPromise);
+    }
+  }
+
+  [io.UNREF]() {
+    this.#ref = false;
+    if (this.#opPromise) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+  }
+}
+
 // Lazy SIGWINCH handling: only register the signal listener when at least one
 // WriteStream has a "resize" listener, and unregister when none do. This avoids
 // creating a persistent pending op that interferes with event loop exit / TLA
@@ -291,22 +367,38 @@ export class WriteStream extends Socket {
       throw new ERR_INVALID_FD(fd);
     }
 
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
+    let handle;
+    if (fd > 2) {
+      // Security: Only allow TTY file descriptors. This prevents access to
+      // arbitrary fds (sockets, files, etc.) via tty.ReadStream/WriteStream.
+      if (!op_node_is_tty(fd)) {
+        throw new ERR_INVALID_FD(fd);
+      }
+      // For fd > 2 (PTY from NAPI modules), create a TTYStream wrapper
+      const rid = getRid(fd);
+      const stream = new TTYStream(rid);
+      handle = new TTY(stream);
+    } else {
+      handle = new TTY(
+        fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+      );
+    }
 
     super({
       readableHighWaterMark: 0,
-      handle: tty,
+      handle,
       manualStart: true,
     });
 
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
+    try {
+      const { columns, rows } = Deno.consoleSize();
+      this.columns = columns;
+      this.rows = rows;
+    } catch {
+      // consoleSize can fail if not a real TTY
+      this.columns = 80;
+      this.rows = 24;
+    }
     this.isTTY = true;
   }
 
