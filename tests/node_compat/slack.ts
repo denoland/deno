@@ -294,13 +294,14 @@ async function generateThreadBlocks(
     const sorted = [...newlyPassing.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
     );
-    let text = `*Newly Passing (${sorted.length}):*\n`;
+    let text = `*Newly Passing (${sorted.length}):*\n\`\`\`\n`;
     for (const [testName, oses] of sorted.slice(0, MAX_NEWLY_PASSING)) {
-      text += `\`${testName}\` (${formatOsList(oses)})\n`;
+      text += `${testName} (${formatOsList(oses)})\n`;
     }
     if (sorted.length > MAX_NEWLY_PASSING) {
-      text += `_...and ${sorted.length - MAX_NEWLY_PASSING} more_\n`;
+      text += `...and ${sorted.length - MAX_NEWLY_PASSING} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -308,13 +309,14 @@ async function generateThreadBlocks(
     const sorted = [...newlyFailing.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
     );
-    let text = `*Started Failing (${sorted.length}):*\n`;
+    let text = `*Started Failing (${sorted.length}):*\n\`\`\`\n`;
     for (const [testName, oses] of sorted.slice(0, MAX_NEWLY_FAILING)) {
-      text += `\`${testName}\` (${formatOsList(oses)})\n`;
+      text += `${testName} (${formatOsList(oses)})\n`;
     }
     if (sorted.length > MAX_NEWLY_FAILING) {
-      text += `_...and ${sorted.length - MAX_NEWLY_FAILING} more_\n`;
+      text += `...and ${sorted.length - MAX_NEWLY_FAILING} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -324,17 +326,18 @@ async function generateThreadBlocks(
     );
     let text = `*Flaky Tests (last ${
       FLAKY_HISTORY_DAYS + 1
-    } runs, ${sorted.length} tests):*\n`;
+    } runs, ${sorted.length} tests):*\n\`\`\`\n`;
     for (const [testName, osStats] of sorted.slice(0, MAX_FLAKY)) {
       const parts: string[] = [];
       for (const [os, stats] of osStats) {
         parts.push(`${os}: ${stats.pass}/${stats.total}`);
       }
-      text += `\`${testName}\` ${parts.join(", ")}\n`;
+      text += `${testName}  ${parts.join(", ")}\n`;
     }
     if (sorted.length > MAX_FLAKY) {
-      text += `_...and ${sorted.length - MAX_FLAKY} more_\n`;
+      text += `...and ${sorted.length - MAX_FLAKY} more\n`;
     }
+    text += `\`\`\``;
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 

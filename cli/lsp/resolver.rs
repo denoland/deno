@@ -966,6 +966,7 @@ impl<'a> ResolverFactory<'a> {
         sys.clone(),
         tarball_cache.clone(),
         deno_npm_installer::NpmInstallerOptions {
+          clean_on_install: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
