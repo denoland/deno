@@ -1,15 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-
 use std::process::Command;
 
 use test_util::deno_cmd;
 use test_util::deno_config_path;
 use test_util::env_vars_for_npm_tests;
+use test_util::eprintln;
 use test_util::http_server;
 use test_util::napi_tests_path;
+use test_util::println;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -17,7 +16,7 @@ const BUILD_VARIANT: &str = "debug";
 #[cfg(not(debug_assertions))]
 const BUILD_VARIANT: &str = "release";
 
-fn build() {
+fn napi_build() {
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin =
     build_plugin_base.arg("build").arg("-p").arg("test_napi");
@@ -25,7 +24,12 @@ fn build() {
     build_plugin = build_plugin.arg("--release");
   }
   let build_plugin_output = build_plugin.output().unwrap();
-  assert!(build_plugin_output.status.success());
+  assert!(
+    build_plugin_output.status.success(),
+    "cargo build failed:\nstdout: {}\nstderr: {}",
+    String::from_utf8_lossy(&build_plugin_output.stdout),
+    String::from_utf8_lossy(&build_plugin_output.stderr)
+  );
 
   // cc module.c -undefined dynamic_lookup -shared -Wl,-no_fixup_chains -dynamic -o module.dylib
   #[cfg(not(target_os = "windows"))]
@@ -37,6 +41,7 @@ fn build() {
     };
 
     let mut cc = Command::new("cc");
+    cc.current_dir(napi_tests_path());
 
     #[cfg(not(target_os = "macos"))]
     let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
@@ -53,13 +58,18 @@ fn build() {
         .arg(out)
     };
     let c_module_output = c_module.output().unwrap();
-    assert!(c_module_output.status.success());
+    assert!(
+      c_module_output.status.success(),
+      "cc failed:\nstdout: {}\nstderr: {}",
+      String::from_utf8_lossy(&c_module_output.stdout),
+      String::from_utf8_lossy(&c_module_output.stderr)
+    );
   }
 }
 
-#[test]
+#[test_util::test]
 fn napi_tests() {
-  build();
+  napi_build();
 
   let _http_guard = http_server();
   let output = deno_cmd()
@@ -76,9 +86,7 @@ fn napi_tests() {
     .arg("--no-lock")
     .arg(".")
     .envs(env_vars_for_npm_tests())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
+    .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();

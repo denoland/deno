@@ -13,9 +13,8 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
+use anyhow::Error as AnyError;
+use serde_json::Value;
 use test_util::PathRef;
 
 mod lsp;

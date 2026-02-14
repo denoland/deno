@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Child;
@@ -153,15 +152,11 @@ pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
 }
 
 pub fn root_path() -> PathRef {
-  PathRef::new(
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-      .parent()
-      .unwrap()
-      .parent()
-      .unwrap()
-      .parent()
-      .unwrap(),
-  )
+  let mut p = target_dir();
+  while p.file_name().unwrap() != "target" {
+    p = p.parent();
+  }
+  p.parent()
 }
 
 pub fn prebuilt_path() -> PathRef {
