@@ -9,8 +9,12 @@ license.workspace = true
 publish = false
 repository.workspace = true
 
+[lib]
+path = "lib.rs"
+
 [[bin]]
 name = "test_server"
+path = "main.rs"
 
 [[test]]
 name = "integration"

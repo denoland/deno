@@ -9,6 +9,9 @@ license.workspace = true
 publish = false
 repository.workspace = true
 
+[lib]
+path = "lib.rs"
+
 [features]
 lsp = ["dep:lsp-types", "dep:indexmap", "dep:percent-encoding"]
 
