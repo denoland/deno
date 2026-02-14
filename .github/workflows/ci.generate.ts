@@ -10,6 +10,7 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
+  literal,
   step,
 } from "jsr:@david/gagen@0.2.15";
 
@@ -1233,79 +1234,85 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     ));
   }
 
-  const benchCondition = isLinux.and(isRelease).and(
-    buildItem.arch.equals("x86_64"),
-  );
-  if (benchCondition.isPossiblyTrue()) {
-    additionalJobs.push(job(
-      jobIdForJob("bench"),
-      {
-        name: jobNameForJob("bench"),
-        needs: [buildJob],
-        runsOn: buildItem.runner,
-        timeoutMinutes: 240,
-        defaults,
-        env,
-        steps: step
-          .if(
-            (hasCiBenchLabel.or(isMainBranch)).and(isNotTag).and(
-              buildItem.skip.not(),
-            ),
-          )(
-            cloneRepoStep,
-            installNodeStep,
-            installRustStep,
-            createCargoCacheHomeStep(buildItem),
-            cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
-            cloneStdSubmoduleStep,
-            installDenoStep,
-            denoArtifact.download(),
-            {
-              name: "Install benchmark tools",
-              env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
-              run: "./tools/install_prebuilt.js wrk hyperfine",
-            },
-            {
-              name: "Build library for rlib file sizes",
-              run: "cargo build --release --lib -p deno",
-            },
-            {
-              name: "Run benchmarks",
-              run: "cargo bench -p cli_tests --bench deno_bench --locked",
-            },
-            {
-              name: "Post benchmarks",
-              if: isDenoland.and(isMainBranch),
-              env: {
-                DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
-              },
-              run: [
-                "git clone --depth 1 --branch gh-pages                             \\",
-                "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
-                "    gh-pages",
-                "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
-                "cd gh-pages",
-                'git config user.email "propelml@gmail.com"',
-                'git config user.name "denobot"',
-                "git add .",
-                'git commit --message "Update benchmarks"',
-                "git push origin gh-pages",
-              ],
-            },
-            {
-              name: "Worker info",
-              run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
-            },
-          ),
-      },
-    ));
-  }
-
   return {
     buildJob,
     additionalJobs,
   };
 });
+
+// === bench job ===
+
+const benchProfile = defineExprObj(Runners.linuxX86Xl);
+const benchJob = job(
+  "bench",
+  {
+    name: `bench release ${benchProfile.os}-${benchProfile.arch}`,
+    needs: [preBuildJob],
+    if: preBuildJob.outputs.skip_build.notEquals("true"),
+    runsOn: benchProfile.runner,
+    timeoutMinutes: 240,
+    defaults: {
+      run: {
+        // GH actions does not fail fast by default on
+        // Windows, so we set bash as the default shell
+        shell: "bash",
+      },
+    },
+    steps: step
+      .if(
+        (hasCiBenchLabel.or(isMainBranch)).and(isNotTag),
+      )(
+        cloneRepoStep,
+        installNodeStep,
+        installRustStep,
+        createCargoCacheHomeStep(benchProfile),
+        cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
+        cloneStdSubmoduleStep,
+        step(sysRootConfig),
+        installDenoStep,
+        {
+          name: "Install benchmark tools",
+          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          run: "./tools/install_prebuilt.js wrk hyperfine",
+        },
+        // We currently do a full deno build instead of getting this from the build
+        // job because the benchmarks inspect the target folder to see the sizes of
+        // libraries like v8 and swc as well as the snapshot sizes. Maybe in the future
+        // we could optimize this to not need this.
+        {
+          name: "Build deno",
+          run: "cargo build --release -p deno",
+        },
+        {
+          name: "Run benchmarks",
+          run: "cargo bench -p cli_tests --bench deno_bench --locked",
+        },
+        {
+          name: "Post benchmarks",
+          if: isDenoland.and(isMainBranch),
+          env: {
+            DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+          },
+          run: [
+            "git clone --depth 1 --branch gh-pages                             \\",
+            "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
+            "    gh-pages",
+            "./target/release/deno run --allow-all ./tools/build_benchmark_jsons.js --release",
+            "cd gh-pages",
+            'git config user.email "propelml@gmail.com"',
+            'git config user.name "denobot"',
+            "git add .",
+            'git commit --message "Update benchmarks"',
+            "git push origin gh-pages",
+          ],
+        },
+        {
+          name: "Worker info",
+          run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
+        },
+      ),
+  },
+);
 
 // === lint job ===
 
@@ -1438,6 +1445,7 @@ const workflow = createWorkflow({
   },
   jobs: [
     preBuildJob,
+    benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
     publishCanaryJob,
