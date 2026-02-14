@@ -5025,6 +5025,49 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
+  lint-ci-status:
+    name: lint ci status
+    needs:
+      - bench
+      - build-debug-macos-x86_64
+      - test-debug-macos-x86_64
+      - build-release-macos-x86_64
+      - test-release-macos-x86_64
+      - build-debug-macos-aarch64
+      - test-debug-macos-aarch64
+      - test-libs-debug-macos-aarch64
+      - build-release-macos-aarch64
+      - test-release-macos-aarch64
+      - build-debug-windows-x86_64
+      - test-debug-windows-x86_64
+      - test-libs-debug-windows-x86_64
+      - build-release-windows-x86_64
+      - test-release-windows-x86_64
+      - build-debug-windows-aarch64
+      - test-debug-windows-aarch64
+      - build-release-windows-aarch64
+      - test-release-windows-aarch64
+      - build-release-linux-x86_64
+      - test-release-linux-x86_64
+      - wpt-release-linux-x86_64
+      - build-debug-linux-x86_64
+      - test-debug-linux-x86_64
+      - build-libs-debug-linux-x86_64
+      - build-debug-linux-aarch64
+      - test-debug-linux-aarch64
+      - test-libs-debug-linux-aarch64
+      - build-release-linux-aarch64
+      - test-release-linux-aarch64
+      - lint
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure CI success
+        run: |-
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo 'CI failed'
+            exit 1
+          fi
   publish-canary:
     name: publish canary
     needs:
