@@ -1811,7 +1811,7 @@ dependencies = [
 [[package]]
 name = "deno_ast"
 version = "0.53.0"
-source = "git+https://github.com/Hajime-san/deno_ast.git?branch=fix-reexport#387f8d7c158835a4434cce2b3ce74c2e3cfc3144"
+source = "git+https://github.com/Hajime-san/deno_ast.git?branch=fix-reexport#416b29eeebcc4a6ae7dd5cd2cdf971eaa471b4a8"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
