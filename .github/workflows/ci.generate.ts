@@ -317,8 +317,6 @@ function createCargoCacheHomeStep(m: {
   };
 }
 
-const seenCachePrefixes: string[] = [];
-
 // factory for cache steps parameterized by os/arch/profile/job
 // works with both defineExprObj (inline values) and defineMatrix (matrix expressions)
 function createCacheSteps(m: {
@@ -327,19 +325,6 @@ function createCacheSteps(m: {
   profile: ExpressionValue;
   cachePrefix: string;
 }) {
-  // ensure the cache prefixes don't start with one another
-  if (!seenCachePrefixes.includes(m.cachePrefix)) {
-    for (const prefix of seenCachePrefixes) {
-      if (
-        prefix.startsWith(m.cachePrefix) || m.cachePrefix.startsWith(prefix)
-      ) {
-        throw new Error(
-          `Cache prefixes cannot start with one another or they will be accidentally used: ${prefix} -- ${m.cachePrefix}`,
-        );
-      }
-    }
-    seenCachePrefixes.push(m.cachePrefix);
-  }
   const cargoHomeCacheSteps = createCargoCacheHomeStep(m);
   const buildCacheSteps = createRestoreAndSaveCacheSteps({
     name: "build output",
