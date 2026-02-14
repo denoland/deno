@@ -967,7 +967,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       saveCacheBuildOutputStep,
     } = createCacheSteps({
       ...buildItem,
-      cachePrefix: "test-integration",
+      cachePrefix: "test-main",
     });
     const testCrateNameExpr = testMatrix.test_crate;
     additionalJobs.push(job(
