@@ -67,6 +67,18 @@ pub async fn connect_happy_eyeballs(
       break;
     }
 
+    if !has_pending && has_more_addrs {
+      // No attempts are in flight, so start the next one immediately.
+      // This avoids waiting `attempt_delay` after a fast failure.
+      let addr = addr_iter
+        .next()
+        .expect("has_more_addrs is true, so there should be an address");
+      attempted_addresses.push(addr);
+      pending.push(start_connect(addr, cancel_handle.clone()));
+      next_attempt_at = Instant::now() + attempt_delay;
+      continue;
+    }
+
     tokio::select! {
       biased;
 
@@ -311,6 +323,29 @@ mod tests {
     let result = result.unwrap();
     assert_eq!(result.addr, good_addr);
     assert_eq!(result.attempted_addresses.len(), 2);
+  }
+
+  #[tokio::test]
+  async fn test_connect_immediate_fallback_without_pending_attempts() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let good_addr = listener.local_addr().unwrap();
+    let bad_addr = get_refusing_addr().await;
+
+    let attempt_delay = Duration::from_millis(700);
+    let start = std::time::Instant::now();
+    let result =
+      connect_happy_eyeballs(vec![bad_addr, good_addr], attempt_delay, None)
+        .await;
+    let elapsed = start.elapsed();
+
+    assert!(result.is_ok());
+    let result = result.unwrap();
+    assert_eq!(result.addr, good_addr);
+    assert_eq!(result.attempted_addresses.len(), 2);
+    assert!(
+      elapsed < attempt_delay,
+      "fallback should not wait for attempt_delay when no attempts are pending"
+    );
   }
 
   #[tokio::test]
