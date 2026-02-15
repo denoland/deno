@@ -232,9 +232,9 @@ Deno.test("[util] styleText() with array of formats", () => {
   assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
 });
 
-
 Deno.test("[util] parseEnv()", () => {
-  const env = "KEY1=VALUE1\nKEY2='VALUE2'\nKEYÄ3=\"VALUE3\"\nKEY4=VALÜE4\nKEY5='VALUE6'INVALID_LINE\nKEY6=A";
+  const env =
+    "KEY1=VALUE1\nKEY2='VALUE2'\nKEYÄ3=\"VALUE3\"\nKEY4=VALÜE4\nKEY5='VALUE6'INVALID_LINE\nKEY6=A";
   const parsed = util.parseEnv(env);
   assertEquals(parsed, {
     KEY1: "VALUE1",
