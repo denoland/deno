@@ -38,6 +38,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
+import { Readable, Writable } from "node:stream";
 import {
   BroadcastChannel as WebBroadcastChannel,
   refBroadcastChannel,
@@ -59,9 +60,13 @@ const {
   PromiseReject,
   PromiseResolve,
   SafeMap,
+  SafeRegExp,
   SafeSet,
   SafeWeakMap,
   String,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
@@ -93,6 +98,65 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
 
+interface WorkerStdioMsg {
+  type: "WORKER_STDERR" | "WORKER_STDOUT";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinMsg {
+  type: "WORKER_STDIN";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinEndMsg {
+  type: "WORKER_STDIN_END";
+}
+
+function isWorkerStdinMsg(data: unknown): data is WorkerStdinMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN";
+}
+
+function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN_END";
+}
+
+function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
+}
+
+// Flags that are valid Node.js environment flags but not allowed in workers
+// because they affect per-process state.
+const workerDisallowedFlags = new SafeSet([
+  "--title",
+  "--redirect-warnings",
+  "--trace-event-file-pattern",
+  "--trace-event-categories",
+  "--trace-events-enabled",
+  "--diagnostic-dir",
+  "--report-signal",
+  "--report-filename",
+  "--report-dir",
+  "--report-directory",
+  "--report-compact",
+  "--report-on-signal",
+  "--report-on-fatalerror",
+  "--report-uncaught-exception",
+]);
+
 export interface WorkerOptions {
   // only for typings
   argv?: unknown[];
@@ -119,7 +183,7 @@ const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
   #name = "";
-  #refCount = 1;
+  #refed = true;
   #messagePromise = undefined;
   #controlPromise = undefined;
   #workerOnline = false;
@@ -142,6 +206,12 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin: Writable | null = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout: Readable = new Readable({ read() {} });
+  // https://nodejs.org/api/worker_threads.html#workerstderr
+  stderr: Readable = new Readable({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
@@ -149,17 +219,59 @@ class NodeWorker extends EventEmitter {
     if (options?.execArgv) {
       validateArray(options.execArgv, "options.execArgv");
       if (options.execArgv.length > 0) {
-        throw new ERR_WORKER_INVALID_EXEC_ARGV(options.execArgv);
+        const invalidFlags = [];
+        for (let i = 0; i < options.execArgv.length; i++) {
+          const flag = options.execArgv[i];
+          // Items that don't start with '-' are arguments to the
+          // preceding flag (e.g. "--conditions node"), not flags.
+          if (!StringPrototypeStartsWith(flag, "-")) {
+            continue;
+          }
+          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+            invalidFlags[invalidFlags.length] = flag;
+            continue;
+          }
+          const eqIdx = StringPrototypeIndexOf(flag, "=");
+          const flagName = eqIdx === -1
+            ? flag
+            : StringPrototypeSlice(flag, 0, eqIdx);
+          if (workerDisallowedFlags.has(flagName)) {
+            invalidFlags[invalidFlags.length] = flag;
+          }
+        }
+        if (invalidFlags.length > 0) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(invalidFlags);
+        }
       }
     }
 
     if (options?.env) {
       const nodeOptions = options.env.NODE_OPTIONS;
       if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
-        throw new ERR_WORKER_INVALID_EXEC_ARGV(
-          [nodeOptions],
-          "invalid NODE_OPTIONS env variable",
+        // Parse NODE_OPTIONS and validate each flag
+        const parts = StringPrototypeSplit(
+          StringPrototypeTrim(nodeOptions),
+          new SafeRegExp("\\s+"),
         );
+        let hasInvalid = false;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (StringPrototypeStartsWith(part, "-")) {
+            if (
+              !process.allowedNodeEnvironmentFlags.has(part) ||
+              workerDisallowedFlags.has(part)
+            ) {
+              hasInvalid = true;
+              break;
+            }
+          }
+        }
+        if (hasInvalid) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(
+            [nodeOptions],
+            "invalid NODE_OPTIONS env variable",
+          );
+        }
       }
     }
 
@@ -243,9 +355,11 @@ class NodeWorker extends EventEmitter {
       environmentData: environmentData,
       env: env_,
       argv: argv_,
+      execArgv: options?.execArgv ?? [],
       name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
+      hasStdin: !!options?.stdin,
     }, options?.transferList ?? []);
 
     if (options?.eval) {
@@ -285,31 +399,59 @@ class NodeWorker extends EventEmitter {
     );
     this.#id = id;
     this.threadId = id;
+
+    if (options?.stdin) {
+      // deno-lint-ignore no-this-alias
+      const worker = this;
+      this.stdin = new Writable({
+        write(chunk, _encoding, callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN",
+              data: chunk,
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+        final(callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN_END",
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+      });
+    }
+
     this.#pollControl();
     this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
   }
 
   [privateWorkerRef](ref) {
-    if (ref) {
-      this.#refCount++;
-    } else {
-      this.#refCount--;
+    if (ref === this.#refed) {
+      return;
     }
+    this.#refed = ref;
 
-    if (!ref && this.#refCount == 0) {
-      if (this.#controlPromise) {
-        core.unrefOpPromise(this.#controlPromise);
-      }
-      if (this.#messagePromise) {
-        core.unrefOpPromise(this.#messagePromise);
-      }
-    } else if (ref && this.#refCount == 1) {
+    if (ref) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.refOpPromise(this.#messagePromise);
+      }
+    } else {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
       }
     }
   }
@@ -318,10 +460,19 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #closeStdio() {
+    if (!this.stdout.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+    }
+    if (!this.stderr.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+    }
+  }
+
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#controlPromise);
       }
       const { 0: type, 1: data } = await this.#controlPromise;
@@ -334,6 +485,7 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (this.listenerCount("error") > 0) {
             const err = new Error(data.errorMessage ?? data.message);
             if (data.name) {
@@ -346,7 +498,7 @@ class NodeWorker extends EventEmitter {
           }
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 1);
+            this.emit("exit", data.exitCode ?? 1);
           }
           return;
         }
@@ -357,6 +509,7 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#closeStdio();
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", data ?? 0);
@@ -373,7 +526,7 @@ class NodeWorker extends EventEmitter {
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
@@ -397,6 +550,18 @@ class NodeWorker extends EventEmitter {
       ) {
         this.#workerOnline = true;
         this.emit("online");
+      } else if (isWorkerStdoutMsg(message)) {
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stdout,
+          message.data,
+        );
+      } else if (isWorkerStderrMsg(message)) {
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stderr,
+          message.data,
+        );
       } else {
         this.emit("message", message);
       }
@@ -441,6 +606,7 @@ class NodeWorker extends EventEmitter {
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
+    this.#closeStdio();
 
     if (!this.#exited) {
       this.#exited = true;
@@ -627,6 +793,81 @@ internals.__initWorkerThreads = (
             process.argv[i + 2] = metadata.argv[i];
           }
         }
+
+        // Set process.execArgv for worker threads.
+        if (metadata.execArgv) {
+          process.execArgv = metadata.execArgv;
+          for (let i = 0; i < metadata.execArgv.length; i++) {
+            if (metadata.execArgv[i] === "--trace-warnings") {
+              process.traceProcessWarnings = true;
+            }
+          }
+        }
+
+        // Replace process.stdin with a Readable that receives
+        // data from the parent via WORKER_STDIN messages.
+        if (metadata.hasStdin) {
+          const workerStdin = new Readable({ read() {} });
+          process.stdin = workerStdin;
+
+          // Register an early listener to intercept stdin messages
+          // before any user-registered handlers. Remove the listener
+          // once stdin ends so the worker can exit cleanly.
+          const stdinHandler = (ev) => {
+            const msg = ev.data;
+            if (isWorkerStdinMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(msg.data);
+              ev.stopImmediatePropagation();
+            } else if (isWorkerStdinEndMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(null);
+              parentPort.removeEventListener("message", stdinHandler);
+              ev.stopImmediatePropagation();
+            }
+          };
+          parentPort.addEventListener("message", stdinHandler);
+        }
+
+        // Forward stdout writes to the parent so worker.stdout
+        // is readable from the host side.
+        const origStdoutWrite = FunctionPrototypeBind(
+          process.stdout.write,
+          process.stdout,
+        );
+        process.stdout.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDOUT",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStdoutWrite,
+            process.stdout,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
+
+        // Forward stderr writes to the parent so worker.stderr
+        // is readable from the host side.
+        const origStderrWrite = FunctionPrototypeBind(
+          process.stderr.write,
+          process.stderr,
+        );
+        process.stderr.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDERR",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStderrWrite,
+            process.stderr,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
       }
     }
     defaultExport.workerData = workerData;
