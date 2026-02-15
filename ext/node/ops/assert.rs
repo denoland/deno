@@ -62,13 +62,14 @@ fn adjust_start_column_for_non_ascii(
 ///
 /// This mirrors Node.js's implementation
 /// https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/lib/internal/errors/error_source.js#L61-L142
-#[op2]
-#[string]
+#[op2(fast)]
 pub fn op_node_get_first_expression(
   #[string] code: &str,
-  #[smi] start_column: usize,
-) -> Option<String> {
-  let start_column = adjust_start_column_for_non_ascii(code, start_column);
+  #[smi] original_start_col_index: usize,
+  #[buffer] out_buf: &mut [u32],
+) {
+  let start_index =
+    adjust_start_column_for_non_ascii(code, original_start_col_index);
 
   let items = deno_ast::lex(code, MediaType::JavaScript);
   let tokens: Vec<(Token, std::ops::Range<usize>)> = items
@@ -87,7 +88,7 @@ pub fn op_node_get_first_expression(
 
   for (token, range) in &tokens {
     // Peek before the startColumn.
-    if range.start < start_column {
+    if range.start < start_index {
       // There is a semicolon. This is a statement before the startColumn,
       // so reset the memo.
       if matches!(token, Token::Semi) {
@@ -173,11 +174,13 @@ pub fn op_node_get_first_expression(
     //          ^ startColumn
   }
 
-  let start = first_member_access_name_token.unwrap_or(start_column);
+  let start = first_member_access_name_token.unwrap_or(start_index);
   let end = terminating_col.unwrap_or(code.len());
   if start <= end && end <= code.len() {
-    Some(code[start..end].to_string())
+    out_buf[0] = code[..start].encode_utf16().count() as _;
+    out_buf[1] = code[..end].encode_utf16().count() as _;
   } else {
-    None
+    out_buf[0] = original_start_col_index as _;
+    out_buf[1] = code.encode_utf16().count() as _;
   }
 }

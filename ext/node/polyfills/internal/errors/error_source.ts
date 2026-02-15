@@ -125,17 +125,11 @@ function getErrorSourceExpression(error: Error): string | undefined {
  * @param code source code line
  * @param startColumn which column the error is constructed
  */
-function getFirstExpression(
-  code: string,
-  startColumn: number,
-): string | undefined {
-  try {
-    return op_node_get_first_expression(code, startColumn);
-  } catch {
-    // If tokenization fails (e.g., incomplete/invalid JS), return the rest
-    // of the line from startColumn
-    return StringPrototypeSlice(code, startColumn);
-  }
+function getFirstExpression(code: string, startColumn: number): string {
+  // [start, end] of the first expression will be written to resultBuf by the op.
+  const resultBuf = new Uint32Array(2);
+  op_node_get_first_expression(code, startColumn, resultBuf);
+  return StringPrototypeSlice(code, resultBuf[0], resultBuf[1]);
 }
 
 export { getErrorSourceExpression, getErrorSourceLocation };
