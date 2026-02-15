@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use libuvrust::backend::UvBuf;
+use libuvrust::backend::UvConnect;
 use libuvrust::backend::UvHandle;
 use libuvrust::backend::UvLoop;
 use libuvrust::backend::UvShutdown;
@@ -77,7 +78,7 @@ impl TCP {
     *self.handle.borrow()
   }
 
-  fn stream(&self) -> *mut UvStream {
+  pub fn stream(&self) -> *mut UvStream {
     self.raw() as *mut UvStream
   }
 
@@ -207,6 +208,52 @@ unsafe extern "C" fn write_cb(req: *mut UvWrite, _status: i32) {
     // req is the first field of WriteReq (#[repr(C)]),
     // so the pointer is the same as the WriteReq pointer.
     let _ = Box::from_raw(req as *mut WriteReq);
+  }
+}
+
+// Wraps a UvConnect request so it stays alive until the callback fires.
+#[repr(C)]
+struct ConnectReq {
+  uv_req: UvConnect,
+}
+
+unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
+  unsafe {
+    // The handle is the stream we connected on.
+    let stream = (*req).handle as *mut UvStream;
+    // Free the ConnectReq.
+    let _ = Box::from_raw(req as *mut ConnectReq);
+
+    if stream.is_null() {
+      return;
+    }
+    let data = (*stream).data as *mut StreamHandleData;
+    if data.is_null() {
+      return;
+    }
+    let js_obj = match (*data).js_object {
+      Some(ref obj) => obj,
+      None => return,
+    };
+
+    let context = match context_from_loop((*stream).loop_) {
+      Some(c) => c,
+      None => return,
+    };
+    v8::callback_scope!(unsafe let scope, context);
+    v8::tc_scope!(let scope, scope);
+
+    let this: v8::Local<v8::Object> = v8::Local::new(scope, js_obj);
+
+    let key = v8::String::new(scope, "onconnect").unwrap();
+    let onconnect = this.get(scope, key.into());
+
+    if let Some(onconnect) = onconnect {
+      if let Ok(func) = v8::Local::<v8::Function>::try_from(onconnect) {
+        let status_val = v8::Integer::new(scope, status);
+        func.call(scope, this.into(), &[status_val.into()]);
+      }
+    }
   }
 }
 
@@ -411,7 +458,7 @@ impl TCP {
         len: data_len as _,
       };
       let req_ptr = &mut write_req.uv_req as *mut UvWrite;
-      Box::into_raw(write_req); // leak; freed in write_cb
+      let _ = Box::into_raw(write_req); // leak; freed in write_cb
       let ret =
         libuvrust::backend::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
       if ret != 0 {
@@ -458,6 +505,87 @@ impl TCP {
   }
 
   #[fast]
+  fn connect(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return -1,
+      },
+      Err(_) => return -1,
+    };
+
+    unsafe {
+      let tcp = self.raw();
+      if tcp.is_null() {
+        return -1;
+      }
+      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
+      let (sa, _sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
+      let mut connect_req = Box::new(ConnectReq {
+        uv_req: libuvrust::backend::new_connect(),
+      });
+      let req_ptr = &mut connect_req.uv_req as *mut UvConnect;
+      let _ = Box::into_raw(connect_req); // leak; freed in connect_cb
+      let ret = libuvrust::backend::uv_tcp_connect(
+        req_ptr,
+        tcp,
+        sa,
+        Some(connect_cb),
+      );
+      if ret != 0 {
+        // Failed, reclaim the ConnectReq
+        let _ = Box::from_raw(req_ptr as *mut ConnectReq);
+      }
+      ret
+    }
+  }
+
+  #[serde]
+  fn getpeername(&self) -> Option<SockAddr> {
+    unsafe {
+      let tcp = self.raw();
+      if tcp.is_null() {
+        return None;
+      }
+      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
+      let mut len =
+        std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let ret = libuvrust::backend::uv_tcp_getpeername(
+        tcp,
+        &mut storage as *mut _ as *mut libc::sockaddr,
+        &mut len,
+      );
+      if ret != 0 {
+        return None;
+      }
+      sockaddr_from_storage(&storage)
+    }
+  }
+
+  #[serde]
+  fn getsockname(&self) -> Option<SockAddr> {
+    unsafe {
+      let tcp = self.raw();
+      if tcp.is_null() {
+        return None;
+      }
+      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
+      let mut len =
+        std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let ret = libuvrust::backend::uv_tcp_getsockname(
+        tcp,
+        &mut storage as *mut _ as *mut libc::sockaddr,
+        &mut len,
+      );
+      if ret != 0 {
+        return None;
+      }
+      sockaddr_from_storage(&storage)
+    }
+  }
+
+  #[fast]
   fn get_bytes_read(&self) -> f64 {
     self.bytes_read.get() as f64
   }
@@ -465,6 +593,18 @@ impl TCP {
   #[fast]
   fn get_bytes_written(&self) -> f64 {
     self.bytes_written.get() as f64
+  }
+
+  #[fast]
+  fn detach(&self) {
+    if self.closed.get() {
+      return;
+    }
+    self.closed.set(true);
+    *self.handle.borrow_mut() = ptr::null_mut();
+    // Drop the owned StreamHandleData since the handle's data pointer
+    // has already been overwritten by consume_stream.
+    self.handle_data.replace(None);
   }
 
   #[fast]
@@ -495,6 +635,44 @@ impl TCP {
 }
 
 // -- helpers --
+
+#[derive(serde::Serialize)]
+struct SockAddr {
+  address: String,
+  port: u16,
+  family: String,
+}
+
+unsafe fn sockaddr_from_storage(
+  storage: &libc::sockaddr_storage,
+) -> Option<SockAddr> {
+  unsafe {
+    match storage.ss_family as i32 {
+      libc::AF_INET => {
+        let sin = storage as *const _ as *const libc::sockaddr_in;
+        let ip =
+          std::net::Ipv4Addr::from(u32::from_be((*sin).sin_addr.s_addr));
+        let port = u16::from_be((*sin).sin_port);
+        Some(SockAddr {
+          address: ip.to_string(),
+          port,
+          family: "IPv4".to_string(),
+        })
+      }
+      libc::AF_INET6 => {
+        let sin6 = storage as *const _ as *const libc::sockaddr_in6;
+        let ip = std::net::Ipv6Addr::from((*sin6).sin6_addr.s6_addr);
+        let port = u16::from_be((*sin6).sin6_port);
+        Some(SockAddr {
+          address: ip.to_string(),
+          port,
+          family: "IPv6".to_string(),
+        })
+      }
+      _ => None,
+    }
+  }
+}
 
 unsafe fn sockaddr_to_raw(
   addr: SocketAddr,

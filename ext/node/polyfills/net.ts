@@ -2134,7 +2134,7 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
   }
 
   const socket = self._createSocket(clientHandle);
-  this._connections++;
+  self._connections++;
   self.emit("connection", socket);
 
   if (netServerSocketChannel.hasSubscribers) {
