@@ -303,6 +303,15 @@ impl FileSystem for RealFs {
       .map_err(Into::into)
   }
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    fs::remove_dir(path).map_err(Into::into)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    spawn_blocking(move || fs::remove_dir(path))
+      .await?
+      .map_err(Into::into)
+  }
+
   fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
     truncate(path, len)
   }

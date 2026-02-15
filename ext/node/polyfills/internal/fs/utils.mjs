@@ -989,6 +989,20 @@ export const validateCpOptions = hideStackFrames((options) => {
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
@@ -1022,6 +1036,7 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
