@@ -16,7 +16,7 @@ Deno.bench("perf_now", { n: 5e5 }, () => {
 });
 
 Deno.bench("open_file_sync", () => {
-  using _file = Deno.openSync("./cli/bench/testdata/128k.bin");
+  using _file = Deno.openSync("./tests/bench/testdata/128k.bin");
 });
 
 // A common "language feature", that should be fast
@@ -62,7 +62,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
 Deno.bench(
   "read_128k",
   { n: 5e4 },
-  () => Deno.readFile("./cli/bench/testdata/128k.bin"),
+  () => Deno.readFile("./tests/bench/testdata/128k.bin"),
 );
 
 Deno.bench("request_new", { n: 5e5 }, () => new Request("https://deno.land"));

@@ -1586,9 +1586,9 @@ pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
   archive.extract(tsgo_path.parent().as_path())?;
 
   if cfg!(windows) {
-    std::fs::rename(tsgo_path.parent().join("tsgo.exe"), tsgo_path)?;
+    tsgo_path.parent().join("tsgo.exe").rename(tsgo_path);
   } else {
-    std::fs::rename(tsgo_path.parent().join("tsgo"), tsgo_path)?;
+    tsgo_path.parent().join("tsgo").rename(tsgo_path);
   }
 
   Ok(())
