@@ -319,6 +319,7 @@ export function getCallSites(
 export function parseEnv(
   input: string,
 ): Record<string, string> {
+  validateString(input, "content");
   return op_node_parse_env(input);
 }
 
