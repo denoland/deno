@@ -1,16 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-mod r#gen;
 mod structs;
+
+include!(concat!(env!("OUT_DIR"), "/gen.rs"));
 
 use std::collections::BTreeSet;
 
-pub use r#gen::UNSTABLE_ENV_VAR_NAMES;
-pub use r#gen::UNSTABLE_FEATURES;
 pub use structs::UnstableFeatureKind;
 
 pub const JS_SOURCE: deno_core::FastStaticString =
-  deno_core::ascii_str_include!("./gen.js");
+  deno_core::ascii_str_include!(concat!(env!("OUT_DIR"), "/gen.js"));
 
 pub type ExitCb = Box<dyn Fn(&str, &str) + Send + Sync>;
 
