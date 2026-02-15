@@ -1049,6 +1049,7 @@ impl Config {
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => None,
@@ -1486,6 +1487,7 @@ impl ConfigData {
       pb,
       None,
       NpmInstallerFactoryOptions {
+        clean_on_install: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),

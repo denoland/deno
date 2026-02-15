@@ -95,7 +95,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_test(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
   #[string] name: String,
   ignore: bool,
   only: bool,
@@ -105,6 +105,7 @@ fn op_register_test(
   #[smi] line_number: u32,
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
+  sanitize_only: bool,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -119,6 +120,7 @@ fn op_register_test(
     name,
     ignore,
     only,
+    sanitize_only,
     sanitize_ops,
     sanitize_resources,
     origin: origin.clone(),
@@ -139,7 +141,7 @@ fn op_register_test(
 fn op_register_test_hook(
   state: &mut OpState,
   #[string] hook_type: String,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
 ) -> Result<(), JsErrorBox> {
   let container = state.borrow_mut::<TestContainer>();
   container.register_hook(hook_type, function);

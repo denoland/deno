@@ -2,13 +2,16 @@
 
 mod backup;
 mod database;
+mod lru_cache;
 mod session;
+mod sql_tag_store;
 mod statement;
 mod validators;
 
 pub use backup::op_node_database_backup;
 pub use database::DatabaseSync;
 pub use session::Session;
+pub use sql_tag_store::SQLTagStore;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -98,11 +101,9 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidExpandedSql,
   #[class(range)]
-  #[error(
-    "The value of column {0} is too large to be represented as a JavaScript number: {1}"
-  )]
+  #[error("Value is too large to be represented as a JavaScript number: {0}")]
   #[property("code" = self.code())]
-  NumberTooLarge(i32, i64),
+  NumberTooLarge(i64),
   #[class(type)]
   #[error("Invalid callback: {0}")]
   #[property("code" = self.code())]
@@ -183,7 +184,7 @@ impl SqliteError {
       | Self::InUse
       | Self::AlreadyOpen
       | Self::StatementFinalized => ErrorCode::ERR_INVALID_STATE,
-      Self::NumberTooLarge(_, _) => ErrorCode::ERR_OUT_OF_RANGE,
+      Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }

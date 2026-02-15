@@ -4343,6 +4343,27 @@ Deno.test({
   await server.shutdown();
 });
 
+Deno.test({
+  name: "support shutdown while open idle connection exists",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, () => new Response("Ok"));
+
+  await promise;
+
+  using conn = await Deno.connect({ port: servePort });
+
+  await server.shutdown();
+
+  const read = await conn.read(new Uint8Array(10));
+  assertEquals(read, null);
+});
+
 // https://github.com/denoland/deno/issues/27083
 Deno.test(
   { permissions: { net: true } },

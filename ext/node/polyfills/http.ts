@@ -432,6 +432,8 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
+      // Store options for potential retry on stale keepAlive connections.
+      this._agentOptions = optsWithoutSignal;
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -727,7 +729,21 @@ class ClientRequest extends OutgoingMessage {
           err.message.includes("Bad resource ID") ||
           err.message.includes("operation was canceled")
         ) {
-          // Stale connection - emit ECONNRESET so clients retry.
+          // Stale keepAlive connection. If this was a reused socket,
+          // retry the request on a fresh connection.
+          if (this.reusedSocket && this.agent && this._agentOptions) {
+            const socket = this.socket;
+            if (socket) {
+              socket.destroy();
+            }
+            this.socket = null;
+            this._header = null;
+            this._headerSent = false;
+            this.reusedSocket = false;
+            this._req = null;
+            this.agent.addRequest(this, this._agentOptions);
+            return;
+          }
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
@@ -1556,6 +1572,10 @@ export type ServerResponse = {
   end(chunk?: any, encoding?: any, cb?: any): void;
 
   flushHeaders(): void;
+  writeEarlyHints(
+    hints: Record<string, string | string[]>,
+    callback?: () => void,
+  ): void;
   _implicitHeader(): void;
 
   // Undocumented field used by `npm:light-my-request`.
@@ -1963,6 +1983,15 @@ ServerResponse.prototype.detachSocket = function (
 };
 
 ServerResponse.prototype.writeContinue = function writeContinue(cb) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  _hints,
+  cb,
+) {
   if (cb) {
     nextTick(cb);
   }

@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
-use deno_core::ByteString;
-use deno_core::ToJsBuffer;
 use deno_core::U16String;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -175,8 +175,7 @@ pub enum WebError {
 }
 
 #[op2]
-#[serde]
-fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, WebError> {
+fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
@@ -184,8 +183,7 @@ fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, WebError> {
 }
 
 #[op2]
-#[serde]
-fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, WebError> {
+fn op_base64_atob(#[scoped] mut s: ByteString) -> Result<ByteString, WebError> {
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
@@ -209,7 +207,7 @@ fn op_base64_encode(#[buffer] s: &[u8]) -> String {
 
 #[op2]
 #[string]
-fn op_base64_btoa(#[serde] s: ByteString) -> String {
+fn op_base64_btoa(#[scoped] s: ByteString) -> String {
   forgiving_base64_encode(s.as_ref())
 }
 
@@ -396,13 +394,13 @@ fn op_encoding_encode_into(
   let s = v8::Local::<v8::String>::try_from(input)?;
 
   let mut nchars = 0;
-  out_buf[1] = s.write_utf8(
+  let len = s.write_utf8_v2(
     scope,
     buffer,
+    v8::WriteFlags::kReplaceInvalidUtf8,
     Some(&mut nchars),
-    v8::WriteOptions::NO_NULL_TERMINATION
-      | v8::WriteOptions::REPLACE_INVALID_UTF8,
-  ) as u32;
+  );
+  out_buf[1] = len as u32;
   out_buf[0] = nchars as u32;
   Ok(())
 }

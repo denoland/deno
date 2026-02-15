@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.6.5"
+version = "2.6.9"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -82,7 +82,7 @@ deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
-deno_panic = { version = "0.1.0", optional = true }
+deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -96,6 +96,7 @@ deno_typescript_go_client_rust.workspace = true
 eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
+node_shim.workspace = true
 
 anstream.workspace = true
 async-trait.workspace = true
@@ -111,6 +112,7 @@ clap = { workspace = true, features = ["env", "string", "wrap_help", "error-cont
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
+comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
@@ -140,6 +142,7 @@ keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service"
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lol_html = "2.6.0"
 lsp-types.workspace = true
@@ -172,7 +175,7 @@ shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
-sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
+sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "serde_json", "real", "strip_unc", "winapi"] }
 tar.workspace = true
 tempfile.workspace = true
 text-size.workspace = true

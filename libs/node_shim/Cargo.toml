@@ -1,0 +1,19 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "node_shim"
+version = "0.6.0"
+edition = "2024"
+license = "MIT"
+description = "A crate that maps Node.js CLI arguments into Deno arguments."
+
+[[bin]]
+name = "node_shim"
+path = "main.rs"
+
+[dependencies]
+serde_json.workspace = true
+url.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+exec = "0.3.1"

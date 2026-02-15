@@ -35,38 +35,54 @@ import {
 } from "ext:core/ops";
 import * as ops from "ext:core/ops";
 const {
+  AggregateError,
+  AggregateErrorPrototype,
   Array,
   ArrayBufferPrototypeGetByteLength,
+  ArrayBuffer,
+  ArrayBufferPrototype,
+  ArrayFrom,
   ArrayIsArray,
+  ArrayPrototype,
   ArrayPrototypeFill,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
   ArrayPrototypePushApply,
   ArrayPrototypeReduce,
-  ArrayPrototypeShift,
   ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   BigIntPrototypeValueOf,
   Boolean,
+  BooleanPrototype,
   BooleanPrototypeValueOf,
+  DataView,
+  DataViewPrototype,
+  Date,
   DateNow,
+  DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
   ErrorPrototypeToString,
+  Function,
+  FunctionPrototype,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
+  FunctionPrototypeSymbolHasInstance,
   FunctionPrototypeToString,
+  Map,
+  MapPrototype,
   MapPrototypeDelete,
   MapPrototypeEntries,
   MapPrototypeForEach,
@@ -85,9 +101,11 @@ const {
   NumberIsNaN,
   NumberParseInt,
   NumberParseFloat,
+  NumberPrototype,
   NumberPrototypeToFixed,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
+  Object,
   ObjectAssign,
   ObjectCreate,
   ObjectDefineProperty,
@@ -103,14 +121,21 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectPrototypePropertyIsEnumerable,
+  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ObjectValues,
+  Promise,
+  PromisePrototype,
   Proxy,
+  RangeError,
+  RangeErrorPrototype,
   ReflectGet,
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
   ReflectOwnKeys,
+  RegExp,
+  RegExpPrototype,
   RegExpPrototypeExec,
   RegExpPrototypeSymbolReplace,
   RegExpPrototypeTest,
@@ -122,11 +147,14 @@ const {
   SafeSet,
   SafeSetIterator,
   SafeStringIterator,
+  Set,
+  SetPrototype,
   SetPrototypeAdd,
   SetPrototypeGetSize,
   SetPrototypeHas,
   SetPrototypeValues,
   String,
+  StringPrototype,
   StringPrototypeCharCodeAt,
   StringPrototypeCodePointAt,
   StringPrototypeEndsWith,
@@ -154,12 +182,32 @@ const {
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
   SymbolToStringTag,
+  TypedArray,
+  TypedArrayPrototype,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetLength,
+  TypeError,
+  TypeErrorPrototype,
   Uint8Array,
   Uint32Array,
+  WeakMap,
+  WeakMapPrototype,
+  WeakSet,
+  WeakSetPrototype,
 } = primordials;
+
+/** @type {typeof import("node:url")} */
+let nodeUrl;
+const lazyLoadUrl = core.createLazyLoader(
+  "node:url",
+);
+
+/** @type {typeof import("node:module")} */
+let nodeModule;
+const lazyLoadModule = core.createLazyLoader(
+  "node:module",
+);
 
 let currentTime = DateNow;
 if (ops.op_now) {
@@ -314,20 +362,13 @@ function getSharedArrayBufferByteLength(value) {
   return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
 }
 
-// The name property is used to allow cross realms to make a determination
-// This is the same as WHATWG's structuredClone algorithm
-// https://github.com/whatwg/html/pull/5150
-function isAggregateError(value) {
-  return (
-    isNativeError(value) &&
-    value.name === "AggregateError" &&
-    ArrayIsArray(value.errors)
-  );
-}
-
 const kObjectType = 0;
 const kArrayType = 1;
 const kArrayExtrasType = 2;
+
+const coreModuleRegExp = new SafeRegExp(
+  /^ {4}at (?:[^/\\(]+ \(|)node:(.+):\d+:\d+\)?$/,
+);
 
 const kMinLineLength = 16;
 
@@ -877,7 +918,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             ObjectPrototypeIsPrototypeOf(ErrorPrototype, proxyDetails[0])))
       ) {
         const error = proxyDetails?.[0] ?? value;
-        base = inspectError(error, ctx);
+        base = formatError(error, constructor, tag, ctx, keys);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -1116,10 +1157,52 @@ function isInstanceof(proto, object) {
   }
 }
 
+// Special-case for some builtin prototypes in case their `constructor` property has been tampered.
+const wellKnownPrototypes = new SafeMap()
+  .set(ArrayPrototype, { name: "Array", constructor: Array })
+  .set(ArrayBufferPrototype, { name: "ArrayBuffer", constructor: ArrayBuffer })
+  .set(FunctionPrototype, { name: "Function", constructor: Function })
+  .set(MapPrototype, { name: "Map", constructor: Map })
+  .set(SetPrototype, { name: "Set", constructor: Set })
+  .set(ObjectPrototype, { name: "Object", constructor: Object })
+  .set(TypedArrayPrototype, { name: "TypedArray", constructor: TypedArray })
+  .set(RegExpPrototype, { name: "RegExp", constructor: RegExp })
+  .set(DatePrototype, { name: "Date", constructor: Date })
+  .set(DataViewPrototype, { name: "DataView", constructor: DataView })
+  .set(ErrorPrototype, { name: "Error", constructor: Error })
+  .set(AggregateErrorPrototype, {
+    name: "AggregateError",
+    constructor: AggregateError,
+  })
+  .set(RangeErrorPrototype, { name: "RangeError", constructor: RangeError })
+  .set(TypeErrorPrototype, { name: "TypeError", constructor: TypeError })
+  .set(BooleanPrototype, { name: "Boolean", constructor: Boolean })
+  .set(NumberPrototype, { name: "Number", constructor: Number })
+  .set(StringPrototype, { name: "String", constructor: String })
+  .set(PromisePrototype, { name: "Promise", constructor: Promise })
+  .set(WeakMapPrototype, { name: "WeakMap", constructor: WeakMap })
+  .set(WeakSetPrototype, { name: "WeakSet", constructor: WeakSet });
+
 function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
+    const wellKnownPrototypeNameAndConstructor = wellKnownPrototypes.get(obj);
+    if (wellKnownPrototypeNameAndConstructor !== undefined) {
+      const { name, constructor } = wellKnownPrototypeNameAndConstructor;
+      if (FunctionPrototypeSymbolHasInstance(constructor, tmp)) {
+        if (protoProps !== undefined && firstProto !== obj) {
+          addPrototypeProperties(
+            ctx,
+            tmp,
+            firstProto || tmp,
+            recurseTimes,
+            protoProps,
+          );
+        }
+        return name;
+      }
+    }
     let descriptor;
     try {
       descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
@@ -1428,111 +1511,500 @@ function formatIterator(braces, ctx, value, recurseTimes) {
   return formatSetIterInner(ctx, recurseTimes, entries, kIterator);
 }
 
-function handleCircular(value, ctx) {
-  let index = 1;
-  if (ctx.circular === undefined) {
-    ctx.circular = new SafeMap();
-    MapPrototypeSet(ctx.circular, value, index);
-  } else {
-    index = MapPrototypeGet(ctx.circular, value);
-    if (index === undefined) {
-      index = MapPrototypeGetSize(ctx.circular) + 1;
-      MapPrototypeSet(ctx.circular, value, index);
-    }
+function getStackString(ctx, error) {
+  let stack;
+  try {
+    stack = error.stack;
+  } catch {
+    // If stack is getter that throws, we ignore the error.
   }
-  // Circular string is cyan
-  return ctx.stylize(`[Circular *${index}]`, "special");
+  if (stack) {
+    if (typeof stack === "string") {
+      return stack;
+    }
+    ArrayPrototypePush(ctx.seen, error);
+    ctx.indentationLvl += 4;
+    const result = formatValue(ctx, stack);
+    ctx.indentationLvl -= 4;
+    ArrayPrototypePop(ctx.seen);
+    return `${ErrorPrototypeToString(error)}\n    ${result}`;
+  }
+  return ErrorPrototypeToString(error);
 }
 
-const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
-const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
+/** @type {(stack: string, constructor: string | null, name: unknown, tag: string) => string} */
+function improveStack(stack, constructor, name, tag) {
+  // A stack trace may contain arbitrary data. Only manipulate the output
+  // for "regular errors" (errors that "look normal") for now.
+  let len = name.length;
 
-function inspectError(value, ctx) {
-  const causes = [value];
+  if (typeof name !== "string") {
+    stack = StringPrototypeReplace(
+      stack,
+      `${name}`,
+      `${name} [${
+        StringPrototypeSlice(getPrefix(constructor, tag, "Error"), 0, -1)
+      }]`,
+    );
+  }
 
-  let err = value;
-  while (err.cause) {
-    if (ArrayPrototypeIncludes(causes, err.cause)) {
-      ArrayPrototypePush(causes, handleCircular(err.cause, ctx));
-      break;
+  if (
+    constructor === null ||
+    (StringPrototypeEndsWith(name, "Error") &&
+      StringPrototypeStartsWith(stack, name) &&
+      (stack.length === len || stack[len] === ":" || stack[len] === "\n"))
+  ) {
+    let fallback = "Error";
+    if (constructor === null) {
+      const start = RegExpPrototypeExec(
+        new SafeRegExp(/^([A-Z][a-z_ A-Z0-9[\]()-]+)(?::|\n {4}at)/),
+        stack,
+      ) ||
+        RegExpPrototypeExec(new SafeRegExp(/^([a-z_A-Z0-9-]*Error)$/), stack);
+      fallback = (start?.[1]) || "";
+      len = fallback.length;
+      fallback ||= "Error";
+    }
+    const prefix = StringPrototypeSlice(
+      getPrefix(constructor, tag, fallback),
+      0,
+      -1,
+    );
+    if (name !== prefix) {
+      if (StringPrototypeIncludes(prefix, name)) {
+        if (len === 0) {
+          stack = `${prefix}: ${stack}`;
+        } else {
+          stack = `${prefix}${StringPrototypeSlice(stack, len)}`;
+        }
+      } else {
+        stack = `${prefix} [${name}]${StringPrototypeSlice(stack, len)}`;
+      }
+    }
+  }
+  return stack;
+}
+
+function getDuplicateErrorFrameRanges(frames) {
+  // Build a map: frame line -> sorted list of indices where it occurs
+  const result = [];
+  const lineToPositions = new SafeMap();
+
+  for (let i = 0; i < frames.length; i++) {
+    const positions = lineToPositions.get(frames[i]);
+    if (positions === undefined) {
+      lineToPositions.set(frames[i], [i]);
     } else {
-      ArrayPrototypePush(causes, err.cause);
-      err = err.cause;
+      positions[positions.length] = i;
     }
   }
 
-  const refMap = new SafeMap();
-  for (let i = 0; i < causes.length; ++i) {
-    const cause = causes[i];
-    if (ctx.circular !== undefined) {
-      const index = MapPrototypeGet(ctx.circular, cause);
-      if (index !== undefined) {
-        MapPrototypeSet(
-          refMap,
-          cause,
-          ctx.stylize(`<ref *${index}> `, "special"),
+  const minimumDuplicateRange = 3;
+  // Not enough duplicate lines to consider collapsing
+  if (frames.length - lineToPositions.size <= minimumDuplicateRange) {
+    return result;
+  }
+
+  for (let i = 0; i < frames.length - minimumDuplicateRange; i++) {
+    const positions = lineToPositions.get(frames[i]);
+    // Find the next occurrence of the same line after i, if any
+    if (positions.length === 1 || positions[positions.length - 1] === i) {
+      continue;
+    }
+
+    const current = ArrayPrototypeIndexOf(positions, i) + 1;
+    if (current === positions.length) {
+      continue;
+    }
+
+    // Theoretical maximum range, adjusted while iterating
+    let range = positions[positions.length - 1] - i;
+    if (range < minimumDuplicateRange) {
+      continue;
+    }
+    let extraSteps;
+    if (current + 1 < positions.length) {
+      // Optimize initial step size by choosing the greatest common divisor (GCD)
+      // of all candidate distances to the same frame line. This tends to match
+      // the true repeating block size and minimizes fallback iterations.
+      let gcdRange = 0;
+      for (let j = current; j < positions.length; j++) {
+        let distance = positions[j] - i;
+        while (distance !== 0) {
+          const remainder = gcdRange % distance;
+          if (gcdRange !== 0) {
+            // Add other possible ranges as fallback
+            extraSteps ??= new SafeSet();
+            extraSteps.add(gcdRange);
+          }
+          gcdRange = distance;
+          distance = remainder;
+        }
+        if (gcdRange === 1) break;
+      }
+      range = gcdRange;
+      if (extraSteps) {
+        extraSteps.delete(range);
+        extraSteps = ArrayFrom(extraSteps);
+      }
+    }
+    let maxRange = range;
+    let maxDuplicates = 0;
+
+    let duplicateRanges = 0;
+
+    for (let nextStart = i + range;; /* ignored */ nextStart += range) {
+      let equalFrames = 0;
+      for (let j = 0; j < range; j++) {
+        if (frames[i + j] !== frames[nextStart + j]) {
+          break;
+        }
+        equalFrames++;
+      }
+      // Adjust the range to match different type of ranges.
+      if (equalFrames !== range) {
+        if (!extraSteps?.length) {
+          break;
+        }
+        // Memorize former range in case the smaller one would hide less.
+        if (
+          duplicateRanges !== 0 &&
+          maxRange * maxDuplicates < range * duplicateRanges
+        ) {
+          maxRange = range;
+          maxDuplicates = duplicateRanges;
+        }
+        range = ArrayPrototypePop(extraSteps);
+        nextStart = i;
+        duplicateRanges = 0;
+        continue;
+      }
+      duplicateRanges++;
+    }
+
+    if (
+      maxDuplicates !== 0 && maxRange * maxDuplicates >= range * duplicateRanges
+    ) {
+      range = maxRange;
+      duplicateRanges = maxDuplicates;
+    }
+
+    if (duplicateRanges * range >= 3) {
+      ArrayPrototypePush(result, i + range, range, duplicateRanges);
+      // Skip over the collapsed portion to avoid overlapping matches.
+      i += range * (duplicateRanges + 1) - 1;
+    }
+  }
+
+  return result;
+}
+
+function identicalSequenceRange(a, b) {
+  for (let i = 0; i < a.length - 3; i++) {
+    // Find the first entry of b that matches the current entry of a.
+    const pos = ArrayPrototypeIndexOf(b, a[i]);
+    if (pos !== -1) {
+      const rest = b.length - pos;
+      if (rest > 3) {
+        let len = 1;
+        const maxLen = MathMin(a.length - i, rest);
+        // Count the number of consecutive entries.
+        while (maxLen > len && a[i + len] === b[pos + len]) {
+          len++;
+        }
+        if (len > 3) {
+          return [len, i];
+        }
+      }
+    }
+  }
+
+  return [0, 0];
+}
+
+function getStackFrames(ctx, err, stack) {
+  const frames = StringPrototypeSplit(stack, "\n");
+
+  let cause;
+  try {
+    ({ cause } = err);
+  } catch {
+    // If 'cause' is a getter that throws, ignore it.
+  }
+
+  // Remove stack frames identical to frames in cause.
+  if (
+    cause != null &&
+    (isNativeError(cause) || FunctionPrototypeSymbolHasInstance(Error, cause))
+  ) {
+    const causeStack = getStackString(ctx, cause);
+    const causeStackStart = StringPrototypeIndexOf(causeStack, "\n    at");
+    if (causeStackStart !== -1) {
+      const causeFrames = StringPrototypeSplit(
+        StringPrototypeSlice(causeStack, causeStackStart + 1),
+        "\n",
+      );
+      const { 0: len, 1: offset } = identicalSequenceRange(frames, causeFrames);
+      if (len > 0) {
+        const skipped = len - 2;
+        const msg = `    ... ${skipped} lines matching cause stack trace ...`;
+        ArrayPrototypeSplice(
+          frames,
+          offset + 1,
+          skipped,
+          ctx.stylize(msg, "undefined"),
         );
       }
     }
   }
-  ArrayPrototypeShift(causes);
 
-  let finalMessage = MapPrototypeGet(refMap, value) ?? "";
+  // Remove recursive repetitive stack frames in long stacks
+  if (frames.length > 10) {
+    const ranges = getDuplicateErrorFrameRanges(frames);
 
-  if (isAggregateError(value)) {
-    const stackLines = StringPrototypeSplit(value.stack, "\n");
-    while (true) {
-      const line = ArrayPrototypeShift(stackLines);
-      if (RegExpPrototypeTest(AGGREGATE_ERROR_HAS_AT_PATTERN, line)) {
-        ArrayPrototypeUnshift(stackLines, line);
-        break;
-      } else if (typeof line === "undefined") {
-        break;
-      }
+    for (let i = ranges.length - 3; i >= 0; i -= 3) {
+      const offset = ranges[i];
+      const length = ranges[i + 1];
+      const duplicateRanges = ranges[i + 2];
 
-      finalMessage += line;
-      finalMessage += "\n";
-    }
-    const aggregateMessage = ArrayPrototypeJoin(
-      ArrayPrototypeMap(
-        value.errors,
-        (error) =>
-          StringPrototypeReplace(
-            inspectArgs([error]),
-            AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN,
-            StringPrototypeRepeat(" ", 4),
-          ),
-      ),
-      "\n",
-    );
-    finalMessage += aggregateMessage;
-    finalMessage += "\n";
-    finalMessage += ArrayPrototypeJoin(stackLines, "\n");
-  } else {
-    const stack = value.stack;
-    if (stack?.includes("\n    at")) {
-      finalMessage += stack;
-    } else {
-      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
+      const msg =
+        `    ... collapsed ${length * duplicateRanges} duplicate lines ` +
+        "matching above " +
+        (duplicateRanges > 1
+          ? `${length} lines ${duplicateRanges} times...`
+          : "lines ...");
+      ArrayPrototypeSplice(
+        frames,
+        offset,
+        length * duplicateRanges,
+        ctx.stylize(msg, "undefined"),
+      );
     }
   }
-  const doubleQuoteRegExp = new SafeRegExp('"', "g");
-  finalMessage += ArrayPrototypeJoin(
-    ArrayPrototypeMap(
-      causes,
-      (cause) =>
-        "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ??
-          StringPrototypeReplace(
-            inspect(cause),
-            doubleQuoteRegExp,
-            "",
-          )),
-    ),
-    "",
-  );
 
-  return finalMessage;
+  return frames;
+}
+
+function safeGetCWD() {
+  let workingDirectory;
+  try {
+    workingDirectory = Deno.cwd();
+  } catch {
+    return;
+  }
+  return workingDirectory;
+}
+
+function markNodeModules(ctx, line) {
+  let tempLine = "";
+  let lastPos = 0;
+  let searchFrom = 0;
+
+  while (true) {
+    const nodeModulePosition = StringPrototypeIndexOf(
+      line,
+      "node_modules",
+      searchFrom,
+    );
+    if (nodeModulePosition === -1) {
+      break;
+    }
+
+    // Ensure it's a path segment: must have a path separator before and after
+    const separator = line[nodeModulePosition - 1];
+    const after = line[nodeModulePosition + 12]; // 'node_modules'.length === 12
+
+    if (
+      (after !== "/" && after !== "\\") ||
+      (separator !== "/" && separator !== "\\")
+    ) {
+      // Not a proper segment; continue searching
+      searchFrom = nodeModulePosition + 1;
+      continue;
+    }
+
+    const moduleStart = nodeModulePosition + 13; // Include trailing separator
+
+    // Append up to and including '/node_modules/'
+    tempLine += StringPrototypeSlice(line, lastPos, moduleStart);
+
+    let moduleEnd = StringPrototypeIndexOf(line, separator, moduleStart);
+    if (line[moduleStart] === "@") {
+      // Namespaced modules have an extra slash: @namespace/package
+      moduleEnd = StringPrototypeIndexOf(line, separator, moduleEnd + 1);
+    }
+
+    const nodeModule = StringPrototypeSlice(line, moduleStart, moduleEnd);
+    tempLine += ctx.stylize(nodeModule, "module");
+
+    lastPos = moduleEnd;
+    searchFrom = moduleEnd;
+  }
+
+  if (lastPos !== 0) {
+    line = tempLine + StringPrototypeSlice(line, lastPos);
+  }
+  return line;
+}
+
+function markCwd(ctx, line, workingDirectory) {
+  let cwdStartPos = StringPrototypeIndexOf(line, workingDirectory);
+  let tempLine = "";
+  let cwdLength = workingDirectory.length;
+  if (cwdStartPos !== -1) {
+    if (
+      StringPrototypeSlice(line, cwdStartPos - 7, cwdStartPos) === "file://"
+    ) {
+      cwdLength += 7;
+      cwdStartPos -= 7;
+    }
+    const start = line[cwdStartPos - 1] === "(" ? cwdStartPos - 1 : cwdStartPos;
+    const end = start !== cwdStartPos && StringPrototypeEndsWith(line, ")")
+      ? -1
+      : line.length;
+    const workingDirectoryEndPos = cwdStartPos + cwdLength + 1;
+    const cwdSlice = StringPrototypeSlice(line, start, workingDirectoryEndPos);
+
+    tempLine += StringPrototypeSlice(line, 0, start);
+    tempLine += ctx.stylize(cwdSlice, "undefined");
+    tempLine += StringPrototypeSlice(line, workingDirectoryEndPos, end);
+    if (end === -1) {
+      tempLine += ctx.stylize(")", "undefined");
+    }
+  } else {
+    tempLine += line;
+  }
+  return tempLine;
+}
+
+function pathToFileUrlHref(filepath) {
+  nodeUrl ??= lazyLoadUrl();
+  return nodeUrl.pathToFileURL(filepath).href;
+}
+
+function formatError(err, constructor, tag, ctx, keys) {
+  let message, name, stack;
+  try {
+    stack = getStackString(ctx, err);
+  } catch {
+    return ObjectPrototypeToString(err);
+  }
+
+  let messageIsGetterThatThrows = false;
+  try {
+    message = err.message;
+  } catch {
+    messageIsGetterThatThrows = true;
+  }
+  let nameIsGetterThatThrows = false;
+  try {
+    name = err.name;
+  } catch {
+    nameIsGetterThatThrows = true;
+  }
+
+  if (!ctx.showHidden && keys.length !== 0) {
+    const index = ArrayPrototypeIndexOf(keys, "stack");
+    if (index !== -1) {
+      ArrayPrototypeSplice(keys, index, 1);
+    }
+
+    if (!messageIsGetterThatThrows) {
+      const index = ArrayPrototypeIndexOf(keys, "message");
+      // Only hide the property if it's a string and if it's part of the original stack
+      if (
+        index !== -1 &&
+        (typeof message !== "string" || StringPrototypeIncludes(stack, message))
+      ) {
+        ArrayPrototypeSplice(keys, index, 1);
+      }
+    }
+
+    if (!nameIsGetterThatThrows) {
+      const index = ArrayPrototypeIndexOf(keys, "name");
+      // Only hide the property if it's a string and if it's part of the original stack
+      if (
+        index !== -1 &&
+        (typeof name !== "string" || StringPrototypeIncludes(stack, name))
+      ) {
+        ArrayPrototypeSplice(keys, index, 1);
+      }
+    }
+  }
+  name ??= "Error";
+
+  if (
+    ReflectHas(err, "cause") &&
+    (keys.length === 0 || !ArrayPrototypeIncludes(keys, "cause"))
+  ) {
+    ArrayPrototypePush(keys, "cause");
+  }
+
+  // Print errors aggregated into AggregateError
+  try {
+    const errors = err.errors;
+    if (
+      ArrayIsArray(errors) &&
+      (keys.length === 0 || !ArrayPrototypeIncludes(keys, "errors"))
+    ) {
+      ArrayPrototypePush(keys, "errors");
+    }
+  } catch {
+    // If errors is a getter that throws, we ignore the error.
+  }
+
+  stack = improveStack(stack, constructor, name, tag);
+
+  // Ignore the error message if it's contained in the stack.
+  let pos = (message && StringPrototypeIndexOf(stack, message)) || -1;
+  if (pos !== -1) {
+    pos += message.length;
+  }
+  // Wrap the error in brackets in case it has no stack trace.
+  const stackStart = StringPrototypeIndexOf(stack, "\n    at", pos);
+  if (stackStart === -1) {
+    stack = `[${stack}]`;
+  } else {
+    let newStack = StringPrototypeSlice(stack, 0, stackStart);
+    const stackFramePart = StringPrototypeSlice(stack, stackStart + 1);
+    const lines = getStackFrames(ctx, err, stackFramePart);
+    if (ctx.colors) {
+      // Highlight userland code and node modules.
+      const workingDirectory = safeGetCWD();
+      let esmWorkingDirectory;
+      nodeModule ??= lazyLoadModule();
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        const core = RegExpPrototypeExec(coreModuleRegExp, line);
+        if (core !== null && nodeModule.isBuiltin(core[1])) {
+          newStack += `\n${ctx.stylize(line, "undefined")}`;
+        } else {
+          newStack += "\n";
+
+          line = markNodeModules(ctx, line);
+          if (workingDirectory !== undefined) {
+            let newLine = markCwd(ctx, line, workingDirectory);
+            if (newLine === line) {
+              esmWorkingDirectory ??= pathToFileUrlHref(workingDirectory);
+              newLine = markCwd(ctx, line, esmWorkingDirectory);
+            }
+            line = newLine;
+          }
+
+          newStack += line;
+        }
+      }
+    } else {
+      newStack += `\n${ArrayPrototypeJoin(lines, "\n")}`;
+    }
+    stack = newStack;
+  }
+  // The message and the stack have to be indented as well!
+  if (ctx.indentationLvl !== 0) {
+    const indentation = StringPrototypeRepeat(" ", ctx.indentationLvl);
+    stack = StringPrototypeReplaceAll(stack, "\n", `\n${indentation}`);
+  }
+  return stack;
 }
 
 const hexSliceLookupTable = function () {
@@ -3435,7 +3907,8 @@ class Console {
       message,
     };
     ErrorCaptureStackTrace(err, this.trace);
-    this.error(err.stack);
+    this.#printFunc(err.stack, 4);
+    this.#printFunc("\n", 4);
   };
 
   // These methods are noops, but when the inspector is connected, they
