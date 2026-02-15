@@ -130,12 +130,15 @@ export const exit = (code?: number | string) => {
   process.reallyExit(ProcessExitCode);
 
   // In a worker, reallyExit() returns because Deno.exit() calls workerClose()
-  // instead of std::process::exit(). But workerClose() already called V8's
-  // terminate_execution(). Spinning here gives V8 a loop back-edge to detect
-  // the pending termination and throw an uncatchable TerminationException,
-  // matching Node.js behavior where process.exit() immediately halts all JS.
+  // instead of std::process::exit(). workerClose() already called V8's
+  // terminate_execution(). Unlike Node.js where reallyExit is a C++ binding
+  // and a single nop() call suffices to trigger the stack guard check, in Deno
+  // reallyExit goes through JS frames (Deno.exit -> exitHandler -> workerClose
+  // -> op), so we need a loop back-edge for V8 to reliably detect the pending
+  // termination and throw an uncatchable TerminationException.
   // On the main thread reallyExit() normally never returns, but users can
   // override it (test-process-really-exit.js), so only spin in workers.
+  // ref: https://github.com/nodejs/node/blob/9cc7fcc26d/lib/internal/process/per_thread.js#L243-L251
   if (internals.__isWorkerThread) {
     // deno-lint-ignore no-empty
     for (;;) {}
