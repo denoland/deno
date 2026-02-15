@@ -241,6 +241,7 @@ Deno.test("[util] parseEnv()", () => {
     KEY2: "VALUE2",
     KEYÄ3: "VALUE3",
     KEY4: "VALÜE4",
+    KEY5: "VALUE6",
     KEY6: "A",
   });
 });
