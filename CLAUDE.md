@@ -27,7 +27,7 @@ When the feature is finished and ready to for review, follow these steps:
 - Open a pull request (PR) against the `main` branch on GitHub.
 - Before committing, make sure `tools/format.js` is run to format your code
 - Before committing, if only non-Rust was changed, make sure to run
-  `tools/format.js --js` and fix any lint errors before committing
+  `tools/lint.js --js` and fix any lint errors before committing
 - If you changed Rust code, make sure to run `tools/lint.js` and fix any lint
   errors before committing
 - In the PR description, provide a clear summary of the changes you made, why
