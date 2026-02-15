@@ -601,7 +601,7 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
     if (this.#status === "TERMINATED") {
-      return PromiseResolve(0);
+      return PromiseResolve(undefined);
     }
 
     this.#status = "TERMINATED";
@@ -610,10 +610,13 @@ class NodeWorker extends EventEmitter {
 
     if (!this.#exited) {
       this.#exited = true;
-      this.emit("exit", 0);
+      this.emit("exit", 1);
+      return PromiseResolve(1);
     }
 
-    return PromiseResolve(0);
+    // Worker already exited - Node.js returns undefined in this case
+    // (the internal handle is already null).
+    return PromiseResolve(undefined);
   }
 
   async [SymbolAsyncDispose]() {
