@@ -478,6 +478,49 @@ async fn fetch_and_store_latest_version<
   env.write_check_file(&version_file.serialize());
 }
 
+fn get_binary_cache_path(
+  dl_dir: &Path,
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> PathBuf {
+  let binary_path_suffix = match release_channel {
+    ReleaseChannel::Canary => {
+      format!("canary/{}/{}", version, *ARCHIVE_NAME)
+    }
+    _ => {
+      format!("release/v{}/{}", version, *ARCHIVE_NAME)
+    }
+  };
+  dl_dir.join(binary_path_suffix)
+}
+
+fn prune_canary_cache(dl_dir: &Path, max_entries: usize) {
+  let canary_dir = dl_dir.join("canary");
+  let Ok(entries) = std::fs::read_dir(&canary_dir) else {
+    return;
+  };
+
+  let mut dirs: Vec<_> = entries
+    .filter_map(|e| e.ok())
+    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+    .filter_map(|e| {
+      let modified = e.metadata().ok()?.modified().ok()?;
+      Some((e.path(), modified))
+    })
+    .collect();
+
+  if dirs.len() <= max_entries {
+    return;
+  }
+
+  // Sort by modification time, most recent first
+  dirs.sort_by(|a, b| b.1.cmp(&a.1));
+
+  for (path, _) in dirs.into_iter().skip(max_entries) {
+    let _ = std::fs::remove_dir_all(&path);
+  }
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
@@ -537,15 +580,46 @@ pub async fn upgrade(
     http_client_provider.get_or_create()?,
   );
 
-  let download_url = get_download_url(
+  let dl_dir = factory.deno_dir()?.dl_folder_path();
+  let cache_path = get_binary_cache_path(
+    &dl_dir,
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )?;
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let Some(archive_data) = download_package(&client, download_url).await?
-  else {
-    log::error!("Download could not be found, aborting");
-    deno_runtime::exit(1)
+  );
+
+  let archive_data = if cache_path.exists() {
+    log::info!(
+      "{}",
+      colors::gray(format!(
+        "Using cached binary from {}",
+        cache_path.display()
+      ))
+    );
+    std::fs::read(&cache_path).with_context(|| {
+      format!("Failed to read cached binary at '{}'", cache_path.display())
+    })?
+  } else {
+    let download_url = get_download_url(
+      &selected_version_to_upgrade.version_or_hash,
+      requested_version.release_channel(),
+    )?;
+    log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+    let Some(data) = download_package(&client, download_url).await? else {
+      log::error!("Download could not be found, aborting");
+      deno_runtime::exit(1)
+    };
+
+    // Cache the downloaded archive
+    if let Some(parent) = cache_path.parent() {
+      fs::create_dir_all(parent).with_context(|| {
+        format!("Failed to create cache directory '{}'", parent.display())
+      })?;
+    }
+    if let Err(err) = fs::write(&cache_path, &data) {
+      log::debug!("Failed to cache binary: {}", err);
+    }
+
+    data
   };
 
   // verify checksum if provided
@@ -629,6 +703,12 @@ pub async fn upgrade(
   }
 
   drop(temp_dir); // delete the temp dir
+
+  // Prune old canary cache entries to avoid unbounded growth
+  if requested_version.release_channel() == ReleaseChannel::Canary {
+    prune_canary_cache(&dl_dir, 10);
+  }
+
   Ok(())
 }
 
