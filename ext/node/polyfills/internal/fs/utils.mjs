@@ -195,7 +195,7 @@ export class Dirent {
   }
 }
 
-export function direntFromDeno(entry) {
+export function direntFromDeno(entry, path) {
   let type;
 
   if (entry.isDirectory) {
@@ -206,7 +206,7 @@ export function direntFromDeno(entry) {
     type = UV_DIRENT_LINK;
   }
 
-  return new Dirent(entry.name, type, entry.parentPath);
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
 }
 
 export class DirentFromStats extends Dirent {
@@ -989,6 +989,20 @@ export const validateCpOptions = hideStackFrames((options) => {
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
@@ -1022,6 +1036,7 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
