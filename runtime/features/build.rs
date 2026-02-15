@@ -2,8 +2,6 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use std::path::Path;
-
 mod data;
 mod structs;
 
