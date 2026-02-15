@@ -1029,13 +1029,49 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options
 }
 
-#[inline(always)]
 pub fn open_with_checked_path(
-  options: OpenOptions,
+  opts: OpenOptions,
   path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  let opts = open_options_for_checked_path(options, path);
-  Ok(opts.open(path)?)
+  // Rust's std::fs::OpenOptions requires write or append when create is set.
+  // However, POSIX allows O_RDONLY | O_CREAT (create the file if it doesn't
+  // exist, then open for reading). Handle this by creating the file first
+  // if needed, then opening for read only.
+  if opts.create && !opts.write && !opts.append {
+    if !path.exists() {
+      let create_opts = open_options_for_checked_path(
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: false,
+          append: false,
+          create_new: opts.create_new,
+          custom_flags: None,
+          mode: opts.mode,
+        },
+        path,
+      );
+      // Create and immediately close the file
+      drop(create_opts.open(path)?);
+    }
+    let read_opts = open_options_for_checked_path(
+      OpenOptions {
+        read: true,
+        write: false,
+        create: false,
+        truncate: false,
+        append: false,
+        create_new: false,
+        custom_flags: opts.custom_flags,
+        mode: None,
+      },
+      path,
+    );
+    return Ok(read_opts.open(path)?);
+  }
+  let std_opts = open_options_for_checked_path(opts, path);
+  Ok(std_opts.open(path)?)
 }
 
 #[inline(always)]
