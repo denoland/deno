@@ -3,6 +3,7 @@
 export {
   atob,
   Blob,
+  File,
   btoa,
   Buffer,
   constants,
