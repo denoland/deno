@@ -371,6 +371,29 @@ impl TestContext {
   pub fn envs(&self) -> &HashMap<String, String> {
     &self.envs
   }
+
+  pub fn get_jsr_package_integrity(&self, sub_path: &str) -> String {
+    use sha2::Digest;
+    let url = url::Url::parse(self.envs.get("JSR_URL").unwrap()).unwrap();
+    let url = url.join(&format!("{}_meta.json", sub_path)).unwrap();
+    let bytes = curl_fetch(url.as_str());
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&bytes);
+    format!("{:x}", hasher.finalize())
+  }
+}
+
+fn curl_fetch(url: &str) -> Vec<u8> {
+  let output = std::process::Command::new("curl")
+    .args(["--fail", "--silent", "--show-error", "--location", url])
+    .output()
+    .expect("failed to run curl");
+  assert!(
+    output.status.success(),
+    "curl failed for {url}: {}",
+    String::from_utf8_lossy(&output.stderr)
+  );
+  output.stdout
 }
 
 /// We can't clone an stdio, so if someone clones a DenoCmd,

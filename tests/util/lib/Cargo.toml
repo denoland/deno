@@ -33,6 +33,7 @@ pretty_assertions.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 termcolor.workspace = true
 test_macro.workspace = true

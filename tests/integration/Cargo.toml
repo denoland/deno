@@ -46,7 +46,6 @@ serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
 tempfile.workspace = true
-test_server.workspace = true
 test_util = { workspace = true, features = ["lsp"] }
 tokio.workspace = true
 tower-lsp.workspace = true

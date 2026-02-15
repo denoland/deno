@@ -9,9 +9,6 @@ license.workspace = true
 publish = false
 repository.workspace = true
 
-[lib]
-path = "lib.rs"
-
 [[bin]]
 name = "test_server"
 path = "main.rs"
@@ -22,7 +19,7 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [dependencies]
-test_util = { workspace = true, features = ["lsp"] }
+test_util.workspace = true
 
 anyhow.workspace = true
 async-stream.workspace = true

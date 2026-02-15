@@ -7,7 +7,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
-use test_server::TestContextServerExt;
 use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
