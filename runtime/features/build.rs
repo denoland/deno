@@ -82,15 +82,8 @@ fn main() {
   rs_list.push_str(&env_var_def);
   rs_list.push_str(&env_var_impl);
 
-  write_if_changed(&out_dir.join("gen.js"), &js_list);
-  write_if_changed(&out_dir.join("gen.rs"), &rs_list);
-}
-
-fn write_if_changed(path: &Path, new_text: &str) {
-  let current_text = std::fs::read_to_string(path).unwrap_or_default();
-  if current_text != new_text {
-    std::fs::write(path, new_text).unwrap();
-  }
+  std::fs::write(out_dir.join("gen.js"), &js_list).unwrap();
+  std::fs::write(out_dir.join("gen.rs"), &rs_list).unwrap();
 }
 
 fn camel_case(name: &str) -> String {
