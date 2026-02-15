@@ -1440,8 +1440,7 @@ const lintCiStatusJob = job("lint-ci-status", {
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
   ],
-  if: preBuildJob.outputs.skip_build.notEquals("true")
-    .and(conditions.status.always()),
+  if: conditions.status.always(),
   runsOn: "ubuntu-latest",
   steps: step({
     name: "Ensure CI success",
