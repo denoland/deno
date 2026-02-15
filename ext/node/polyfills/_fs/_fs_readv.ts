@@ -14,6 +14,7 @@ import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 
 const {
@@ -62,8 +63,9 @@ export function readv(
     buffers: readonly ArrayBufferView[],
     position: number | null,
   ) => {
+    const rid = getRid(fd);
     if (typeof position === "number") {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
 
     let readTotal = 0;
@@ -71,7 +73,7 @@ export function readv(
     let bufIdx = 0;
     let buf = buffers[bufIdx];
     while (bufIdx < buffers.length) {
-      const nread = await io.read(fd, buf);
+      const nread = await io.read(rid, buf);
       if (nread === null) {
         break;
       }
@@ -117,9 +119,10 @@ export function readvSync(
   if (buffers.length === 0) {
     return 0;
   }
+  const rid = getRid(fd);
   if (typeof position === "number") {
     validateInteger(position, "position", 0);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    op_fs_seek_sync(rid, position, io.SeekMode.Start);
   }
 
   let readTotal = 0;
@@ -127,7 +130,7 @@ export function readvSync(
   let bufIdx = 0;
   let buf = buffers[bufIdx];
   while (bufIdx < buffers.length) {
-    const nread = io.readSync(fd, buf);
+    const nread = io.readSync(rid, buf);
     if (nread === null) {
       break;
     }

@@ -1,0 +1,6 @@
+fd >= 3: true
+bytes written: 8
+stat.size: 8
+bytes read: 8
+data: hello fd
+closed successfully

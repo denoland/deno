@@ -13,6 +13,7 @@ import { WriteVResult } from "ext:deno_node/internal/fs/handle.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 export interface WriteVResult {
   bytesWritten: number;
@@ -51,6 +52,7 @@ export function writev(
   callback?: writeVCallback,
 ): void {
   const innerWritev = async (fd, buffers, position) => {
+    const rid = getRid(fd);
     const chunks: Buffer[] = [];
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
@@ -61,12 +63,12 @@ export function writev(
       }
     }
     if (typeof position === "number") {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.writeSync(rid, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -100,6 +102,7 @@ export function writevSync(
   position?: number | null,
 ): number {
   const innerWritev = (fd, buffers, position) => {
+    const rid = getRid(fd);
     const chunks: Buffer[] = [];
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
@@ -110,12 +113,12 @@ export function writevSync(
       }
     }
     if (typeof position === "number") {
-      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+      op_fs_seek_sync(rid, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += io.writeSync(rid, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };

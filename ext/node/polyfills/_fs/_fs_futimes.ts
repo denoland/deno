@@ -9,6 +9,7 @@ import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 function getValidTime(
   time: number | string | Date,
@@ -48,11 +49,11 @@ export function futimes(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  // TODO(@littledivy): Treat `fd` as real file descriptor.
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).utime(atime, mtime).then(
-    () => callback(null),
-    callback,
-  );
+  new FsFile(getRid(fd), Symbol.for("Deno.internal.FsFile")).utime(atime, mtime)
+    .then(
+      () => callback(null),
+      callback,
+    );
 }
 
 export function futimesSync(
@@ -69,8 +70,10 @@ export function futimesSync(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  // TODO(@littledivy): Treat `fd` as real file descriptor.
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).utimeSync(atime, mtime);
+  new FsFile(getRid(fd), Symbol.for("Deno.internal.FsFile")).utimeSync(
+    atime,
+    mtime,
+  );
 }
 
 export const futimesPromise = promisify(futimes) as (
