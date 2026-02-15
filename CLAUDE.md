@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Git workflow](#git-workflow)
 - [High Level Overview](#high-level-overview)
 - [Quick Start](#quick-start)
 - [Commands](#commands)
@@ -10,6 +11,29 @@
 - [Debugging](#debugging)
 - [Codebase Navigation](#codebase-navigation)
 - [Troubleshooting](#troubleshooting)
+
+## Git workflow
+
+Deno uses a GH based standard git workflow. The main branch is `main`. All
+development happens in feature branches, which are then merged into `main` via
+pull requests.
+
+When the feature is finished and ready to for review, follow these steps:
+
+- Create a new git branch, if you haven't already, with a descriptive name
+  (e.g., `feature/new-cli-command` or `fix/bug-in-worker-threads`).
+- Commit your changes with clear and descriptive commit messages.
+- Push your branch to the remote repository.
+- Open a pull request (PR) against the `main` branch on GitHub.
+- In the PR description, provide a clear summary of the changes you made, why
+  they were necessary, and any relevant context or links to related issues.
+- When pushing updates to the PR, make sure to never force push. Create as many
+  commits as you need, all of them get squashed when the PR is merged, so there
+  is no need to rewrite history. This also allows reviewers to see the
+  incremental changes you made in response to feedback.
+- Keep your changes minimal, don't do drive-by changes in a PR. If you need to
+  make a change that is not directly related to the PR, create a separate PR for
+  it. This keeps the review process focused and efficient.
 
 ## High Level Overview
 
