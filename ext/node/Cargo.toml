@@ -62,6 +62,7 @@ idna.workspace = true
 ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
+libnghttp2 = { git = "https://github.com/littledivy/libnghttp2", branch = "main" }
 libuvrust.workspace = true
 libz-sys.workspace = true
 log.workspace = true

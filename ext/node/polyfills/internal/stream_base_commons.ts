@@ -49,6 +49,7 @@ const {
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+export const kBoundSession = Symbol("kBoundSession");
 export const kHandle = Symbol("kHandle");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");

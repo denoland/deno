@@ -2545,6 +2545,7 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
+ "libnghttp2",
  "libuvrust",
  "libz-sys",
  "log",
@@ -5930,6 +5931,16 @@ name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
+name = "libnghttp2"
+version = "1.68.0-rc.0"
+source = "git+https://github.com/littledivy/libnghttp2?branch=main#03e82f01b6ebb98ce63b3024d6ac8945b5141e63"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "libredox"

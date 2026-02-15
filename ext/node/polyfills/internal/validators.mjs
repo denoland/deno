@@ -398,6 +398,53 @@ const checkRangesOrGetDefault = hideStackFrames(
   },
 );
 
+const linkValueRegExp = /^(?:<[^>]*>)(?:\s*;\s*[^;]*)*$/;
+
+const validateLinkHeaderFormat = hideStackFrames((value, name) => {
+  if (
+    typeof value === "undefined" ||
+    !RegExpPrototypeTest(linkValueRegExp, value)
+  ) {
+    throw new codes.ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+    );
+  }
+});
+
+const validateLinkHeaderValue = hideStackFrames((hints) => {
+  if (typeof hints === "string") {
+    validateLinkHeaderFormat(hints, "hints");
+    return hints;
+  } else if (ArrayIsArray(hints)) {
+    const hintsLength = hints.length;
+    let result = "";
+
+    if (hintsLength === 0) {
+      return result;
+    }
+
+    for (let i = 0; i < hintsLength; i++) {
+      const link = hints[i];
+      validateLinkHeaderFormat(link, "hints");
+      result += link;
+
+      if (i !== hintsLength - 1) {
+        result += ", ";
+      }
+    }
+
+    return result;
+  }
+
+  throw new codes.ERR_INVALID_ARG_VALUE(
+    "hints",
+    hints,
+    'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+  );
+});
+
 export default {
   isInt32,
   isUint32,
@@ -419,6 +466,7 @@ export default {
   validateUint32,
   validateUnion,
   validateFiniteNumber,
+  validateLinkHeaderValue,
   checkRangesOrGetDefault,
 };
 export {
@@ -443,4 +491,5 @@ export {
   validateStringArray,
   validateUint32,
   validateUnion,
+  validateLinkHeaderValue,
 };

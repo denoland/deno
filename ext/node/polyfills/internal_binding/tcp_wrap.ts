@@ -27,10 +27,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
-import { TcpConn } from "ext:deno_net/01_net.js";
-import { core, primordials } from "ext:core/mod.js";
-const { internalFdSymbol } = core;
+import { TCP as NativeTCP } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -166,7 +164,11 @@ export class TCP extends ConnectionWrap {
   }
 
   get fd() {
-    return this[kStreamBaseField]?.[internalFdSymbol];
+    return undefined;
+  }
+
+  get _nativeHandle() {
+    return this.#native;
   }
 
   /**
@@ -382,6 +384,11 @@ export class TCP extends ConnectionWrap {
   }
 
   override ref() {
+    if (this.#useNative && this.#native) {
+      // TODO: implement uv_ref on native handle
+      return;
+    }
+
     if (this.#listener) {
       this.#listener.ref();
     }
@@ -392,6 +399,11 @@ export class TCP extends ConnectionWrap {
   }
 
   override unref() {
+    if (this.#useNative && this.#native) {
+      // TODO: implement uv_unref on native handle
+      return;
+    }
+
     if (this.#listener) {
       this.#listener.unref();
     }
@@ -407,6 +419,17 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getsockname(sockname: Record<string, never> | AddressInfo): number {
+    if (this.#useNative && this.#native) {
+      const info = this.#native.getsockname();
+      if (info) {
+        sockname.address = info.address;
+        sockname.port = info.port;
+        sockname.family = info.family;
+        return 0;
+      }
+      return codeMap.get("EADDRNOTAVAIL")!;
+    }
+
     if (
       typeof this.#address === "undefined" ||
       typeof this.#port === "undefined"
@@ -427,6 +450,17 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getpeername(peername: Record<string, never> | AddressInfo): number {
+    if (this.#useNative && this.#native) {
+      const info = this.#native.getpeername();
+      if (info) {
+        peername.address = info.address;
+        peername.port = info.port;
+        peername.family = info.family;
+        return 0;
+      }
+      return codeMap.get("EADDRNOTAVAIL")!;
+    }
+
     if (
       typeof this.#remoteAddress === "undefined" ||
       typeof this.#remotePort === "undefined"
@@ -526,32 +560,51 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = getIPFamily(address);
 
-    op_net_connect_tcp(
-      { hostname: address ?? "127.0.0.1", port },
-      this.#netPermToken,
-    ).then(
-      ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-        // Incorrect / backwards, but correcting the local address and port with
-        // what was actually used given we can't actually specify these in Deno.
-        this.#address = req.localAddress = localAddr.hostname;
-        this.#port = req.localPort = localAddr.port;
-        this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
+    const self = this;
+    this.#native.onconnect = function (status: number) {
+      if (status === 0) {
+        self.#useNative = true;
+
+        // Populate local address from the native handle
+        const sockname = self.#native.getsockname();
+        if (sockname) {
+          self.#address = req.localAddress = sockname.address;
+          self.#port = req.localPort = sockname.port;
+        }
+
+        // Populate remote address from the native handle
+        const peername = self.#native.getpeername();
+        if (peername) {
+          self.#remoteAddress = peername.address;
+          self.#remotePort = peername.port;
+          self.#remoteFamily = peername.family;
+        }
 
         try {
-          this.afterConnect(req, 0);
+          self.afterConnect(req, 0);
         } catch {
           // swallow callback errors.
         }
-      },
-      () => {
+      } else {
         try {
-          // TODO(cmorten): correct mapping of connection error to status code.
+          self.afterConnect(req, codeMap.get("ECONNREFUSED")!);
+        } catch {
+          // swallow callback errors.
+        }
+      }
+    };
+
+    const ret = this.#native.connect(address ?? "127.0.0.1", port);
+    if (ret !== 0) {
+      // Synchronous failure (e.g. bad address)
+      nextTick(() => {
+        try {
           this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
         } catch {
           // swallow callback errors.
         }
-      },
-    );
+      });
+    }
 
     return 0;
   }
