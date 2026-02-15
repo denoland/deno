@@ -5,6 +5,7 @@ use std::result::Result;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use rustls_tokio_stream::TlsStream;
@@ -13,8 +14,43 @@ use rustls_tokio_stream::rustls::pki_types::CertificateDer;
 use rustls_tokio_stream::rustls::pki_types::PrivateKeyDer;
 use tokio::net::TcpStream;
 
-use crate::get_tcp_listener_stream;
 use crate::testdata_path;
+
+/// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
+pub async fn get_tcp_listener_stream(
+  name: &'static str,
+  port: u16,
+) -> impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + Send {
+  let host_and_port = &format!("localhost:{port}");
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result.map(|r| r.0), listener))
+    }
+    .boxed()
+  };
+
+  let mut addresses = vec![];
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| addresses.push(*address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  // Eye catcher for HttpServerCount
+  test_util::println!("ready: {name} on {:?}", addresses);
+
+  futures::stream::select_all(listeners)
+}
 
 pub const TLS_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(65536);
 

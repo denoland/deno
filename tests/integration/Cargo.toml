@@ -1,7 +1,7 @@
 # Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
-name = "cli_tests"
+name = "integration_tests"
 version = "0.0.0"
 authors.workspace = true
 autotests = false
@@ -9,58 +9,23 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[lib]
-path = "lib.rs"
-
 [features]
 upgrade = []
 
 [[test]]
 name = "integration"
-path = "integration/mod.rs"
+path = "mod.rs"
 harness = false
-
-[[test]]
-name = "specs"
-path = "specs/mod.rs"
-harness = false
-
-[[test]]
-name = "unit"
-path = "unit/mod.rs"
-harness = false
-
-[[test]]
-name = "unit_node"
-path = "unit_node/mod.rs"
-harness = false
-
-[[test]]
-name = "node_compat"
-path = "node_compat/mod.rs"
-harness = false
-
-[[bench]]
-name = "deno_bench"
-harness = false
-path = "./bench/main.rs"
-
-[[bench]]
-name = "lsp_bench_standalone"
-harness = false
-path = "./bench/lsp_bench_standalone.rs"
 
 [dev-dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-bencher.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_cache_dir.workspace = true
 deno_lockfile.workspace = true
 deno_semver.workspace = true
-deno_terminal.workspace = true
-deno_unsync.workspace = true
+deno_unsync = { workspace = true, features = ["tokio"] }
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true
 hickory-proto.workspace = true
@@ -69,9 +34,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-jsonc-parser.workspace = true
 lazy-regex.workspace = true
-once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
@@ -83,12 +46,11 @@ serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
 tempfile.workspace = true
-test_util.workspace = true
+test_util = { workspace = true, features = ["lsp"] }
 tokio.workspace = true
 tower-lsp.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
-walkdir.workspace = true
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]

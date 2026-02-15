@@ -74,6 +74,7 @@ mod upgrade;
 mod watcher;
 
 pub fn main() {
+  let _ = rustls::crypto::ring::default_provider().install_default();
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
     CollectedTestCategory {
       name: module_path!().to_string(),

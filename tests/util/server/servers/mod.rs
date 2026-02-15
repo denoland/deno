@@ -20,7 +20,6 @@ use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
 use denokv_proto::datapath::SnapshotReadStatus;
 use futures::FutureExt;
-use futures::Stream;
 use futures::StreamExt;
 use http;
 use http::HeaderValue;
@@ -54,13 +53,9 @@ use hyper_utils::run_server_with_acceptor;
 use super::https::SupportedHttpVersions;
 use super::https::get_tls_listener_stream;
 use super::testdata_path;
-use crate::PathRef;
 use crate::TEST_SERVERS_COUNT;
-use crate::eprintln;
-use crate::prebuilt_path;
-use crate::println;
+use crate::consts::*;
 
-pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
 const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
@@ -93,15 +88,6 @@ const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
-pub(crate) const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
-pub(crate) const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
-pub(crate) const NODEJS_ORG_MIRROR_SERVER_PORT: u16 = 4252;
-pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
-pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
-pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
-pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
-pub(crate) const SOCKET_DEV_API_PORT: u16 = 4268;
-pub(crate) const PUBLIC_NPM_JSR_REGISTRY_PORT: u16 = 4269;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -332,42 +318,6 @@ async fn basic_auth_redirect(
   let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
   *resp.status_mut() = StatusCode::NOT_FOUND;
   Ok(resp)
-}
-
-/// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
-async fn get_tcp_listener_stream(
-  name: &'static str,
-  port: u16,
-) -> impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + Send {
-  let host_and_port = &format!("localhost:{port}");
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result.map(|r| r.0), listener))
-    }
-    .boxed()
-  };
-
-  let mut addresses = vec![];
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| addresses.push(*address))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
-
-  futures::stream::select_all(listeners)
 }
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
@@ -1523,58 +1473,20 @@ pub fn custom_headers(
   response
 }
 
-#[allow(unused)]
-mod tsgo {
-  include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../cli/tsc/go/tsgo_version.rs"
-  ));
-}
-
-const TSGO_PLATFORM: &str = tsgo_platform();
-const fn tsgo_platform() -> &'static str {
-  match (
-    std::env::consts::OS.as_bytes(),
-    std::env::consts::ARCH.as_bytes(),
-  ) {
-    (b"windows", b"x86_64") => "windows-x64",
-    (b"windows", b"aarch64") => "windows-arm64",
-    (b"macos", b"x86_64") => "macos-x64",
-    (b"macos", b"aarch64") => "macos-arm64",
-    (b"linux", b"x86_64") => "linux-x64",
-    (b"linux", b"aarch64") => "linux-arm64",
-    _ => {
-      panic!("unsupported platform");
-    }
-  }
-}
-pub fn tsgo_prebuilt_path() -> PathRef {
-  if let Ok(path) = std::env::var("DENO_TSGO_PATH") {
-    return PathRef::new(path);
-  }
-  let folder = match std::env::consts::OS {
-    "linux" => "linux64",
-    "windows" => "win",
-    "macos" | "apple" => "mac",
-    _ => panic!("unsupported platform"),
-  };
-  prebuilt_path().join(folder).join(format!(
-    "tsgo-{}-{}",
-    tsgo::VERSION,
-    TSGO_PLATFORM
-  ))
-}
-
 pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
-  let tsgo_path = tsgo_prebuilt_path();
+  let tsgo_path = crate::consts::tsgo_prebuilt_path();
   if tsgo_path.exists() {
     return Ok(());
   }
 
-  let archive_name =
-    format!("typescript-go-{}-{}.zip", tsgo::VERSION, TSGO_PLATFORM);
+  let archive_name = format!(
+    "typescript-go-{}-{}.zip",
+    crate::consts::tsgo::VERSION,
+    crate::consts::TSGO_PLATFORM
+  );
 
-  let url = format!("{}/{archive_name}", tsgo::DOWNLOAD_BASE_URL);
+  let url =
+    format!("{}/{archive_name}", crate::consts::tsgo::DOWNLOAD_BASE_URL);
 
   let response = reqwest::get(url).await?;
   let bytes = response.bytes().await?;
