@@ -8,6 +8,12 @@ mod data;
 mod structs;
 
 fn main() {
+  // only rerun if the build script or its input modules change,
+  // not when any file in the package changes (the default)
+  println!("cargo:rerun-if-changed=build.rs");
+  println!("cargo:rerun-if-changed=data.rs");
+  println!("cargo:rerun-if-changed=structs.rs");
+
   let crate_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
   let mut js_list = String::from(
