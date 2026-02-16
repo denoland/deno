@@ -158,10 +158,11 @@ impl TsGoCompilerOptions {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoGetDocumentParams {
-  uri: Uri,
+enum TsGoCallbackParams {
+  #[serde(rename_all = "camelCase")]
+  GetDocument { uri: Uri },
 }
 
 #[derive(Debug, Serialize)]
@@ -612,37 +613,40 @@ impl TsGoServerInner {
             break;
           }
         };
-        // Check if it's a request (has method) vs response (has id but no method)
         if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
           let id = message.get("id");
           let params = message.get("params");
           match method {
-            "deno/host/getDocument" => {
-              let params: TsGoGetDocumentParams = match params
+            "deno/callback" => {
+              let Some(id) = id else {
+                lsp_warn!("Missing id in tsgo callback: {:#}", &message,);
+                continue;
+              };
+              let params: TsGoCallbackParams = match params
                 .and_then(|p| serde_json::from_value(p.clone()).ok())
               {
                 Some(p) => p,
                 None => {
-                  if let Some(id) = id {
-                    let response = json!({
-                      "jsonrpc": "2.0",
-                      "id": id,
-                      "error": {
-                        "code": -32602,
-                        "message": "Invalid params"
-                      }
-                    });
-                    let mut stdin = stdin_clone.lock();
-                    let _ = write_lsp_message(&mut stdin, &response);
-                  }
+                  let response = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                      "code": -32602,
+                      "message": "Invalid params",
+                    },
+                  });
+                  let mut stdin = stdin_clone.lock();
+                  let _ = write_lsp_message(&mut stdin, &response);
                   continue;
                 }
               };
-
               let snapshot = snapshot_clone.lock();
-              let result =
-                snapshot.document_modules.documents.get(&params.uri).map(
-                  |doc| {
+              let result = match params {
+                TsGoCallbackParams::GetDocument { uri } => snapshot
+                  .document_modules
+                  .documents
+                  .get(&uri)
+                  .map(|doc| {
                     let text = doc.text();
                     TsGoDocumentData {
                       ascii_only: text.is_ascii(),
@@ -654,28 +658,27 @@ impl TsGoServerInner {
                         .map(|&s| u32::from(s) as i32)
                         .collect(),
                     }
+                  })
+                  .map(|d| json!(d))
+                  .ok_or("Document not found"),
+              };
+              let response = match result {
+                Ok(result) => json!({
+                  "jsonrpc": "2.0",
+                  "id": id,
+                  "result": result,
+                }),
+                Err(message) => json!({
+                  "jsonrpc": "2.0",
+                  "id": id,
+                  "error": {
+                    "code": -32001,
+                    "message": message,
                   },
-                );
-
-              if let Some(id) = id {
-                let response = match result {
-                  Some(data) => json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": data,
-                  }),
-                  None => json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                      "code": -32001,
-                      "message": "Document not found"
-                    },
-                  }),
-                };
-                let mut stdin = stdin_clone.lock();
-                let _ = write_lsp_message(&mut stdin, &response);
-              }
+                }),
+              };
+              let mut stdin = stdin_clone.lock();
+              let _ = write_lsp_message(&mut stdin, &response);
             }
             "client/registerCapability" => {
               let response = json!({
@@ -712,12 +715,11 @@ impl TsGoServerInner {
                 });
                 let mut stdin = stdin_clone.lock();
                 let _ = write_lsp_message(&mut stdin, &response);
-              } else {
-                lsp_warn!(
-                  "Received unknown notification from tsgo: {:#}",
-                  &message
-                );
               }
+              lsp_warn!(
+                "Received unknown notification from tsgo: {:#}",
+                &message,
+              );
             }
           }
         } else if let Some(id) = message.get("id") {
