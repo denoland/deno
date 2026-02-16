@@ -16,6 +16,7 @@ import {
   op_node_ipc_unref,
   op_node_ipc_write_advanced,
   op_node_ipc_write_json,
+  op_node_parse_shell_args,
   op_node_translate_cli_args,
 } from "ext:core/ops";
 import {
@@ -1202,95 +1203,6 @@ function escapeShellArg(arg: string): string {
 }
 
 /**
- * Simple shell argument splitter that handles double and single quotes.
- * Used to parse the arguments portion of a shell command string.
- */
-function splitShellArgs(str: string): string[] {
-  const args: string[] = [];
-  let current = "";
-  let inDouble = false;
-  let inSingle = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (ch === " " && !inDouble && !inSingle) {
-      if (current.length > 0) {
-        args.push(current);
-        current = "";
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current.length > 0) {
-    args.push(current);
-  }
-  return args;
-}
-
-/**
- * Splits a shell command string into the command arguments part and a shell
- * operator suffix (redirections like `< file`, `1>&-`, pipes `|`, etc.).
- * Respects quoted strings so that operators inside quotes are not treated as
- * shell syntax. Handles fd-prefixed redirections (e.g. `2>`, `10>>`, `&>`).
- */
-function splitShellSuffix(
-  str: string,
-): { argsStr: string; shellSuffix: string } {
-  let inDouble = false;
-  let inSingle = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (!inDouble && !inSingle) {
-      // Check for shell operators: <, >, |, &, ;
-      if (
-        ch === "<" || ch === ">" || ch === "|" || ch === ";" || ch === "&"
-      ) {
-        // For redirections, walk backwards to include an optional fd prefix
-        // (e.g. `2>file`, `10>>file`, `&>file`, `2>&1`).
-        let splitIndex = i;
-        if (ch === "<" || ch === ">") {
-          let j = i - 1;
-          // Collect trailing digits directly before the operator.
-          while (j >= 0 && str[j] >= "0" && str[j] <= "9") {
-            j--;
-          }
-          let fdStart = j + 1;
-          // Optionally collect a preceding '&' (for `&>file`).
-          if (j >= 0 && str[j] === "&") {
-            fdStart = j;
-            j--;
-          }
-          // Only treat as fd prefix if at start of string or preceded by
-          // whitespace, so `foo2>out` doesn't mis-parse the `2`.
-          if (
-            fdStart < i &&
-            (fdStart === 0 || str[fdStart - 1] === " " ||
-              str[fdStart - 1] === "\t")
-          ) {
-            splitIndex = fdStart;
-          }
-        }
-        const argsStr = str.slice(0, splitIndex).trimEnd();
-        const shellSuffix = str.slice(splitIndex);
-        return { argsStr, shellSuffix };
-      }
-    }
-  }
-
-  return { argsStr: str, shellSuffix: "" };
-}
-
-/**
  * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
  * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
  * including subcommand detection, -c/--check flag handling, and adding "run -A".
@@ -1347,13 +1259,9 @@ function transformDenoShellCommand(
     return command;
   }
 
-  // Separate shell operators (redirections, pipes, etc.) from command arguments.
-  // Shell operators like `< file`, `> file`, `|`, `&&` are processed by the
-  // shell, not by the command, so they should not be passed to the arg parser.
-  const { argsStr, shellSuffix } = splitShellSuffix(rest);
-
-  // Split the remaining args and use the Rust parser to translate them
-  const args = splitShellArgs(argsStr);
+  // Parse the command using the shell parser to separate arguments from
+  // shell operators (redirections, pipes, etc.).
+  const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(rest);
 
   try {
     const result = op_node_translate_cli_args(args, false);
