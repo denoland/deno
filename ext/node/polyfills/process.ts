@@ -1037,9 +1037,14 @@ function dispatchProcessBeforeExitEvent() {
   try {
     process.emit("beforeExit", process.exitCode || 0);
   } catch (e) {
-    // Ensure 'exit' event is still emitted when 'beforeExit' throws
+    // When 'beforeExit' throws, Node.js emits 'exit' and then terminates
+    // with the current exitCode. The 'exit' handler can set exitCode to
+    // override the exit status.
+    if (process.exitCode == null) {
+      process.exitCode = 1;
+    }
     dispatchProcessExitEvent();
-    throw e;
+    Deno.exit(process.exitCode || 0);
   }
   processTicksAndRejections();
   return core.eventLoopHasMoreWork();
