@@ -38,7 +38,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import {
   BroadcastChannel as WebBroadcastChannel,
   refBroadcastChannel,
@@ -100,7 +100,30 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
 
 interface WorkerStdioMsg {
   type: "WORKER_STDERR" | "WORKER_STDOUT";
-  data: string;
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinMsg {
+  type: "WORKER_STDIN";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinEndMsg {
+  type: "WORKER_STDIN_END";
+}
+
+function isWorkerStdinMsg(data: unknown): data is WorkerStdinMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN";
+}
+
+function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN_END";
 }
 
 function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
@@ -184,7 +207,7 @@ class NodeWorker extends EventEmitter {
     stackSizeMb: 4,
   };
   // https://nodejs.org/api/worker_threads.html#workerstdin
-  stdin = null;
+  stdin: Writable | null = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
   stdout: Readable = new Readable({ read() {} });
   // https://nodejs.org/api/worker_threads.html#workerstderr
@@ -336,6 +359,7 @@ class NodeWorker extends EventEmitter {
       name: this.#name,
       isEval: !!options?.eval,
       isWorkerThread: true,
+      hasStdin: !!options?.stdin,
     }, options?.transferList ?? []);
 
     if (options?.eval) {
@@ -375,6 +399,35 @@ class NodeWorker extends EventEmitter {
     );
     this.#id = id;
     this.threadId = id;
+
+    if (options?.stdin) {
+      // deno-lint-ignore no-this-alias
+      const worker = this;
+      this.stdin = new Writable({
+        write(chunk, _encoding, callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN",
+              data: chunk,
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+        final(callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN_END",
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+      });
+    }
+
     this.#pollControl();
     this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
@@ -548,7 +601,7 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
     if (this.#status === "TERMINATED") {
-      return PromiseResolve(0);
+      return PromiseResolve(undefined);
     }
 
     this.#status = "TERMINATED";
@@ -557,10 +610,13 @@ class NodeWorker extends EventEmitter {
 
     if (!this.#exited) {
       this.#exited = true;
-      this.emit("exit", 0);
+      this.emit("exit", 1);
+      return PromiseResolve(1);
     }
 
-    return PromiseResolve(0);
+    // Worker already exited - Node.js returns undefined in this case
+    // (the internal handle is already null).
+    return PromiseResolve(undefined);
   }
 
   async [SymbolAsyncDispose]() {
@@ -676,6 +732,7 @@ internals.__initWorkerThreads = (
   moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
+  internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits
@@ -751,6 +808,31 @@ internals.__initWorkerThreads = (
           }
         }
 
+        // Replace process.stdin with a Readable that receives
+        // data from the parent via WORKER_STDIN messages.
+        if (metadata.hasStdin) {
+          const workerStdin = new Readable({ read() {} });
+          process.stdin = workerStdin;
+
+          // Register an early listener to intercept stdin messages
+          // before any user-registered handlers. Remove the listener
+          // once stdin ends so the worker can exit cleanly.
+          const stdinHandler = (ev) => {
+            const msg = ev.data;
+            if (isWorkerStdinMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(msg.data);
+              ev.stopImmediatePropagation();
+            } else if (isWorkerStdinEndMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(null);
+              parentPort.removeEventListener("message", stdinHandler);
+              ev.stopImmediatePropagation();
+            }
+          };
+          parentPort.addEventListener("message", stdinHandler);
+        }
+
         // Forward stdout writes to the parent so worker.stdout
         // is readable from the host side.
         const origStdoutWrite = FunctionPrototypeBind(
@@ -760,7 +842,7 @@ internals.__initWorkerThreads = (
         process.stdout.write = function (chunk, encoding, callback) {
           parentPort.postMessage({
             type: "WORKER_STDOUT",
-            data: typeof chunk === "string" ? chunk : String(chunk),
+            data: chunk,
           });
           return FunctionPrototypeCall(
             origStdoutWrite,
@@ -780,7 +862,7 @@ internals.__initWorkerThreads = (
         process.stderr.write = function (chunk, encoding, callback) {
           parentPort.postMessage({
             type: "WORKER_STDERR",
-            data: typeof chunk === "string" ? chunk : String(chunk),
+            data: chunk,
           });
           return FunctionPrototypeCall(
             origStderrWrite,
