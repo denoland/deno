@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod assert;
 pub mod blocklist;
 pub mod buffer;
 pub mod constant;
