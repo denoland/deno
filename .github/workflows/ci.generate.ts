@@ -11,7 +11,7 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.15";
+} from "jsr:@david/gagen@0.2.16";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
@@ -93,18 +93,12 @@ const Runners = {
   },
 } as const;
 
+// discover test crates first so we know which workspace members are test packages
+const { testCrates, testPackageMembers } = resolveTestCrateTests();
 // discover workspace members for the libs test job, split by type
-const { binCrates, libCrates } = resolveWorkspaceCrates();
-const testCrates = resolveTestCrateTests();
-
-const prCachePath = [
-  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
-  "./target",
-  "!./target/*/gn_out",
-  "!./target/*/gn_root",
-  "!./target/*/*.zip",
-  "!./target/*/*.tar.gz",
-].join("\n");
+const { binCrates, libCrates } = resolveWorkspaceCrates(
+  testPackageMembers,
+);
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 21;
@@ -271,28 +265,56 @@ const installNodeStep = step({
   },
 });
 
+function createRestoreAndSaveCacheSteps(m: {
+  name: string;
+  cacheKeyPrefix: string;
+  path: string[];
+}) {
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
+  const path = m.path.join("\n");
+  const restoreCacheStep = step({
+    name: `Restore cache ${m.name}`,
+    uses: "cirruslabs/cache/restore@v4",
+    with: {
+      path,
+      key: "never_saved",
+      "restore-keys": `${m.cacheKeyPrefix}-`,
+    },
+  });
+  const saveCacheStep = step({
+    name: `Cache ${m.name}`,
+    uses: "cirruslabs/cache/save@v4",
+    with: {
+      path,
+      key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
+    },
+  });
+  return { restoreCacheStep, saveCacheStep };
+}
+
 function createCargoCacheHomeStep(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
+  cachePrefix: string;
 }) {
-  return step({
-    name: "Cache Cargo home",
-    uses: "cirruslabs/cache@v4",
-    if: isNotTag,
-    with: {
-      path: [
-        "~/.cargo/.crates.toml",
-        "~/.cargo/.crates2.json",
-        "~/.cargo/bin",
-        "~/.cargo/registry/index",
-        "~/.cargo/registry/cache",
-        "~/.cargo/git/db",
-      ].join("\n"),
-      key:
-        `${cacheVersion}-cargo-home-${m.os}-${m.arch}-\${{ hashFiles('Cargo.lock') }}`,
-      "restore-keys": `${cacheVersion}-cargo-home-${m.os}-${m.arch}-`,
-    },
+  const steps = createRestoreAndSaveCacheSteps({
+    name: "cargo home",
+    path: [
+      "~/.cargo/.crates.toml",
+      "~/.cargo/.crates2.json",
+      "~/.cargo/bin",
+      "~/.cargo/registry/index",
+      "~/.cargo/registry/cache",
+      "~/.cargo/git/db",
+    ],
+    cacheKeyPrefix:
+      `${cacheVersion}-cargo-home-${m.os}-${m.arch}-${m.cachePrefix}`,
   });
+
+  return {
+    restoreCacheStep: steps.restoreCacheStep.if(isNotTag),
+    saveCacheStep: steps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+  };
 }
 
 // factory for cache steps parameterized by os/arch/profile/job
@@ -301,43 +323,40 @@ function createCacheSteps(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
   profile: ExpressionValue;
-  job: string;
+  cachePrefix: string;
 }) {
-  const cacheCargoHomeStep = createCargoCacheHomeStep(m);
-  const cacheKeyPrefix =
-    `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
-  const restoreCacheBuildOutputStep = step.if(isMainBranch.not().and(isNotTag))(
-    {
-      name: "Restore cache build output (PR)",
-      uses: "actions/cache/restore@v4",
-      with: {
-        path: prCachePath,
-        key: "never_saved",
-        "restore-keys": cacheKeyPrefix,
-      },
-    },
-    {
-      name: "Apply and update mtime cache",
-      uses: "./.github/mtime_cache",
-      with: {
-        "cache-path": "./target",
-      },
-    },
-  );
-  const saveCacheBuildOutputStep = step({
-    // in main branch, always create a fresh cache
-    name: "Save cache build output (main)",
-    uses: "actions/cache/save@v4",
-    if: isMainBranch,
+  const cargoHomeCacheSteps = createCargoCacheHomeStep(m);
+  const buildCacheSteps = createRestoreAndSaveCacheSteps({
+    name: "build output",
+    path: [
+      "./target",
+      "!./target/*/gn_out",
+      "!./target/*/gn_root",
+      "!./target/*/*.zip",
+      "!./target/*/*.tar.gz",
+    ],
+    cacheKeyPrefix:
+      `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
+  });
+  const mtimeCacheStep = step({
+    name: "Apply and update mtime cache",
+    uses: "./.github/mtime_cache",
     with: {
-      path: prCachePath,
-      key: `${cacheKeyPrefix}\${{ github.sha }}`,
+      "cache-path": "./target",
     },
   });
   return {
-    cacheCargoHomeStep,
-    restoreCacheBuildOutputStep,
-    saveCacheBuildOutputStep,
+    restoreCacheStep: step(
+      cargoHomeCacheSteps.restoreCacheStep,
+      step(
+        buildCacheSteps.restoreCacheStep,
+        mtimeCacheStep,
+      ).if(isMainBranch.not().and(isNotTag)),
+    ),
+    saveCacheStep: step(
+      cargoHomeCacheSteps.saveCacheStep,
+      buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+    ),
   };
 }
 const installRustStep = step({
@@ -596,17 +615,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       env,
       steps: (() => {
         const {
-          cacheCargoHomeStep,
-          restoreCacheBuildOutputStep,
-          saveCacheBuildOutputStep,
+          restoreCacheStep,
+          saveCacheStep,
         } = createCacheSteps({
           ...buildItem,
-          job: "build",
+          cachePrefix: "build-main",
         });
-        const cargoBuildCacheStep = step
-          .dependsOn(cacheCargoHomeStep, installRustStep)(
-            restoreCacheBuildOutputStep,
-          );
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
           if: buildItem.os.equals("linux")
@@ -745,9 +759,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           )
           .dependsOn(
             installLldStep,
+            restoreCacheStep,
             installRustStep,
-            cacheCargoHomeStep,
-            cargoBuildCacheStep,
             sysRootStep,
           )(
             {
@@ -787,8 +800,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const cargoBuildStep = step
           .dependsOn(
             installLldStep,
+            restoreCacheStep,
             installRustStep,
-            cargoBuildCacheStep,
             sysRootStep,
           )
           .comesAfter(tarSourcePublishStep)(
@@ -928,7 +941,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           ),
           cargoBuildStep,
           publishStep,
-          saveCacheBuildOutputStep.if(buildItem.save_cache),
+          saveCacheStep.if(buildItem.save_cache),
         );
       })(),
     },
@@ -938,15 +951,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   {
     const testMatrix = defineMatrix({
-      include: testCrates.map((tc) => ({ test_crate: tc.name })),
+      include: testCrates.map((tc) => ({
+        test_crate: tc.name,
+        test_package: tc.package,
+      })),
     });
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "test",
+      cachePrefix: "test-main",
     });
     const testCrateNameExpr = testMatrix.test_crate;
     additionalJobs.push(job(
@@ -968,8 +983,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
           cloneStdSubmoduleStep,
-          cacheCargoHomeStep,
-          restoreCacheBuildOutputStep,
+          restoreCacheStep,
           installNodeStep,
           installRustStep,
           installLldStep,
@@ -1014,7 +1028,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Test (debug)",
             // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p cli_tests --test ${testMatrix.test_crate}`,
+            run:
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
@@ -1023,7 +1038,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               isDenoland.or(buildItem.use_sysroot),
             ),
             run:
-              `cargo test -p cli_tests --test ${testMatrix.test_crate} --release`,
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
           },
           {
             name: "Ensure no git changes",
@@ -1049,7 +1064,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               path: `target/test_results_${testMatrix.test_crate}.json`,
             },
           }),
-          saveCacheBuildOutputStep,
+          saveCacheStep.if(buildItem.save_cache
+            // only bother saving for the integration test job because it builds the most
+            .and(testCrateNameExpr.equals("integration"))),
         ),
       },
     ));
@@ -1063,12 +1080,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   );
   if (libsCondition.isPossiblyTrue()) {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "test-libs",
+      cachePrefix: "test-libs",
     });
     additionalJobs.push(job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
@@ -1077,8 +1093,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
         cloneRepoStep,
-        cacheCargoHomeStep,
-        restoreCacheBuildOutputStep,
+        restoreCacheStep,
         installNodeStep,
         installRustStep,
         installLldStep,
@@ -1092,7 +1107,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           }`,
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
-        saveCacheBuildOutputStep,
+        saveCacheStep,
       ),
     }));
   }
@@ -1100,12 +1115,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     isDebug.and(isLinux).and(buildItem.arch.equals("x86_64")).isPossiblyTrue()
   ) {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "build-libs",
+      cachePrefix: "build-libs",
     });
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
@@ -1116,8 +1130,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
         cloneRepoStep,
         installRustStep,
-        cacheCargoHomeStep,
-        restoreCacheBuildOutputStep,
+        restoreCacheStep,
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
@@ -1141,7 +1154,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             "cargo check -p deno --features=lsp-tracing",
           ],
         },
-        saveCacheBuildOutputStep,
+        saveCacheStep,
       ),
     }));
   }
@@ -1242,6 +1255,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 // === bench job ===
 
 const benchProfile = defineExprObj(Runners.linuxX86Xl);
+const benchCacheSteps = createCargoCacheHomeStep({
+  ...benchProfile,
+  cachePrefix: "bench",
+});
 const benchJob = job(
   "bench",
   {
@@ -1262,9 +1279,9 @@ const benchJob = job(
         (hasCiBenchLabel.or(isMainBranch)).and(isNotTag),
       )(
         cloneRepoStep,
+        benchCacheSteps.restoreCacheStep,
         installNodeStep,
         installRustStep,
-        createCargoCacheHomeStep(benchProfile),
         cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
         cloneStdSubmoduleStep,
         step(sysRootConfig),
@@ -1284,7 +1301,7 @@ const benchJob = job(
         },
         {
           name: "Run benchmarks",
-          run: "cargo bench -p cli_tests --bench deno_bench --locked",
+          run: "cargo bench -p bench_tests --bench deno_bench --locked",
         },
         {
           name: "Post benchmarks",
@@ -1309,6 +1326,7 @@ const benchJob = job(
           name: "Worker info",
           run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
         },
+        benchCacheSteps.saveCacheStep,
       ),
   },
 );
@@ -1347,18 +1365,16 @@ const lintJob = job("lint", {
   },
   steps: (() => {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...lintMatrix,
-      job: "lint",
+      cachePrefix: "lint",
     });
     return step(
       cloneRepoStep,
       cloneStdSubmoduleStep,
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
+      restoreCacheStep,
       installRustStep,
       installDenoStep,
       step.if(lintMatrix.os.equals("linux"))(
@@ -1379,7 +1395,7 @@ const lintJob = job("lint", {
         run:
           "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
       },
-      saveCacheBuildOutputStep,
+      saveCacheStep,
     );
   })(),
 });
@@ -1492,15 +1508,40 @@ if (import.meta.main) {
 }
 
 function resolveTestCrateTests() {
-  const cargoToml = parseToml(
-    Deno.readTextFileSync(
-      new URL("../../tests/Cargo.toml", import.meta.url),
-    ),
-  ) as { test?: { name: string; path: string }[] };
-  return cargoToml.test ?? [];
+  const rootCargoToml = parseToml(
+    Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+  ) as { workspace: { members: string[] } };
+
+  const testCrates: { name: string; package: string }[] = [];
+  const testPackageMembers = new Set<string>();
+
+  for (const member of rootCargoToml.workspace.members) {
+    if (!member.startsWith("tests")) continue;
+    const cargoToml = parseToml(
+      Deno.readTextFileSync(
+        new URL(`../../${member}/Cargo.toml`, import.meta.url),
+      ),
+    ) as {
+      package: { name: string; autotests?: boolean };
+      test?: { name: string; path: string }[];
+    };
+    // only include crates that explicitly disable auto-test discovery,
+    // indicating they are intentional test packages (not helper libraries
+    // like tests/ffi or tests/util/server)
+    if (cargoToml.package.autotests !== false) continue;
+    const tests = cargoToml.test ?? [];
+    if (tests.length > 0) {
+      testPackageMembers.add(member);
+      for (const test of tests) {
+        testCrates.push({ name: test.name, package: cargoToml.package.name });
+      }
+    }
+  }
+
+  return { testCrates, testPackageMembers };
 }
 
-function resolveWorkspaceCrates() {
+function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
   // discover workspace members for the libs test job, split by type
   const rootCargoToml = parseToml(
     Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
@@ -1520,7 +1561,7 @@ function resolveWorkspaceCrates() {
     };
 
     if (member.startsWith("tests")) {
-      if (!member.endsWith("tests")) {
+      if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
     } else if (cargoToml.bin) {
@@ -1560,7 +1601,7 @@ function ensureNoIntegrationTests(
       }. ` +
         `Integration tests in these crates won't run on CI because we build ` +
         `binaries on one runner then test on another. ` +
-        `Move them to spec tests, the main cli_tests crate, or use #[cfg(test)] lib tests instead.`,
+        `Move them to spec tests, the test crates in tests/, or use #[cfg(test)] lib tests instead.`,
     );
   }
 }

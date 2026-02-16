@@ -65,15 +65,8 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Install Node
-        uses: actions/setup-node@v6
-        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
-        with:
-          node-version: 22
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -83,8 +76,15 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-bench-
+      - name: Install Node
+        uses: actions/setup-node@v6
+        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          node-version: 22
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
       - name: Clone submodule ./tests/bench/testdata/lsp_benchdata
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/bench/testdata/lsp_benchdata
@@ -187,9 +187,9 @@ jobs:
         run: cargo build --release -p deno
       - name: Run benchmarks
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
-        run: cargo bench -p cli_tests --bench deno_bench --locked
+        run: cargo bench -p bench_tests --bench deno_bench --locked
       - name: Post benchmarks
-        if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
           DENOBOT_PAT: '${{ secrets.DENOBOT_PAT }}'
         run: |-
@@ -208,6 +208,18 @@ jobs:
         run: |-
           cat /proc/cpuinfo
           cat /proc/meminfo
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-bench-${{ hashFiles(''Cargo.lock'') }}'
   build-debug-macos-x86_64:
     name: build debug macos-x86_64
     needs:
@@ -242,9 +254,8 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -254,10 +265,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -267,12 +278,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-x86_64-debug-build-
+          restore-keys: 94-cargo-target-macos-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -313,9 +325,21 @@ jobs:
           name: debug-macos-x86_64-test-server
           path: target/debug/test_server
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -323,7 +347,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-x86_64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-macos-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-macos-x86_64:
     name: 'test ${{ matrix.test_crate }} debug macos-x86_64'
     needs:
@@ -337,10 +361,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -364,8 +393,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -375,10 +404,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -388,7 +417,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-x86_64-debug-test-
+          restore-keys: 94-cargo-target-macos-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -446,7 +475,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -456,9 +485,21 @@ jobs:
         with:
           name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -466,7 +507,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-x86_64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-macos-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   build-release-macos-x86_64:
     name: build release macos-x86_64
     needs:
@@ -514,10 +555,8 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         with:
           deno-version: v2.x
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -527,10 +566,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -540,12 +579,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-x86_64-release-build-
+          restore-keys: 94-cargo-target-macos-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -712,10 +753,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -739,8 +785,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -750,10 +796,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -763,7 +809,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-x86_64-release-test-
+          restore-keys: 94-cargo-target-macos-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -819,7 +865,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -829,17 +875,6 @@ jobs:
         with:
           name: 'test-results-macos-x86_64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-x86_64-release-test-${{ github.sha }}'
   build-debug-macos-aarch64:
     name: build debug macos-aarch64
     needs:
@@ -885,9 +920,8 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -897,10 +931,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -910,12 +944,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-aarch64-debug-build-
+          restore-keys: 94-cargo-target-macos-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -956,9 +991,21 @@ jobs:
           name: debug-macos-aarch64-test-server
           path: target/debug/test_server
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -966,7 +1013,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-aarch64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-macos-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-macos-aarch64:
     name: 'test ${{ matrix.test_crate }} debug macos-aarch64'
     needs:
@@ -980,10 +1027,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1007,8 +1059,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1018,10 +1070,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1031,7 +1083,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-aarch64-debug-test-
+          restore-keys: 94-cargo-target-macos-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -1098,7 +1150,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1108,9 +1160,21 @@ jobs:
         with:
           name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1118,7 +1182,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-aarch64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-macos-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   test-libs-debug-macos-aarch64:
     name: test libs debug macos-aarch64
     needs:
@@ -1137,8 +1201,8 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1148,10 +1212,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-aarch64-test-libs-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1214,8 +1278,20 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-macos-aarch64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1224,7 +1300,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-aarch64-debug-test-libs-${{ github.sha }}'
+          key: '94-cargo-target-macos-aarch64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
   build-release-macos-aarch64:
     name: build release macos-aarch64
     needs:
@@ -1277,10 +1353,8 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1290,10 +1364,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1303,12 +1377,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-aarch64-release-build-
+          restore-keys: 94-cargo-target-macos-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -1475,10 +1551,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1502,8 +1583,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -1513,10 +1594,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-macos-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-macos-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-macos-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1526,7 +1607,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-macos-aarch64-release-test-
+          restore-keys: 94-cargo-target-macos-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -1591,7 +1672,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1601,17 +1682,6 @@ jobs:
         with:
           name: 'test-results-macos-aarch64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-macos-aarch64-release-test-${{ github.sha }}'
   build-debug-windows-x86_64:
     name: build debug windows-x86_64
     needs:
@@ -1640,9 +1710,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1652,10 +1721,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1665,12 +1734,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-x86_64-debug-build-
+          restore-keys: 94-cargo-target-windows-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -1711,9 +1781,21 @@ jobs:
           name: debug-windows-x86_64-test-server
           path: target/debug/test_server.exe
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -1721,7 +1803,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-x86_64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-windows-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-windows-x86_64:
     name: 'test ${{ matrix.test_crate }} debug windows-x86_64'
     needs:
@@ -1735,10 +1817,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1762,8 +1849,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1773,10 +1860,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1786,7 +1873,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-x86_64-debug-test-
+          restore-keys: 94-cargo-target-windows-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -1835,7 +1922,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -1845,9 +1932,21 @@ jobs:
         with:
           name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1855,7 +1954,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-x86_64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-windows-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   test-libs-debug-windows-x86_64:
     name: test libs debug windows-x86_64
     needs:
@@ -1874,8 +1973,8 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1885,10 +1984,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-x86_64-test-libs-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1928,8 +2027,20 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-x86_64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1938,7 +2049,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-x86_64-debug-test-libs-${{ github.sha }}'
+          key: '94-cargo-target-windows-x86_64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
   build-release-windows-x86_64:
     name: build release windows-x86_64
     needs:
@@ -1970,10 +2081,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1983,10 +2092,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1996,12 +2105,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-x86_64-release-build-
+          restore-keys: 94-cargo-target-windows-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -2207,10 +2318,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2234,8 +2350,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -2245,10 +2361,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2258,7 +2374,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-x86_64-release-test-
+          restore-keys: 94-cargo-target-windows-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -2305,7 +2421,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2315,17 +2431,6 @@ jobs:
         with:
           name: 'test-results-windows-x86_64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-x86_64-release-test-${{ github.sha }}'
   build-debug-windows-aarch64:
     name: build debug windows-aarch64
     needs:
@@ -2354,9 +2459,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2366,10 +2470,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2379,12 +2483,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-aarch64-debug-build-
+          restore-keys: 94-cargo-target-windows-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -2425,9 +2530,21 @@ jobs:
           name: debug-windows-aarch64-test-server
           path: target/debug/test_server.exe
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -2435,7 +2552,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-aarch64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-windows-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-windows-aarch64:
     name: 'test ${{ matrix.test_crate }} debug windows-aarch64'
     needs:
@@ -2449,10 +2566,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2476,8 +2598,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2487,10 +2609,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2500,7 +2622,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-aarch64-debug-test-
+          restore-keys: 94-cargo-target-windows-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -2549,7 +2671,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2559,9 +2681,21 @@ jobs:
         with:
           name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-windows-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2569,7 +2703,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-aarch64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-windows-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   build-release-windows-aarch64:
     name: build release windows-aarch64
     needs:
@@ -2601,10 +2735,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2614,10 +2746,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2627,12 +2759,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-aarch64-release-build-
+          restore-keys: 94-cargo-target-windows-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -2838,10 +2972,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2865,8 +3004,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -2876,10 +3015,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-windows-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-windows-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-windows-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2889,7 +3028,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-windows-aarch64-release-test-
+          restore-keys: 94-cargo-target-windows-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -2936,7 +3075,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -2946,17 +3085,6 @@ jobs:
         with:
           name: 'test-results-windows-aarch64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-windows-aarch64-release-test-${{ github.sha }}'
   build-release-linux-x86_64:
     name: build release linux-x86_64
     needs:
@@ -2991,9 +3119,8 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3003,10 +3130,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3016,12 +3143,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-x86_64-release-build-
+          restore-keys: 94-cargo-target-linux-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -3241,9 +3369,21 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -3251,7 +3391,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-release-build-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-release-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-release-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} release linux-x86_64'
     needs:
@@ -3265,10 +3405,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3292,8 +3437,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3303,10 +3448,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -3316,7 +3461,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-x86_64-release-test-
+          restore-keys: 94-cargo-target-linux-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -3453,7 +3598,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3463,9 +3608,21 @@ jobs:
         with:
           name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3473,7 +3630,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-release-test-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-release-test-main-${{ hashFiles(''Cargo.lock'') }}'
   wpt-release-linux-x86_64:
     name: wpt release linux-x86_64
     needs:
@@ -3600,9 +3757,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3612,10 +3768,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3625,12 +3781,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-x86_64-debug-build-
+          restore-keys: 94-cargo-target-linux-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -3753,9 +3910,21 @@ jobs:
           name: debug-linux-x86_64-test-server
           path: target/debug/test_server
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -3763,7 +3932,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} debug linux-x86_64'
     needs:
@@ -3777,10 +3946,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3804,8 +3978,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3815,10 +3989,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -3828,7 +4002,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-x86_64-debug-test-
+          restore-keys: 94-cargo-target-linux-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -3967,7 +4141,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -3977,9 +4151,21 @@ jobs:
         with:
           name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3987,7 +4173,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   build-libs-debug-linux-x86_64:
     name: build libs debug linux-x86_64
     needs:
@@ -4009,8 +4195,8 @@ jobs:
           submodules: false
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4020,10 +4206,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-x86_64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-x86_64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-x86_64-build-libs-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4057,8 +4243,20 @@ jobs:
           cargo check --no-default-features --features workspace --features sync -p deno_config
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
           cargo check -p deno --features=lsp-tracing
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-x86_64-build-libs-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4067,7 +4265,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-x86_64-debug-build-libs-${{ github.sha }}'
+          key: '94-cargo-target-linux-x86_64-debug-build-libs-${{ hashFiles(''Cargo.lock'') }}'
   build-debug-linux-aarch64:
     name: build debug linux-aarch64
     needs:
@@ -4096,9 +4294,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4108,10 +4305,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4121,12 +4318,13 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-aarch64-debug-build-
+          restore-keys: 94-cargo-target-linux-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -4167,9 +4365,21 @@ jobs:
           name: debug-linux-aarch64-test-server
           path: target/debug/test_server
           retention-days: 3
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -4177,7 +4387,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-aarch64-debug-build-${{ github.sha }}'
+          key: '94-cargo-target-linux-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
   test-debug-linux-aarch64:
     name: 'test ${{ matrix.test_crate }} debug linux-aarch64'
     needs:
@@ -4191,10 +4401,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4218,8 +4433,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4229,10 +4444,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4242,7 +4457,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-aarch64-debug-test-
+          restore-keys: 94-cargo-target-linux-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -4303,7 +4518,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }}'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4313,9 +4528,21 @@ jobs:
         with:
           name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4323,7 +4550,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-aarch64-debug-test-${{ github.sha }}'
+          key: '94-cargo-target-linux-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
   test-libs-debug-linux-aarch64:
     name: test libs debug linux-aarch64
     needs:
@@ -4342,8 +4569,8 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4353,10 +4580,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-aarch64-test-libs-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4402,8 +4629,20 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-linux-aarch64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4412,7 +4651,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-aarch64-debug-test-libs-${{ github.sha }}'
+          key: '94-cargo-target-linux-aarch64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
   build-release-linux-aarch64:
     name: build release linux-aarch64
     needs:
@@ -4444,10 +4683,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - uses: dsherret/rust-toolchain-file@v1
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4457,10 +4694,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-aarch64-build-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4470,12 +4707,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-aarch64-release-build-
+          restore-keys: 94-cargo-target-linux-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
@@ -4717,10 +4956,15 @@ jobs:
       matrix:
         include:
           - test_crate: integration
-          - test_crate: specs
-          - test_crate: unit
-          - test_crate: unit_node
+            test_package: integration_tests
           - test_crate: node_compat
+            test_package: node_compat_tests
+          - test_crate: specs
+            test_package: specs_tests
+          - test_crate: unit
+            test_package: unit_tests
+          - test_crate: unit_node
+            test_package: unit_node_tests
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4744,8 +4988,8 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -4755,10 +4999,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-linux-aarch64-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: 94-cargo-home-linux-aarch64-
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: 94-cargo-home-linux-aarch64-test-main-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4768,7 +5012,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 94-cargo-target-linux-aarch64-release-test-
+          restore-keys: 94-cargo-target-linux-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -4908,7 +5152,7 @@ jobs:
         run: cargo build --release -p test_ffi
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: 'cargo test -p cli_tests --test ${{ matrix.test_crate }} --release'
+        run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
@@ -4918,17 +5162,6 @@ jobs:
         with:
           name: 'test-results-linux-aarch64-release-${{ matrix.test_crate }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
-        with:
-          path: |-
-            ./target
-            !./target/*/gn_out
-            !./target/*/gn_root
-            !./target/*/*.zip
-            !./target/*/*.tar.gz
-          key: '94-cargo-target-linux-aarch64-release-test-${{ github.sha }}'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
@@ -4969,8 +5202,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
-      - name: Cache Cargo home
-        uses: cirruslabs/cache@v4
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4980,10 +5213,10 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
-      - name: Restore cache build output (PR)
-        uses: actions/cache/restore@v4
+          key: never_saved
+          restore-keys: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-'
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5014,9 +5247,21 @@ jobs:
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
-      - name: Save cache build output (main)
-        uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '94-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -5024,7 +5269,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
+          key: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ hashFiles(''Cargo.lock'') }}'
   lint-ci-status:
     name: lint ci status
     needs:

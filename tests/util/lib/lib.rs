@@ -6,32 +6,27 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
-use std::result::Result;
 
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 use pretty_assertions::assert_eq;
 use pty::Pty;
-use tokio::net::TcpStream;
 use url::Url;
 
 pub mod assertions;
 mod builders;
+pub mod consts;
 mod fs;
-mod https;
+#[cfg(feature = "lsp")]
 pub mod lsp;
 mod macros;
-mod npm;
+mod memory;
 mod parsers;
 pub mod print;
 pub mod process;
 pub mod pty;
 mod semaphore;
-pub mod servers;
 pub mod test_runner;
 mod wildcard;
 
@@ -40,9 +35,12 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
+pub use consts::tsgo_prebuilt_path;
 pub use fs::PathRef;
 pub use fs::TempDir;
+#[cfg(feature = "lsp")]
 pub use fs::url_to_notebook_cell_uri;
+#[cfg(feature = "lsp")]
 pub use fs::url_to_uri;
 pub use inventory::submit;
 pub use parsers::StraceOutput;
@@ -189,7 +187,7 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  format!("http://localhost:{}/", servers::PUBLIC_NPM_REGISTRY_PORT)
+  format!("http://localhost:{}/", consts::PUBLIC_NPM_REGISTRY_PORT)
 }
 
 pub fn npm_registry_unset_url() -> String {
@@ -197,10 +195,7 @@ pub fn npm_registry_unset_url() -> String {
 }
 
 pub fn npm_jsr_registry_url() -> String {
-  format!(
-    "http://localhost:{}/",
-    servers::PUBLIC_NPM_JSR_REGISTRY_PORT
-  )
+  format!("http://localhost:{}/", consts::PUBLIC_NPM_JSR_REGISTRY_PORT)
 }
 
 pub fn npm_jsr_registry_unset_url() -> String {
@@ -210,7 +205,7 @@ pub fn npm_jsr_registry_unset_url() -> String {
 pub fn nodejs_org_mirror_url() -> String {
   format!(
     "http://127.0.0.1:{}/",
-    servers::NODEJS_ORG_MIRROR_SERVER_PORT
+    consts::NODEJS_ORG_MIRROR_SERVER_PORT
   )
 }
 
@@ -219,26 +214,26 @@ pub fn nodejs_org_mirror_unset_url() -> String {
 }
 
 pub fn jsr_registry_url() -> String {
-  format!("http://127.0.0.1:{}/", servers::JSR_REGISTRY_SERVER_PORT)
+  format!("http://127.0.0.1:{}/", consts::JSR_REGISTRY_SERVER_PORT)
 }
 
 pub fn rekor_url() -> String {
-  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
+  format!("http://127.0.0.1:{}", consts::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn fulcio_url() -> String {
-  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
+  format!("http://127.0.0.1:{}", consts::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn gha_token_url() -> String {
   format!(
     "http://127.0.0.1:{}/gha_oidc?test=true",
-    servers::PROVENANCE_MOCK_SERVER_PORT
+    consts::PROVENANCE_MOCK_SERVER_PORT
   )
 }
 
 pub fn socket_dev_api_url() -> String {
-  format!("http://localhost:{}/", servers::SOCKET_DEV_API_PORT)
+  format!("http://localhost:{}/", consts::SOCKET_DEV_API_PORT)
 }
 
 pub fn jsr_registry_unset_url() -> String {
@@ -313,42 +308,6 @@ fn ensure_test_server_built() {
       "Test server not found. Please cargo build before running the tests."
     );
   }
-}
-
-/// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
-async fn get_tcp_listener_stream(
-  name: &'static str,
-  port: u16,
-) -> impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + Send {
-  let host_and_port = &format!("localhost:{port}");
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result.map(|r| r.0), listener))
-    }
-    .boxed()
-  };
-
-  let mut addresses = vec![];
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| addresses.push(*address))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
-
-  futures::stream::select_all(listeners)
 }
 
 pub const TEST_SERVERS_COUNT: usize = 37;
@@ -453,7 +412,6 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
-  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}

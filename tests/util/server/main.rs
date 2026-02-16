@@ -3,12 +3,18 @@
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
+pub use test_util::*;
+
+pub mod https;
+pub mod npm;
+pub mod servers;
+
 fn main() {
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
     .unwrap();
   setup_panic_hook();
-  test_server::servers::run_all_servers();
+  servers::run_all_servers();
 }
 
 fn setup_panic_hook() {
@@ -16,8 +22,10 @@ fn setup_panic_hook() {
   // panic hook to implement this behaviour.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
-    eprintln!("\n============================================================");
-    eprintln!("Test server panicked!\n");
+    std::eprintln!(
+      "\n============================================================"
+    );
+    std::eprintln!("Test server panicked!\n");
     orig_hook(panic_info);
     std::process::exit(1);
   }));
