@@ -2512,6 +2512,7 @@ dependencies = [
  "brotli",
  "bytes",
  "data-encoding",
+ "deno_ast",
  "deno_core",
  "deno_error",
  "deno_fetch",

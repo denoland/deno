@@ -64,6 +64,7 @@
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
+    "parallel/test-assert-first-line.js": {},
     "parallel/test-assert-if-error.js": {},
     "parallel/test-assert-myers-diff.js": {},
     "parallel/test-assert-partial-deep-equal.js": {},
