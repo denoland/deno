@@ -1148,6 +1148,11 @@ internals.__bootstrapNodeProcess = function (
     ppid = Deno.ppid;
     initializeDebugEnv(nodeDebug);
 
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
+
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
     }

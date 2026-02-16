@@ -1066,6 +1066,7 @@
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},

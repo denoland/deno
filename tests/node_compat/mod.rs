@@ -465,6 +465,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
           }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
+          }
           _ => {}
         }
       }
