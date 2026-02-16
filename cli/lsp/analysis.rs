@@ -777,7 +777,7 @@ pub fn fix_ts_import_changes_for_file_rename(
   let Ok(new_uri) = Uri::from_str(new_uri) else {
     return Ok(Vec::new());
   };
-  if !new_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+  if !new_uri.scheme().as_str().eq_ignore_ascii_case("file") {
     return Ok(Vec::new());
   }
   let new_file_hints = [uri_to_url(&new_uri)];
