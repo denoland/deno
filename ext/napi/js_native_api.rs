@@ -298,11 +298,17 @@ fn napi_define_class<'s>(
         accessor_property =
           accessor_property | v8::PropertyAttribute::READ_ONLY;
       }
-      proto.set_with_attr(name, p.value.unwrap().into(), accessor_property);
+      let Some(value) = *p.value else {
+        return napi_invalid_arg;
+      };
+      proto.set_with_attr(name, value.into(), accessor_property);
     }
   }
 
-  let value: v8::Local<v8::Value> = tpl.get_function(scope).unwrap().into();
+  let Some(function) = tpl.get_function(scope) else {
+    return napi_generic_failure;
+  };
+  let value: v8::Local<v8::Value> = function.into();
 
   unsafe {
     *result = value.into();
@@ -826,7 +832,9 @@ fn napi_define_properties(
         return napi_generic_failure;
       }
     } else {
-      let value = property.value.unwrap();
+      let Some(value) = *property.value else {
+        return napi_invalid_arg;
+      };
 
       if enumerable & writable & configurable {
         if !object
@@ -1497,8 +1505,12 @@ macro_rules! napi_create_error_impl {
     let error = v8::Exception::$error(scope, message);
 
     if let Some(code) = *code {
-      let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
-      let code_key = v8::String::new(scope, "code").unwrap();
+      let Ok(error_obj) = v8::Local::<v8::Object>::try_from(error) else {
+        return napi_set_last_error(env_ptr, napi_generic_failure);
+      };
+      let Some(code_key) = v8::String::new(scope, "code") else {
+        return napi_set_last_error(env_ptr, napi_generic_failure);
+      };
       if !error_obj
         .set(scope, code_key.into(), code)
         .unwrap_or(false)
@@ -1792,7 +1804,10 @@ macro_rules! napi_throw_error_impl {
       let error = v8::Exception::$error(scope, str_);
 
       if !code.is_null() {
-        let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+        let Ok(error_obj) = v8::Local::<v8::Object>::try_from(error) else {
+          drop(scope_storage);
+          return napi_set_last_error(env, napi_generic_failure);
+        };
         let code = match unsafe { check_new_from_utf8(env_ptr, code) } {
           Ok(s) => s,
           Err(status) => {
@@ -1800,7 +1815,10 @@ macro_rules! napi_throw_error_impl {
             return napi_set_last_error(env, status);
           }
         };
-        let code_key = v8::String::new(scope, "code").unwrap();
+        let Some(code_key) = v8::String::new(scope, "code") else {
+          drop(scope_storage);
+          return napi_set_last_error(env, napi_generic_failure);
+        };
         if !error_obj
           .set(scope, code_key.into(), code.into())
           .unwrap_or(false)
@@ -2367,7 +2385,12 @@ fn napi_wrap(
   }
 
   let external = v8::External::new(scope, reference);
-  assert!(obj.set_private(scope, napi_wrap, external.into()).unwrap());
+  if !obj
+    .set_private(scope, napi_wrap, external.into())
+    .unwrap_or(false)
+  {
+    return napi_generic_failure;
+  }
 
   napi_ok
 }
@@ -3053,7 +3076,7 @@ fn napi_create_typedarray<'s>(
           )
           .as_str(),
         )
-        .unwrap();
+        .unwrap_or_else(|| v8::String::empty(scope));
         let exc = v8::Exception::range_error(scope, message);
         scope.throw_exception(exc);
         return napi_pending_exception;
@@ -3062,7 +3085,7 @@ fn napi_create_typedarray<'s>(
       if length * soe + byte_offset > ab.byte_length() {
         let message =
           v8::String::new(scope, "Invalid typed array length")
-            .unwrap();
+            .unwrap_or_else(|| v8::String::empty(scope));
         let exc = v8::Exception::range_error(scope, message);
         scope.throw_exception(exc);
         return napi_pending_exception;
@@ -3166,7 +3189,9 @@ fn napi_get_typedarray_info(
 
   if !arraybuffer.is_null() {
     v8::callback_scope!(unsafe scope, env.context());
-    let buf = array.buffer(scope).unwrap();
+    let Some(buf) = array.buffer(scope) else {
+      return napi_set_last_error(env_ptr, napi_generic_failure);
+    };
     unsafe {
       *arraybuffer = buf.into();
     }
@@ -3306,7 +3331,9 @@ fn napi_create_promise<'s>(
   check_arg!(env, promise);
 
   v8::callback_scope!(unsafe scope, env.context());
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let Some(resolver) = v8::PromiseResolver::new(scope) else {
+    return napi_generic_failure;
+  };
 
   let global = v8::Global::new(scope, resolver);
   let global_ptr = global.into_raw().as_ptr() as napi_deferred;
@@ -3604,8 +3631,9 @@ fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> napi_status {
     return napi_set_last_error(env, napi_detachable_arraybuffer_expected);
   }
 
-  // Expected to crash for None.
-  ab.detach(None).unwrap();
+  if ab.detach(None).is_err() {
+    return napi_set_last_error(env, napi_generic_failure);
+  }
 
   napi_clear_last_error(env);
   napi_ok
