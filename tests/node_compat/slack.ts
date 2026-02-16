@@ -470,7 +470,10 @@ async function main() {
           console.log("Unenabled passing thread posted:", unenableResult);
         }
       } catch (unenableError) {
-        console.error("Failed to post unenabled passing thread:", unenableError);
+        console.error(
+          "Failed to post unenabled passing thread:",
+          unenableError,
+        );
       }
     }
   } catch (error) {
