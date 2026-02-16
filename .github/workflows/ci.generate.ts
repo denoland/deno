@@ -338,7 +338,7 @@ function createCacheSteps(m: {
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
   });
-  const mtimeCacheStep = step({
+  const mtimeCacheAndRestoreStep = step({
     name: "Apply and update mtime cache",
     uses: "./.github/mtime_cache",
     with: {
@@ -349,7 +349,8 @@ function createCacheSteps(m: {
     restoreCacheStep: step(
       cargoHomeCacheSteps.restoreCacheStep,
       buildCacheSteps.restoreCacheStep.if(isMainBranch.not().and(isNotTag)),
-      mtimeCacheStep,
+      // this should always be done when saving OR restoring
+      mtimeCacheAndRestoreStep,
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
