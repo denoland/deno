@@ -572,6 +572,11 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           baseConnRid,
         );
+        // Save body data before flushing so it can be restored if
+        // a stale keepAlive socket fails during the response phase.
+        if (this.reusedSocket && this.outputData.length > 0) {
+          this._outputDataForRetry = [...this.outputData];
+        }
         this._flushBuffer();
 
         const infoPromise = op_node_http_await_information(
@@ -741,6 +746,16 @@ class ClientRequest extends OutgoingMessage {
             this._headerSent = false;
             this.reusedSocket = false;
             this._req = null;
+            // Reset body stream state so _writeHeader() creates a
+            // fresh TransformStream on the next attempt.
+            this._bodyWriter = null;
+            this._bodyWriteRid = null;
+            this._bodyWritable = null;
+            // Restore body data that was consumed by the failed attempt.
+            if (this._outputDataForRetry) {
+              this.outputData = this._outputDataForRetry;
+              this._outputDataForRetry = null;
+            }
             this.agent.addRequest(this, this._agentOptions);
             return;
           }
