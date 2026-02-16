@@ -259,3 +259,60 @@ pub fn op_node_process_setuid(
 ) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }
+
+/// Returns the cgroup-constrained memory limit, or 0 if unconstrained.
+/// This matches Node.js `process.constrainedMemory()` semantics.
+#[op2(fast)]
+#[number]
+pub fn op_node_process_constrained_memory() -> u64 {
+  #[cfg(any(target_os = "android", target_os = "linux"))]
+  {
+    cgroup_memory_limit().unwrap_or(0)
+  }
+  #[cfg(not(any(target_os = "android", target_os = "linux")))]
+  {
+    0
+  }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn cgroup_memory_limit() -> Option<u64> {
+  let self_cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+
+  // Determine cgroup version and relative path
+  let mut v2_relpath = None;
+
+  for line in self_cgroup.lines() {
+    let parts: Vec<&str> = line.split(':').collect();
+    match &parts[..] {
+      // cgroup v1 memory controller
+      [_, "memory", relpath] => {
+        let relpath = relpath.strip_prefix('/').unwrap_or(relpath);
+        let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
+          .join(relpath)
+          .join("memory.limit_in_bytes");
+        return std::fs::read_to_string(limit_path)
+          .ok()
+          .and_then(|s| s.trim().parse::<u64>().ok());
+      }
+      // cgroup v2 (but keep looking for v1 memory in hybrid mode)
+      ["0", "", relpath] => {
+        v2_relpath =
+          Some(relpath.strip_prefix('/').unwrap_or(relpath).to_string());
+      }
+      _ => {}
+    }
+  }
+
+  // If no v1 memory controller found, try v2
+  if let Some(relpath) = v2_relpath {
+    let limit_path = std::path::Path::new("/sys/fs/cgroup")
+      .join(relpath)
+      .join("memory.max");
+    return std::fs::read_to_string(limit_path)
+      .ok()
+      .and_then(|s| s.trim().parse::<u64>().ok());
+  }
+
+  None
+}

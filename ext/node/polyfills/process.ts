@@ -17,6 +17,7 @@ import {
   op_node_process_setgid,
   op_node_process_setuid,
   op_process_abort,
+  op_node_process_constrained_memory,
 } from "ext:core/ops";
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
@@ -345,6 +346,14 @@ export function memoryUsage(): {
 memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
+
+export function availableMemory(): number {
+  return Deno.systemMemoryInfo().available;
+}
+
+export function constrainedMemory(): number {
+  return op_node_process_constrained_memory();
+}
 
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
@@ -822,6 +831,8 @@ process._kill = _kill;
 process.kill = kill;
 
 process.memoryUsage = memoryUsage;
+process.availableMemory = availableMemory;
+process.constrainedMemory = constrainedMemory;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
