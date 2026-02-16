@@ -11,7 +11,6 @@ import {
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
-  op_node_process_constrained_memory,
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
