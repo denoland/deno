@@ -354,8 +354,7 @@ function createCacheSteps(m: {
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
-      // TODO(THIS PR!!!): temporarily save on PRs too to test mtime cache -- test
-      buildCacheSteps.saveCacheStep.if(isNotTag),
+      buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
     ),
   };
 }
