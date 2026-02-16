@@ -470,7 +470,7 @@ const staticFilesCheckStep = step({
     'echo "$GIT_DIFF"',
     "# Static file patterns: markdown, text, yaml, .github/ dir, and common config files",
     "NON_STATIC=$(echo \"$GIT_DIFF\" | grep -vE '\\.(md|txt|yml|yaml)$|^\\.github/|^LICENSE|^\\.editorconfig|^\\.gitignore|^\\.gitattributes' || true)",
-    "if [ -n \"$GIT_DIFF\" ] && [ -z \"$NON_STATIC\" ]; then",
+    'if [ -n "$GIT_DIFF" ] && [ -z "$NON_STATIC" ]; then',
     "  echo 'Only static files changed, skipping build/test/bench.'",
     "  echo 'static_files_only=true' >> $GITHUB_OUTPUT",
     "else",
@@ -1472,10 +1472,10 @@ const lintCiStatusJob = job("lint-ci-status", {
   steps: step({
     name: "Ensure CI success",
     run: [
-      "if [[ \"${{ needs.pre_build.outputs.static_files_only }}\" == \"true\" ]]; then",
+      'if [[ "${{ needs.pre_build.outputs.static_files_only }}" == "true" ]]; then',
       "  echo 'Static files only change detected, build/test/bench were skipped.'",
       "  # Lint still ran, so check if it succeeded",
-      "  if [[ \"${{ needs.lint.result }}\" == \"failure\" || \"${{ needs.lint.result }}\" == \"cancelled\" ]]; then",
+      '  if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.lint.result }}" == "cancelled" ]]; then',
       "    echo 'Lint failed'",
       "    exit 1",
       "  fi",
