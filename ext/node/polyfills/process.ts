@@ -11,13 +11,13 @@ import {
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
+  op_node_process_constrained_memory,
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
   op_node_process_setuid,
   op_process_abort,
-  op_node_process_constrained_memory,
 } from "ext:core/ops";
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
