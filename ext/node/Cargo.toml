@@ -45,7 +45,6 @@ deno_tls.workspace = true
 deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
-dotenvy.workspace = true
 dsa.workspace = true
 ecb.workspace = true
 ecdsa.workspace = true

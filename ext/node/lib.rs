@@ -98,9 +98,9 @@ fn op_node_build_os() -> String {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum DotEnvLoadErr {
-  #[class(generic)]
-  #[error(transparent)]
-  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -125,9 +125,7 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  #[allow(clippy::disallowed_methods)]
-  let contents =
-    fs::read_to_string(path).expect("Should have been able to read the file");
+  let contents = fs::read_to_string(path)?;
 
   parse_env_content_hook(&contents, |key, value| {
     #[allow(clippy::undocumented_unsafe_blocks)]
