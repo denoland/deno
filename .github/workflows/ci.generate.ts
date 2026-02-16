@@ -16,7 +16,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 94;
+const cacheVersion = 95;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -338,7 +338,7 @@ function createCacheSteps(m: {
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
   });
-  const mtimeCacheStep = step({
+  const mtimeCacheAndRestoreStep = step({
     name: "Apply and update mtime cache",
     uses: "./.github/mtime_cache",
     with: {
@@ -348,10 +348,9 @@ function createCacheSteps(m: {
   return {
     restoreCacheStep: step(
       cargoHomeCacheSteps.restoreCacheStep,
-      step(
-        buildCacheSteps.restoreCacheStep,
-        mtimeCacheStep,
-      ).if(isMainBranch.not().and(isNotTag)),
+      buildCacheSteps.restoreCacheStep.if(isMainBranch.not().and(isNotTag)),
+      // this should always be done when saving OR restoring
+      mtimeCacheAndRestoreStep,
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
@@ -1440,7 +1439,8 @@ const lintCiStatusJob = job("lint-ci-status", {
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
   ],
-  if: conditions.status.always(),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(conditions.status.always()),
   runsOn: "ubuntu-latest",
   steps: step({
     name: "Ensure CI success",
