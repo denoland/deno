@@ -351,10 +351,6 @@ export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
 }
 
-export function constrainedMemory(): number {
-  return op_node_process_constrained_memory();
-}
-
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
@@ -822,7 +818,6 @@ process.kill = kill;
 
 process.memoryUsage = memoryUsage;
 process.availableMemory = availableMemory;
-process.constrainedMemory = constrainedMemory;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;

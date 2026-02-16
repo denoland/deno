@@ -1044,7 +1044,6 @@
     "parallel/test-process-binding-internalbinding-allowlist.js": {},
     "parallel/test-process-binding.js": {},
     "parallel/test-process-config.js": {},
-    "parallel/test-process-constrained-memory.js": {},
     "parallel/test-process-cpuUsage.js": {},
     "parallel/test-process-default.js": {},
     "parallel/test-process-dlopen-undefined-exports.js": {},
