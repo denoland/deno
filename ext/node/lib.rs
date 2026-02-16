@@ -125,6 +125,7 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
+  #[allow(clippy::disallowed_methods)]
   let contents = fs::read_to_string(path)?;
 
   parse_env_content_hook(&contents, |key, value| {
