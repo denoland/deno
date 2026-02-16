@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -13,19 +14,24 @@ use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 pub struct OpenOptions {
+  #[from_v8(default)]
   pub read: bool,
+  #[from_v8(default)]
   pub write: bool,
+  #[from_v8(default)]
   pub create: bool,
+  #[from_v8(default)]
   pub truncate: bool,
+  #[from_v8(default)]
   pub append: bool,
+  #[from_v8(default)]
   pub create_new: bool,
+  #[from_v8(default)]
   pub custom_flags: Option<i32>,
+  #[from_v8(default)]
   pub mode: Option<u32>,
 }
 
@@ -125,8 +131,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, deno_core::ToV8)]
 pub struct FsDirEntry {
   pub name: String,
   pub is_file: bool,
@@ -260,6 +265,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     newpath: CheckedPathBuf,
   ) -> FsResult<()>;
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()>;
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()>;
+
   fn link_sync(
     &self,
     oldpath: &CheckedPath,
@@ -345,7 +353,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let file = self.open_async(path, options).await?;
     if let Some(mode) = options.mode {

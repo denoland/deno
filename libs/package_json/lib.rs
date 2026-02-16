@@ -14,7 +14,6 @@ use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
-use deno_semver::VersionReqSpecifierParseError;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
@@ -65,12 +64,12 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   VersionReq(#[from] NpmVersionReqParseError),
-  #[class(inherit)]
-  #[error(transparent)]
-  JsrVersionReq(#[from] VersionReqSpecifierParseError),
   #[class(type)]
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
+  #[class(type)]
+  #[error("JSR package name '{name}' requires a scope (ex. @scope/name)")]
+  JsrRequiresScope { name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -90,7 +89,6 @@ pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
-  JsrReq(PackageReq),
 }
 
 impl PackageJsonDepValue {
@@ -98,79 +96,97 @@ impl PackageJsonDepValue {
     key: &str,
     value: &str,
   ) -> Result<Self, PackageJsonDepValueParseError> {
-    /// Gets the name and raw version constraint for a registry info or
-    /// package.json dependency entry taking into account npm package aliases.
-    fn parse_dep_entry_name_and_raw_version<'a>(
-      key: &'a str,
-      value: &'a str,
-    ) -> (&'a str, &'a str) {
-      if let Some(package_and_version) = value.strip_prefix("npm:") {
-        if let Some((name, version)) = package_and_version.rsplit_once('@') {
-          // if empty, then the name was scoped and there's no version
-          if name.is_empty() {
-            (package_and_version, "*")
-          } else {
-            (name, version)
-          }
-        } else {
-          (package_and_version, "*")
+    fn from_name_and_version_req(
+      name: StackString,
+      version_req: &str,
+    ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+      match VersionReq::parse_from_npm(version_req) {
+        Ok(version_req) => {
+          Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
         }
-      } else {
-        (key, value)
+        Err(err) => {
+          Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
+        }
       }
     }
 
-    if let Some(workspace_key) = value.strip_prefix("workspace:") {
-      let workspace_req = match workspace_key {
-        "~" => PackageJsonDepWorkspaceReq::Tilde,
-        "^" => PackageJsonDepWorkspaceReq::Caret,
-        _ => PackageJsonDepWorkspaceReq::VersionReq(
-          VersionReq::parse_from_npm(workspace_key)?,
-        ),
-      };
-      return Ok(Self::Workspace(workspace_req));
-    } else if let Some(raw_jsr_req) = value.strip_prefix("jsr:") {
-      let (name, version_req) =
-        parse_dep_entry_name_and_raw_version(key, raw_jsr_req);
-      let result = VersionReq::parse_from_specifier(version_req);
-      match result {
-        Ok(version_req) => {
-          return Ok(Self::JsrReq(PackageReq {
-            name: name.into(),
+    if let Some((scheme, value)) = value.split_once(':') {
+      match scheme {
+        "file" => Ok(Self::File(value.to_string())),
+        "jsr" => {
+          let (name, version_req) = if value.starts_with('@') {
+            // @std/path
+            // @std/path@v1
+            if let Some((name, version)) = value.rsplit_once('@') {
+              // if empty, then there's no version
+              if name.is_empty() {
+                (value, "*")
+              } else {
+                (name, version)
+              }
+            } else {
+              (value, "*")
+            }
+          } else {
+            // ^1
+            (key, value)
+          };
+          let Some((scope, name)) =
+            name.strip_prefix('@').and_then(|name| name.split_once('/'))
+          else {
+            return Err(
+              PackageJsonDepValueParseErrorKind::JsrRequiresScope {
+                name: if let Some((name, _)) = version_req.split_once('@') {
+                  name.to_string()
+                } else {
+                  name.to_string()
+                },
+              }
+              .into_box(),
+            );
+          };
+          from_name_and_version_req(
+            capacity_builder::StringBuilder::<StackString>::build(|builder| {
+              builder.append("@jsr/");
+              builder.append(scope);
+              builder.append("__");
+              builder.append(name);
+            })
+            .unwrap(),
             version_req,
-          }));
+          )
         }
-        Err(err) => {
-          return Err(
-            PackageJsonDepValueParseErrorKind::JsrVersionReq(err).into_box(),
-          );
+        "npm" => {
+          if let Some((name, version)) = value.rsplit_once('@') {
+            // if empty, then the name was scoped and there's no version
+            if name.is_empty() {
+              from_name_and_version_req(value.into(), "*")
+            } else {
+              from_name_and_version_req(name.into(), version)
+            }
+          } else {
+            from_name_and_version_req(value.into(), "*")
+          }
         }
+        "workspace" => {
+          let workspace_req = match value {
+            "~" => PackageJsonDepWorkspaceReq::Tilde,
+            "^" => PackageJsonDepWorkspaceReq::Caret,
+            _ => PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm(value)?,
+            ),
+          };
+          Ok(Self::Workspace(workspace_req))
+        }
+        scheme => Err(
+          PackageJsonDepValueParseErrorKind::Unsupported {
+            scheme: scheme.to_string(),
+          }
+          .into_box(),
+        ),
       }
-    }
-    if value.starts_with("git:")
-      || value.starts_with("http:")
-      || value.starts_with("https:")
-    {
-      return Err(
-        PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme: value.split(':').next().unwrap().to_string(),
-        }
-        .into_box(),
-      );
-    }
-    if let Some(path) = value.strip_prefix("file:") {
-      return Ok(Self::File(path.to_string()));
-    }
-    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
-    let result = VersionReq::parse_from_npm(version_req);
-    match result {
-      Ok(version_req) => Ok(Self::Req(PackageReq {
-        name: name.into(),
-        version_req,
-      })),
-      Err(err) => {
-        Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
-      }
+    } else {
+      from_name_and_version_req(key.into(), value)
     }
   }
 }
@@ -753,20 +769,60 @@ mod test {
     let mut package_json =
       PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
         .unwrap();
-    package_json.dependencies = Some(IndexMap::from([(
-      "@denotest/foo".to_string(),
-      "jsr:^1.2".to_string(),
-    )]));
+    package_json.dependencies = Some(IndexMap::from([
+      ("@denotest/foo".to_string(), "jsr:^1.2".to_string()),
+      ("@std/path2".to_string(), "jsr:@std/path@1".to_string()),
+      ("@std/fs".to_string(), "jsr:@std/fs".to_string()),
+      ("no-scope".to_string(), "jsr:*".to_string()),
+      ("no-scope2".to_string(), "jsr:test@*".to_string()),
+      ("@denotest/tag".to_string(), "jsr:future-tag".to_string()),
+    ]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       map,
-      IndexMap::from([(
-        "@denotest/foo".to_string(),
-        Ok(PackageJsonDepValue::JsrReq(PackageReq {
-          name: "@denotest/foo".into(),
-          version_req: VersionReq::parse_from_specifier("^1.2").unwrap()
-        }))
-      )])
+      IndexMap::from([
+        (
+          "@denotest/foo".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/denotest__foo".into(),
+            version_req: VersionReq::parse_from_specifier("^1.2").unwrap()
+          }))
+        ),
+        (
+          "@std/path2".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/std__path".into(),
+            version_req: VersionReq::parse_from_specifier("1").unwrap()
+          }))
+        ),
+        (
+          "@std/fs".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/std__fs".into(),
+            version_req: VersionReq::parse_from_specifier("*").unwrap()
+          }))
+        ),
+        (
+          "no-scope".to_string(),
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope {
+            name: "no-scope".to_string()
+          })
+        ),
+        (
+          "no-scope2".to_string(),
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope {
+            name: "test".to_string()
+          })
+        ),
+        (
+          "@denotest/tag".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/denotest__tag".into(),
+            version_req: VersionReq::parse_from_specifier("future-tag")
+              .unwrap()
+          }))
+        ),
+      ])
     );
   }
 

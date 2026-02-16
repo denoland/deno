@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.240.0"
+version = "0.245.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ ecdsa.workspace = true
 ed448-goldilocks = { workspace = true, features = ["zeroize"] }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 num-traits.workspace = true
+ocb3.workspace = true
 once_cell.workspace = true
 p256 = { workspace = true, features = ["ecdh", "ecdsa"] }
 p384 = { workspace = true, features = ["ecdsa"] }
@@ -40,6 +41,7 @@ serde.workspace = true
 serde_bytes.workspace = true
 sha1.workspace = true
 sha2.workspace = true
+sha3.workspace = true
 signature.workspace = true
 spki.workspace = true
 thiserror.workspace = true

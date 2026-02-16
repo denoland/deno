@@ -36,7 +36,7 @@ Deno.test("Callback must be a function error", function fn() {
       writeFile("some/path", "some data", "utf8");
     },
     TypeError,
-    "Callback must be a function.",
+    'The "callback" argument must be of type function. Received undefined',
   );
 });
 
@@ -47,7 +47,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFile("some/path", "some data", "made-up-encoding", () => {});
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -56,7 +56,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       writeFileSync("some/path", "some data", "made-up-encoding");
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -72,7 +72,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       );
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 
   assertThrows(
@@ -83,30 +83,9 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       });
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`,
+    `The argument 'encoding' is invalid encoding. Received 'made-up-encoding'`,
   );
 });
-
-Deno.test(
-  "Unsupported encoding results in error()",
-  function testUnsupportedEncoding() {
-    assertThrows(
-      () => {
-        writeFile("some/path", "some data", "utf16le", () => {});
-      },
-      Error,
-      `Not implemented: "utf16le" encoding`,
-    );
-
-    assertThrows(
-      () => {
-        writeFileSync("some/path", "some data", "utf16le");
-      },
-      Error,
-      `Not implemented: "utf16le" encoding`,
-    );
-  },
-);
 
 Deno.test(
   {
@@ -155,12 +134,16 @@ Deno.test(
   "Data is written to correct file encodings",
   async function testCorrectWriteUsingDifferentEncodings() {
     const encodings = [
-      ["hex", "68656c6c6f20776f726c64"],
-      ["HEX", "68656c6c6f20776f726c64"],
-      ["base64", "aGVsbG8gd29ybGQ="],
-      ["BASE64", "aGVsbG8gd29ybGQ="],
-      ["utf8", "hello world"],
-      ["utf-8", "hello world"],
+      ["hex", "68656c6c6f20776f726c642121212121"],
+      ["HEX", "68656c6c6f20776f726c642121212121"],
+      ["base64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["BASE64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["utf8", "hello world!!!!!"],
+      ["utf-8", "hello world!!!!!"],
+      ["utf16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["utf-16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["ucs2", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["latin1", "hello world!!!!!"],
     ];
 
     for (const [encoding, value] of encodings) {
@@ -176,7 +159,7 @@ Deno.test(
       const data = await Deno.readFile("_fs_writeFile_test_file.txt");
       await Deno.remove("_fs_writeFile_test_file.txt");
       assertEquals(res, null);
-      assertEquals(decoder.decode(data), "hello world");
+      assertEquals(decoder.decode(data), "hello world!!!!!");
     }
   },
 );
@@ -305,12 +288,16 @@ Deno.test(
   "Data is written to correct file encodings",
   function testCorrectWriteSyncUsingDifferentEncodings() {
     const encodings = [
-      ["hex", "68656c6c6f20776f726c64"],
-      ["HEX", "68656c6c6f20776f726c64"],
-      ["base64", "aGVsbG8gd29ybGQ="],
-      ["BASE64", "aGVsbG8gd29ybGQ="],
-      ["utf8", "hello world"],
-      ["utf-8", "hello world"],
+      ["hex", "68656c6c6f20776f726c642121212121"],
+      ["HEX", "68656c6c6f20776f726c642121212121"],
+      ["base64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["BASE64", "aGVsbG8gd29ybGQhISEhIQ=="],
+      ["utf8", "hello world!!!!!"],
+      ["utf-8", "hello world!!!!!"],
+      ["utf16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["utf-16le", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["ucs2", "敨汬⁯潷汲Ⅴ℡℡"],
+      ["latin1", "hello world!!!!!"],
     ];
 
     for (const [encoding, value] of encodings) {
@@ -319,7 +306,7 @@ Deno.test(
 
       const data = Deno.readFileSync(file);
       Deno.removeSync(file);
-      assertEquals(decoder.decode(data), "hello world");
+      assertEquals(decoder.decode(data), "hello world!!!!!");
     }
   },
 );

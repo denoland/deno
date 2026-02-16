@@ -432,6 +432,8 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
+      // Store options for potential retry on stale keepAlive connections.
+      this._agentOptions = optsWithoutSignal;
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -570,6 +572,11 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           baseConnRid,
         );
+        // Save body data before flushing so it can be restored if
+        // a stale keepAlive socket fails during the response phase.
+        if (this.reusedSocket && this.outputData.length > 0) {
+          this._outputDataForRetry = [...this.outputData];
+        }
         this._flushBuffer();
 
         const infoPromise = op_node_http_await_information(
@@ -727,7 +734,31 @@ class ClientRequest extends OutgoingMessage {
           err.message.includes("Bad resource ID") ||
           err.message.includes("operation was canceled")
         ) {
-          // Stale connection - emit ECONNRESET so clients retry.
+          // Stale keepAlive connection. If this was a reused socket,
+          // retry the request on a fresh connection.
+          if (this.reusedSocket && this.agent && this._agentOptions) {
+            const socket = this.socket;
+            if (socket) {
+              socket.destroy();
+            }
+            this.socket = null;
+            this._header = null;
+            this._headerSent = false;
+            this.reusedSocket = false;
+            this._req = null;
+            // Reset body stream state so _writeHeader() creates a
+            // fresh TransformStream on the next attempt.
+            this._bodyWriter = null;
+            this._bodyWriteRid = null;
+            this._bodyWritable = null;
+            // Restore body data that was consumed by the failed attempt.
+            if (this._outputDataForRetry) {
+              this.outputData = this._outputDataForRetry;
+              this._outputDataForRetry = null;
+            }
+            this.agent.addRequest(this, this._agentOptions);
+            return;
+          }
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
@@ -1556,6 +1587,10 @@ export type ServerResponse = {
   end(chunk?: any, encoding?: any, cb?: any): void;
 
   flushHeaders(): void;
+  writeEarlyHints(
+    hints: Record<string, string | string[]>,
+    callback?: () => void,
+  ): void;
   _implicitHeader(): void;
 
   // Undocumented field used by `npm:light-my-request`.
@@ -1963,6 +1998,15 @@ ServerResponse.prototype.detachSocket = function (
 };
 
 ServerResponse.prototype.writeContinue = function writeContinue(cb) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  _hints,
+  cb,
+) {
   if (cb) {
     nextTick(cb);
   }

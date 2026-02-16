@@ -206,6 +206,7 @@ pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
   test_hooks: TestHooks,
+  registration_phase_ended: bool,
 }
 
 #[derive(Default)]
@@ -217,13 +218,26 @@ pub(crate) struct TestHooks {
 }
 
 impl TestContainer {
+  pub fn with_registration_phase_ended() -> Self {
+    Self {
+      registration_phase_ended: true,
+      ..Default::default()
+    }
+  }
+
   pub fn register(
     &mut self,
     description: TestDescription,
     function: v8::Global<v8::Function>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    if self.registration_phase_ended {
+      return Err(JsErrorBox::type_error(
+        "Nested Deno.test() calls are not supported. Use t.step() for nested tests.",
+      ));
+    }
     self.descriptions.tests.insert(description.id, description);
-    self.test_functions.push(function)
+    self.test_functions.push(function);
+    Ok(())
   }
 
   pub fn register_hook(
@@ -276,6 +290,7 @@ pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
   pub only: bool,
+  pub sanitize_only: bool,
   pub origin: String,
   pub location: TestLocation,
   pub sanitize_ops: bool,
@@ -912,22 +927,34 @@ pub async fn run_tests_for_worker(
   let state_rc = worker.js_runtime.op_state();
 
   // Take whatever tests have been registered
-  let container =
-    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+  let container = std::mem::replace(
+    &mut *state_rc.borrow_mut().borrow_mut::<TestContainer>(),
+    TestContainer::with_registration_phase_ended(),
+  );
 
   let descriptions = Arc::new(container.descriptions);
-  event_tracker.register(descriptions.clone())?;
-  run_tests_for_worker_inner(
-    worker,
-    specifier,
-    descriptions,
-    container.test_functions,
-    container.test_hooks,
-    options,
-    event_tracker,
-    fail_fast_tracker,
-  )
-  .await
+  let result = async {
+    event_tracker.register(descriptions.clone())?;
+    run_tests_for_worker_inner(
+      worker,
+      specifier,
+      descriptions,
+      container.test_functions,
+      container.test_hooks,
+      options,
+      event_tracker,
+      fail_fast_tracker,
+    )
+    .await
+  }
+  .await;
+
+  // This worker can execute another discovery/run cycle (for example in REPL),
+  // so reset to a fresh container after the current run ends.
+  *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
+    TestContainer::default();
+
+  result
 }
 
 fn compute_tests_to_run(
@@ -937,20 +964,24 @@ fn compute_tests_to_run(
 ) -> (Vec<(&TestDescription, v8::Global<v8::Function>)>, bool) {
   let mut tests_to_run = Vec::with_capacity(descs.len());
   let mut used_only = false;
+  let mut has_only = false;
   for ((_, d), f) in descs.tests.iter().zip(test_functions) {
     if !filter.includes(&d.name) {
       continue;
     }
 
     // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
-    if used_only && !d.only {
+    if has_only && !d.only {
       continue;
     }
 
     // If this is the first "only: true" test we've seen, clear the other tests since they were
     // only: false.
-    if d.only && !used_only {
-      used_only = true;
+    if d.only && !has_only {
+      has_only = true;
+      if d.sanitize_only {
+        used_only = true;
+      }
       tests_to_run.clear();
     }
     tests_to_run.push((d, f));
@@ -1544,7 +1575,10 @@ async fn fetch_specifiers_with_test_mode(
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+    if matches!(
+      media_type,
+      MediaType::Unknown | MediaType::Dts | MediaType::Markdown
+    ) {
       *mode = TestMode::Documentation
     }
   }

@@ -39,7 +39,7 @@ import {
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
@@ -94,7 +94,7 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
-const { NumberMAX_SAFE_INTEGER } = primordials;
+const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -128,6 +128,21 @@ export const exit = (code?: number | string) => {
   // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
   // At this point, we don't have to pass around Node's raw/string exit value.
   process.reallyExit(ProcessExitCode);
+
+  // In a worker, reallyExit() returns because Deno.exit() calls workerClose()
+  // instead of std::process::exit(). workerClose() already called V8's
+  // terminate_execution(). Unlike Node.js where reallyExit is a C++ binding
+  // and a single nop() call suffices to trigger the stack guard check, in Deno
+  // reallyExit goes through JS frames (Deno.exit -> exitHandler -> workerClose
+  // -> op), so we need a loop back-edge for V8 to reliably detect the pending
+  // termination and throw an uncatchable TerminationException.
+  // On the main thread reallyExit() normally never returns, but users can
+  // override it (test-process-really-exit.js), so only spin in workers.
+  // ref: https://github.com/nodejs/node/blob/9cc7fcc26d/lib/internal/process/per_thread.js#L243-L251
+  if (internals.__isWorkerThread) {
+    // deno-lint-ignore no-empty
+    for (;;) {}
+  }
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
@@ -696,6 +711,17 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// deno-lint-ignore no-explicit-any
+process._fatalException = function (err: any, fromPromise?: boolean) {
+  const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
+  process.emit("uncaughtExceptionMonitor", err, origin);
+  if (process.listenerCount("uncaughtException") > 0) {
+    process.emit("uncaughtException", err, origin);
+    return true;
+  }
+  return false;
+};
+
 /** https://nodejs.org/api/process.html#processexitcode_1 */
 Object.defineProperty(process, "exitCode", {
   get() {
@@ -749,6 +775,10 @@ Object.defineProperty(process, "platform", {
   get() {
     return platform;
   },
+  set(value) {
+    platform = value;
+  },
+  configurable: true,
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
@@ -884,7 +914,40 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
-process.features = { inspector: false };
+const features = {
+  inspector: true,
+  // TODO(bartlomieju): not sure if it's worth getting actual value during build process
+  debug: false,
+  uv: true,
+  ipv6: true,
+  // deno-lint-ignore camelcase
+  tls_alpn: true,
+  // deno-lint-ignore camelcase
+  tls_sni: true,
+  // deno-lint-ignore camelcase
+  tls_ocsp: true,
+  tls: true,
+  // deno-lint-ignore camelcase
+  openssl_is_boringssl: false,
+  // deno-lint-ignore camelcase
+  cached_builtins: true,
+  // deno-lint-ignore camelcase
+  require_module: true,
+  get typescript() {
+    if (Deno.build.standalone) {
+      return false;
+    }
+    return "transform";
+  },
+};
+
+ObjectDefineProperty(process, "features", {
+  __proto__: null,
+  enumerable: true,
+  writable: false,
+  configurable: false,
+  value: features,
+});
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
@@ -964,11 +1027,15 @@ process.on("removeListener", (event: string) => {
 });
 
 function processOnError(event: ErrorEvent) {
-  if (process.listenerCount("uncaughtException") > 0) {
-    event.preventDefault();
+  if (typeof process._fatalException === "function") {
+    if (process._fatalException(event.error)) {
+      event.preventDefault();
+    }
+  } else {
+    // Exit code 6: _fatalException is not a function
+    // (kInvalidFatalExceptionMonkeyPatching in Node.js)
+    process.exitCode = 6;
   }
-
-  uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
 function dispatchProcessBeforeExitEvent() {

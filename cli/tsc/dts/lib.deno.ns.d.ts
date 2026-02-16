@@ -859,6 +859,11 @@ declare namespace Deno {
    *
    * `fn` can be async if required.
    *
+   * Tests are discovered before they are executed, so registrations must happen
+   * at module load time.
+   * Nested `Deno.test()` calls are not supported.
+   * Use `t.step()` for nested tests.
+   *
    * ```ts
    * import { assertEquals } from "jsr:@std/assert";
    *
