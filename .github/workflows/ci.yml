@@ -25,15 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build }}'
+      static_files_only: '${{ steps.static_files_check.outputs.static_files_only }}'
     steps:
       - name: Configure git
-        if: github.event.pull_request.draft == true
+        if: github.event_name == 'pull_request'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: github.event.pull_request.draft == true
+        if: github.event_name == 'pull_request'
         with:
           fetch-depth: 5
           submodules: false
@@ -43,11 +44,26 @@ jobs:
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
+      - id: static_files_check
+        if: github.event_name == 'pull_request'
+        run: |-
+          # Check if only static files were changed (no build/test needed)
+          GIT_DIFF=$(git diff HEAD~1 --name-only || true)
+          echo "Changed files:"
+          echo "$GIT_DIFF"
+          # Static file patterns: markdown, text, yaml, .github/ dir, and common config files
+          NON_STATIC=$(echo "$GIT_DIFF" | grep -vE '\.(md|txt|yml|yaml)$|^\.github/|^LICENSE|^\.editorconfig|^\.gitignore|^\.gitattributes' || true)
+          if [ -n "$GIT_DIFF" ] && [ -z "$NON_STATIC" ]; then
+            echo 'Only static files changed, skipping build/test/bench.'
+            echo 'static_files_only=true' >> $GITHUB_OUTPUT
+          else
+            echo 'Non-static files changed, running full build.'
+          fi
   bench:
     name: bench release linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
     timeout-minutes: 240
     defaults:
@@ -224,7 +240,7 @@ jobs:
     name: build debug macos-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: macos-15-intel
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -511,7 +527,7 @@ jobs:
     name: build release macos-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -878,7 +894,7 @@ jobs:
     name: build debug macos-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: macos-14
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1303,7 +1319,7 @@ jobs:
     name: build release macos-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -1684,7 +1700,7 @@ jobs:
     name: build debug windows-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: windows-2022
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2051,7 +2067,7 @@ jobs:
     name: build release windows-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2432,7 +2448,7 @@ jobs:
     name: build debug windows-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: windows-11-arm
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -2704,7 +2720,7 @@ jobs:
     name: build release windows-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -3085,7 +3101,7 @@ jobs:
     name: build release linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -3728,7 +3744,7 @@ jobs:
     name: build debug linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: ubuntu-24.04
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -4172,7 +4188,7 @@ jobs:
     name: build libs debug linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -4264,7 +4280,7 @@ jobs:
     name: build debug linux-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -4649,7 +4665,7 @@ jobs:
     name: build release linux-aarch64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.static_files_only != 'true'
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
@@ -5265,6 +5281,7 @@ jobs:
   lint-ci-status:
     name: lint ci status
     needs:
+      - pre_build
       - bench
       - build-debug-macos-x86_64
       - test-debug-macos-x86_64
@@ -5296,12 +5313,20 @@ jobs:
       - build-release-linux-aarch64
       - test-release-linux-aarch64
       - lint
-      - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true' && always()
+    if: (needs.pre_build.outputs.skip_build != 'true' || needs.pre_build.outputs.static_files_only == 'true') && always()
     runs-on: ubuntu-latest
     steps:
       - name: Ensure CI success
         run: |-
+          if [[ "${{ needs.pre_build.outputs.static_files_only }}" == "true" ]]; then
+            echo 'Static files only change detected, build/test/bench were skipped.'
+            # Lint still ran, so check if it succeeded
+            if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.lint.result }}" == "cancelled" ]]; then
+              echo 'Lint failed'
+              exit 1
+            fi
+            exit 0
+          fi
           if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
             echo 'CI failed'
             exit 1

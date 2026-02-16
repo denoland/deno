@@ -460,15 +460,37 @@ const preBuildCheckStep = step({
   outputs: ["skip_build"] as const,
 });
 
+const staticFilesCheckStep = step({
+  id: "static_files_check",
+  if: isPr,
+  run: [
+    "# Check if only static files were changed (no build/test needed)",
+    "GIT_DIFF=$(git diff HEAD~1 --name-only || true)",
+    'echo "Changed files:"',
+    'echo "$GIT_DIFF"',
+    "# Static file patterns: markdown, text, yaml, .github/ dir, and common config files",
+    "NON_STATIC=$(echo \"$GIT_DIFF\" | grep -vE '\\.(md|txt|yml|yaml)$|^\\.github/|^LICENSE|^\\.editorconfig|^\\.gitignore|^\\.gitattributes' || true)",
+    "if [ -n \"$GIT_DIFF\" ] && [ -z \"$NON_STATIC\" ]; then",
+    "  echo 'Only static files changed, skipping build/test/bench.'",
+    "  echo 'static_files_only=true' >> $GITHUB_OUTPUT",
+    "else",
+    "  echo 'Non-static files changed, running full build.'",
+    "fi",
+  ],
+  outputs: ["static_files_only"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step.if(conditions.isDraftPr())(
-    cloneRepoStep,
-    preBuildCheckStep,
+  steps: step(
+    step.if(isPr)(cloneRepoStep),
+    step.if(conditions.isDraftPr())(preBuildCheckStep),
+    staticFilesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
+    static_files_only: staticFilesCheckStep.outputs.static_files_only,
   },
 });
 
@@ -602,7 +624,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     {
       name: jobNameForJob("build"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true")
+        .and(preBuildJob.outputs.static_files_only.notEquals("true")),
       runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
@@ -1123,7 +1146,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true")
+        .and(preBuildJob.outputs.static_files_only.notEquals("true")),
       runsOn: buildItem.runner,
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
@@ -1263,7 +1287,8 @@ const benchJob = job(
   {
     name: `bench release ${benchProfile.os}-${benchProfile.arch}`,
     needs: [preBuildJob],
-    if: preBuildJob.outputs.skip_build.notEquals("true"),
+    if: preBuildJob.outputs.skip_build.notEquals("true")
+      .and(preBuildJob.outputs.static_files_only.notEquals("true")),
     runsOn: benchProfile.runner,
     timeoutMinutes: 240,
     defaults: {
@@ -1435,16 +1460,27 @@ const lintCiStatusJob = job("lint-ci-status", {
   // We use this job in the main branch rule status checks for PRs.
   // All jobs that are required to pass on a PR should be listed here.
   needs: [
+    preBuildJob,
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
   ],
-  if: preBuildJob.outputs.skip_build.notEquals("true")
+  if: (preBuildJob.outputs.skip_build.notEquals("true")
+    .or(preBuildJob.outputs.static_files_only.equals("true")))
     .and(conditions.status.always()),
   runsOn: "ubuntu-latest",
   steps: step({
     name: "Ensure CI success",
     run: [
+      "if [[ \"${{ needs.pre_build.outputs.static_files_only }}\" == \"true\" ]]; then",
+      "  echo 'Static files only change detected, build/test/bench were skipped.'",
+      "  # Lint still ran, so check if it succeeded",
+      "  if [[ \"${{ needs.lint.result }}\" == \"failure\" || \"${{ needs.lint.result }}\" == \"cancelled\" ]]; then",
+      "    echo 'Lint failed'",
+      "    exit 1",
+      "  fi",
+      "  exit 0",
+      "fi",
       "if [[ \"${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}\" == \"true\" ]]; then",
       "  echo 'CI failed'",
       "  exit 1",
