@@ -637,14 +637,16 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
   },
 });
 
