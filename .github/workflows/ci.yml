@@ -5296,7 +5296,8 @@ jobs:
       - build-release-linux-aarch64
       - test-release-linux-aarch64
       - lint
-    if: always()
+      - pre_build
+    if: needs.pre_build.outputs.skip_build != 'true' && always()
     runs-on: ubuntu-latest
     steps:
       - name: Ensure CI success
