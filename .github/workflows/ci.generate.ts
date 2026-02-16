@@ -16,7 +16,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 94;
+const cacheVersion = 95;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -353,7 +353,8 @@ function createCacheSteps(m: {
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
-      buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+      // TODO(THIS PR!!!): temporarily save on PRs too to test mtime cache
+      buildCacheSteps.saveCacheStep.if(isNotTag),
     ),
   };
 }
