@@ -114,10 +114,10 @@ import {
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
-import { Blob } from "ext:deno_web/09_file.js";
+import { Blob, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
-export { atob, Blob, btoa };
+export { atob, Blob, btoa, File };
 
 const utf8Encoder = new TextEncoder();
 
@@ -3034,6 +3034,7 @@ const mod = {
   atob,
   btoa,
   Blob,
+  File,
   Buffer,
   constants,
   isAscii,

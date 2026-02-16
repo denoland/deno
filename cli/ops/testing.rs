@@ -132,7 +132,7 @@ fn op_register_test(
   };
   state
     .borrow_mut::<TestContainer>()
-    .register(description, function);
+    .register(description, function)?;
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
   Ok(())
 }

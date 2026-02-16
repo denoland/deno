@@ -16,8 +16,5 @@ crate-type = ["cdylib"]
 libuv-sys-lite.workspace = true
 napi-sys = { workspace = true, features = ["napi7"] }
 
-[dev-dependencies]
-test_util.workspace = true
-
 [build-dependencies]
 napi-build.workspace = true
