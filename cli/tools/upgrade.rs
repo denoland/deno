@@ -587,39 +587,40 @@ pub async fn upgrade(
     requested_version.release_channel(),
   );
 
-  let archive_data = if cache_path.exists() {
-    log::info!(
-      "{}",
-      colors::gray(format!(
-        "Using cached binary from {}",
-        cache_path.display()
-      ))
-    );
-    std::fs::read(&cache_path).with_context(|| {
-      format!("Failed to read cached binary at '{}'", cache_path.display())
-    })?
-  } else {
-    let download_url = get_download_url(
-      &selected_version_to_upgrade.version_or_hash,
-      requested_version.release_channel(),
-    )?;
-    log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-    let Some(data) = download_package(&client, download_url).await? else {
-      log::error!("Download could not be found, aborting");
-      deno_runtime::exit(1)
-    };
-
-    // Cache the downloaded archive
-    if let Some(parent) = cache_path.parent() {
-      fs::create_dir_all(parent).with_context(|| {
-        format!("Failed to create cache directory '{}'", parent.display())
-      })?;
+  let archive_data = match std::fs::read(&cache_path) {
+    Ok(data) => {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Using cached binary from {}",
+          cache_path.display()
+        ))
+      );
+      data
     }
-    if let Err(err) = fs::write(&cache_path, &data) {
-      log::debug!("Failed to cache binary: {}", err);
-    }
+    Err(_) => {
+      let download_url = get_download_url(
+        &selected_version_to_upgrade.version_or_hash,
+        requested_version.release_channel(),
+      )?;
+      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+      let Some(data) = download_package(&client, download_url).await? else {
+        log::error!("Download could not be found, aborting");
+        deno_runtime::exit(1)
+      };
 
-    data
+      // Cache the downloaded archive
+      if let Err(err) = deno_path_util::fs::atomic_write_file(
+        &sys_traits::impls::RealSys,
+        &cache_path,
+        &data,
+        0o644,
+      ) {
+        log::debug!("Failed to cache binary: {}", err);
+      }
+
+      data
+    }
   };
 
   // verify checksum if provided
