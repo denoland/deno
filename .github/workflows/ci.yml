@@ -281,7 +281,6 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -420,7 +419,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -582,7 +581,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -812,7 +811,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -947,7 +946,6 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -1086,7 +1084,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -1228,7 +1226,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -1380,7 +1378,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -1610,7 +1608,7 @@ jobs:
           restore-keys: 94-cargo-target-macos-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -1737,7 +1735,6 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -1876,7 +1873,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -2000,7 +1997,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -2108,7 +2105,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -2377,7 +2374,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -2486,7 +2483,6 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -2625,7 +2621,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -2762,7 +2758,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -3031,7 +3027,7 @@ jobs:
           restore-keys: 94-cargo-target-windows-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -3146,7 +3142,6 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -3464,7 +3459,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -3784,7 +3779,6 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -4005,7 +3999,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -4222,7 +4216,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-x86_64-debug-build-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install wasm target
@@ -4321,7 +4315,6 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -4460,7 +4453,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-debug-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -4596,7 +4589,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -4710,7 +4703,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
@@ -5015,7 +5008,7 @@ jobs:
           restore-keys: 94-cargo-target-linux-aarch64-release-test-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
@@ -5229,7 +5222,6 @@ jobs:
           restore-keys: '94-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1

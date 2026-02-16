@@ -348,10 +348,8 @@ function createCacheSteps(m: {
   return {
     restoreCacheStep: step(
       cargoHomeCacheSteps.restoreCacheStep,
-      step(
-        buildCacheSteps.restoreCacheStep,
-        mtimeCacheStep,
-      ).if(isMainBranch.not().and(isNotTag)),
+      buildCacheSteps.restoreCacheStep.if(isMainBranch.not().and(isNotTag)),
+      mtimeCacheStep,
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
