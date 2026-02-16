@@ -1036,7 +1036,7 @@ function processOnError(event: ErrorEvent) {
 function dispatchProcessBeforeExitEvent() {
   try {
     process.emit("beforeExit", process.exitCode || 0);
-  } catch (e) {
+  } catch (_e) {
     // When 'beforeExit' throws, Node.js emits 'exit' and then terminates
     // with the current exitCode. The 'exit' handler can set exitCode to
     // override the exit status.
