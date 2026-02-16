@@ -265,6 +265,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     newpath: CheckedPathBuf,
   ) -> FsResult<()>;
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()>;
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()>;
+
   fn link_sync(
     &self,
     oldpath: &CheckedPath,

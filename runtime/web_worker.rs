@@ -582,6 +582,8 @@ impl WebWorker {
       deno_fs::deno_fs::init(services.fs.clone()),
       deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
       deno_process::deno_process::init(services.npm_process_state_provider),
+      deno_node_crypto::deno_node_crypto::init(),
+      deno_node_sqlite::deno_node_sqlite::init(),
       deno_node::deno_node::init::<
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
