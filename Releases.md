@@ -26,6 +26,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): fix worker.terminate() return value and exit code (#32168)
 - fix(ext/node): forward stdout from worker_threads to parent (#32160)
 - fix(ext/node): make worker_threads ref/unref idempotent like Node.js (#32161)
+- fix(ext/node): normalize trailing dot in TLS servername (#32166)
 - fix(ext/node): process.exit() in worker immediately halts execution (#32169)
 - fix(ext/node): support O_RDONLY | O_CREAT in fs.openSync (#32152)
 - fix(ext/node): use primordials in ext/node/polyfills/_fs/_fs_lchown.ts
