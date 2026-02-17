@@ -82,31 +82,29 @@ fn scan_and_split(input: &str) -> ParsedShellArgs {
       && !in_single
       && (ch == b'<' || ch == b'>' || ch == b'|' || ch == b';' || ch == b'&')
     {
-      {
-        // Walk back for fd prefix on redirects (e.g. 2>, &>)
-        let mut split_idx = i;
-        if ch == b'<' || ch == b'>' {
-          let mut j = i;
-          while j > 0 && bytes[j - 1].is_ascii_digit() {
-            j -= 1;
-          }
-          let mut fd_start = j;
-          if j > 0 && bytes[j - 1] == b'&' {
-            fd_start = j - 1;
-          }
-          if fd_start < i
-            && (fd_start == 0
-              || bytes[fd_start - 1] == b' '
-              || bytes[fd_start - 1] == b'\t')
-          {
-            split_idx = fd_start;
-          }
+      // Walk back for fd prefix on redirects (e.g. 2>, &>)
+      let mut split_idx = i;
+      if ch == b'<' || ch == b'>' {
+        let mut j = i;
+        while j > 0 && bytes[j - 1].is_ascii_digit() {
+          j -= 1;
         }
-        return ParsedShellArgs {
-          args: split_args(input[..split_idx].trim_end()),
-          shell_suffix: input[split_idx..].to_string(),
-        };
+        let mut fd_start = j;
+        if j > 0 && bytes[j - 1] == b'&' {
+          fd_start = j - 1;
+        }
+        if fd_start < i
+          && (fd_start == 0
+            || bytes[fd_start - 1] == b' '
+            || bytes[fd_start - 1] == b'\t')
+        {
+          split_idx = fd_start;
+        }
       }
+      return ParsedShellArgs {
+        args: split_args(input[..split_idx].trim_end()),
+        shell_suffix: input[split_idx..].to_string(),
+      };
     }
     i += 1;
   }
