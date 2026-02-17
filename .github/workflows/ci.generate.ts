@@ -269,6 +269,7 @@ function createRestoreAndSaveCacheSteps(m: {
   name: string;
   cacheKeyPrefix: string;
   path: string[];
+  keySuffix: string;
 }) {
   // this must match for save and restore (https://github.com/actions/cache/issues/1444)
   const path = m.path.join("\n");
@@ -286,7 +287,7 @@ function createRestoreAndSaveCacheSteps(m: {
     uses: "cirruslabs/cache/save@v4",
     with: {
       path,
-      key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
+      key: `${m.cacheKeyPrefix}-${m.keySuffix}`,
     },
   });
   return { restoreCacheStep, saveCacheStep };
@@ -309,6 +310,7 @@ function createCargoCacheHomeStep(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-home-${m.os}-${m.arch}-${m.cachePrefix}`,
+    keySuffix: `\${{ hashFiles('Cargo.lock') }}`,
   });
 
   return {
@@ -337,6 +339,7 @@ function createCacheSteps(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
+    keySuffix: `\${{ github.sha }}`,
   });
   const mtimeCacheAndRestoreStep = step({
     name: "Apply and update mtime cache",
