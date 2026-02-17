@@ -470,6 +470,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -486,7 +491,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -498,7 +503,7 @@ jobs:
           key: '96-cargo-home-macos-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1144,6 +1149,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -1160,7 +1170,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1172,7 +1182,7 @@ jobs:
           key: '96-cargo-home-macos-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1915,6 +1925,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -1931,7 +1946,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1943,7 +1958,7 @@ jobs:
           key: '96-cargo-home-windows-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2663,6 +2678,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -2679,7 +2699,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2691,7 +2711,7 @@ jobs:
           key: '96-cargo-home-windows-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3591,6 +3611,9 @@ jobs:
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
+      - name: Build caches (release)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests --release
       - name: Test (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
@@ -3605,7 +3628,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -3617,7 +3640,7 @@ jobs:
           key: '96-cargo-home-linux-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4131,6 +4154,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -4147,7 +4175,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4159,7 +4187,7 @@ jobs:
           key: '96-cargo-home-linux-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4507,6 +4535,11 @@ jobs:
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
+      - name: Build caches (debug)
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'''
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo test --no-run -p integration_tests -p node_compat_tests -p specs_tests -p unit_tests -p unit_node_tests
       - name: Test (debug)
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
@@ -4523,7 +4556,7 @@ jobs:
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4535,7 +4568,7 @@ jobs:
           key: '96-cargo-home-linux-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''unit_node'' && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
