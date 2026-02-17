@@ -769,8 +769,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             sysRootStep,
           )(
             {
+              // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
-              if: isMainBranch,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
             {
