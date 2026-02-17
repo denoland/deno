@@ -1,10 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  op_node_call_is_from_dependency,
-  op_node_parse_env,
-} from "ext:core/ops";
+import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
@@ -54,6 +51,7 @@ import {
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import binding from "ext:deno_node/internal_binding/util.ts";
 
 let process: NodeJS.Process;
 const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
@@ -320,7 +318,7 @@ export function parseEnv(
   input: string,
 ): Record<string, string> {
   validateString(input, "content");
-  return op_node_parse_env(input);
+  return binding.parseEnv(input);
 }
 
 export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
