@@ -3,41 +3,43 @@
 use std::hash::Hasher;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use crate::eprintln;
 
-/// A fast hasher for computing a combined hash of files and directories.
+/// A fast hasher for computing a combined hash of files and directory mtimes.
 /// Uses xxhash64 for speed.
 #[derive(Default)]
 pub struct InputHasher(twox_hash::XxHash64);
 
 impl InputHasher {
-  /// Hash a single file's contents. Skips if file doesn't exist.
+  /// Hash a single file's mtime. Skips if file doesn't exist.
   pub fn hash_file(&mut self, path: impl AsRef<Path>) -> &mut Self {
-    let path = path.as_ref();
-    if let Ok(bytes) = std::fs::read(path) {
-      self.0.write(path.to_string_lossy().as_bytes());
-      self.0.write(&bytes);
+    if let Ok(meta) = std::fs::metadata(path.as_ref()) {
+      self.hash_mtime(meta.modified().ok());
     }
     self
   }
 
-  /// Recursively hash all files in a directory (sorted for determinism).
+  /// Recursively hash all file mtimes in a directory (sorted for determinism).
   /// Skips if directory doesn't exist.
   pub fn hash_dir(&mut self, path: impl AsRef<Path>) -> &mut Self {
     let path = path.as_ref();
-    let mut files = Vec::new();
-    collect_files_recursive(path, &mut files);
-    files.sort();
-    for file in &files {
-      if let Ok(rel) = file.strip_prefix(path) {
-        self.0.write(rel.to_string_lossy().as_bytes());
-      }
-      if let Ok(bytes) = std::fs::read(file) {
-        self.0.write(&bytes);
-      }
+    let mut entries = Vec::new();
+    collect_entries_recursive(path, &mut entries);
+    entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+    for (_, mtime) in &entries {
+      self.hash_mtime(*mtime);
     }
     self
+  }
+
+  fn hash_mtime(&mut self, mtime: Option<SystemTime>) {
+    if let Some(mtime) = mtime
+      && let Ok(d) = mtime.duration_since(SystemTime::UNIX_EPOCH)
+    {
+      self.0.write_u64(d.as_secs());
+    }
   }
 
   pub fn finish(&self) -> u64 {
@@ -45,17 +47,24 @@ impl InputHasher {
   }
 }
 
-fn collect_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_entries_recursive(
+  dir: &Path,
+  out: &mut Vec<(PathBuf, Option<SystemTime>)>,
+) {
   let entries = match std::fs::read_dir(dir) {
     Ok(entries) => entries,
     Err(_) => return,
   };
   for entry in entries.flatten() {
-    let path = entry.path();
-    if path.is_dir() {
-      collect_files_recursive(&path, out);
+    let file_type = match entry.file_type() {
+      Ok(ft) => ft,
+      Err(_) => continue,
+    };
+    if file_type.is_dir() {
+      collect_entries_recursive(&entry.path(), out);
     } else {
-      out.push(path);
+      let mtime = entry.metadata().ok().and_then(|m| m.modified().ok());
+      out.push((entry.path(), mtime));
     }
   }
 }
