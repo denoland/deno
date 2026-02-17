@@ -48,6 +48,12 @@ fn parse_shell_args(input: &str) -> ParsedShellArgs {
     // so use a simple operator scan instead.
     scan_and_split(input)
   } else {
+    // Fall back to scan_and_split for fd-close redirects (>&- / <&-)
+    // which the POSIX parser doesn't handle correctly (it parses them
+    // as separate tokens instead of a single redirect).
+    if input.contains(">&-") || input.contains("<&-") {
+      return scan_and_split(input);
+    }
     match deno_task_shell::parser::parse(input) {
       Ok(list) => extract_args_and_suffix(&list),
       Err(_) => scan_and_split(input),
@@ -276,12 +282,13 @@ fn serialize_word_part(part: &WordPart, out: &mut String) {
     WordPart::Quoted(parts) => {
       // Use single quotes for purely literal content (prevents introducing
       // unintended $VAR expansion). Use double quotes when the content
-      // contains variables, command substitutions, tilde expansion, or
-      // ${VAR} brace syntax (which the parser doesn't recognize as a
-      // Variable, leaving it as Text containing "${"").
+      // contains variables, command substitutions, tilde expansion,
+      // ${VAR} brace syntax, or single quotes (to avoid '\'' escaping
+      // patterns that break when the suffix is re-parsed by the pipe
+      // handler in transformDenoShellCommand).
       let needs_double_quotes = parts.iter().any(|p| match p {
         WordPart::Variable(_) | WordPart::Tilde | WordPart::Command(_) => true,
-        WordPart::Text(s) => s.contains("${"),
+        WordPart::Text(s) => s.contains("${") || s.contains('\''),
         _ => false,
       });
 
@@ -656,5 +663,14 @@ mod tests {
     let r = scan_and_split("arg1 arg2 | cmd2");
     assert_eq!(r.args, vec!["arg1", "arg2"]);
     assert_eq!(r.shell_suffix, "| cmd2");
+  }
+
+  #[test]
+  fn test_fd_close_redirect() {
+    // 1>&- closes stdout, 2>&- closes stderr. deno_task_shell doesn't
+    // support this syntax, so we should fall back to scan_and_split.
+    let r = parse(r#""${ESCAPED_1}" child 1>&- 2>&-"#);
+    assert_eq!(r.args, vec!["${ESCAPED_1}", "child"]);
+    assert_eq!(r.shell_suffix, "1>&- 2>&-");
   }
 }
