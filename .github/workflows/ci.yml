@@ -587,7 +587,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -1384,7 +1384,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -2111,7 +2111,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -2764,7 +2764,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
       - name: Configure canary build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
@@ -3226,7 +3226,6 @@ jobs:
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Configure canary build
-        if: github.ref == 'refs/heads/main'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         run: |-
@@ -4790,7 +4789,7 @@ jobs:
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Configure canary build
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
