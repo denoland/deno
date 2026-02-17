@@ -42,14 +42,83 @@ pub fn op_node_parse_shell_args(#[string] input: String) -> ParsedShellArgs {
 }
 
 fn parse_shell_args(input: &str) -> ParsedShellArgs {
-  match deno_task_shell::parser::parse(input) {
-    Ok(list) => extract_args_and_suffix(&list),
-    Err(_) => fallback_split(input),
+  if cfg!(windows) {
+    // On Windows, backslash is a path separator, not an escape character.
+    // The POSIX parser would mangle Windows paths inside double quotes,
+    // so use a simple operator scan instead.
+    scan_and_split(input)
+  } else {
+    match deno_task_shell::parser::parse(input) {
+      Ok(list) => extract_args_and_suffix(&list),
+      Err(_) => scan_and_split(input),
+    }
   }
 }
 
-/// Fallback: simple quote-aware arg splitting with empty suffix.
-fn fallback_split(input: &str) -> ParsedShellArgs {
+/// Scan for the first unquoted shell operator (`<`, `>`, `|`, `&`, `;`)
+/// and split the input into args and suffix. On non-Windows, respects
+/// backslash escapes outside single quotes. Used on Windows (where `\`
+/// is a path separator) and as fallback when the POSIX parser fails.
+fn scan_and_split(input: &str) -> ParsedShellArgs {
+  let bytes = input.as_bytes();
+  let mut in_double = false;
+  let mut in_single = false;
+  let mut i = 0;
+
+  while i < bytes.len() {
+    let ch = bytes[i];
+
+    // Backslash escapes next char (POSIX only, not on Windows)
+    if !cfg!(windows) && ch == b'\\' && !in_single {
+      i += 2;
+      continue;
+    }
+
+    if ch == b'"' && !in_single {
+      in_double = !in_double;
+    } else if ch == b'\'' && !in_double {
+      in_single = !in_single;
+    } else if !in_double
+      && !in_single
+      && (ch == b'<' || ch == b'>' || ch == b'|' || ch == b';' || ch == b'&')
+    {
+      {
+        // Walk back for fd prefix on redirects (e.g. 2>, &>)
+        let mut split_idx = i;
+        if ch == b'<' || ch == b'>' {
+          let mut j = i;
+          while j > 0 && bytes[j - 1].is_ascii_digit() {
+            j -= 1;
+          }
+          let mut fd_start = j;
+          if j > 0 && bytes[j - 1] == b'&' {
+            fd_start = j - 1;
+          }
+          if fd_start < i
+            && (fd_start == 0
+              || bytes[fd_start - 1] == b' '
+              || bytes[fd_start - 1] == b'\t')
+          {
+            split_idx = fd_start;
+          }
+        }
+        return ParsedShellArgs {
+          args: split_args(input[..split_idx].trim_end()),
+          shell_suffix: input[split_idx..].to_string(),
+        };
+      }
+    }
+    i += 1;
+  }
+
+  ParsedShellArgs {
+    args: split_args(input),
+    shell_suffix: String::new(),
+  }
+}
+
+/// Simple quote-aware arg splitting on whitespace.
+fn split_args(input: &str) -> Vec<String> {
   let mut args = Vec::new();
   let mut current = String::new();
   let mut in_double = false;
@@ -71,11 +140,7 @@ fn fallback_split(input: &str) -> ParsedShellArgs {
   if !current.is_empty() {
     args.push(current);
   }
-
-  ParsedShellArgs {
-    args,
-    shell_suffix: String::new(),
-  }
+  args
 }
 
 // --- Argument extraction ---
@@ -569,5 +634,29 @@ mod tests {
     assert_eq!(r.args, vec!["${ESCAPED_1}"]);
     // Suffix must use double quotes to preserve ${VAR} expansion
     assert_eq!(r.shell_suffix, r#"< "${ESCAPED_2}""#);
+  }
+
+  #[test]
+  fn test_scan_and_split_windows_paths() {
+    // On Windows, paths use backslashes. scan_and_split must not
+    // interpret them as escape sequences.
+    let r =
+      scan_and_split(r#""D:\path\to\script.js" < "D:\path\to\input.txt""#);
+    assert_eq!(r.args, vec![r"D:\path\to\script.js"]);
+    assert_eq!(r.shell_suffix, r#"< "D:\path\to\input.txt""#);
+  }
+
+  #[test]
+  fn test_scan_and_split_fd_redirect() {
+    let r = scan_and_split("arg1 2>&1");
+    assert_eq!(r.args, vec!["arg1"]);
+    assert_eq!(r.shell_suffix, "2>&1");
+  }
+
+  #[test]
+  fn test_scan_and_split_pipe() {
+    let r = scan_and_split("arg1 arg2 | cmd2");
+    assert_eq!(r.args, vec!["arg1", "arg2"]);
+    assert_eq!(r.shell_suffix, "| cmd2");
   }
 }
