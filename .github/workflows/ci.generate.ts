@@ -269,7 +269,6 @@ function createRestoreAndSaveCacheSteps(m: {
   name: string;
   cacheKeyPrefix: string;
   path: string[];
-  keySuffix: string;
 }) {
   // this must match for save and restore (https://github.com/actions/cache/issues/1444)
   const path = m.path.join("\n");
@@ -287,7 +286,13 @@ function createRestoreAndSaveCacheSteps(m: {
     uses: "cirruslabs/cache/save@v4",
     with: {
       path,
-      key: `${m.cacheKeyPrefix}-${m.keySuffix}`,
+      // We force saving a new cache on every main run so that PRs can
+      // always be up to date with the freshest information. We do this
+      // unconditionally because we don't want caches that only need updating
+      // occassionally (like the cargo home cache) to be lost over time as
+      // other caches that need to be updated frequently (like the cargo build
+      // cache) get populated and purge old caches.
+      key: `${m.cacheKeyPrefix}-\${{ github.sha }}`,
     },
   });
   return { restoreCacheStep, saveCacheStep };
@@ -310,8 +315,6 @@ function createCargoCacheHomeStep(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-home-${m.os}-${m.arch}-${m.cachePrefix}`,
-    // use lockfile for this cache because this cache only has the downloaded crates
-    keySuffix: `\${{ hashFiles('Cargo.lock') }}`,
   });
 
   return {
@@ -340,8 +343,6 @@ function createCacheSteps(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
-    // use the github commit hash to force main runs to upload the latest build cache
-    keySuffix: `\${{ github.sha }}`,
   });
   const mtimeCacheAndRestoreStep = step({
     name: "Apply and update mtime cache",
