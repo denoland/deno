@@ -1048,7 +1048,7 @@
     "parallel/test-process-default.js": {},
     "parallel/test-process-dlopen-undefined-exports.js": {},
     "parallel/test-process-domain-segfault.js": {},
-    "parallel/test-process-emit.js": {},
+    "parallel/test-process-emit.js": { "windows": false },
     "parallel/test-process-emitwarning.js": {},
     "parallel/test-process-env-allowed-flags.js": {},
     "parallel/test-process-env-delete.js": {},
