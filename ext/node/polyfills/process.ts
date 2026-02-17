@@ -346,6 +346,10 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+export function availableMemory(): number {
+  return Deno.systemMemoryInfo().available;
+}
+
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
@@ -488,7 +492,7 @@ Process.prototype.on = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.on("${event}")`);
     EventEmitter.prototype.on.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -518,7 +522,7 @@ Process.prototype.off = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.off("${event}")`);
     EventEmitter.prototype.off.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -543,17 +547,7 @@ Process.prototype.emit = function (
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): boolean {
-  if (event.startsWith("SIG")) {
-    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
-    } else {
-      Deno.kill(Deno.pid, event as Deno.Signal);
-    }
-  } else {
-    return EventEmitter.prototype.emit.call(this, event, ...args);
-  }
-
-  return true;
+  return EventEmitter.prototype.emit.call(this, event, ...args);
 };
 
 Process.prototype.prependListener = function (
@@ -566,7 +560,7 @@ Process.prototype.prependListener = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.prependListener("${event}")`);
     EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
@@ -665,15 +659,15 @@ Object.defineProperty(process, "argv0", {
 process.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
-process.config = {
-  target_defaults: {
+process.config = Object.freeze({
+  target_defaults: Object.freeze({
     default_configuration: "Release",
-  },
-  variables: {
+  }),
+  variables: Object.freeze({
     llvm_version: "0.0",
     enable_lto: "false",
-  },
-};
+  }),
+});
 
 process.cpuUsage = cpuUsage;
 
@@ -822,6 +816,7 @@ process._kill = _kill;
 process.kill = kill;
 
 process.memoryUsage = memoryUsage;
+process.availableMemory = availableMemory;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
@@ -1039,7 +1034,18 @@ function processOnError(event: ErrorEvent) {
 }
 
 function dispatchProcessBeforeExitEvent() {
-  process.emit("beforeExit", process.exitCode || 0);
+  try {
+    process.emit("beforeExit", process.exitCode || 0);
+  } catch (_e) {
+    // When 'beforeExit' throws, Node.js emits 'exit' and then terminates
+    // with the current exitCode. The 'exit' handler can set exitCode to
+    // override the exit status.
+    if (process.exitCode == null) {
+      process.exitCode = 1;
+    }
+    dispatchProcessExitEvent();
+    Deno.exit(process.exitCode || 0);
+  }
   processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }
