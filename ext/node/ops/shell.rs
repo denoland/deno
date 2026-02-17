@@ -211,28 +211,54 @@ fn serialize_word_part(part: &WordPart, out: &mut String) {
   match part {
     WordPart::Text(s) => out.push_str(s),
     WordPart::Quoted(parts) => {
-      out.push('"');
-      for p in parts {
-        match p {
-          WordPart::Text(s) => out.push_str(s),
-          WordPart::Variable(name) => {
-            out.push('$');
-            out.push_str(name);
-          }
-          WordPart::Tilde => out.push('~'),
-          WordPart::Command(list) => {
-            out.push_str("$(");
-            out.push_str(&serialize_sequential_list(list));
-            out.push(')');
-          }
-          WordPart::Quoted(inner) => {
-            for ip in inner {
-              serialize_word_part(ip, out);
+      // Use single quotes for purely literal content (prevents introducing
+      // unintended $VAR expansion). Use double quotes when the content
+      // contains variables, command substitutions, or tilde expansion.
+      let needs_double_quotes = parts.iter().any(|p| {
+        matches!(
+          p,
+          WordPart::Variable(_) | WordPart::Tilde | WordPart::Command(_)
+        )
+      });
+
+      if needs_double_quotes {
+        out.push('"');
+        for p in parts {
+          match p {
+            WordPart::Text(s) => escape_for_double_quotes(s, out),
+            WordPart::Variable(name) => {
+              out.push('$');
+              out.push_str(name);
+            }
+            WordPart::Tilde => out.push('~'),
+            WordPart::Command(list) => {
+              out.push_str("$(");
+              out.push_str(&serialize_sequential_list(list));
+              out.push(')');
+            }
+            WordPart::Quoted(inner) => {
+              for ip in inner {
+                serialize_word_part(ip, out);
+              }
             }
           }
         }
+        out.push('"');
+      } else {
+        out.push('\'');
+        for p in parts {
+          match p {
+            WordPart::Text(s) => escape_for_single_quotes(s, out),
+            WordPart::Quoted(inner) => {
+              for ip in inner {
+                serialize_word_part(ip, out);
+              }
+            }
+            _ => serialize_word_part(p, out),
+          }
+        }
+        out.push('\'');
       }
-      out.push('"');
     }
     WordPart::Variable(name) => {
       out.push('$');
@@ -243,6 +269,32 @@ fn serialize_word_part(part: &WordPart, out: &mut String) {
       out.push_str("$(");
       out.push_str(&serialize_sequential_list(list));
       out.push(')');
+    }
+  }
+}
+
+/// Escape text for use inside double-quoted shell strings.
+fn escape_for_double_quotes(s: &str, out: &mut String) {
+  for ch in s.chars() {
+    match ch {
+      '"' | '\\' | '$' | '`' => {
+        out.push('\\');
+        out.push(ch);
+      }
+      _ => out.push(ch),
+    }
+  }
+}
+
+/// Escape text for use inside single-quoted shell strings.
+/// Single quotes can't be escaped inside single quotes, so we use
+/// the POSIX pattern: end quote, escaped quote, start quote.
+fn escape_for_single_quotes(s: &str, out: &mut String) {
+  for ch in s.chars() {
+    if ch == '\'' {
+      out.push_str("'\\''");
+    } else {
+      out.push(ch);
     }
   }
 }
@@ -469,5 +521,29 @@ mod tests {
     let r = parse("--inspect script.js > output.txt");
     assert_eq!(r.args, vec!["--inspect", "script.js"]);
     assert_eq!(r.shell_suffix, "> output.txt");
+  }
+
+  #[test]
+  fn test_single_quoted_literal_in_suffix() {
+    // Single-quoted $VAR should stay literal (not expand)
+    let r = parse("arg1 | grep '$VAR'");
+    assert_eq!(r.args, vec!["arg1"]);
+    assert!(
+      r.shell_suffix.contains("'$VAR'"),
+      "suffix: {}",
+      r.shell_suffix
+    );
+  }
+
+  #[test]
+  fn test_double_quoted_var_in_suffix() {
+    // Double-quoted $VAR should preserve expansion
+    let r = parse(r#"arg1 | grep "$VAR""#);
+    assert_eq!(r.args, vec!["arg1"]);
+    assert!(
+      r.shell_suffix.contains("\"$VAR\""),
+      "suffix: {}",
+      r.shell_suffix
+    );
   }
 }
