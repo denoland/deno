@@ -310,6 +310,7 @@ function createCargoCacheHomeStep(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-home-${m.os}-${m.arch}-${m.cachePrefix}`,
+    // use lockfile for this cache because this cache only has the downloaded crates
     keySuffix: `\${{ hashFiles('Cargo.lock') }}`,
   });
 
@@ -339,6 +340,7 @@ function createCacheSteps(m: {
     ],
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
+    // use the github commit hash to force main runs to upload the latest build cache
     keySuffix: `\${{ github.sha }}`,
   });
   const mtimeCacheAndRestoreStep = step({
