@@ -775,6 +775,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             {
               name: "Build release",
+              env: {
+                CARGO_LOG: "cargo::core::compiler::fingerprint=info",
+              },
               run: [
                 // output fs space before and after building
                 "df -h",

@@ -592,6 +592,8 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
@@ -1390,6 +1392,8 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
@@ -2118,6 +2122,8 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
@@ -2772,6 +2778,8 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
@@ -3233,6 +3241,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
@@ -4800,6 +4810,8 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        env:
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: |-
           df -h
           cargo build --release --locked --bin deno --bin denort --bin test_server --features=panic-trace
