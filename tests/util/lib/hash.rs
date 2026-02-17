@@ -9,10 +9,17 @@ use crate::eprintln;
 
 /// A fast hasher for computing a combined hash of files and directory mtimes.
 /// Uses xxhash64 for speed.
-#[derive(Default)]
 pub struct InputHasher(twox_hash::XxHash64);
 
 impl InputHasher {
+  pub fn new_with_cli_args() -> Self {
+    let mut hasher = Self(Default::default());
+    for arg in std::env::args() {
+      hasher.0.write(arg.as_bytes());
+    }
+    hasher
+  }
+
   /// Hash a single file's mtime. Skips if file doesn't exist.
   pub fn hash_file(&mut self, path: impl AsRef<Path>) -> &mut Self {
     if let Ok(meta) = std::fs::metadata(path.as_ref()) {
@@ -98,7 +105,7 @@ pub fn should_skip_on_ci(
   let hash_path = crate::target_dir()
     .join(format!("{name}_input_hash"))
     .to_path_buf();
-  let mut hasher = InputHasher::default();
+  let mut hasher = InputHasher::new_with_cli_args();
   configure(&mut hasher);
   let new_hash = hasher.finish().to_string();
 
