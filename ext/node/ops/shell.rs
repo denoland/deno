@@ -213,12 +213,13 @@ fn serialize_word_part(part: &WordPart, out: &mut String) {
     WordPart::Quoted(parts) => {
       // Use single quotes for purely literal content (prevents introducing
       // unintended $VAR expansion). Use double quotes when the content
-      // contains variables, command substitutions, or tilde expansion.
-      let needs_double_quotes = parts.iter().any(|p| {
-        matches!(
-          p,
-          WordPart::Variable(_) | WordPart::Tilde | WordPart::Command(_)
-        )
+      // contains variables, command substitutions, tilde expansion, or
+      // ${VAR} brace syntax (which the parser doesn't recognize as a
+      // Variable, leaving it as Text containing "${"").
+      let needs_double_quotes = parts.iter().any(|p| match p {
+        WordPart::Variable(_) | WordPart::Tilde | WordPart::Command(_) => true,
+        WordPart::Text(s) => s.contains("${"),
+        _ => false,
       });
 
       if needs_double_quotes {
@@ -274,14 +275,26 @@ fn serialize_word_part(part: &WordPart, out: &mut String) {
 }
 
 /// Escape text for use inside double-quoted shell strings.
+/// Preserves `${` sequences for brace variable expansion (the parser
+/// doesn't recognize `${VAR}` syntax, so it appears as literal text).
 fn escape_for_double_quotes(s: &str, out: &mut String) {
-  for ch in s.chars() {
-    match ch {
-      '"' | '\\' | '$' | '`' => {
+  let bytes = s.as_bytes();
+  for (i, &b) in bytes.iter().enumerate() {
+    match b {
+      b'"' | b'\\' | b'`' => {
         out.push('\\');
-        out.push(ch);
+        out.push(b as char);
       }
-      _ => out.push(ch),
+      b'$' => {
+        if i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+          // Preserve ${VAR} brace syntax for shell expansion
+          out.push('$');
+        } else {
+          out.push('\\');
+          out.push('$');
+        }
+      }
+      _ => out.push(b as char),
     }
   }
 }
@@ -545,5 +558,16 @@ mod tests {
       "suffix: {}",
       r.shell_suffix
     );
+  }
+
+  #[test]
+  fn test_escaped_posix_shell_vars() {
+    // Mirrors node_compat test-stdin-from-file.js:
+    // exec(`"${ESCAPED_0}" "${ESCAPED_1}" < "${ESCAPED_2}"`)
+    // After stripping the deno path prefix, rest is:
+    let r = parse(r#""${ESCAPED_1}" < "${ESCAPED_2}""#);
+    assert_eq!(r.args, vec!["${ESCAPED_1}"]);
+    // Suffix must use double quotes to preserve ${VAR} expansion
+    assert_eq!(r.shell_suffix, r#"< "${ESCAPED_2}""#);
   }
 }
