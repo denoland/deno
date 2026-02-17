@@ -165,7 +165,8 @@ fn process_node_types(out_dir: &Path) {
   paths.sort();
 
   for path in &paths {
-    // print for each path so the mtime cache works
+    // print for each path instead of directory because
+    // the mtime cache works off files and not directories
     println!("cargo:rerun-if-changed={}", path.display());
   }
 
