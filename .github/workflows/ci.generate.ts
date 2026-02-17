@@ -808,7 +808,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               name: "Build debug",
               if: isDebug,
               run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
-              env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+              env: {
+                CARGO_PROFILE_DEV_DEBUG: 0,
+                CARGO_LOG: "cargo::core::compiler::fingerprint=info",
+              },
             },
             cargoBuildReleaseStep,
             {

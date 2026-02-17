@@ -287,6 +287,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
@@ -952,6 +953,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
@@ -1741,6 +1743,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
@@ -2489,6 +2492,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
@@ -3865,6 +3869,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
@@ -4321,6 +4326,7 @@ jobs:
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CARGO_LOG: 'cargo::core::compiler::fingerprint=info'
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
