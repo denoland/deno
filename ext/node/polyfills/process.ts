@@ -93,6 +93,12 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
+import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+
+let fsUtilsModule: typeof fsUtils;
+const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
 
 const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
 
@@ -884,7 +890,16 @@ process.getBuiltinModule = getBuiltinModule;
 process._eval = undefined;
 
 export function loadEnvFile(path = ".env") {
-  return op_node_load_env_file(path);
+  if (typeof path !== "string") {
+    fsUtilsModule ??= lazyLoadFsUtils();
+    path = fsUtilsModule.getValidatedPathToString(path);
+  }
+
+  try {
+    return op_node_load_env_file(path);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "open", path });
+  }
 }
 
 process.loadEnvFile = loadEnvFile;

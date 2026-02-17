@@ -1562,3 +1562,109 @@ Deno.test({
     assertEquals(process.setuid, undefined);
   },
 });
+
+Deno.test({
+  name: "process.loadEnvFile()",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    const envFilePath = path.join(dirPath, "envfile.env");
+    await Deno.writeTextFile(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with buffer path",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    const envFilePath = path.join(dirPath, "envfile.env");
+    await Deno.writeTextFile(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Buffer.from(Deno.args[0]));
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with non-existent file",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+
+    assert.throws(() => {
+      process.loadEnvFile(Deno.args[0]);
+    }, {
+      code: "ENOENT",
+      syscall: "open",
+      path: Deno.args[0]
+    });
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
