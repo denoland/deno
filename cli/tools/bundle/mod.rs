@@ -1235,6 +1235,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1371,10 +1374,8 @@ impl DenoPluginHandler {
         );
 
         if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
+          log::debug!("data url: {specifier}");
+          return Ok(None);
         }
 
         let (media_type, _) =
