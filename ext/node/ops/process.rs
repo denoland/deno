@@ -14,6 +14,8 @@ use nix::unistd::Uid;
 #[cfg(unix)]
 use nix::unistd::User;
 
+use crate::ExtNodeSys;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]
@@ -264,13 +266,17 @@ pub fn op_node_process_setuid(
 /// This matches Node.js `process.constrainedMemory()` semantics.
 #[op2(fast)]
 #[number]
-pub fn op_node_process_constrained_memory() -> u64 {
+pub fn op_node_process_constrained_memory<TSys: ExtNodeSys + 'static>(
+  state: &mut OpState,
+) -> u64 {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
-    cgroup::cgroup_memory_limit().unwrap_or(0)
+    let sys = state.borrow::<TSys>();
+    cgroup::cgroup_memory_limit(sys).unwrap_or(0)
   }
   #[cfg(not(any(target_os = "android", target_os = "linux")))]
   {
+    let _ = state;
     0
   }
 }
@@ -316,15 +322,18 @@ pub mod cgroup {
 
   /// Read the cgroup memory limit from the filesystem.
   /// Returns `None` if cgroup info cannot be read or parsed.
-  pub fn cgroup_memory_limit() -> Option<u64> {
-    let self_cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+  pub fn cgroup_memory_limit<TSys: sys_traits::FsRead>(
+    sys: &TSys,
+  ) -> Option<u64> {
+    let self_cgroup = sys.fs_read_to_string("/proc/self/cgroup").ok()?;
 
     match parse_self_cgroup(&self_cgroup) {
       CgroupVersion::V1 { cgroup_relpath } => {
         let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
           .join(cgroup_relpath)
           .join("memory.limit_in_bytes");
-        std::fs::read_to_string(limit_path)
+        sys
+          .fs_read_to_string(limit_path)
           .ok()
           .and_then(|s| s.trim().parse::<u64>().ok())
       }
@@ -332,7 +341,8 @@ pub mod cgroup {
         let limit_path = std::path::Path::new("/sys/fs/cgroup")
           .join(cgroup_relpath)
           .join("memory.max");
-        std::fs::read_to_string(limit_path)
+        sys
+          .fs_read_to_string(limit_path)
           .ok()
           .and_then(|s| s.trim().parse::<u64>().ok())
       }
