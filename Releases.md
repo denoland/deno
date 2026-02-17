@@ -8,14 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 2.6.10 / 2026.02.17
 
-- Revert "fix(compile): use SHT_NOTE to prevent `strip` from removing deno
-  compiler data" (#32171)
 - feat(ext/tls): add `SSLKEYLOGFILE` support for TLS key logging (#31867)
 - feat(publish): support more license file types (#32133)
 - feat: add `deno install --compile` (#32046)
 - fix(compile): remove data.is_empty() check (#32125)
-- fix(compile): use SHT_NOTE to prevent `strip` from removing deno compiler data
-  (#32102)
 - fix(deploy): bypass minimumDependencyAge (#32136)
 - fix(ext/napi): don't mark accessor properties as read-only in
   napi_define_class (#32105)
