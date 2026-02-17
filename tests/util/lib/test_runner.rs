@@ -59,33 +59,139 @@ pub fn flaky_test_ci(
   )
 }
 
-struct SingleConcurrencyFlagGuard<'a>(&'a Parallelism);
+/// Coordinates semaphore max adjustments between the memory monitor
+/// and the flaky test single-concurrency mode, preventing race conditions.
+struct ParallelismController {
+  semaphore: Semaphore,
+  max_parallelism: usize,
+  state: Mutex<ControllerState>,
+}
 
-impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
-  fn drop(&mut self) {
-    let mut value = self.0.has_raised_count.lock();
-    *value -= 1;
-    if *value == 0 {
-      self.0.semaphore.set_max(self.0.max_parallelism.get());
+struct ControllerState {
+  single_concurrency_count: usize,
+}
+
+impl ParallelismController {
+  fn new(max: usize) -> Self {
+    Self {
+      semaphore: Semaphore::new(max),
+      max_parallelism: max,
+      state: Mutex::new(ControllerState {
+        single_concurrency_count: 0,
+      }),
+    }
+  }
+
+  fn acquire(&self) -> crate::semaphore::Permit<'_> {
+    self.semaphore.acquire()
+  }
+
+  fn enter_single_concurrency(&self) {
+    let mut state = self.state.lock();
+    if state.single_concurrency_count == 0 {
+      self.semaphore.set_max(1);
+    }
+    state.single_concurrency_count += 1;
+  }
+
+  fn exit_single_concurrency(&self) {
+    let mut state = self.state.lock();
+    state.single_concurrency_count -= 1;
+    if state.single_concurrency_count == 0 {
+      // restore to max_parallelism; if memory is still low the
+      // monitor will re-reduce on its next check
+      self.semaphore.set_max(self.max_parallelism);
+    }
+  }
+
+  /// Try to reduce parallelism by 1 for memory pressure.
+  /// Returns false if single-concurrency mode is active or already at 1.
+  fn try_reduce_for_memory(&self) -> bool {
+    let state = self.state.lock();
+    if state.single_concurrency_count > 0 {
+      return false;
+    }
+    let current = self.semaphore.get_max();
+    if current > 1 {
+      self.semaphore.set_max(current - 1);
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Try to increase parallelism by 1 after memory recovery.
+  /// Returns false if single-concurrency mode is active or already at max.
+  fn try_increase_for_memory(&self) -> bool {
+    let state = self.state.lock();
+    if state.single_concurrency_count > 0 {
+      return false;
+    }
+    let current = self.semaphore.get_max();
+    if current < self.max_parallelism {
+      self.semaphore.set_max(current + 1);
+      true
+    } else {
+      false
     }
   }
 }
 
+struct SingleConcurrencyFlagGuard<'a>(&'a Parallelism);
+
+impl<'a> Drop for SingleConcurrencyFlagGuard<'a> {
+  fn drop(&mut self) {
+    self.0.controller.exit_single_concurrency();
+  }
+}
+
 pub struct Parallelism {
-  semaphore: Semaphore,
+  controller: Arc<ParallelismController>,
   max_parallelism: file_test_runner::Parallelism,
-  has_raised_count: Mutex<usize>,
+  // dropping this shuts down the memory monitor thread
+  _monitor_tx: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl Default for Parallelism {
   fn default() -> Self {
     let parallelism = file_test_runner::Parallelism::default();
+    let controller = Arc::new(ParallelismController::new(parallelism.get()));
+    let monitor_tx = spawn_memory_monitor(controller.clone());
     Self {
-      max_parallelism: Default::default(),
-      semaphore: Semaphore::new(parallelism.get()),
-      has_raised_count: Default::default(),
+      max_parallelism: parallelism,
+      controller,
+      _monitor_tx: monitor_tx,
     }
   }
+}
+
+fn spawn_memory_monitor(
+  controller: Arc<ParallelismController>,
+) -> Option<std::sync::mpsc::Sender<()>> {
+  let info = crate::memory::mem_info()?;
+  let threshold = info.total / 10; // 10% of total memory
+
+  let (tx, rx) = std::sync::mpsc::channel::<()>();
+  #[allow(clippy::disallowed_methods)]
+  std::thread::spawn(move || {
+    loop {
+      match rx.recv_timeout(Duration::from_secs(2)) {
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        // channel closed, exit
+        _ => return,
+      }
+      let Some(current) = crate::memory::mem_info() else {
+        continue;
+      };
+      if current.available < threshold {
+        controller.try_reduce_for_memory();
+      } else {
+        controller.try_increase_for_memory();
+      }
+    }
+  });
+
+  Some(tx)
 }
 
 impl Parallelism {
@@ -94,17 +200,11 @@ impl Parallelism {
   }
 
   fn acquire(&self) -> crate::semaphore::Permit<'_> {
-    self.semaphore.acquire()
+    self.controller.acquire()
   }
 
   fn raise_single_concurrency_flag(&self) -> SingleConcurrencyFlagGuard<'_> {
-    {
-      let mut value = self.has_raised_count.lock();
-      if *value == 0 {
-        self.semaphore.set_max(1);
-      }
-      *value += 1;
-    }
+    self.controller.enter_single_concurrency();
     SingleConcurrencyFlagGuard(self)
   }
 }

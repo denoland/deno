@@ -25,7 +25,7 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
     NpmRegistryKind::Public,
     &format!(
       "http://localhost:{}",
-      crate::servers::PUBLIC_NPM_REGISTRY_PORT
+      crate::consts::PUBLIC_NPM_REGISTRY_PORT
     ),
     "npm",
   )
@@ -37,7 +37,7 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
       NpmRegistryKind::Private,
       &format!(
         "http://localhost:{}",
-        crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
+        crate::consts::PRIVATE_NPM_REGISTRY_1_PORT
       ),
       "npm-private",
     )
@@ -49,7 +49,7 @@ pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
       NpmRegistryKind::Private,
       &format!(
         "http://localhost:{}",
-        crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
+        crate::consts::PRIVATE_NPM_REGISTRY_2_PORT
       ),
       "npm-private2",
     )
@@ -61,7 +61,7 @@ pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
       NpmRegistryKind::Private,
       &format!(
         "http://localhost:{}",
-        crate::servers::PRIVATE_NPM_REGISTRY_3_PORT
+        crate::consts::PRIVATE_NPM_REGISTRY_3_PORT
       ),
       "npm-private3",
     )
@@ -73,7 +73,7 @@ pub static PUBLIC_TEST_NPM_JSR_REGISTRY: Lazy<TestNpmRegistry> =
       NpmRegistryKind::Public,
       &format!(
         "http://localhost:{}",
-        crate::servers::PUBLIC_NPM_JSR_REGISTRY_PORT
+        crate::consts::PUBLIC_NPM_JSR_REGISTRY_PORT
       ),
       "npm-jsr",
     )

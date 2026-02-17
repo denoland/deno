@@ -115,6 +115,14 @@ where
     }
   }
 
+  // prevent OOM from corrupted Content-Length
+  const MAX_LSP_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100 MB
+  if content_length > MAX_LSP_MESSAGE_SIZE {
+    anyhow::bail!(
+      "Content-Length {content_length} exceeds maximum of {MAX_LSP_MESSAGE_SIZE}"
+    );
+  }
+
   let mut msg_buf = vec![0_u8; content_length];
   reader.read_exact(&mut msg_buf)?;
   Ok(Some(msg_buf))
