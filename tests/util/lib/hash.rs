@@ -85,12 +85,15 @@ pub fn should_skip_on_ci(
     return false;
   }
 
+  let start = std::time::Instant::now();
   let hash_path = crate::target_dir()
     .join(format!("{name}_input_hash"))
     .to_path_buf();
   let mut hasher = InputHasher::default();
   configure(&mut hasher);
   let new_hash = hasher.finish().to_string();
+
+  eprintln!("ci hash took {}ms", start.elapsed().as_millis());
 
   if let Ok(old_hash) = std::fs::read_to_string(&hash_path)
     && old_hash.trim() == new_hash
