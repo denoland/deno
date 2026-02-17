@@ -1357,6 +1357,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1372,11 +1375,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          log::debug!("data url: {specifier}");
-          return Ok(None);
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
