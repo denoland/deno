@@ -46,6 +46,69 @@ members = [
   "libs/npm_installer",
   "libs/package_json",
   "libs/resolver",
+  "libs/snapshot_hash",
+  "libs/typescript_go_client",
+  "runtime",
+  "runtime/features",
+  "runtime/permissions",
+  "runtime/subprocess_windows",
+  "tests",
+  "tests/bench_util",
+  "tests/ffi",
+  "tests/napi",
+  "tests/sqlite_extension_test",
+  "tests/util/server",
+  "tests/util/test_macro",
+  "tools/snapshot_generator",
+]
+# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
+# feature, which is incompatible with the "session" feature used by the rest of the workspace.
+exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
+default-members = [
+  "cli",
+  "cli/lib",
+  "cli/rt",
+  "cli/snapshot",
+  "ext/bundle",
+  "ext/cache",
+  "ext/cron",
+  "ext/crypto",
+  "ext/fetch",
+  "ext/ffi",
+  "ext/fs",
+  "ext/http",
+  "ext/image",
+  "ext/io",
+  "ext/kv",
+  "ext/napi",
+  "ext/napi/sym",
+  "ext/net",
+  "ext/node",
+  "ext/node_crypto",
+  "ext/node_sqlite",
+  "ext/rt_helper",
+  "ext/signals",
+  "ext/telemetry",
+  "ext/url",
+  "ext/web",
+  "ext/webgpu",
+  "ext/webidl",
+  "ext/websocket",
+  "ext/webstorage",
+  "libs/config",
+  "libs/crypto",
+  "libs/eszip",
+  "libs/inspector_server",
+  "libs/lockfile",
+  "libs/maybe_sync",
+  "libs/node_resolver",
+  "libs/node_shim",
+  "libs/npm",
+  "libs/npm_cache",
+  "libs/npm_installer",
+  "libs/package_json",
+  "libs/resolver",
+  "libs/snapshot_hash",
   "libs/typescript_go_client",
   "runtime",
   "runtime/features",
@@ -64,9 +127,6 @@ members = [
   "tests/util/server",
   "tests/util/test_macro",
 ]
-# tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
-# feature, which is incompatible with the "session" feature used by the rest of the workspace.
-exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
 
 [workspace.package]
 authors = ["the Deno authors"]
@@ -142,6 +202,7 @@ deno_package_json = { version = "0.33.0", default-features = false, path = "./li
 deno_permissions = { version = "0.90.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.62.0", path = "./libs/resolver" }
 deno_runtime = { version = "0.239.0", path = "./runtime" }
+deno_snapshot_hash = { version = "0.1.0", path = "./libs/snapshot_hash" }
 deno_snapshots = { version = "0.46.0", path = "./cli/snapshot" }
 deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.26.0" }
 deno_typescript_go_client_rust = { version = "0.13.0", path = "./libs/typescript_go_client" }

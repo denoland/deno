@@ -13,8 +13,8 @@ description = "v8 snapshot used by the Deno CLI"
 [lib]
 path = "lib.rs"
 
+[build-dependencies]
+deno_snapshot_hash.workspace = true
+
 [features]
 disable = []
-
-[build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources", "snapshot"] }

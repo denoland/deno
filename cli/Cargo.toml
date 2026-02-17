@@ -44,14 +44,9 @@ lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemet
 panic-trace = ["deno_panic"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-lazy-regex.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+deno_napi.workspace = true
+deno_webgpu.workspace = true
 zstd.workspace = true
-flate2 = { workspace = true, features = ["default"] }
-deno_error.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
