@@ -37,6 +37,7 @@ import {
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
+  NodeTypeError,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
@@ -100,7 +101,11 @@ const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
 );
 
-const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
+const {
+  NumberMAX_SAFE_INTEGER,
+  ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -898,6 +903,12 @@ export function loadEnvFile(path = ".env") {
   try {
     return op_node_load_env_file(path);
   } catch (err) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.InvalidData.prototype, err)) {
+      throw new NodeTypeError(
+        "ERR_INVALID_ARG_TYPE",
+        `Contents of '${path}' should be a valid string.`,
+      );
+    }
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }
 }

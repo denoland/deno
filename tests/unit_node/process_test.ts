@@ -39,6 +39,7 @@ import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
 import { execSync } from "node:child_process";
+import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -1567,9 +1568,9 @@ Deno.test({
   name: "process.loadEnvFile()",
   async fn() {
     const dirPath = Deno.makeTempDirSync();
-    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
     const envFilePath = path.join(dirPath, "envfile.env");
-    await Deno.writeTextFile(envFilePath, envContent);
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
 
     const code = `
     import assert from "node:assert";
@@ -1602,9 +1603,9 @@ Deno.test({
   name: "process.loadEnvFile() with buffer path",
   async fn() {
     const dirPath = Deno.makeTempDirSync();
-    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
     const envFilePath = path.join(dirPath, "envfile.env");
-    await Deno.writeTextFile(envFilePath, envContent);
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
 
     const code = `
     import assert from "node:assert";
@@ -1635,21 +1636,38 @@ Deno.test({
 
 Deno.test({
   name: "process.loadEnvFile() with non-existent file",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        code: "ENOENT",
+        syscall: "open",
+        path: envFilePath,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() trim null characters in env values",
   async fn() {
     const dirPath = Deno.makeTempDirSync();
     const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=f\0oo\nBAR=bar\n";
+    Deno.writeTextFileSync(envFilePath, envContent);
 
     const code = `
     import assert from "node:assert";
     import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
 
-    assert.throws(() => {
-      process.loadEnvFile(Deno.args[0]);
-    }, {
-      code: "ENOENT",
-      syscall: "open",
-      path: Deno.args[0]
-    });
+    assert.strictEqual(process.env.FOO, "f");
+    assert.strictEqual(process.env.BAR, "bar");
     `;
 
     const command = new Deno.Command(Deno.execPath(), {
@@ -1664,6 +1682,27 @@ Deno.test({
     if (exitCode !== 0) {
       console.error("Error output:", stderrStr);
     }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() throws on invalid UTF-8 encoding",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
+    Deno.writeFileSync(envFilePath, contentArray);
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        name: "TypeError",
+        code: "ERR_INVALID_ARG_TYPE",
+        message: `Contents of '${envFilePath}' should be a valid string.`,
+      },
+    );
 
     Deno.removeSync(dirPath, { recursive: true });
   },

@@ -130,6 +130,23 @@ fn op_node_load_env_file(
   let contents = fs::read_to_string(path)?;
 
   parse_env_content_hook(&contents, |key, value| {
+    // Follows Node.js behavior where null bytes are stripped from env keys and values
+    let key = if let Some(null_pos) = key.find('\0') {
+      &key[..null_pos]
+    } else {
+      key
+    };
+
+    if key.is_empty() {
+      return;
+    }
+
+    let value = if let Some(null_pos) = value.find('\0') {
+      &value[..null_pos]
+    } else {
+      value
+    };
+
     #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       env::set_var(key, value);
