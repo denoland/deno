@@ -16,7 +16,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 95;
+const cacheVersion = 96;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -286,7 +286,13 @@ function createRestoreAndSaveCacheSteps(m: {
     uses: "cirruslabs/cache/save@v4",
     with: {
       path,
-      key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
+      // We force saving a new cache on every main run so that PRs can
+      // always be up to date with the freshest information. We do this
+      // unconditionally because we don't want caches that only need updating
+      // occassionally (like the cargo home cache) to be lost over time as
+      // other caches that need to be updated frequently (like the cargo build
+      // cache) get populated and purge old caches.
+      key: `${m.cacheKeyPrefix}-\${{ github.sha }}`,
     },
   });
   return { restoreCacheStep, saveCacheStep };

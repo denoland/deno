@@ -86,8 +86,14 @@ export class TLSSocket extends net.Socket {
   constructor(socket, opts = kEmptyObject) {
     const tlsOptions = { ...opts };
 
-    const hostname = opts.servername ?? opts.host ?? socket?._host ??
+    let hostname = opts.servername ?? opts.host ?? socket?._host ??
       "localhost";
+    // Strip trailing dot from hostname for SNI and certificate verification,
+    // matching Node.js behavior. DNS FQDN trailing dots are valid but must
+    // be normalized for TLS server name matching.
+    if (hostname && hostname.endsWith(".")) {
+      hostname = hostname.slice(0, -1);
+    }
     tlsOptions.hostname = hostname;
 
     const cert = tlsOptions?.secureContext?.cert;
