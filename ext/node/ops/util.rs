@@ -13,6 +13,7 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::ExtNodeSys;
 use crate::NodeResolverRc;
+use crate::ops::dotenv::parse_env_content_hook;
 
 #[repr(u32)]
 enum HandleType {
@@ -257,4 +258,18 @@ pub fn op_node_get_own_non_index_properties<'s>(
     .ok_or_else(|| {
       JsErrorBox::type_error("Failed to get own non-index properties")
     })
+}
+
+#[op2]
+pub fn op_node_parse_env<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[string] content: &str,
+) -> v8::Local<'a, v8::Object> {
+  let env_obj = v8::Object::new(scope);
+  parse_env_content_hook(content, |key, value| {
+    let key = v8::String::new(scope, key).unwrap();
+    let value = v8::String::new(scope, value).unwrap();
+    env_obj.set(scope, key.into(), value.into());
+  });
+  env_obj
 }
