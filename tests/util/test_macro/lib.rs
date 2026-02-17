@@ -30,7 +30,7 @@ fn parse_test_attributes(attr: TokenStream) -> TestAttributes {
     Ok(metas) => metas,
     Err(e) => {
       panic!(
-        "Failed to parse test attributes: {}. Expected format: #[test], #[test(flaky)], or #[test(timeout = 60_000)]",
+        "Failed to parse test attributes: {}. Expected format: #[test], #[test(flaky)], or #[test(timeout = 300)]",
         e
       );
     }

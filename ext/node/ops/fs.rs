@@ -87,7 +87,7 @@ fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
 
 fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   let read = open_options.read;
-  let write = open_options.write || open_options.append;
+  let write = open_options.write || open_options.append || open_options.create;
   match (read, write) {
     (true, true) => OpenAccessKind::ReadWrite,
     (false, true) => OpenAccessKind::Write,
@@ -573,4 +573,37 @@ pub fn op_node_file_from_fd(
     std::io::ErrorKind::Unsupported,
     "op_node_file_from_fd is not supported on this platform",
   )))
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_node_rmdir_sync(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> Result<(), FsError> {
+  let path = state.borrow_mut::<PermissionsContainer>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    Some("node:fs.rmdirSync"),
+  )?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.rmdir_sync(&path)?;
+  Ok(())
+}
+
+#[op2(stack_trace)]
+pub async fn op_node_rmdir(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<(), FsError> {
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state.borrow_mut::<PermissionsContainer>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.rmdir"),
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+  fs.rmdir_async(path.into_owned()).await?;
+  Ok(())
 }
