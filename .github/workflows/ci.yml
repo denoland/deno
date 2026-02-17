@@ -219,7 +219,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-bench-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-bench-${{ github.sha }}'
   build-debug-macos-x86_64:
     name: build debug macos-x86_64
     needs:
@@ -336,7 +336,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-macos-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-macos-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -347,7 +347,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-macos-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-macos-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-macos-x86_64:
     name: 'test ${{ matrix.test_crate }} debug macos-x86_64'
     needs:
@@ -496,7 +496,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-macos-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-macos-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -507,7 +507,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-macos-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-macos-x86_64-debug-test-main-${{ github.sha }}'
   build-release-macos-x86_64:
     name: build release macos-x86_64
     needs:
@@ -1002,7 +1002,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-macos-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-macos-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1013,7 +1013,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-macos-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-macos-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-macos-aarch64:
     name: 'test ${{ matrix.test_crate }} debug macos-aarch64'
     needs:
@@ -1171,7 +1171,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-macos-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-macos-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -1182,7 +1182,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-macos-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-macos-aarch64-debug-test-main-${{ github.sha }}'
   test-libs-debug-macos-aarch64:
     name: test libs debug macos-aarch64
     needs:
@@ -1289,7 +1289,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-macos-aarch64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-macos-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -1300,7 +1300,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-macos-aarch64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-macos-aarch64-debug-test-libs-${{ github.sha }}'
   build-release-macos-aarch64:
     name: build release macos-aarch64
     needs:
@@ -1792,7 +1792,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-windows-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-windows-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1803,7 +1803,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-windows-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-windows-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-windows-x86_64:
     name: 'test ${{ matrix.test_crate }} debug windows-x86_64'
     needs:
@@ -1943,7 +1943,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-windows-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-windows-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -1954,7 +1954,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-windows-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-windows-x86_64-debug-test-main-${{ github.sha }}'
   test-libs-debug-windows-x86_64:
     name: test libs debug windows-x86_64
     needs:
@@ -2038,7 +2038,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-windows-x86_64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-windows-x86_64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2049,7 +2049,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-windows-x86_64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-windows-x86_64-debug-test-libs-${{ github.sha }}'
   build-release-windows-x86_64:
     name: build release windows-x86_64
     needs:
@@ -2541,7 +2541,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-windows-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-windows-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2552,7 +2552,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-windows-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-windows-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-windows-aarch64:
     name: 'test ${{ matrix.test_crate }} debug windows-aarch64'
     needs:
@@ -2692,7 +2692,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-windows-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-windows-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -2703,7 +2703,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-windows-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-windows-aarch64-debug-test-main-${{ github.sha }}'
   build-release-windows-aarch64:
     name: build release windows-aarch64
     needs:
@@ -3379,7 +3379,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -3390,7 +3390,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-x86_64-release-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-x86_64-release-build-main-${{ github.sha }}'
   test-release-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} release linux-x86_64'
     needs:
@@ -3618,7 +3618,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -3629,7 +3629,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-x86_64-release-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-x86_64-release-test-main-${{ github.sha }}'
   wpt-release-linux-x86_64:
     name: wpt release linux-x86_64
     needs:
@@ -3920,7 +3920,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -3931,7 +3931,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-x86_64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} debug linux-x86_64'
     needs:
@@ -4161,7 +4161,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -4172,7 +4172,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-x86_64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-x86_64-debug-test-main-${{ github.sha }}'
   build-libs-debug-linux-x86_64:
     name: build libs debug linux-x86_64
     needs:
@@ -4253,7 +4253,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-x86_64-build-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-x86_64-build-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -4264,7 +4264,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-x86_64-debug-build-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-x86_64-debug-build-libs-${{ github.sha }}'
   build-debug-linux-aarch64:
     name: build debug linux-aarch64
     needs:
@@ -4375,7 +4375,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-aarch64-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -4386,7 +4386,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-aarch64-debug-build-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-linux-aarch64:
     name: 'test ${{ matrix.test_crate }} debug linux-aarch64'
     needs:
@@ -4538,7 +4538,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-aarch64-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-aarch64-test-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''integration'' && github.ref == ''refs/heads/main'''
@@ -4549,7 +4549,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-aarch64-debug-test-main-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-aarch64-debug-test-main-${{ github.sha }}'
   test-libs-debug-linux-aarch64:
     name: test libs debug linux-aarch64
     needs:
@@ -4639,7 +4639,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-linux-aarch64-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-linux-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -4650,7 +4650,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-linux-aarch64-debug-test-libs-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-linux-aarch64-debug-test-libs-${{ github.sha }}'
   build-release-linux-aarch64:
     name: build release linux-aarch64
     needs:
@@ -5256,7 +5256,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '95-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -5267,7 +5267,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '95-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ hashFiles(''Cargo.lock'') }}'
+          key: '95-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
   lint-ci-status:
     name: lint ci status
     needs:
