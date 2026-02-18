@@ -2223,7 +2223,7 @@ Or multiple dependencies at once:
       .arg(lockfile_only_arg())
       .args(default_registry_args())
       .arg(
-        Arg::new("save_exact")
+        Arg::new("save-exact")
           .long("save-exact")
           .alias("exact")
           .help("Save exact version without the caret (^)")
