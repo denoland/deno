@@ -10,7 +10,6 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
-  literal,
   step,
 } from "jsr:@david/gagen@0.2.18";
 
@@ -966,6 +965,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           test_package: tc.package,
           shard_index: i,
           shard_total: total,
+          shard_label: total > 1 ? `(${i + 1}/${total}) ` : "",
         }));
       }),
     });
@@ -985,14 +985,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       jobIdForJob("test"),
       {
         name: `test ${testMatrix.test_crate} ${
-          isSharded.then(
-            literal("(").concat(
-              testMatrix.shard_index.add(1),
-              "/",
-              testMatrix.shard_total,
-              ") ",
-            ),
-          ).else("")
+          isPr.then(testMatrix.shard_label).else("")
         }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
