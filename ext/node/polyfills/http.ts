@@ -756,6 +756,21 @@ class ClientRequest extends OutgoingMessage {
               this.outputData = this._outputDataForRetry;
               this._outputDataForRetry = null;
             }
+            // Restore body data from streaming writes (e.g. pipeline)
+            // that bypassed outputData and went directly to _bodyWriter.
+            if (this._bodyDataForRetry) {
+              for (const entry of this._bodyDataForRetry) {
+                this.outputData.push(entry);
+              }
+              this._bodyDataForRetry = null;
+            }
+            // If the request body was already fully sent (e.g. pipeline
+            // called end()), re-call end() to set up body writer close
+            // logic for the retry attempt.
+            if (this.finished) {
+              this.finished = false;
+              this.end();
+            }
             this.agent.addRequest(this, this._agentOptions);
             return;
           }

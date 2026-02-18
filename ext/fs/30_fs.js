@@ -24,6 +24,8 @@ import {
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
+  op_fs_flock_try_async,
+  op_fs_flock_try_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -707,6 +709,14 @@ class FsFile {
 
   async lock(exclusive = false) {
     await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  tryLockSync(exclusive = false) {
+    return op_fs_flock_try_sync(this.#rid, exclusive);
+  }
+
+  async tryLock(exclusive = false) {
+    return await op_fs_flock_try_async(this.#rid, exclusive);
   }
 
   unlockSync() {

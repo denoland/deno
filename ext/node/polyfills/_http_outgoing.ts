@@ -530,7 +530,13 @@ Object.defineProperties(
       }
 
       const { data, encoding, callback } = this.outputData.shift();
-      const ret = this._writeRaw(data, encoding, callback);
+      this._flushingBuffer = true;
+      let ret;
+      try {
+        ret = this._writeRaw(data, encoding, callback);
+      } finally {
+        this._flushingBuffer = false;
+      }
       if (this.outputData.length > 0) {
         this.once("drain", this._flushBuffer);
       }
@@ -551,6 +557,21 @@ Object.defineProperties(
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       }
       if (data.byteLength > 0) {
+        // Save body data for potential retry on stale keepAlive connections.
+        // Streaming writes (e.g. pipeline) bypass outputData and go directly
+        // to _bodyWriter, so _outputDataForRetry can't capture them.
+        // Skip when _flushingBuffer is true to avoid double-counting data
+        // already captured in _outputDataForRetry.
+        if (this.reusedSocket && !this._flushingBuffer) {
+          if (!this._bodyDataForRetry) {
+            this._bodyDataForRetry = [];
+          }
+          this._bodyDataForRetry.push({
+            data: new Uint8Array(data),
+            encoding: null,
+            callback: null,
+          });
+        }
         this._bodyWriter.ready.then(() => {
           if (this._bodyWriter.desiredSize > 0) {
             this._bodyWriter.write(data).then(() => {

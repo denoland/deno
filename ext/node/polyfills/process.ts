@@ -11,6 +11,7 @@ import {
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
+  op_node_process_constrained_memory,
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
@@ -348,6 +349,10 @@ memoryUsage.rss = function (): number {
 
 export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
+}
+
+export function constrainedMemory(): number {
+  return op_node_process_constrained_memory();
 }
 
 // Returns a negative error code than can be recognized by errnoException
@@ -817,6 +822,7 @@ process.kill = kill;
 
 process.memoryUsage = memoryUsage;
 process.availableMemory = availableMemory;
+process.constrainedMemory = constrainedMemory;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
