@@ -111,14 +111,16 @@ pub fn should_skip_on_ci(
 
   eprintln!("ci hash took {}ms", start.elapsed().as_millis());
 
-  if let Ok(old_hash) = std::fs::read_to_string(&hash_path)
-    && old_hash.trim() == new_hash
-  {
+  let maybe_old_hash = std::fs::read_to_string(&hash_path).ok();
+  let maybe_old_hash = maybe_old_hash.as_ref().map(|h| h.trim());
+  if maybe_old_hash == Some(&new_hash) {
     eprintln!("{name} input hash unchanged ({new_hash}), skipping");
     return true;
   }
 
-  eprintln!("{name} input hash changed, writing new hash ({new_hash})");
+  eprintln!(
+    "{name} input hash changed from {maybe_old_hash:?}, writing new hash ({new_hash})"
+  );
   std::fs::write(&hash_path, &new_hash).ok();
   false
 }

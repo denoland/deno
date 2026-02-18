@@ -16,7 +16,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 96;
+const cacheVersion = 97;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -360,7 +360,9 @@ function createCacheSteps(m: {
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
-      buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+      // todo(THIS PR): commented out to test
+      // buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+      buildCacheSteps.saveCacheStep,
     ),
   };
 }
@@ -961,19 +963,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         test_package: tc.package,
       })),
     });
+    const testCrateNameExpr = testMatrix.test_crate;
     const {
       restoreCacheStep,
       saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      cachePrefix: "test-main",
+      cachePrefix: `test-${testCrateNameExpr}`,
     });
-    const testCrateNameExpr = testMatrix.test_crate;
-    // unit_node runs the fastest, so spend the time building
-    // the caches on that run
-    const shouldSaveCache = buildItem.save_cache.and(
-      testCrateNameExpr.equals("unit_node"),
-    );
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
@@ -1035,26 +1032,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: "cargo build --release -p test_ffi",
           },
           {
-            name: "Build caches (debug)",
-            if: isDebug.and(shouldSaveCache),
-            run: `cargo test --no-run ${
-              testCrates.map((c) => `-p ${c.package}`).join(" ")
-            }`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-          },
-          {
             name: "Test (debug)",
             if: isDebug,
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-          },
-          {
-            name: "Build caches (release)",
-            if: isRelease.and(shouldSaveCache),
-            run: `cargo test --no-run ${
-              testCrates.map((c) => `-p ${c.package}`).join(" ")
-            } --release`,
           },
           {
             name: "Test (release)",
@@ -1088,7 +1070,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               path: `target/test_results_${testMatrix.test_crate}.json`,
             },
           }),
-          saveCacheStep.if(shouldSaveCache),
+          saveCacheStep.if(buildItem.save_cache),
         ),
       },
     ));
