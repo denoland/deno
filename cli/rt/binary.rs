@@ -189,8 +189,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
   #[cfg(target_os = "macos")]
   {
     #[allow(clippy::disallowed_types)]
-    sys_traits::impls::RealSys
-      .env_home_dir()
+    sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
       .map(|h| h.join("Library").join("Application Support"))
   }
   #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -199,8 +198,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
       .map(PathBuf::from)
       .or_else(|| {
         #[allow(clippy::disallowed_types)]
-        sys_traits::impls::RealSys
-          .env_home_dir()
+        sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
           .map(|h| h.join(".local").join("share"))
       })
   }
