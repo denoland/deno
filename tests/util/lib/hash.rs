@@ -73,7 +73,7 @@ fn collect_entries_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
     };
     if file_type.is_dir() {
       collect_entries_recursive(&entry.path(), out);
-    } else if !file_type.is_symlink() {
+    } else {
       out.push(entry.path());
     }
   }
