@@ -42,6 +42,7 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
 use crate::lsp::urls::uri_to_url;
+use crate::tsc::IGNORED_DIAGNOSTIC_CODES;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -990,8 +991,8 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::DocumentDiagnosticReport, AnyError> {
-    self
-      .request(
+    let mut report = self
+      .request::<lsp::DocumentDiagnosticReport>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDiagnostics".to_string(),
           args: json!([&module.uri]),
@@ -1001,7 +1002,16 @@ impl TsGoServer {
         snapshot,
         token,
       )
-      .await
+      .await?;
+    if let lsp::DocumentDiagnosticReport::Full(report) = &mut report {
+      report.full_document_diagnostic_report.items.retain(|diagnostic| {
+        let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code else {
+          return true;
+        };
+        !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
+      });
+    }
+    Ok(report)
   }
 
   pub async fn provide_references(
