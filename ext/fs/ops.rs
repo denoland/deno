@@ -1788,7 +1788,7 @@ pub fn op_fs_flock_try_sync(
   Ok(file.try_lock_sync(exclusive)?)
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_flock_try_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
