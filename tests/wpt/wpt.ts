@@ -33,6 +33,7 @@ import {
   rest,
   runGitDiff,
   runPy,
+  shouldSkipOnCi,
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
@@ -96,6 +97,7 @@ switch (command) {
   case "run":
     await checkPy3Available();
     await cargoBuild();
+    if (await shouldSkipOnCi()) break;
     await run();
     break;
 

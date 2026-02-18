@@ -275,3 +275,143 @@ export async function verifyVersion(toolName, toolPath) {
     return false;
   }
 }
+
+/// INPUT HASHING
+
+/** A streaming hasher for computing a combined hash of multiple inputs.
+ * Mirrors the Rust InputHasher API in tests/util/lib/hash.rs. */
+export class InputHasher {
+  #digestStream;
+  #writer;
+  #encoder = new TextEncoder();
+
+  constructor() {
+    this.#digestStream = new crypto.DigestStream("SHA-256");
+    this.#writer = this.#digestStream.getWriter();
+  }
+
+  /** Create a hasher pre-seeded with the current CLI args. */
+  static newWithCliArgs() {
+    const hasher = new InputHasher();
+    for (const arg of Deno.args) {
+      hasher.writeSync(arg);
+    }
+    return hasher;
+  }
+
+  /** Write raw string data into the hash. */
+  writeSync(data) {
+    this.#writer.write(this.#encoder.encode(data));
+  }
+
+  /** Hash a single file's contents (streamed). Skips if file doesn't exist. */
+  async hashFile(path) {
+    try {
+      const file = await Deno.open(path);
+      for await (const chunk of file.readable) {
+        await this.#writer.write(chunk);
+      }
+    } catch {
+      // skip if file doesn't exist
+    }
+    return this;
+  }
+
+  /** Recursively hash all file contents in a directory (sorted for
+   * determinism). Skips if directory doesn't exist. */
+  async hashDir(path) {
+    const entries = [];
+    collectEntriesRecursive(path, entries);
+    entries.sort();
+    for (const entryPath of entries) {
+      // hash the relative path for determinism
+      if (entryPath.startsWith(path)) {
+        this.writeSync(entryPath.slice(path.length));
+      }
+      try {
+        const file = await Deno.open(entryPath);
+        for await (const chunk of file.readable) {
+          await this.#writer.write(chunk);
+        }
+      } catch {
+        // skip unreadable files
+      }
+    }
+    return this;
+  }
+
+  /** Finalize the hash and return a hex string. */
+  async finish() {
+    await this.#writer.close();
+    const digest = new Uint8Array(await this.#digestStream.digest);
+    return Array.from(digest)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+}
+
+function collectEntriesRecursive(dir, out) {
+  let entries;
+  try {
+    entries = Deno.readDirSync(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory) {
+      collectEntriesRecursive(fullPath, out);
+    } else {
+      out.push(fullPath);
+    }
+  }
+}
+
+/**
+ * Check if tests can be skipped on CI by comparing input hashes.
+ *
+ * `name` is used for the hash file name and log messages (e.g. "wpt").
+ * `targetDir` is where the hash file is stored (e.g. target/debug).
+ * `configure` receives an InputHasher to add whatever files/dirs are relevant.
+ *
+ * Returns true if the hash is unchanged and tests should be skipped.
+ */
+export async function shouldSkipOnCi(name, targetDir, configure) {
+  if (!Deno.env.get("CI")) {
+    return false;
+  }
+
+  const start = performance.now();
+  const hashPath = join(targetDir, `${name}_input_hash`);
+
+  const hasher = InputHasher.newWithCliArgs();
+  await configure(hasher);
+  const newHash = await hasher.finish();
+
+  const elapsed = Math.round(performance.now() - start);
+  console.log(`ci hash took ${elapsed}ms`);
+
+  let oldHash;
+  try {
+    oldHash = (await Deno.readTextFile(hashPath)).trim();
+  } catch {
+    // file doesn't exist yet
+  }
+
+  if (oldHash === newHash) {
+    console.log(`${name} input hash unchanged (${newHash}), skipping`);
+    return true;
+  }
+
+  console.log(
+    `${name} input hash changed from ${
+      oldHash ?? "none"
+    }, writing new hash (${newHash})`,
+  );
+  try {
+    await Deno.writeTextFile(hashPath, newHash);
+  } catch {
+    // ignore write errors
+  }
+  return false;
+}
