@@ -149,7 +149,7 @@ mod npm {
     npm_url: Url,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
-    let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
+    let url = npm_url.join("-/npm/v1/security/audits").unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
     let json_str = http_util::body_to_string(response)

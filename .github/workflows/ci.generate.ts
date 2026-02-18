@@ -16,7 +16,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 95;
+const cacheVersion = 96;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -286,7 +286,13 @@ function createRestoreAndSaveCacheSteps(m: {
     uses: "cirruslabs/cache/save@v4",
     with: {
       path,
-      key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
+      // We force saving a new cache on every main run so that PRs can
+      // always be up to date with the freshest information. We do this
+      // unconditionally because we don't want caches that only need updating
+      // occassionally (like the cargo home cache) to be lost over time as
+      // other caches that need to be updated frequently (like the cargo build
+      // cache) get populated and purge old caches.
+      key: `${m.cacheKeyPrefix}-\${{ github.sha }}`,
     },
   });
   return { restoreCacheStep, saveCacheStep };
@@ -763,8 +769,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             sysRootStep,
           )(
             {
+              // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
-              if: isMainBranch,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
             {
@@ -955,14 +961,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         test_package: tc.package,
       })),
     });
+    const testCrateNameExpr = testMatrix.test_crate;
     const {
       restoreCacheStep,
       saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      cachePrefix: "test-main",
+      cachePrefix: `test-${testCrateNameExpr}`,
     });
-    const testCrateNameExpr = testMatrix.test_crate;
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
@@ -1025,7 +1031,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           {
             name: "Test (debug)",
-            // run full tests only on Linux
             if: isDebug,
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
@@ -1063,9 +1068,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               path: `target/test_results_${testMatrix.test_crate}.json`,
             },
           }),
-          saveCacheStep.if(buildItem.save_cache
-            // only bother saving for the integration test job because it builds the most
-            .and(testCrateNameExpr.equals("integration"))),
+          saveCacheStep.if(buildItem.save_cache),
         ),
       },
     ));

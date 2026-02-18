@@ -983,7 +983,6 @@
           "node-globals",
           "raw-imports",
           "sloppy-imports",
-          "temporal",
           "unsafe-proto",
           "webgpu",
           "worker-options"

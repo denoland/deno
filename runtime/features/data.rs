@@ -160,7 +160,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "temporal",
     help_text: "Enable unstable Temporal API",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     env_var: None,
   },
