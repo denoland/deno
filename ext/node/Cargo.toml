@@ -36,7 +36,6 @@ deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
-deno_task_shell.workspace = true
 deno_tls.workspace = true
 deno_whoami.workspace = true
 dotenvy.workspace = true
