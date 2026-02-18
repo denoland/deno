@@ -1036,6 +1036,39 @@ impl crate::fs::File for StdFileResourceInner {
       .await
   }
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self.with_sync(|file| {
+      let result = if exclusive {
+        file.try_lock()
+      } else {
+        file.try_lock_shared()
+      };
+      match result {
+        Ok(()) => Ok(true),
+        Err(TryLockError::WouldBlock) => Ok(false),
+        Err(TryLockError::Error(err)) => Err(err.into()),
+      }
+    })
+  }
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self
+      .with_inner_blocking_task(move |file| {
+        let result = if exclusive {
+          file.try_lock()
+        } else {
+          file.try_lock_shared()
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(TryLockError::WouldBlock) => Ok(false),
+          Err(TryLockError::Error(err)) => Err(err.into()),
+        }
+      })
+      .await
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
   }
