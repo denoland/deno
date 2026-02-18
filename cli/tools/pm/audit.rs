@@ -322,37 +322,28 @@ mod npm {
     let mut advisories = response.advisories.values().collect::<Vec<_>>();
 
     // Filter out ignored CVEs
-    let ignore_cves = &audit_flags.ignore;
-    if !ignore_cves.is_empty() {
+    if !audit_flags.ignore.is_empty() {
       advisories.retain(|adv| {
-        !adv.cves.iter().any(|cve| ignore_cves.contains(cve))
+        !adv.cves.iter().any(|cve| audit_flags.ignore.contains(cve))
       });
     }
 
-    // Recompute vulnerability counts from remaining advisories
-    let vulns = if !ignore_cves.is_empty() {
-      let mut low = 0;
-      let mut moderate = 0;
-      let mut high = 0;
-      let mut critical = 0;
-      for adv in &advisories {
-        match AdvisorySeverity::parse(&adv.severity) {
-          Some(AdvisorySeverity::Low) => low += 1,
-          Some(AdvisorySeverity::Moderate) => moderate += 1,
-          Some(AdvisorySeverity::High) => high += 1,
-          Some(AdvisorySeverity::Critical) => critical += 1,
-          None => {}
-        }
-      }
-      AuditVulnerabilities {
-        low,
-        moderate,
-        high,
-        critical,
-      }
-    } else {
-      response.metadata.vulnerabilities
+    // Compute vulnerability counts from remaining advisories
+    let mut vulns = AuditVulnerabilities {
+      low: 0,
+      moderate: 0,
+      high: 0,
+      critical: 0,
     };
+    for adv in &advisories {
+      match AdvisorySeverity::parse(&adv.severity) {
+        Some(AdvisorySeverity::Low) => vulns.low += 1,
+        Some(AdvisorySeverity::Moderate) => vulns.moderate += 1,
+        Some(AdvisorySeverity::High) => vulns.high += 1,
+        Some(AdvisorySeverity::Critical) => vulns.critical += 1,
+        None => {}
+      }
+    }
 
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
