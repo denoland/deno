@@ -16,6 +16,7 @@ export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
 export { parse as parseJSONC } from "@std/jsonc/parse";
+import { createHash } from "node:crypto";
 
 // [toolName] --version output
 const versions = {
@@ -281,13 +282,10 @@ export async function verifyVersion(toolName, toolPath) {
 /** A streaming hasher for computing a combined hash of multiple inputs.
  * Mirrors the Rust InputHasher API in tests/util/lib/hash.rs. */
 export class InputHasher {
-  #digestStream;
-  #writer;
-  #encoder = new TextEncoder();
+  #hash;
 
   constructor() {
-    this.#digestStream = new crypto.DigestStream("SHA-256");
-    this.#writer = this.#digestStream.getWriter();
+    this.#hash = createHash("sha256");
   }
 
   /** Create a hasher pre-seeded with the current CLI args. */
@@ -301,7 +299,7 @@ export class InputHasher {
 
   /** Write raw string data into the hash. */
   writeSync(data) {
-    this.#writer.write(this.#encoder.encode(data));
+    this.#hash.update(data);
   }
 
   /** Hash a single file's contents (streamed). Skips if file doesn't exist. */
@@ -309,7 +307,7 @@ export class InputHasher {
     try {
       const file = await Deno.open(path);
       for await (const chunk of file.readable) {
-        await this.#writer.write(chunk);
+        this.#hash.update(chunk);
       }
     } catch {
       // skip if file doesn't exist
@@ -331,7 +329,7 @@ export class InputHasher {
       try {
         const file = await Deno.open(entryPath);
         for await (const chunk of file.readable) {
-          await this.#writer.write(chunk);
+          this.#hash.update(chunk);
         }
       } catch {
         // skip unreadable files
@@ -341,12 +339,8 @@ export class InputHasher {
   }
 
   /** Finalize the hash and return a hex string. */
-  async finish() {
-    await this.#writer.close();
-    const digest = new Uint8Array(await this.#digestStream.digest);
-    return Array.from(digest)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+  finish() {
+    return this.#hash.digest("hex");
   }
 }
 
