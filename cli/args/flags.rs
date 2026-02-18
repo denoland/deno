@@ -2786,7 +2786,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(
         Arg::new("self-extracting")
           .long("self-extracting")
-          .help("Create a self-extracting binary that extracts the embedded file system to disk at runtime")
+          .help("Create a self-extracting binary that extracts the embedded file system on first run")
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
