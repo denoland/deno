@@ -977,15 +977,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       ...buildItem,
       cachePrefix: `test-${testCrateNameExpr}`,
     });
-    // shard_index > 0 jobs only run on PRs (main runs unsharded for full timing data)
+    // shard_index > 0 jobs only run on PRs (main runs unsharded)
     const isShardZero = testMatrix.shard_index.equals(0);
-    const shardCondition = isShardZero.or(isPr);
-    const isSharded = testMatrix.shard_total.notEquals(1);
+    const shouldRunShard = isShardZero.or(isPr);
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
         name: `test ${testMatrix.test_crate} ${
-          isPr.then(testMatrix.shard_label).else("")
+          shouldRunShard.then(testMatrix.shard_label).else("")
         }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
@@ -996,7 +995,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           matrix: testMatrix,
           failFast: false,
         },
-        steps: step.if(isNotTag.and(buildItem.skip.not()).and(shardCondition))(
+        steps: step.if(isNotTag.and(buildItem.skip.not()).and(shouldRunShard))(
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
@@ -1017,17 +1016,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               .or(testCrateNameExpr.equals("unit"))
               .or(testCrateNameExpr.equals("unit_node")),
           ),
-          {
-            name: "Download timing data",
-            if: isPr.and(isSharded),
-            env: { GH_TOKEN: "${{ github.token }}" },
-            run: [
-              "gh run download --repo ${{ github.repository }} \\",
-              `  --branch main \\`,
-              `  --name test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard-0.json \\`,
-              "  --dir target/ || true",
-            ],
-          },
           {
             name: "Set up playwright cache",
             uses: "actions/cache@v5",
@@ -1090,16 +1078,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "fi",
             ],
           },
-          step.dependsOn(installDenoStep)({
-            name: "Upload test results",
-            uses: "actions/upload-artifact@v6",
-            if: conditions.status.always().and(isNotTag),
-            with: {
-              name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard-${testMatrix.shard_index}.json`,
-              path: `target/test_results_${testMatrix.test_crate}*.json`,
-            },
-          }),
           saveCacheStep.if(buildItem.save_cache),
         ),
       },

@@ -99,11 +99,7 @@ pub fn main() {
 
   let main_category =
     if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
-      test_util::test_runner::filter_to_shard(
-        main_category,
-        &shard,
-        "integration",
-      )
+      test_util::test_runner::filter_to_shard(main_category, &shard)
     } else {
       main_category
     };

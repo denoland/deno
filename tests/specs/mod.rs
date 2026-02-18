@@ -275,7 +275,7 @@ pub fn main() {
 
   let root_category =
     if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
-      test_util::test_runner::filter_to_shard(root_category, &shard, "specs")
+      test_util::test_runner::filter_to_shard(root_category, &shard)
     } else {
       root_category
     };

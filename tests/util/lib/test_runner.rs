@@ -16,7 +16,6 @@ use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
-use serde::Deserialize;
 use serde::Serialize;
 
 use crate::IS_CI;
@@ -42,21 +41,14 @@ impl ShardConfig {
 }
 
 /// Filter a collected test category to only include tests assigned to this shard.
-/// Uses timing data from previous runs for balanced bin-packing, falling back
-/// to round-robin when no timing data is available.
+/// Uses round-robin distribution by sorted test name.
 pub fn filter_to_shard<T>(
   category: CollectedTestCategory<T>,
   shard: &ShardConfig,
-  test_module_name: &str,
 ) -> CollectedTestCategory<T> {
   let all_names = collect_test_names(&category);
 
-  let timing_path = crate::target_dir()
-    .join(format!("test_results_{test_module_name}.json"))
-    .to_path_buf();
-  let timings = load_timing_data(&timing_path);
-
-  let my_tests = assign_shard_tests(&all_names, shard, &timings);
+  let my_tests = assign_shard_tests(&all_names, shard);
 
   let total_count = all_names.len();
   let shard_count = my_tests.len();
@@ -84,72 +76,19 @@ fn collect_test_names<T>(category: &CollectedTestCategory<T>) -> Vec<String> {
   names
 }
 
-fn load_timing_data(path: &std::path::Path) -> HashMap<String, f64> {
-  let content = match std::fs::read_to_string(path) {
-    Ok(c) => c,
-    Err(_) => return HashMap::new(),
-  };
-  #[derive(Deserialize)]
-  struct TimingReport {
-    tests: Vec<TimingEntry>,
-  }
-  #[derive(Deserialize)]
-  struct TimingEntry {
-    name: String,
-    duration: Option<f64>,
-  }
-
-  match serde_json::from_str::<TimingReport>(&content) {
-    Ok(report) => report
-      .tests
-      .into_iter()
-      .filter_map(|t| t.duration.map(|d| (t.name, d)))
-      .collect(),
-    Err(_) => HashMap::new(),
-  }
-}
-
 fn assign_shard_tests(
   all_names: &[String],
   shard: &ShardConfig,
-  timings: &HashMap<String, f64>,
 ) -> HashSet<String> {
-  if timings.is_empty() {
-    // round-robin fallback: distribute by sorted name index
-    let mut sorted: Vec<_> = all_names.to_vec();
-    sorted.sort();
-    return sorted
-      .into_iter()
-      .enumerate()
-      .filter(|(i, _)| i % shard.total == shard.index)
-      .map(|(_, name)| name)
-      .collect();
-  }
-
-  // greedy bin-packing: longest-first, assign to lightest shard
-  let median = 1000.0; // 1s default for unknown tests
-  let mut tests_with_duration: Vec<_> = all_names
-    .iter()
-    .map(|name| (name.clone(), timings.get(name).copied().unwrap_or(median)))
-    .collect();
-  tests_with_duration.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
-  let mut shard_loads = vec![0.0f64; shard.total];
-  let mut assignments: Vec<HashSet<String>> =
-    (0..shard.total).map(|_| HashSet::new()).collect();
-
-  for (name, duration) in tests_with_duration {
-    let lightest = shard_loads
-      .iter()
-      .enumerate()
-      .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-      .unwrap()
-      .0;
-    shard_loads[lightest] += duration;
-    assignments[lightest].insert(name);
-  }
-
-  assignments.into_iter().nth(shard.index).unwrap_or_default()
+  // round-robin: distribute by sorted name index
+  let mut sorted: Vec<_> = all_names.to_vec();
+  sorted.sort();
+  sorted
+    .into_iter()
+    .enumerate()
+    .filter(|(i, _)| i % shard.total == shard.index)
+    .map(|(_, name)| name)
+    .collect()
 }
 
 /// Tracks the number of times each test has been flaky
