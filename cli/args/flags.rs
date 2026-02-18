@@ -3338,12 +3338,16 @@ fn create_subcommand() -> Command {
   .defer(|cmd| {
     cmd
       .arg(
-        Arg::new("args")
+        Arg::new("package")
           .required_unless_present("help")
-          .num_args(1..)
+          .value_name("PACKAGE"),
+      )
+      .arg(
+        Arg::new("package_args")
+          .num_args(0..)
           .action(ArgAction::Append)
-          .value_name("PACKAGE_AND_ARGS")
-          .trailing_var_arg(true),
+          .value_name("ARGS")
+          .last(true),
       )
       .arg(
         Arg::new("npm")
@@ -6399,10 +6403,13 @@ fn create_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> Result<(), clap::Error> {
-  let mut args = matches.remove_many::<String>("args").unwrap();
-  let package = args.next().unwrap();
-  let package_args = args.collect::<Vec<_>>();
-  let package = normalize_create_package_name(package)?;
+  let package = matches.remove_one::<String>("package").unwrap();
+  let use_npm = matches.get_flag("npm");
+  let package_args = matches
+    .remove_many::<String>("package_args")
+    .map(|args| args.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let package = normalize_create_package_name(package, use_npm)?;
 
   // `create` is a thin alias to init's package-generator path, not template mode.
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -6420,6 +6427,7 @@ fn create_parse(
 
 fn normalize_create_package_name(
   package: String,
+  allow_unprefixed: bool,
 ) -> Result<String, clap::Error> {
   if package.starts_with("jsr:") {
     return Err(clap::Error::raw(
@@ -6436,7 +6444,16 @@ fn normalize_create_package_name(
     ));
   }
 
-  Ok(format!("npm:{name}"))
+  if package.starts_with("npm:") {
+    Ok(package)
+  } else if allow_unprefixed {
+    Ok(format!("npm:{package}"))
+  } else {
+    Err(clap::Error::raw(
+      clap::error::ErrorKind::InvalidValue,
+      "Missing `npm:` prefix. For example: `deno create npm:vite`.",
+    ))
+  }
 }
 
 fn info_parse(
@@ -13223,23 +13240,13 @@ mod tests {
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "create", "vite"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("npm:vite".to_string()),
-          package_args: vec![],
-          dir: None,
-          lib: false,
-          serve: false,
-          empty: false,
-          yes: false,
-        }),
-        ..Flags::default()
-      }
-    );
+    assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "create", "npm:vite", "my-project"]);
+    assert!(r.is_err());
+
+    let r =
+      flags_from_vec(svec!["deno", "create", "npm:vite", "--", "my-project"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -13273,24 +13280,11 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "create", "--npm", "npm:vite"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("npm:vite".to_string()),
-          package_args: vec![],
-          dir: None,
-          lib: false,
-          serve: false,
-          empty: false,
-          yes: false,
-        }),
-        ..Flags::default()
-      }
-    );
+    let r =
+      flags_from_vec(svec!["deno", "create", "--npm", "vite", "my-project"]);
+    assert!(r.is_err());
 
-    let r = flags_from_vec(svec!["deno", "create", "--yes", "--npm", "vite"]);
+    let r = flags_from_vec(svec!["deno", "create", "--yes", "npm:vite"]);
     assert_eq!(
       r.unwrap(),
       Flags {
