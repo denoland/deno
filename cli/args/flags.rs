@@ -118,6 +118,7 @@ pub struct AddFlags {
   pub dev: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
+  pub save_exact: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -312,6 +313,7 @@ pub struct InstallFlagsGlobal {
   pub name: Option<String>,
   pub root: Option<String>,
   pub force: bool,
+  pub compile: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -555,6 +557,7 @@ pub struct UpgradeFlags {
   pub version: Option<String>,
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
+  pub checksum: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1551,6 +1554,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "SSLKEYLOGFILE",
+    description: "Write TLS session keys to the specified file in NSS Key Log format\nfor debugging encrypted traffic with tools like Wireshark.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_TRUST_PROXY_HEADERS",
     description: "If specified, removes X-deno-client-address header when serving HTTP.",
     example: None,
@@ -2214,6 +2222,13 @@ Or multiple dependencies at once:
       .args(lock_args())
       .arg(lockfile_only_arg())
       .args(default_registry_args())
+      .arg(
+        Arg::new("save-exact")
+          .long("save-exact")
+          .alias("exact")
+          .help("Save exact version without the caret (^)")
+          .action(ArgAction::SetTrue),
+      )
   })
 }
 
@@ -2305,6 +2320,13 @@ Don't error if the audit data can't be retrieved from the registry
           .long("ignore-registry-errors")
           .help("Return exit code 0 if remote service(s) responds with an error.")
           .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .help("Ignore advisories matching the given CVE IDs")
+          .action(ArgAction::Append)
+          .value_name("CVE")
       )
   })
 }
@@ -3427,6 +3449,13 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .action(ArgAction::SetTrue),
         )
         .arg(
+          Arg::new("compile")
+            .long("compile")
+            .requires("global")
+            .help("Install the script as a compiled executable")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("global")
             .long("global")
             .short('g')
@@ -3444,6 +3473,15 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
+        .arg(
+          Arg::new("save-exact")
+            .long("save-exact")
+            .alias("exact")
+            .help("Save exact version without the caret (^)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("entrypoint")
+            .conflicts_with("global"),
+        )
         .arg(lockfile_only_arg().conflicts_with("global"))
     })
 }
@@ -3985,7 +4023,7 @@ fn run_subcommand() -> Command {
   run_args(command("run", cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
 By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
-  <p(245)>deno run https://examples.deno.land/hello-world.ts</>
+  <p(245)>deno run https://docs.deno.com/hello_world.ts</>
 
 Grant permission to read from disk and listen to network:
   <p(245)>deno run --allow-read --allow-net jsr:@std/http/file-server</>
@@ -3997,7 +4035,7 @@ Grant all permissions:
   <p(245)>deno run -A jsr:@std/http/file-server</>
 
 Specifying the filename '-' to read the file from stdin.
-  <p(245)>curl https://examples.deno.land/hello-world.ts | deno run -</>
+  <p(245)>curl https://docs.deno.com/hello_world.ts | deno run -</>
 
 <y>Read more:</> <c>https://docs.deno.com/go/run</>"), UnstableArgsConfig::ResolutionAndRuntime), false)
 }
@@ -4432,6 +4470,13 @@ update to a different location, use the <c>--output</> flag:
           .action(ArgAction::Append)
           .trailing_var_arg(true),
       )
+      .arg(
+        Arg::new("checksum")
+          .long("checksum")
+          .help("Verify the downloaded archive against the provided SHA256 checksum")
+          .value_parser(value_parser!(String))
+          .help_heading(UPGRADE_HEADING),
+      )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
   })
@@ -4574,7 +4619,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -4997,7 +5042,7 @@ fn allow_import_arg() -> Arg {
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
     .help(cstr!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }
@@ -5741,7 +5786,10 @@ fn audit_parse(
   let dev = true;
   let prod = true;
   let optional = true;
-  let ignore = vec![];
+  let ignore = matches
+    .remove_many::<String>("ignore")
+    .map(|v| v.collect())
+    .unwrap_or_default();
 
   flags.subcommand = DenoSubcommand::Audit(AuditFlags {
     severity,
@@ -5786,6 +5834,7 @@ fn add_parse_inner(
     dev,
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
+    save_exact: matches.get_flag("save-exact"),
   }
 }
 
@@ -6348,6 +6397,7 @@ fn install_parse(
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
+    let compile = matches.get_flag("compile");
     let name = matches.remove_one::<String>("name");
     let module_urls = matches
       .remove_many::<String>("cmd")
@@ -6368,6 +6418,20 @@ fn install_parse(
       ));
     }
 
+    if compile && module_urls.len() > 1 {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        format!(
+          "Cannot compile multiple packages ({}).",
+          module_urls.join(", ")
+        ),
+      ));
+    }
+
+    if compile {
+      flags.type_check_mode = TypeCheckMode::Local;
+    }
+
     flags.subcommand =
       DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
         name,
@@ -6375,6 +6439,7 @@ fn install_parse(
         args,
         root,
         force,
+        compile,
       }));
 
     return Ok(());
@@ -6844,7 +6909,25 @@ function _clap_dynamic_completer_NAME() {
   )}")
 
   if [[ -n $completions ]]; then
-      _describe -V 'values' completions -o nosort
+      local -a dirs=()
+      local -a other=()
+      local completion
+      for completion in $completions; do
+          local value="${completion%%:*}"
+          if [[ "$value" == */ ]]; then
+              local dir_no_slash="${value%/}"
+              if [[ "$completion" == *:* ]]; then
+                  local desc="${completion#*:}"
+                  dirs+=("$dir_no_slash:$desc")
+              else
+                  dirs+=("$dir_no_slash")
+              fi
+          else
+              other+=("$completion")
+          fi
+      done
+      [[ -n $dirs ]] && _describe -V 'values' dirs -o nosort -S '/' -r '/'
+      [[ -n $other ]] && _describe -V 'values' other -o nosort
   fi
 }
 
@@ -7003,6 +7086,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let output = matches.remove_one::<String>("output");
   let version_or_hash_or_channel =
     matches.remove_one::<String>("version-or-hash-or-channel");
+  let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -7011,6 +7095,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     version,
     output,
     version_or_hash_or_channel,
+    checksum,
   });
 }
 
@@ -7710,6 +7795,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -7730,6 +7816,7 @@ mod tests {
           version: None,
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -9490,7 +9577,7 @@ mod tests {
   #[test]
   fn repl_with_eval_file_flag() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://examples.deno.land/hello-world.ts"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://docs.deno.com/hello_world.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9498,7 +9585,7 @@ mod tests {
           eval_files: Some(vec![
             "./a.js".to_string(),
             "./b.ts".to_string(),
-            "https://examples.deno.land/hello-world.ts".to_string()
+            "https://docs.deno.com/hello_world.ts".to_string()
           ]),
           eval: None,
           is_default_command: false,
@@ -10419,6 +10506,7 @@ mod tests {
             args: vec![],
             root: None,
             force: false,
+            compile: false,
           }
         ),),
         ..Flags::default()
@@ -10441,6 +10529,7 @@ mod tests {
             args: vec![],
             root: None,
             force: false,
+            compile: false,
           }
         ),),
         ..Flags::default()
@@ -10462,6 +10551,7 @@ mod tests {
             args: svec!["foo", "bar"],
             root: Some("/foo".to_string()),
             force: true,
+            compile: false,
           }
         ),),
         import_map_path: Some("import_map.json".to_string()),
@@ -11764,6 +11854,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -11785,6 +11876,7 @@ mod tests {
           version: None,
           output: None,
           version_or_hash_or_channel: None,
+          checksum: None,
         }),
         ..Flags::default()
       }
@@ -13238,6 +13330,7 @@ mod tests {
             dev: false, // default is false
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           })
         );
       }
@@ -13255,6 +13348,7 @@ mod tests {
           dev: false,
           default_registry: None,
           lockfile_only: true,
+          save_exact: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -13268,6 +13362,7 @@ mod tests {
             dev: true,
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13280,6 +13375,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13292,6 +13388,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }

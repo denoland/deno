@@ -105,6 +105,7 @@ fn op_register_test(
   #[smi] line_number: u32,
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
+  sanitize_only: bool,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -119,6 +120,7 @@ fn op_register_test(
     name,
     ignore,
     only,
+    sanitize_only,
     sanitize_ops,
     sanitize_resources,
     origin: origin.clone(),
@@ -130,7 +132,7 @@ fn op_register_test(
   };
   state
     .borrow_mut::<TestContainer>()
-    .register(description, function);
+    .register(description, function)?;
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
   Ok(())
 }

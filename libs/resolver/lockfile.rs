@@ -454,6 +454,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           Some((key, value))
         }))
         .collect(),
+      npm_overrides: workspace
+        .npm_overrides()
+        .map(|m| serde_json::Value::Object(m.clone())),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
