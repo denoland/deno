@@ -21,6 +21,7 @@ capacity_builder.workspace = true
 chrono = { workspace = true, default-features = false, features = ["serde"] }
 deno_error.workspace = true
 deno_lockfile.workspace = true
+deno_package_json.workspace = true
 deno_semver.workspace = true
 futures.workspace = true
 indexmap.workspace = true

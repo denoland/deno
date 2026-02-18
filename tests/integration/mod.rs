@@ -96,6 +96,14 @@ pub fn main() {
       children: Default::default(),
     };
   test_util::collect_and_filter_tests(&mut main_category);
+
+  let main_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(main_category, &shard)
+    } else {
+      main_category
+    };
+
   if main_category.is_empty() {
     return; // no tests to run for the filter
   }
