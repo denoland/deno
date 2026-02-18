@@ -70,14 +70,9 @@ pub fn filter_to_shard<T>(
   mine
 }
 
-fn collect_test_names<T>(
-  category: &CollectedTestCategory<T>,
-) -> Vec<String> {
+fn collect_test_names<T>(category: &CollectedTestCategory<T>) -> Vec<String> {
   let mut names = Vec::new();
-  fn walk<T>(
-    children: &[CollectedCategoryOrTest<T>],
-    names: &mut Vec<String>,
-  ) {
+  fn walk<T>(children: &[CollectedCategoryOrTest<T>], names: &mut Vec<String>) {
     for child in children {
       match child {
         CollectedCategoryOrTest::Test(t) => names.push(t.name.clone()),
@@ -135,12 +130,7 @@ fn assign_shard_tests(
   let median = 1000.0; // 1s default for unknown tests
   let mut tests_with_duration: Vec<_> = all_names
     .iter()
-    .map(|name| {
-      (
-        name.clone(),
-        timings.get(name).copied().unwrap_or(median),
-      )
-    })
+    .map(|name| (name.clone(), timings.get(name).copied().unwrap_or(median)))
     .collect();
   tests_with_duration.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
@@ -506,15 +496,13 @@ impl JsonReporter {
       serde_json::to_string(&*data).unwrap()
     };
     let shard_suffix = match ShardConfig::from_env() {
-      Some(shard) => format!("_shard{}", shard.index),
+      Some(shard) => format!("_shard-{}", shard.index),
       None => String::new(),
     };
-    let file_path = crate::root_path()
-      .join("target")
-      .join(format!(
-        "test_results_{}{shard_suffix}.json",
-        self.test_module_name
-      ));
+    let file_path = crate::root_path().join("target").join(format!(
+      "test_results_{}{shard_suffix}.json",
+      self.test_module_name
+    ));
 
     file_path.write(json);
   }

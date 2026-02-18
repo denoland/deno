@@ -983,8 +983,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
-        name:
-          `test ${testMatrix.test_crate} shard${testMatrix.shard_index} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+        name: `test ${testMatrix.test_crate} ${
+          isSharded.then(`shard-${testMatrix.shard_index} `).else("")
+        }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
@@ -1022,7 +1023,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               "gh run download --repo ${{ github.repository }} \\",
               `  --branch main \\`,
-              `  --name test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard0.json \\`,
+              `  --name test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard-0.json \\`,
               "  --dir target/ || true",
             ],
           },
@@ -1094,7 +1095,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: conditions.status.always().and(isNotTag),
             with: {
               name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard${testMatrix.shard_index}.json`,
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard-${testMatrix.shard_index}.json`,
               path: `target/test_results_${testMatrix.test_crate}*.json`,
             },
           }),
