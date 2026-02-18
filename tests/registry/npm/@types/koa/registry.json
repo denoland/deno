@@ -1,0 +1,62 @@
+{
+  "name": "@types/koa",
+  "dist-tags": {
+    "ts6.0": "3.0.1",
+    "ts5.6": "3.0.1",
+    "ts5.9": "3.0.1",
+    "ts5.7": "3.0.1",
+    "ts5.8": "3.0.1",
+    "ts5.3": "3.0.1",
+    "ts5.4": "3.0.1",
+    "ts5.2": "3.0.1",
+    "ts5.5": "3.0.1",
+    "latest": "3.0.1"
+  },
+  "versions": {
+    "3.0.1": {
+      "name": "@types/koa",
+      "version": "3.0.1",
+      "license": "MIT",
+      "_id": "@types/koa@3.0.1",
+      "dist": {
+        "shasum": "2c9ace20ecb33d0cf84d63492af231185eb2aefa",
+        "tarball": "http://localhost:4260/@types/koa/koa-3.0.1.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-VkB6WJUQSe0zBpR+Q7/YIUESGp5wPHcaXr0xueU5W0EOUWtlSbblsl+Kl31lyRQ63nIILh0e/7gXjQ09JXJIHw==",
+        "unpackedSize": 25633
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/koa"
+      },
+      "description": "TypeScript definitions for koa",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*",
+        "@types/accepts": "*",
+        "@types/cookies": "*",
+        "@types/keygrip": "*",
+        "@types/http-assert": "*",
+        "@types/http-errors": "^2",
+        "@types/koa-compose": "*",
+        "@types/content-disposition": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "acdbb2ff5ce453a886fc68d8f3cb81a9ea68d755b4a8b4f766df7dba281ba8e9"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/koa",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/koa"
+  },
+  "description": "TypeScript definitions for koa"
+}

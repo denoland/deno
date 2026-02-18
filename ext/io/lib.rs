@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -1036,6 +1036,39 @@ impl crate::fs::File for StdFileResourceInner {
       .await
   }
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self.with_sync(|file| {
+      let result = if exclusive {
+        file.try_lock()
+      } else {
+        file.try_lock_shared()
+      };
+      match result {
+        Ok(()) => Ok(true),
+        Err(TryLockError::WouldBlock) => Ok(false),
+        Err(TryLockError::Error(err)) => Err(err.into()),
+      }
+    })
+  }
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self
+      .with_inner_blocking_task(move |file| {
+        let result = if exclusive {
+          file.try_lock()
+        } else {
+          file.try_lock_shared()
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(TryLockError::WouldBlock) => Ok(false),
+          Err(TryLockError::Error(err)) => Err(err.into()),
+        }
+      })
+      .await
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
   }
@@ -1157,7 +1190,7 @@ pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
     .add(ReadCancelResource(CancelHandle::new_rc()))
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_read_with_cancel_handle(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
@@ -1199,9 +1232,11 @@ pub fn op_print(
 ) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    file
-      .write_all_sync(msg.as_bytes())
-      .map_err(JsErrorBox::from_err)
+    match file.write_all_sync(msg.as_bytes()) {
+      Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
+      other => other,
+    }
+    .map_err(JsErrorBox::from_err)
   })
 }
 

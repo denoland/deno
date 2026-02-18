@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -386,6 +386,7 @@ where
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
@@ -422,6 +423,7 @@ where
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },

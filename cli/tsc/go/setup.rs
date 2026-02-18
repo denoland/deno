@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,11 +7,14 @@ use std::sync::OnceLock;
 
 use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
+use http::HeaderMap;
 use sha2::Digest;
 
 use super::tsgo_version;
 use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 fn get_download_url(platform: &str) -> String {
   format!(
@@ -50,6 +53,7 @@ pub enum DownloadError {
 fn verify_hash(platform: &str, data: &[u8]) -> Result<(), DownloadError> {
   let expected_hash = match platform {
     "windows-x64" => tsgo_version::HASHES.windows_x64,
+    "windows-arm64" => tsgo_version::HASHES.windows_arm64,
     "macos-x64" => tsgo_version::HASHES.macos_x64,
     "macos-arm64" => tsgo_version::HASHES.macos_arm64,
     "linux-x64" => tsgo_version::HASHES.linux_x64,
@@ -96,6 +100,7 @@ pub async fn ensure_tsgo(
 
   let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
     ("windows", "x86_64") => "windows-x64",
+    ("windows", "aarch64") => "windows-arm64",
     ("macos", "x86_64") => "macos-x64",
     ("macos", "aarch64") => "macos-arm64",
     ("linux", "x86_64") => "linux-x64",
@@ -134,17 +139,25 @@ pub async fn ensure_tsgo(
   let temp = tempfile::tempdir().map_err(DownloadError::CreateTempDirFailed)?;
   let path = temp.path().join("tsgo.zip");
   log::debug!("Downloading tsgo to {}", path.display());
-  let data = client
-    .download(
-      deno_core::url::Url::parse(&download_url)
-        .map_err(|e| DownloadError::InvalidDownloadUrl(download_url, e))?,
-    )
-    .await
-    .map_err(DownloadError::DownloadFailed)?;
 
-  verify_hash(platform, &data)?;
+  let data = {
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bar.update(download_url.as_str());
+    client
+      .download_with_progress_and_retries(
+        deno_core::url::Url::parse(&download_url)
+          .map_err(|e| DownloadError::InvalidDownloadUrl(download_url, e))?,
+        &HeaderMap::new(),
+        &progress,
+      )
+      .await
+      .map_err(DownloadError::DownloadFailed)?
+  };
 
-  std::fs::write(&path, &data).map_err(|e| {
+  let bytes = data.into_bytes().map_err(DownloadError::DownloadFailed)?;
+  verify_hash(platform, &bytes)?;
+
+  std::fs::write(&path, &bytes).map_err(|e| {
     DownloadError::WriteZipFailed(path.display().to_string(), e)
   })?;
 
@@ -157,7 +170,7 @@ pub async fn ensure_tsgo(
     crate::util::archive::unpack_into_dir(crate::util::archive::UnpackArgs {
       exe_name: "tsgo",
       archive_name: "tsgo.zip",
-      archive_data: &data,
+      archive_data: &bytes,
       is_windows: cfg!(windows),
       dest_path: temp.path(),
     })

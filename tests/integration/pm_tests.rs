@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-
-use std::sync::LazyLock;
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use serde_json::json;
 use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
+use test_util::pty::Pty;
+use test_util::test;
 
 #[test]
 fn add_basic() {
@@ -155,9 +155,9 @@ fn pm_context_builder() -> TestContextBuilder {
     .use_temp_cwd()
 }
 
-#[test]
+#[test(flaky)]
 fn approve_scripts_basic() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
@@ -178,7 +178,7 @@ fn approve_scripts_basic() {
       pty.write_line(" ");
       pty.write_line("\r\n");
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
-      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context
     .temp_dir()
@@ -191,13 +191,16 @@ fn approve_scripts_basic() {
       },
       "allowScripts": ["npm:@denotest/node-lifecycle-scripts@1.0.0"],
     }));
+  context
+    .temp_dir()
+    .path()
+    .join("install.txt")
+    .assert_matches_text("Installed by @denotest/node-lifecycle-scripts!");
 }
 
-static IS_CI: LazyLock<bool> = LazyLock::new(|| std::env::var("CI").is_ok());
-
-#[test]
+#[test(flaky)]
 fn approve_scripts_deny_some() {
-  if cfg!(windows) && *IS_CI {
+  if !Pty::is_supported() {
     return;
   }
   let context = pm_context_builder().build();
@@ -218,9 +221,9 @@ fn approve_scripts_deny_some() {
       pty.expect("@denotest/print-npm-user-agent@1.0.0");
       pty.write_line(" ");
       pty.write_line("\r\n");
-      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
       pty.expect("Denied npm:@denotest/print-npm-user-agent@1.0.0");
-      pty.expect("@denotest/node-lifecycle-scripts@1.0.0: running");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
+      pty.expect("Ran build script npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
   context.temp_dir().path().join("deno.json").assert_matches_json(json!({
     "nodeModulesDir": "manual",
@@ -233,4 +236,9 @@ fn approve_scripts_deny_some() {
       "deny": ["npm:@denotest/print-npm-user-agent@1.0.0"]
     },
   }));
+  context
+    .temp_dir()
+    .path()
+    .join("install.txt")
+    .assert_matches_text("Installed by @denotest/node-lifecycle-scripts!");
 }

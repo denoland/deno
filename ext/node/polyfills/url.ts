@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -79,6 +79,7 @@ import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
 import { URL, URLSearchParams } from "ext:deno_web/00_url.js";
+import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -1430,60 +1431,8 @@ export function pathToFileURL(
   return outURL;
 }
 
-interface HttpOptions {
-  protocol: string;
-  hostname: string;
-  hash: string;
-  search: string;
-  pathname: string;
-  path: string;
-  href: string;
-  port?: number;
-  auth?: string;
-}
-
-/**
- * This utility function converts a URL object into an ordinary options object as expected by the `http.request()` and `https.request()` APIs.
- * @see Tested in `parallel/test-url-urltooptions.js`.
- * @param url The `WHATWG URL` object to convert to an options object.
- * @returns HttpOptions
- * @returns HttpOptions.protocol Protocol to use.
- * @returns HttpOptions.hostname A domain name or IP address of the server to issue the request to.
- * @returns HttpOptions.hash The fragment portion of the URL.
- * @returns HttpOptions.search The serialized query portion of the URL.
- * @returns HttpOptions.pathname The path portion of the URL.
- * @returns HttpOptions.path Request path. Should include query string if any. E.G. `'/index.html?page=12'`. An exception is thrown when the request path contains illegal characters. Currently, only spaces are rejected but that may change in the future.
- * @returns HttpOptions.href The serialized URL.
- * @returns HttpOptions.port Port of remote server.
- * @returns HttpOptions.auth Basic authentication i.e. `'user:password'` to compute an Authorization header.
- */
-export function urlToHttpOptions(url: URL): HttpOptions {
-  const options: HttpOptions = {
-    protocol: url.protocol,
-    hostname: typeof url.hostname === "string" && url.hostname.startsWith("[")
-      ? url.hostname.slice(1, -1)
-      : url.hostname,
-    hash: url.hash,
-    search: url.search,
-    pathname: url.pathname,
-    path: `${url.pathname || ""}${url.search || ""}`,
-    href: url.href,
-  };
-  if (url.port !== "") {
-    options.port = Number(url.port);
-  }
-  if (url.username || url.password) {
-    options.auth = `${decodeURIComponent(url.username)}:${
-      decodeURIComponent(
-        url.password,
-      )
-    }`;
-  }
-  return options;
-}
-
 const URLSearchParams_ = URLSearchParams;
-export { URLSearchParams_ as URLSearchParams };
+export { URLSearchParams_ as URLSearchParams, urlToHttpOptions };
 
 export default {
   parse,

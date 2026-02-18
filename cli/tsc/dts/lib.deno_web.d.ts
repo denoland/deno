@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -1214,7 +1214,12 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBuffer;
+type Transferable =
+  | MessagePort
+  | ArrayBuffer
+  | ReadableStream
+  | WritableStream
+  | TransformStream;
 
 /**
  * Options that control structured serialization operations such as

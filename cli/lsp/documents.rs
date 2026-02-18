@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -59,7 +59,6 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
-use super::urls::COMPONENT;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
@@ -155,35 +154,50 @@ impl OpenDocument {
   }
 }
 
-fn remote_url_to_uri(url: &Url) -> Option<Uri> {
-  if !matches!(url.scheme(), "http" | "https") {
+fn remote_or_asset_url_to_uri(url: &Url) -> Option<Uri> {
+  if !matches!(url.scheme(), "http" | "https" | "asset") {
     return None;
   }
-  let mut string = String::with_capacity(url.as_str().len() + 6);
-  string.push_str("deno:/");
-  string.push_str(url.scheme());
-  for p in url[Position::BeforeHost..].split('/') {
-    string.push('/');
-    string.push_str(
-      &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
-    );
-  }
-  Uri::from_str(&string)
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert remote URL \"{url}\" to URI: {err}")
-    })
-    .ok()
-}
-
-fn asset_url_to_uri(url: &Url) -> Option<Uri> {
-  if url.scheme() != "asset" {
-    return None;
-  }
-  Uri::from_str(&format!("deno:/asset{}", url.path()))
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert asset URL \"{url}\" to URI: {err}")
-    })
-    .ok()
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(url.scheme());
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(
+      url[Position::BeforeUsername..Position::AfterPath]
+        .trim_start_matches('/'),
+    )
+    .decode_utf8_lossy(),
+  );
+  let encoded_query = url.query().map(|query| {
+    let mut encoded_query = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Query,
+    >::new();
+    encoded_query.encode_str::<fluent_uri::pct_enc::encoder::Query>(query);
+    encoded_query
+  });
+  let encoded_fragment = url.fragment().map(|fragment| {
+    let mut encoded_fragment = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Fragment,
+    >::new();
+    encoded_fragment
+      .encode_str::<fluent_uri::pct_enc::encoder::Fragment>(fragment);
+    encoded_fragment
+  });
+  let uri = fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, encoded_query.as_deref())
+    .optional(
+      fluent_uri::build::Builder::fragment,
+      encoded_fragment.as_deref(),
+    )
+    .build()
+    .expect("component constraints should be met by the above")
+    .normalize()
+    .into();
+  Some(uri)
 }
 
 fn data_url_to_uri(url: &Url) -> Option<Uri> {
@@ -207,7 +221,8 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     .ok()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -231,15 +246,6 @@ impl std::ops::Deref for DocumentText {
       Self::Static(s) => s,
       Self::Arc(s) => s,
     }
-  }
-}
-
-impl Serialize for DocumentText {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    (self as &str).serialize(serializer)
   }
 }
 
@@ -274,8 +280,7 @@ pub struct ServerDocument {
 
 impl ServerDocument {
   fn load(uri: &Uri) -> Option<Self> {
-    let scheme = uri.scheme()?;
-    if scheme.eq_lowercase("file") {
+    if uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(uri);
       let path = url_to_file_path(&url).ok()?;
       let bytes = fs::read(&path).ok()?;
@@ -338,7 +343,7 @@ impl ServerDocument {
 
   fn asset(name: &str, text: &'static str) -> Self {
     let url = Arc::new(Url::parse(&format!("asset:///{name}")).unwrap());
-    let uri = asset_url_to_uri(&url).unwrap();
+    let uri = remote_or_asset_url_to_uri(&url).unwrap();
     let media_type = MediaType::from_specifier(&url);
     let line_index = Arc::new(LineIndex::new(text));
     Self {
@@ -508,14 +513,14 @@ impl Documents {
     let uri = normalize_uri(&uri);
     self.server.remove(&uri);
     let doc = Arc::new(OpenDocument::new(
-      uri.as_ref().clone(),
+      uri.clone(),
       version,
       language_id,
       text,
       notebook_uri,
     ));
-    self.open.insert(uri.into_owned(), doc.clone());
-    if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    self.open.insert(uri, doc.clone());
+    if !doc.uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
@@ -531,7 +536,7 @@ impl Documents {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    let Some((uri, doc)) = self.open.shift_remove_entry(uri.as_ref()) else {
+    let Some((uri, doc)) = self.open.shift_remove_entry(&uri) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -550,10 +555,8 @@ impl Documents {
 
   fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    self
-      .file_like_uris_by_url
-      .retain(|_, u| u.as_ref() != uri.as_ref());
-    let doc = self.open.shift_remove(uri.as_ref()).ok_or_else(|| {
+    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != &uri);
+    let doc = self.open.shift_remove(&uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -570,7 +573,7 @@ impl Documents {
     uri: Uri,
     cells: Vec<lsp::TextDocumentItem>,
   ) -> Vec<Arc<OpenDocument>> {
-    let uri = Arc::new(normalize_uri(&uri).into_owned());
+    let uri = Arc::new(normalize_uri(&uri));
     let mut documents = Vec::with_capacity(cells.len());
     for cell in cells {
       let language_id = cell.language_id.parse().unwrap_or_else(|err| {
@@ -605,7 +608,7 @@ impl Documents {
     structure: Option<lsp::NotebookDocumentCellChangeStructure>,
     content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
   ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
-    let uri = Arc::new(normalize_uri(uri).into_owned());
+    let uri = Arc::new(normalize_uri(uri));
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
       if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
@@ -617,7 +620,7 @@ impl Documents {
             .cells
             .into_iter()
             .flatten()
-            .map(|c| Arc::new(normalize_uri(&c.document).into_owned())),
+            .map(|c| Arc::new(normalize_uri(&c.document))),
         );
       }
       for closed in structure.did_close.into_iter().flatten() {
@@ -671,8 +674,7 @@ impl Documents {
 
   pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
     let uri = normalize_uri(uri);
-    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri.as_ref())
-    else {
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(&uri) else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
         uri.as_str(),
@@ -695,7 +697,7 @@ impl Documents {
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = ASSET_DOCUMENTS.get(&uri) {
@@ -716,14 +718,14 @@ impl Documents {
       },
     };
     let doc = Arc::new(doc);
-    self.server.insert(uri.into_owned(), doc.clone());
+    self.server.insert(uri, doc.clone());
     Some(Document::Server(doc))
   }
 
   /// This will not create any server entries, only retrieve existing entries.
   pub fn inspect(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = self.server.get(&uri) {
@@ -747,7 +749,7 @@ impl Documents {
         .or_else(|| url_to_uri(specifier).ok().map(Arc::new))?;
       self.get(&uri)
     } else if scheme == "asset" {
-      let uri = asset_url_to_uri(specifier)?;
+      let uri = remote_or_asset_url_to_uri(specifier)?;
       self.get(&uri)
     } else if scheme == "http" || scheme == "https" {
       if let Some(vendored_specifier) =
@@ -756,7 +758,7 @@ impl Documents {
         let uri = url_to_uri(&vendored_specifier).ok()?;
         self.get(&uri)
       } else {
-        let uri = remote_url_to_uri(specifier)?;
+        let uri = remote_or_asset_url_to_uri(specifier)?;
         if let Some(doc) = self.server.get(&uri) {
           return Some(Document::Server(doc.clone()));
         }
@@ -1132,7 +1134,7 @@ impl DocumentModules {
     let document = self.documents.close(uri)?;
     // If applicable, try to load the closed document as a server document so
     // it's still included as a ts root etc..
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && self.config.uri_enabled(uri)
     {
       self.documents.get(uri);
@@ -1195,7 +1197,7 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
     {
       return Some(Arc::new(remote_specifier));
@@ -1632,21 +1634,25 @@ impl DocumentModules {
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else {
           None
         }
@@ -1658,13 +1664,15 @@ impl DocumentModules {
           resolution_mode,
           NodeResolutionKind::Types,
         ) {
-          Ok(specifier) => self.resolve_dependency(
-            &specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          ),
+          Ok(specifier) => self
+            .resolve_dependency(
+              &specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t)),
           _ => None,
         }
       };
@@ -1681,14 +1689,14 @@ impl DocumentModules {
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
     compiler_options_key: Option<&CompilerOptionsKey>,
-  ) -> Option<(Url, MediaType)> {
+  ) -> Option<(Url, MediaType, Option<Arc<Uri>>)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       && deno_node::is_builtin_node_module(module_name)
     {
       // return itself for node: specifiers because during type checking
       // we resolve to the ambient modules in the @types/node package
       // rather than deno_std/node
-      return Some((specifier.clone(), MediaType::Dts));
+      return Some((specifier.clone(), MediaType::Dts, None));
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1708,7 +1716,7 @@ impl DocumentModules {
     else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
-      return Some((specifier, media_type));
+      return Some((specifier, media_type, None));
     };
     if let Some(types) = module
       .types_dependency
@@ -1723,7 +1731,11 @@ impl DocumentModules {
         compiler_options_key,
       )
     } else {
-      Some((module.specifier.as_ref().clone(), module.media_type))
+      Some((
+        module.specifier.as_ref().clone(),
+        module.media_type,
+        Some(module.uri.clone()),
+      ))
     }
   }
 }

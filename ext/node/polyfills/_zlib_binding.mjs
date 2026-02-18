@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -71,6 +71,8 @@ import {
   op_zlib_crc32,
   op_zlib_crc32_string,
   Zlib,
+  ZstdCompress,
+  ZstdDecompress,
 } from "ext:core/ops";
 
 function crc32(buf, crc) {
@@ -83,6 +85,20 @@ function crc32(buf, crc) {
   return op_zlib_crc32(buf, crc);
 }
 
-export { BrotliDecoder, BrotliEncoder, crc32, Zlib };
+export {
+  BrotliDecoder,
+  BrotliEncoder,
+  crc32,
+  Zlib,
+  ZstdCompress,
+  ZstdDecompress,
+};
 
-export default { BrotliDecoder, BrotliEncoder, Zlib, crc32 };
+export default {
+  BrotliDecoder,
+  BrotliEncoder,
+  Zlib,
+  ZstdCompress,
+  ZstdDecompress,
+  crc32,
+};

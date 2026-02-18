@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -11,6 +11,7 @@ import {
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
+  op_node_process_constrained_memory,
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
@@ -39,7 +40,7 @@ import {
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
@@ -94,7 +95,7 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
-const { NumberMAX_SAFE_INTEGER } = primordials;
+const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -128,6 +129,21 @@ export const exit = (code?: number | string) => {
   // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
   // At this point, we don't have to pass around Node's raw/string exit value.
   process.reallyExit(ProcessExitCode);
+
+  // In a worker, reallyExit() returns because Deno.exit() calls workerClose()
+  // instead of std::process::exit(). workerClose() already called V8's
+  // terminate_execution(). Unlike Node.js where reallyExit is a C++ binding
+  // and a single nop() call suffices to trigger the stack guard check, in Deno
+  // reallyExit goes through JS frames (Deno.exit -> exitHandler -> workerClose
+  // -> op), so we need a loop back-edge for V8 to reliably detect the pending
+  // termination and throw an uncatchable TerminationException.
+  // On the main thread reallyExit() normally never returns, but users can
+  // override it (test-process-really-exit.js), so only spin in workers.
+  // ref: https://github.com/nodejs/node/blob/9cc7fcc26d/lib/internal/process/per_thread.js#L243-L251
+  if (internals.__isWorkerThread) {
+    // deno-lint-ignore no-empty
+    for (;;) {}
+  }
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
@@ -331,6 +347,14 @@ memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
 
+export function availableMemory(): number {
+  return Deno.systemMemoryInfo().available;
+}
+
+export function constrainedMemory(): number {
+  return op_node_process_constrained_memory();
+}
+
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
@@ -473,7 +497,7 @@ Process.prototype.on = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.on("${event}")`);
     EventEmitter.prototype.on.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -503,7 +527,7 @@ Process.prototype.off = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.off("${event}")`);
     EventEmitter.prototype.off.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -528,17 +552,7 @@ Process.prototype.emit = function (
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): boolean {
-  if (event.startsWith("SIG")) {
-    if (event === "SIGBREAK" && Deno.build.os !== "windows") {
-      // Ignores SIGBREAK if the platform is not windows.
-    } else {
-      Deno.kill(Deno.pid, event as Deno.Signal);
-    }
-  } else {
-    return EventEmitter.prototype.emit.call(this, event, ...args);
-  }
-
-  return true;
+  return EventEmitter.prototype.emit.call(this, event, ...args);
 };
 
 Process.prototype.prependListener = function (
@@ -551,7 +565,7 @@ Process.prototype.prependListener = function (
   if (notImplementedEvents.includes(event)) {
     warnNotImplemented(`process.prependListener("${event}")`);
     EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (event.startsWith("SIG")) {
+  } else if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
@@ -650,15 +664,15 @@ Object.defineProperty(process, "argv0", {
 process.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
-process.config = {
-  target_defaults: {
+process.config = Object.freeze({
+  target_defaults: Object.freeze({
     default_configuration: "Release",
-  },
-  variables: {
+  }),
+  variables: Object.freeze({
     llvm_version: "0.0",
     enable_lto: "false",
-  },
-};
+  }),
+});
 
 process.cpuUsage = cpuUsage;
 
@@ -695,6 +709,17 @@ process.reallyExit = (code: number) => {
 };
 
 process._exiting = _exiting;
+
+// deno-lint-ignore no-explicit-any
+process._fatalException = function (err: any, fromPromise?: boolean) {
+  const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
+  process.emit("uncaughtExceptionMonitor", err, origin);
+  if (process.listenerCount("uncaughtException") > 0) {
+    process.emit("uncaughtException", err, origin);
+    return true;
+  }
+  return false;
+};
 
 /** https://nodejs.org/api/process.html#processexitcode_1 */
 Object.defineProperty(process, "exitCode", {
@@ -749,6 +774,10 @@ Object.defineProperty(process, "platform", {
   get() {
     return platform;
   },
+  set(value) {
+    platform = value;
+  },
+  configurable: true,
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
@@ -792,6 +821,8 @@ process._kill = _kill;
 process.kill = kill;
 
 process.memoryUsage = memoryUsage;
+process.availableMemory = availableMemory;
+process.constrainedMemory = constrainedMemory;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 process.stderr = stderr;
@@ -884,7 +915,40 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
-process.features = { inspector: false };
+const features = {
+  inspector: true,
+  // TODO(bartlomieju): not sure if it's worth getting actual value during build process
+  debug: false,
+  uv: true,
+  ipv6: true,
+  // deno-lint-ignore camelcase
+  tls_alpn: true,
+  // deno-lint-ignore camelcase
+  tls_sni: true,
+  // deno-lint-ignore camelcase
+  tls_ocsp: true,
+  tls: true,
+  // deno-lint-ignore camelcase
+  openssl_is_boringssl: false,
+  // deno-lint-ignore camelcase
+  cached_builtins: true,
+  // deno-lint-ignore camelcase
+  require_module: true,
+  get typescript() {
+    if (Deno.build.standalone) {
+      return false;
+    }
+    return "transform";
+  },
+};
+
+ObjectDefineProperty(process, "features", {
+  __proto__: null,
+  enumerable: true,
+  writable: false,
+  configurable: false,
+  value: features,
+});
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
@@ -964,15 +1028,30 @@ process.on("removeListener", (event: string) => {
 });
 
 function processOnError(event: ErrorEvent) {
-  if (process.listenerCount("uncaughtException") > 0) {
-    event.preventDefault();
+  if (typeof process._fatalException === "function") {
+    if (process._fatalException(event.error)) {
+      event.preventDefault();
+    }
+  } else {
+    // Exit code 6: _fatalException is not a function
+    // (kInvalidFatalExceptionMonkeyPatching in Node.js)
+    process.exitCode = 6;
   }
-
-  uncaughtExceptionHandler(event.error, "uncaughtException");
 }
 
 function dispatchProcessBeforeExitEvent() {
-  process.emit("beforeExit", process.exitCode || 0);
+  try {
+    process.emit("beforeExit", process.exitCode || 0);
+  } catch (_e) {
+    // When 'beforeExit' throws, Node.js emits 'exit' and then terminates
+    // with the current exitCode. The 'exit' handler can set exitCode to
+    // override the exit status.
+    if (process.exitCode == null) {
+      process.exitCode = 1;
+    }
+    dispatchProcessExitEvent();
+    Deno.exit(process.exitCode || 0);
+  }
   processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }

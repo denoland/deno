@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_resolver::cjs::analyzer::DenoCjsCodeAnalyzer;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -17,9 +17,10 @@ pub type CliCjsModuleExportAnalyzer = CjsModuleExportAnalyzer<
   CliNpmResolver,
   CliSys,
 >;
-pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
+pub type CliNodeResolver<TSys = CliSys> = deno_runtime::deno_node::NodeResolver<
   DenoInNpmPackageChecker,
-  CliNpmResolver,
-  CliSys,
+  CliNpmResolver<TSys>,
+  TSys,
 >;
-pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
+pub type CliPackageJsonResolver<TSys = CliSys> =
+  node_resolver::PackageJsonResolver<TSys>;

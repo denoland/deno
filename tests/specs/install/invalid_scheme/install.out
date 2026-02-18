@@ -5,11 +5,11 @@ Warning Not implemented scheme 'git'
 Download http://localhost:4260/@denotest%2fadd
 Download http://localhost:4260/@denotest/add/1.0.0.tgz
 Initialize @denotest/add@1.0.0
-Installed [WILDLINE] package in [WILDCARD]
-Reused [WILDLINE] packages from cache
-Downloaded [WILDLINE] packages from JSR
-Downloaded [WILDLINE] packages from npm
-[WILDLINE]
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
 
 Dependencies:
 [WILDCARD]

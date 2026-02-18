@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // use super::UrlRc;
 
@@ -22,6 +22,7 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_package_json::PackageJsonDepsRc;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::SpecifierError;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -39,7 +40,6 @@ use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
 use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
-use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
 use parking_lot::RwLock;
@@ -545,6 +545,7 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Json
             | MediaType::Jsonc
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Wasm
             | MediaType::Css
             | MediaType::Html
@@ -1189,7 +1190,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         .resolve(specifier, referrer)
         .map_err(MappedResolutionError::ImportMap)
     } else {
-      import_map::specifier::resolve_import(specifier, referrer)
+      deno_path_util::resolve_import(specifier, referrer)
         .map_err(MappedResolutionError::Specifier)
     };
     let resolve_error = match resolve_result {
@@ -1834,6 +1835,15 @@ mod test {
           referrer_extra: None,
         }),
       )))
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
     }
   }
 

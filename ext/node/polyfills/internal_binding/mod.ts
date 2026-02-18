@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -44,7 +44,11 @@ const modules = {
   natives: {},
   options: {},
   os: {},
-  performance: {},
+  performance: {
+    // observerCounts is an array where index is entry type and value is observer count
+    // Initialize with zeros for all entry types (0-8)
+    observerCounts: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
   "pipe_wrap": pipeWrap,
   "process_methods": {},
   report: {},

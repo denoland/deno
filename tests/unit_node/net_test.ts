@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
@@ -302,4 +302,18 @@ Deno.test("[node/dns] resolve IPv6 addresses", async () => {
   for (const { address } of resolve6ttlResults) {
     await dnsPromises.lookup(address);
   }
+});
+
+Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
+  const deferred = Promise.withResolvers<void>();
+  const server = net.createServer((socket) => {
+    assertEquals(socket.remoteFamily, "IPv4");
+    socket.end();
+    server.close(() => deferred.resolve());
+  });
+  server.listen(0, () => {
+    const { port } = server.address() as net.AddressInfo;
+    net.createConnection(port, "127.0.0.1");
+  });
+  await deferred.promise;
 });

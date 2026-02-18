@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,6 +29,7 @@ use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_inspector_server::MainInspectorSessionChannel;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -40,7 +41,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -155,6 +155,9 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
+  use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
+  use deno_runtime::deno_node::ops::process::cgroup::parse_self_cgroup;
+
   /// Get memory limit with cgroup (either v1 or v2) taken into account.
   pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(
     sys: &TSys,
@@ -194,104 +197,6 @@ mod linux {
     };
 
     limit.or(system_total_memory)
-  }
-
-  enum CgroupVersion<'a> {
-    V1 { cgroup_relpath: &'a str },
-    V2 { cgroup_relpath: &'a str },
-    None,
-  }
-
-  fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
-    // Initialize the cgroup version as None. This will be updated based on the parsed lines.
-    let mut cgroup_version = CgroupVersion::None;
-
-    // Iterate through each line in the cgroup content. Each line represents a cgroup entry.
-    for line in self_cgroup_content.lines() {
-      // Split the line into parts using ":" as the delimiter. The format is typically:
-      // "<hierarchy_id>:<subsystems>:<cgroup_path>"
-      let split = line.split(":").collect::<Vec<_>>();
-
-      match &split[..] {
-        // If the line specifies "memory" as the subsystem, it indicates cgroup v1 is used
-        // for memory management. Extract the relative path and update the cgroup version.
-        [_, "memory", cgroup_v1_relpath] => {
-          cgroup_version = CgroupVersion::V1 {
-            cgroup_relpath: cgroup_v1_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v1_relpath),
-          };
-          // Break early since v1 explicitly manages memory, and no further checks are needed.
-          break;
-        }
-        // If the line starts with "0::", it indicates cgroup v2 is used. However, in hybrid
-        // mode, memory might still be managed by v1. Continue checking other lines to confirm.
-        ["0", "", cgroup_v2_relpath] => {
-          cgroup_version = CgroupVersion::V2 {
-            cgroup_relpath: cgroup_v2_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v2_relpath),
-          };
-        }
-        _ => {}
-      }
-    }
-
-    cgroup_version
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v2() {
-    let self_cgroup = "0::/user.slice/user-1000.slice/session-3.scope";
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_hybrid() {
-    let self_cgroup = r#"12:rdma:/
-11:blkio:/user.slice
-10:devices:/user.slice
-9:cpu,cpuacct:/user.slice
-8:pids:/user.slice/user-1000.slice/session-3.scope
-7:memory:/user.slice/user-1000.slice/session-3.scope
-6:perf_event:/
-5:freezer:/
-4:net_cls,net_prio:/
-3:hugetlb:/
-2:cpuset:/
-1:name=systemd:/user.slice/user-1000.slice/session-3.scope
-0::/user.slice/user-1000.slice/session-3.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v1() {
-    let self_cgroup = r#"11:hugetlb:/
-10:pids:/user.slice/user-1000.slice
-9:perf_event:/
-8:devices:/user.slice
-7:net_cls,net_prio:/
-6:memory:/
-5:blkio:/
-4:cpuset:/
-3:cpu,cpuacct:/
-2:freezer:/
-1:name=systemd:/user.slice/user-1000.slice/session-2.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath.is_empty()
-    ));
   }
 }
 
@@ -369,7 +274,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
-  maybe_inspector_server: Option<Arc<InspectorServer>>,
+  main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -415,8 +320,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   ) -> Arc<CreateWebWorkerCb> {
     let shared = self.clone();
     Arc::new(move |args| {
-      let maybe_inspector_server = shared.maybe_inspector_server.clone();
-
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
@@ -457,7 +360,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         compiled_wasm_module_store: Some(
           shared.compiled_wasm_module_store.clone(),
         ),
-        maybe_inspector_server,
+        main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
@@ -539,7 +442,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_coverage_dir: Option<PathBuf>,
-    maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
       NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>,
@@ -563,7 +465,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         feature_checker,
         fs,
         maybe_coverage_dir,
-        maybe_inspector_server,
+        main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -709,7 +611,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         format_js_error(e, maybe_initial_cwd.as_ref())
       })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
-      maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       trace_ops: shared.options.trace_ops.clone(),
@@ -725,6 +626,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Store the main inspector session sender for worker debugging
+    let inspector = worker.js_runtime.inspector();
+    let session_tx = inspector.get_session_sender();
+    shared.main_inspector_session_tx.set(session_tx);
 
     Ok(LibMainWorker {
       main_module,
@@ -745,7 +651,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(url_from_file_path(&path)?),
+      Ok(bin_value) => Ok(url_from_file_path(bin_value.path())?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =

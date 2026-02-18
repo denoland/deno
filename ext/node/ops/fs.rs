@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -61,7 +61,7 @@ pub fn op_node_fs_exists_sync(
   Ok(fs.exists_sync(&path))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_fs_exists(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -87,7 +87,7 @@ fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
 
 fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   let read = open_options.read;
-  let write = open_options.write || open_options.append;
+  let write = open_options.write || open_options.append || open_options.create;
   match (read, write) {
     (true, true) => OpenAccessKind::ReadWrite,
     (false, true) => OpenAccessKind::Write,
@@ -119,7 +119,7 @@ pub fn op_node_open_sync(
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 pub async fn op_node_open(
   state: Rc<RefCell<OpState>>,
@@ -180,7 +180,7 @@ pub fn op_node_statfs_sync(
   statfs(path, bigint)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
@@ -349,7 +349,7 @@ pub fn op_node_lutimes_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lutimes(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -397,7 +397,7 @@ pub fn op_node_lchown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchown(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -433,7 +433,7 @@ pub fn op_node_lchmod_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_node_lchmod(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -483,7 +483,7 @@ pub fn op_node_mkdtemp_sync(
   )))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_node_mkdtemp(
   state: Rc<RefCell<OpState>>,
@@ -529,4 +529,81 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   let suffix: String =
     (0..6).map(|_| OsRng.sample(Alphanumeric) as char).collect();
   format!("{}{}", prefix, suffix)
+}
+
+/// Create a file resource from a raw file descriptor.
+/// This is used for wrapping PTYs and other non-socket file descriptors
+/// that can't be wrapped as Unix streams.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_file_from_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<ResourceId, FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the created File from this point on.
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+
+  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "pipe".to_string()));
+  Ok(rid)
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[smi]
+pub fn op_node_file_from_fd(
+  _state: &mut OpState,
+  _fd: i32,
+) -> Result<ResourceId, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "op_node_file_from_fd is not supported on this platform",
+  )))
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_node_rmdir_sync(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> Result<(), FsError> {
+  let path = state.borrow_mut::<PermissionsContainer>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    Some("node:fs.rmdirSync"),
+  )?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.rmdir_sync(&path)?;
+  Ok(())
+}
+
+#[op2(stack_trace)]
+pub async fn op_node_rmdir(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<(), FsError> {
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state.borrow_mut::<PermissionsContainer>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.rmdir"),
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+  fs.rmdir_async(path.into_owned()).await?;
+  Ok(())
 }

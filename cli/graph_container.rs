@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -96,6 +96,7 @@ impl MainModuleGraphContainer {
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
           skip_graph_roots_validation: false,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;

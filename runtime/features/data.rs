@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE(bartlomieju): some fields are marked as never read, even though they are
 // actually used in the CLI.
@@ -160,7 +160,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "temporal",
     help_text: "Enable unstable Temporal API",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     env_var: None,
   },

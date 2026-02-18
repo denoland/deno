@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_config::workspace::Workspace;
 use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::RegistryConfigWithUrl;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use sys_traits::EnvHomeDir;
 use sys_traits::EnvVar;
@@ -46,7 +47,7 @@ pub struct NpmRcLoadError {
 pub struct NpmRcParseError {
   path: PathBuf,
   #[source]
-  source: std::io::Error,
+  source: deno_npm::npm_rc::NpmRcParseError,
 }
 
 #[derive(Debug, Error)]
@@ -106,12 +107,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     path: &Path,
   ) -> Result<NpmRc, NpmRcDiscoverError> {
     let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
-      |source| {
-        NpmRcParseError {
-          path: path.to_path_buf(),
-          // todo(dsherret): use source directly here once it's no longer an internal type
-          source: std::io::Error::new(std::io::ErrorKind::InvalidData, source),
-        }
+      |source| NpmRcParseError {
+        path: path.to_path_buf(),
+        source,
       },
     )?;
     log::debug!(".npmrc found at: '{}'", path.display());
@@ -185,15 +183,20 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   }
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
-    Ok((
-      npm_rc
-        .as_resolved(&npm_registry_url(sys))
-        .map_err(|source| NpmRcOptionsResolveError {
-          path: path.to_path_buf(),
-          source,
-        })?,
-      Some(path),
-    ))
+    let mut resolved_npm_rc = npm_rc
+      .as_resolved(&npm_registry_url(sys))
+      .map_err(|source| NpmRcOptionsResolveError {
+        path: path.to_path_buf(),
+        source,
+      })?;
+    resolved_npm_rc
+      .scopes
+      .entry("jsr".to_string())
+      .or_insert_with(|| RegistryConfigWithUrl {
+        registry_url: npm_jsr_registry_url(sys),
+        config: Default::default(),
+      });
+    Ok((resolved_npm_rc, Some(path)))
   };
 
   match (home_npmrc, project_npmrc) {
@@ -220,19 +223,38 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   ResolvedNpmRc {
     default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: npm_registry_url(sys).clone(),
+      registry_url: npm_registry_url(sys),
       config: Default::default(),
     },
-    scopes: Default::default(),
+    scopes: HashMap::from([(
+      "jsr".to_string(),
+      RegistryConfigWithUrl {
+        registry_url: npm_jsr_registry_url(sys),
+        config: Default::default(),
+      },
+    )]),
     registry_configs: Default::default(),
   }
 }
 
 pub fn npm_registry_url(sys: &impl EnvVar) -> Url {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
+  parse_env_var_to_url(sys, "NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+}
+
+pub fn npm_jsr_registry_url(sys: &impl EnvVar) -> Url {
+  // unfortunately we can't use NPM_CONFIG_JSR_REGISTRY because npm
+  // will complain about an unknown configuration value
+  parse_env_var_to_url(sys, "JSR_NPM_URL", "https://npm.jsr.io")
+}
+
+fn parse_env_var_to_url(
+  sys: &impl EnvVar,
+  env_var_name: &str,
+  fallback_url: &str,
+) -> Url {
   if let Ok(registry_url) = sys.env_var(env_var_name) {
     // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    let registry_url = ensure_trailing_slash(&registry_url);
     match Url::parse(&registry_url) {
       Ok(url) => {
         return url;
@@ -243,5 +265,13 @@ pub fn npm_registry_url(sys: &impl EnvVar) -> Url {
     }
   }
 
-  Url::parse("https://registry.npmjs.org").unwrap()
+  Url::parse(fallback_url).unwrap()
+}
+
+fn ensure_trailing_slash(value: &str) -> Cow<'_, str> {
+  if value.ends_with('/') {
+    Cow::Borrowed(value)
+  } else {
+    Cow::Owned(format!("{}/", value))
+  }
 }

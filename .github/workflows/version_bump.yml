@@ -32,7 +32,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive

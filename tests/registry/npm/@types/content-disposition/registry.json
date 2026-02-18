@@ -1,0 +1,54 @@
+{
+  "name": "@types/content-disposition",
+  "dist-tags": {
+    "ts5.1": "0.5.9",
+    "ts5.6": "0.5.9",
+    "ts5.9": "0.5.9",
+    "ts5.7": "0.5.9",
+    "ts5.8": "0.5.9",
+    "ts5.5": "0.5.9",
+    "ts5.4": "0.5.9",
+    "ts5.3": "0.5.9",
+    "latest": "0.5.9",
+    "ts5.2": "0.5.9",
+    "ts6.0": "0.5.9"
+  },
+  "versions": {
+    "0.5.9": {
+      "name": "@types/content-disposition",
+      "version": "0.5.9",
+      "license": "MIT",
+      "_id": "@types/content-disposition@0.5.9",
+      "dist": {
+        "shasum": "00ca14939432869de829a4ccf6fd380fa9181750",
+        "tarball": "http://localhost:4260/@types/content-disposition/content-disposition-0.5.9.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-8uYXI3Gw35MhiVYhG3s295oihrxRyytcRHjSjqnqZVDDy/xcGBRny7+Xj1Wgfhv5QzRtN2hB2dVRBUX9XW3UcQ==",
+        "unpackedSize": 6724
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/content-disposition"
+      },
+      "description": "TypeScript definitions for content-disposition",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.1",
+      "typesPublisherContentHash": "eb4b56363bdb8d50fe15f9eaef87d31adef8899a61da907f3b2ca9f537c87697"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/content-disposition",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/content-disposition"
+  },
+  "description": "TypeScript definitions for content-disposition"
+}
