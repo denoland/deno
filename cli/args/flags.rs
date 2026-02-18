@@ -2316,7 +2316,6 @@ Don't error if the audit data can't be retrieved from the registry
       .arg(
         Arg::new("ignore")
           .long("ignore")
-          .visible_alias("ignore-cve")
           .help("Ignore advisories matching the given CVE IDs")
           .action(ArgAction::Append)
           .value_name("CVE")
