@@ -3474,7 +3474,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
         .arg(
-          Arg::new("save_exact")
+          Arg::new("save-exact")
             .long("save-exact")
             .alias("exact")
             .help("Save exact version without the caret (^)")
@@ -5834,7 +5834,7 @@ fn add_parse_inner(
     dev,
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
-    save_exact: matches.get_flag("save_exact"),
+    save_exact: matches.get_flag("save-exact"),
   }
 }
 
