@@ -427,8 +427,23 @@ async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
     return Ok(());
   }
   let url = format!("{PREBUILT_URL}{folder}/{bin_name}");
-  let response = reqwest::get(url).await?;
-  let bytes = response.bytes().await?;
+  let mut attempt = 0;
+  let bytes = loop {
+    attempt += 1;
+    let err = match download_url(&url).await {
+      Ok(bytes) => break bytes,
+      Err(e) => e,
+    };
+    if attempt >= 3 {
+      return Err(anyhow::anyhow!(
+        "failed to download {url} after 3 attempts: {err}"
+      ));
+    }
+    eprintln!(
+      "failed to download {url} (attempt {attempt}/3): {err}, retrying..."
+    );
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+  };
 
   tokio::fs::create_dir_all(esbuild_prebuilt.parent()).await?;
   tokio::fs::write(&esbuild_prebuilt, bytes).await?;
@@ -442,6 +457,11 @@ async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
   }
 
   Ok(())
+}
+
+async fn download_url(url: &str) -> Result<bytes::Bytes, anyhow::Error> {
+  let response = reqwest::get(url).await?;
+  Ok(response.bytes().await?)
 }
 
 fn npm_security_audits_always_succeed_no_vulns()
