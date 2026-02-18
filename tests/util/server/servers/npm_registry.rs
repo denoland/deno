@@ -184,6 +184,12 @@ async fn handle_req_for_registry(
   // serve the registry package files
   let uri_path = req.uri().path();
 
+  if uri_path == "/sub/path/-/npm/v1/security/audits" {
+    // This is for the test in `tests/specs/audit/subpath_registry/__test__.jsonc` that tests that audit works when the registry URL has a subpath.
+    // This endpoint must return something different than the api endpoint at the root to verify the request is going to the correct URL with the subpath.
+    return npm_security_audits_always_succeed_no_vulns();
+  }
+
   if uri_path == "/-/npm/v1/security/audits" {
     return npm_security_audits(req).await;
   }
@@ -436,6 +442,32 @@ async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
   }
 
   Ok(())
+}
+
+fn npm_security_audits_always_succeed_no_vulns()
+-> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let resp_body = json!({
+    "actions": [],
+    "advisories": {},
+    "muted": [],
+    "metadata": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+      },
+      "dependencies": 0,
+      "devDependencies": 0,
+      "optionalDependencies": 0,
+      "totalDependencies": 0
+    }
+  });
+
+  Response::builder()
+    .body(string_body(&serde_json::to_string(&resp_body).unwrap()))
+    .map_err(|e| e.into())
 }
 
 async fn npm_security_audits(
