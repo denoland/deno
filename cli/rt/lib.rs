@@ -90,8 +90,7 @@ pub fn main() {
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let mut data = data;
         let sys = if let Some(hash) = &data.metadata.self_extracting {
-          let extracted_dir =
-            binary::extract_vfs_to_disk(&data.vfs, hash)?;
+          let extracted_dir = binary::extract_vfs_to_disk(&data.vfs, hash)?;
           data.root_path = extracted_dir;
           DenoRtSys::new_self_extracting(data.vfs.clone())
         } else {
