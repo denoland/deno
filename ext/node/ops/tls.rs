@@ -50,6 +50,29 @@ struct NodeTlsState {
   custom_ca_certs: Option<Vec<String>>,
 }
 
+fn der_to_pem(der: &[u8]) -> String {
+  let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+  let pem_lines = b64
+    .chars()
+    .collect::<Vec<char>>()
+    // Node uses 72 characters per line, so we need to follow node even though
+    // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
+    .chunks(72)
+    .map(|c| c.iter().collect::<String>())
+    .collect::<Vec<String>>()
+    .join("\n");
+  format!(
+    "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
+  )
+}
+
+fn get_bundled_root_certificates() -> Vec<String> {
+  webpki_root_certs::TLS_SERVER_ROOT_CERTS
+    .iter()
+    .map(|cert| der_to_pem(cert))
+    .collect()
+}
+
 #[op2]
 pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
@@ -58,26 +81,62 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
     return certs.clone();
   }
 
-  // Return default root certificates if no custom ones are set
-  webpki_root_certs::TLS_SERVER_ROOT_CERTS
-    .iter()
-    .map(|cert| {
-      let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
-      let pem_lines = b64
-        .chars()
-        .collect::<Vec<char>>()
-        // Node uses 72 characters per line, so we need to follow node even though
-        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
-        .chunks(72)
-        .map(|c| c.iter().collect::<String>())
-        .collect::<Vec<String>>()
-        .join("\n");
-      let pem = format!(
-        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
-      );
-      pem
+  get_bundled_root_certificates()
+}
+
+fn parse_extra_ca_certs() -> Vec<String> {
+  let Ok(extra_ca_certs_file) = std::env::var("NODE_EXTRA_CA_CERTS") else {
+    return vec![];
+  };
+  let Ok(contents) = std::fs::read_to_string(&extra_ca_certs_file) else {
+    return vec![];
+  };
+  contents
+    .split("-----END CERTIFICATE-----")
+    .filter_map(|s| {
+      let trimmed = s.trim();
+      if trimmed.contains("-----BEGIN CERTIFICATE-----") {
+        Some(format!("{trimmed}\n-----END CERTIFICATE-----\n"))
+      } else {
+        None
+      }
     })
-    .collect::<Vec<String>>()
+    .collect()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CaCertificatesError {
+  #[class(type)]
+  #[error(
+    "The argument 'type' must be one of 'default', 'system', 'bundled', or 'extra'. Received '{0}'"
+  )]
+  InvalidType(String),
+}
+
+#[op2]
+pub fn op_get_ca_certificates(
+  #[string] cert_type: String,
+) -> Result<Vec<String>, CaCertificatesError> {
+  match cert_type.as_str() {
+    "bundled" => Ok(get_bundled_root_certificates()),
+    "system" => {
+      let native_certs =
+        deno_tls::deno_native_certs::load_native_certs().unwrap_or_default();
+      Ok(
+        native_certs
+          .into_iter()
+          .map(|cert| der_to_pem(&cert.0))
+          .collect(),
+      )
+    }
+    "extra" => Ok(parse_extra_ca_certs()),
+    "default" => {
+      let mut certs = get_bundled_root_certificates();
+      certs.extend(parse_extra_ca_certs());
+      Ok(certs)
+    }
+    _ => Err(CaCertificatesError::InvalidType(cert_type)),
+  }
 }
 
 #[op2]
