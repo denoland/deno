@@ -31,6 +31,7 @@ use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
+use deno_resolver::factory::npm_overrides_from_workspace;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -941,9 +942,15 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
         None,
       ));
+      // parse npm overrides from workspace config
+      let overrides = self
+        .config_data
+        .map(|d| npm_overrides_from_workspace(&d.member_dir.workspace))
+        .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
+        overrides: Arc::new(overrides),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
