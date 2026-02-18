@@ -279,6 +279,9 @@ pub trait File {
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()>;
   async fn unlock_async(self: Rc<Self>) -> FsResult<()>;
 
