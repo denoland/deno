@@ -319,13 +319,46 @@ mod npm {
     // Merge all responses into a single response
     let response = merge_responses(responses);
 
-    let vulns = response.metadata.vulnerabilities;
+    let mut advisories = response.advisories.values().collect::<Vec<_>>();
+
+    // Filter out ignored CVEs
+    let ignore_cves = &audit_flags.ignore;
+    if !ignore_cves.is_empty() {
+      advisories.retain(|adv| {
+        !adv.cves.iter().any(|cve| ignore_cves.contains(cve))
+      });
+    }
+
+    // Recompute vulnerability counts from remaining advisories
+    let vulns = if !ignore_cves.is_empty() {
+      let mut low = 0;
+      let mut moderate = 0;
+      let mut high = 0;
+      let mut critical = 0;
+      for adv in &advisories {
+        match AdvisorySeverity::parse(&adv.severity) {
+          Some(AdvisorySeverity::Low) => low += 1,
+          Some(AdvisorySeverity::Moderate) => moderate += 1,
+          Some(AdvisorySeverity::High) => high += 1,
+          Some(AdvisorySeverity::Critical) => critical += 1,
+          None => {}
+        }
+      }
+      AuditVulnerabilities {
+        low,
+        moderate,
+        high,
+        critical,
+      }
+    } else {
+      response.metadata.vulnerabilities
+    };
+
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
       return Ok(0);
     }
 
-    let mut advisories = response.advisories.values().collect::<Vec<_>>();
     advisories.sort_by_cached_key(|adv| {
       format!("{}@{}", adv.module_name, adv.vulnerable_versions)
     });
@@ -489,8 +522,9 @@ mod npm {
     pub id: i32,
     pub title: String,
     pub findings: Vec<AdvisoryFinding>,
+    #[serde(default)]
+    pub cves: Vec<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub cves: Vec<String>,
     // pub cwe: Vec<String>,
     pub severity: String,
     pub url: String,
