@@ -733,7 +733,6 @@ function serve(arg1, arg2) {
   if (serveAddressOverrideConsumed) {
     return serveInner(options, handler);
   }
-  serveAddressOverrideConsumed = true;
 
   const {
     0: overrideKind,
@@ -742,6 +741,8 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
+    serveAddressOverrideConsumed = true;
+
     let envOptions = duplicateListener
       ? { __proto__: null, signal: options.signal, onError: options.onError }
       : options;

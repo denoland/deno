@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.236.0"
+version = "0.240.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -57,6 +57,8 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_node_crypto.workspace = true
+deno_node_sqlite.workspace = true
 deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
@@ -98,7 +100,7 @@ twox-hash.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 windows-sys.workspace = true
 

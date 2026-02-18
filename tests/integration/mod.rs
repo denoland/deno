@@ -29,6 +29,8 @@ mod compile;
 mod coverage;
 #[path = "eval_tests.rs"]
 mod eval;
+#[path = "ffi_tests.rs"]
+mod ffi;
 #[path = "flags_tests.rs"]
 mod flags;
 #[path = "fmt_tests.rs"]
@@ -43,6 +45,8 @@ mod jsr;
 mod jupyter;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "napi_tests.rs"]
+mod napi;
 #[path = "npm_tests.rs"]
 mod npm;
 #[path = "pm_tests.rs"]
@@ -58,6 +62,8 @@ mod run;
 mod serve;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
+#[path = "sqlite_extension_tests.rs"]
+mod sqlite_extension;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]
@@ -68,6 +74,21 @@ mod upgrade;
 mod watcher;
 
 pub fn main() {
+  if test_util::hash::should_skip_on_ci("integration", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("integration"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  }) {
+    return;
+  }
+
+  let _ = rustls::crypto::ring::default_provider().install_default();
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
     CollectedTestCategory {
       name: module_path!().to_string(),
@@ -75,6 +96,14 @@ pub fn main() {
       children: Default::default(),
     };
   test_util::collect_and_filter_tests(&mut main_category);
+
+  let main_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(main_category, &shard)
+    } else {
+      main_category
+    };
+
   if main_category.is_empty() {
     return; // no tests to run for the filter
   }

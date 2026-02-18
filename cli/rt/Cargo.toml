@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.6.6"
+version = "2.6.10"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -15,6 +15,9 @@ description = "Provides the denort executable"
 name = "denort"
 path = "main.rs"
 doc = false
+
+[lib]
+path = "./lib.rs"
 
 [[test]]
 name = "integration"

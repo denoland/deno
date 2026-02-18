@@ -17,6 +17,8 @@ gclient_config.py_entries
 /tests/napi/build
 /tests/napi/third_party_tests/node_modules
 
+/result
+
 # MacOS generated files
 .DS_Store
 .DS_Store?

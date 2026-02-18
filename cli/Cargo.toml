@@ -2,11 +2,10 @@
 
 [package]
 name = "deno"
-version = "2.6.6"
+version = "2.6.10"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
-exclude = ["bench/testdata/lsp_benchdata/"]
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
@@ -16,20 +15,13 @@ name = "deno"
 path = "main.rs"
 doc = false
 
+[lib]
+path = "lib.rs"
+
 [[test]]
 name = "integration"
 path = "integration_tests_runner.rs"
 harness = false
-
-[[bench]]
-name = "deno_bench"
-harness = false
-path = "./bench/main.rs"
-
-[[bench]]
-name = "lsp_bench_standalone"
-harness = false
-path = "./bench/lsp_bench_standalone.rs"
 
 [features]
 default = ["upgrade", "__vendored_zlib_ng"]
@@ -82,7 +74,7 @@ deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
 deno_package_json = { workspace = true, features = ["sync"] }
-deno_panic = { version = "0.1.0", optional = true }
+deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -112,6 +104,7 @@ clap = { workspace = true, features = ["env", "string", "wrap_help", "error-cont
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
+comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
@@ -128,6 +121,7 @@ fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
+fluent-uri.workspace = true
 fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
@@ -141,6 +135,7 @@ keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service"
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
+locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lol_html = "2.6.0"
 lsp-types.workspace = true
@@ -206,7 +201,6 @@ shell-escape = "=0.1.5"
 tokio-vsock.workspace = true
 
 [dev-dependencies]
-deno_bench_util.workspace = true
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
