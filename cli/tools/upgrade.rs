@@ -3,9 +3,6 @@
 //! This module provides feature to upgrade deno executable
 
 use std::borrow::Cow;
-
-use sys_traits::FsDirEntry;
-use sys_traits::FsMetadataValue;
 use std::env;
 use std::fs;
 use std::io::IsTerminal;
@@ -28,6 +25,8 @@ use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use sha2::Digest;
+use sys_traits::FsDirEntry;
+use sys_traits::FsMetadataValue;
 
 use crate::args::Flags;
 use crate::args::UPGRADE_USAGE;
@@ -497,7 +496,9 @@ fn get_binary_cache_path(
   dl_dir.join(binary_path_suffix)
 }
 
-fn prune_canary_cache<Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll>(
+fn prune_canary_cache<
+  Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll,
+>(
   sys: &Sys,
   dl_dir: &Path,
   max_entries: usize,
@@ -509,11 +510,7 @@ fn prune_canary_cache<Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll>(
 
   let mut dirs: Vec<(PathBuf, std::time::SystemTime)> = entries
     .filter_map(|e| e.ok())
-    .filter(|e| {
-      e.file_type()
-        .map(|t| t.is_dir())
-        .unwrap_or(false)
-    })
+    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
     .filter_map(|e| {
       let modified = e.metadata().ok()?.modified().ok()?;
       Some((e.path().into_owned(), modified))
@@ -2023,32 +2020,26 @@ mod test {
   fn test_get_binary_cache_path() {
     let dl_dir = Path::new("/dl");
 
-    let path =
-      get_binary_cache_path(dl_dir, "1.46.0", ReleaseChannel::Stable);
+    let path = get_binary_cache_path(dl_dir, "1.46.0", ReleaseChannel::Stable);
     assert_eq!(
       path,
       dl_dir.join(format!("release/v1.46.0/{}", *ARCHIVE_NAME))
     );
 
-    let path =
-      get_binary_cache_path(dl_dir, "1.46.0-rc.0", ReleaseChannel::Rc);
+    let path = get_binary_cache_path(dl_dir, "1.46.0-rc.0", ReleaseChannel::Rc);
     assert_eq!(
       path,
       dl_dir.join(format!("release/v1.46.0-rc.0/{}", *ARCHIVE_NAME))
     );
 
-    let path =
-      get_binary_cache_path(dl_dir, "1.0.0", ReleaseChannel::Lts);
+    let path = get_binary_cache_path(dl_dir, "1.0.0", ReleaseChannel::Lts);
     assert_eq!(
       path,
       dl_dir.join(format!("release/v1.0.0/{}", *ARCHIVE_NAME))
     );
 
-    let path = get_binary_cache_path(
-      dl_dir,
-      "abc123def456",
-      ReleaseChannel::Canary,
-    );
+    let path =
+      get_binary_cache_path(dl_dir, "abc123def456", ReleaseChannel::Canary);
     assert_eq!(
       path,
       dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
@@ -2064,7 +2055,8 @@ mod test {
     let sys = InMemorySys::default();
 
     // Returns None when file doesn't exist
-    let result = try_read_cached_binary(&sys, Path::new("/dl/release/v1.0.0/deno.zip"));
+    let result =
+      try_read_cached_binary(&sys, Path::new("/dl/release/v1.0.0/deno.zip"));
     assert!(result.is_none());
 
     // Returns data when file exists
@@ -2147,6 +2139,7 @@ mod test {
   fn test_prune_canary_cache_over_limit() {
     use std::time::Duration;
     use std::time::SystemTime;
+
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsMetadata;
     use sys_traits::FsSetFileTimes;
@@ -2158,8 +2151,7 @@ mod test {
     let base_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
 
     // Create 4 canary dirs with different modification times
-    for (i, name) in ["oldest", "old", "new", "newest"].iter().enumerate()
-    {
+    for (i, name) in ["oldest", "old", "new", "newest"].iter().enumerate() {
       let dir = dl_dir.join(format!("canary/{}", name));
       sys.fs_create_dir_all(&dir).unwrap();
       let time = base_time + Duration::from_secs(i as u64 * 100);
