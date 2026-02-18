@@ -562,6 +562,7 @@ fn get_advisory_for_with_vuln1() -> serde_json::Value {
       {"version": "1.0.0", "paths": ["@denotest/with-vuln1"]}
     ],
     "id": 101010,
+    "cves": ["CVE-2025-0001"],
     "overview": "Lorem ipsum dolor sit amet",
     "title": "@denotest/with-vuln1 is susceptible to prototype pollution",
     "severity": "high",
@@ -608,6 +609,7 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
       {"version": "1.5.0", "paths": ["@denotest/using-vuln>@denotest/with-vuln2"]}
     ],
     "id": 202020,
+    "cves": ["CVE-2025-0002"],
     "overview": "Lorem ipsum dolor sit amet",
     "title": "@denotest/with-vuln2 can steal crypto keys",
     "severity": "critical",
@@ -641,6 +643,7 @@ fn get_advisory_for_with_vuln3() -> serde_json::Value {
       {"version": "1.0.0", "paths": ["@denotest/with-vuln3"]}
     ],
     "id": 303030,
+    "cves": ["CVE-2025-0003"],
     "overview": "Lorem ipsum dolor sit amet",
     "title": "@denotest/with-vuln3 has security vulnerability",
     "severity": "high",
