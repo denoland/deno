@@ -38,7 +38,6 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
-use crate::lsp::documents::DocumentText;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
@@ -163,14 +162,14 @@ impl TsGoCompilerOptions {
 enum TsGoCallbackParams {
   #[serde(rename_all = "camelCase")]
   GetDocument { uri: Uri },
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TsGoDocumentData {
-  text: DocumentText,
-  line_starts: Vec<i32>,
-  ascii_only: bool,
+  #[serde(rename_all = "camelCase")]
+  ResolveModuleName {
+    module_name: String,
+    referrer_uri: Uri,
+    import_attribute_type: Option<String>,
+    resolution_mode: deno_typescript_go_client_rust::types::ResolutionMode,
+    compiler_options_key: CompilerOptionsKey,
+  },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
@@ -640,40 +639,20 @@ impl TsGoServerInner {
                   continue;
                 }
               };
-              let snapshot = snapshot_clone.lock();
-              let result = match params {
-                TsGoCallbackParams::GetDocument { uri } => snapshot
-                  .document_modules
-                  .documents
-                  .get(&uri)
-                  .map(|doc| {
-                    let text = doc.text();
-                    TsGoDocumentData {
-                      ascii_only: text.is_ascii(),
-                      text,
-                      line_starts: doc
-                        .line_index()
-                        .line_starts()
-                        .iter()
-                        .map(|&s| u32::from(s) as i32)
-                        .collect(),
-                    }
-                  })
-                  .map(|d| json!(d))
-                  .ok_or("Document not found"),
-              };
+              let result =
+                Self::handle_callback(params, &snapshot_clone.lock());
               let response = match result {
                 Ok(result) => json!({
                   "jsonrpc": "2.0",
                   "id": id,
                   "result": result,
                 }),
-                Err(message) => json!({
+                Err(err) => json!({
                   "jsonrpc": "2.0",
                   "id": id,
                   "error": {
                     "code": -32001,
-                    "message": message,
+                    "message": err.to_string(),
                   },
                 }),
               };
@@ -796,6 +775,68 @@ impl TsGoServerInner {
       pending_requests,
       next_request_id: AtomicI64::new(1),
       child: Mutex::new(child),
+    }
+  }
+
+  fn handle_callback(
+    params: TsGoCallbackParams,
+    snapshot: &StateSnapshot,
+  ) -> Result<serde_json::Value, AnyError> {
+    match params {
+      TsGoCallbackParams::GetDocument { uri } => {
+        let document = snapshot
+          .document_modules
+          .documents
+          .get(&uri)
+          .ok_or_else(|| anyhow!("Document not found"))?;
+        let text = document.text();
+        Ok(json!({
+          "text": &text,
+          "lineStarts": document
+            .line_index()
+            .line_starts()
+            .iter()
+            .map(|&s| u32::from(s) as i32)
+            .collect::<Vec<_>>(),
+          "asciiOnly": text.is_ascii(),
+        }))
+      }
+      TsGoCallbackParams::ResolveModuleName {
+        module_name,
+        referrer_uri,
+        // TODO(This PR): Use this to redirect bytes/text imports.
+        import_attribute_type: _import_attribute_type,
+        resolution_mode,
+        compiler_options_key,
+      } => {
+        let referrer_module = snapshot
+          .document_modules
+          .module_for_tsgo_referrer(&referrer_uri, &compiler_options_key)
+          .ok_or_else(|| anyhow!("Referrer module not found"))?;
+        let Some((uri, media_type)) = snapshot
+          .document_modules
+          .resolve_dependency_document(
+          &module_name,
+          &referrer_module,
+          match resolution_mode {
+            deno_typescript_go_client_rust::types::ResolutionMode::None => {
+              ResolutionMode::Import
+            }
+            deno_typescript_go_client_rust::types::ResolutionMode::CommonJS => {
+              ResolutionMode::Require
+            }
+            deno_typescript_go_client_rust::types::ResolutionMode::ESM => {
+              ResolutionMode::Import
+            }
+          },
+        ) else {
+          return Ok(json!(null));
+        };
+        Ok(json!({
+          "uri": uri,
+          "extension": media_type.as_ts_extension(),
+        }))
+      }
     }
   }
 
