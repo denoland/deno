@@ -984,7 +984,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       jobIdForJob("test"),
       {
         name: `test ${testMatrix.test_crate} ${
-          shouldRunShard.then(testMatrix.shard_label).else("")
+          isPr.then(testMatrix.shard_label).else("")
         }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
@@ -1048,8 +1048,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
-              CI_SHARD_INDEX: testMatrix.shard_index,
-              CI_SHARD_TOTAL: testMatrix.shard_total,
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
             },
           },
           {
@@ -1060,8 +1060,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
             env: {
-              CI_SHARD_INDEX: testMatrix.shard_index,
-              CI_SHARD_TOTAL: testMatrix.shard_total,
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
             },
           },
           {
