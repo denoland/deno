@@ -157,7 +157,7 @@ fn choose_extraction_dir(hash_str: &str) -> Result<PathBuf, AnyError> {
 
   // try next to the executable first
   if let Some(exe_dir) = current_exe.parent() {
-    let dir = exe_dir.join(format!("{}.vfs", exe_name)).join(hash_str);
+    let dir = exe_dir.join(format!("{}.fs", exe_name)).join(hash_str);
     match std::fs::create_dir_all(&dir) {
       Ok(()) => return Ok(dir),
       Err(err) => {
@@ -171,9 +171,10 @@ fn choose_extraction_dir(hash_str: &str) -> Result<PathBuf, AnyError> {
   }
 
   // fall back to platform-specific data directory
-  let data_dir = get_data_local_dir()
-    .context("Failed to determine local data directory for self-extracting executable")?;
-  let dir = data_dir.join("deno-compile").join(&exe_name).join(hash_str);
+  let data_dir = get_data_local_dir().context(
+    "Failed to determine local data directory for self-extracting executable",
+  )?;
+  let dir = data_dir.join(&exe_name).join(hash_str);
   std::fs::create_dir_all(&dir).with_context(|| {
     format!("Failed to create extraction directory: {}", dir.display())
   })?;
