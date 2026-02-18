@@ -965,6 +965,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           test_package: tc.package,
           shard_index: i,
           shard_total: total,
+          shard_label: total > 1 ? `shard-${i} ` : "",
         }));
       }),
     });
@@ -984,7 +985,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       jobIdForJob("test"),
       {
         name: `test ${testMatrix.test_crate} ${
-          isSharded.then(`shard-${testMatrix.shard_index} `).else("")
+          isSharded.then(testMatrix.shard_label).else("")
         }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
