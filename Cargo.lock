@@ -9757,6 +9757,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_macro",
+ "twox-hash 2.1.0",
  "url",
  "win32job",
  "winapi",
