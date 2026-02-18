@@ -3815,7 +3815,7 @@ jobs:
       - name: Clone submodule ./tests/wpt/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
-      - name: Restore cache wpt cache
+      - name: Restore cache wpt and autobahn test run hashes
         uses: cirruslabs/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
@@ -3891,7 +3891,7 @@ jobs:
         run: |-
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
-      - name: Cache wpt cache
+      - name: Cache wpt and autobahn test run hashes
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:

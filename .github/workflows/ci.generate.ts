@@ -1172,7 +1172,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   if (buildItem.wpt.isPossiblyTrue()) {
     const buildCacheSteps = createRestoreAndSaveCacheSteps({
-      name: "wpt cache",
+      name: "wpt and autobahn test run hashes",
       path: [
         "./target/wpt_input_hash",
         "./target/autobahn_input_hash",
@@ -1262,7 +1262,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
             ],
           },
-          buildCacheSteps.saveCacheStep,
+          buildCacheSteps.saveCacheStep, //.if(isMainBranch.and(isNotTag)),
         ),
       },
     ));
