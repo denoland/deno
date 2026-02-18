@@ -1171,6 +1171,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   if (buildItem.wpt.isPossiblyTrue()) {
+    const buildCacheSteps = createRestoreAndSaveCacheSteps({
+      name: "wpt cache",
+      path: [
+        "./target/wpt_input_hash",
+        "./target/autobahn_input_hash",
+      ],
+      cacheKeyPrefix:
+        `${cacheVersion}-wpt-target-${buildItem.os}-${buildItem.arch}-${buildItem.profile}`,
+    });
     additionalJobs.push(job(
       jobIdForJob("wpt"),
       {
@@ -1184,6 +1193,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneRepoStep,
           cloneStdSubmoduleStep,
           cloneSubmodule("./tests/wpt/suite"),
+          buildCacheSteps.restoreCacheStep,
           installDenoStep,
           installPythonStep,
           denoArtifact.download(),
@@ -1252,6 +1262,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
             ],
           },
+          buildCacheSteps.saveCacheStep,
         ),
       },
     ));
